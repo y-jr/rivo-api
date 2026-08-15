@@ -47,8 +47,19 @@ $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 $adminToken = Get-Token $dotenv["BOOTSTRAP_ADMIN_EMAIL"] $dotenv["BOOTSTRAP_ADMIN_PASSWORD"]
 $adminHeaders = @{ Authorization = "Bearer $adminToken" }
 
+# Portabilidade: esta suite corre em Windows e no CI, que e Linux.
+#
+# - $env:TEMP so existe em Windows. Em Linux e $null, e o Join-Path rebenta
+#   antes do primeiro Test-Case — a suite morria sem produzir um unico caso.
+# - O binario chama-se curl.exe em Windows e curl em Linux.
+# - O dispositivo nulo e NUL em Windows e /dev/null em Linux; escrever "NUL"
+#   em Linux criaria um ficheiro com esse nome no directorio de trabalho.
+$temp = [System.IO.Path]::GetTempPath()
+$curl = if (Get-Command curl.exe -ErrorAction SilentlyContinue) { "curl.exe" } else { "curl" }
+$nul = if ($env:TEMP) { "NUL" } else { "/dev/null" }
+
 # Ficheiro de teste, com conteudo conhecido para verificar o hash.
-$tempFile = Join-Path $env:TEMP "rivo-doc-$stamp.txt"
+$tempFile = Join-Path $temp "rivo-doc-$stamp.txt"
 $content = "Contrato de trabalho de teste - $stamp"
 Set-Content -Path $tempFile -Value $content -NoNewline -Encoding UTF8
 $expectedHash = (Get-FileHash $tempFile -Algorithm SHA256).Hash.ToLower()
@@ -84,12 +95,12 @@ where tc.constraint_type='FOREIGN KEY' and tc.table_schema='hr' and ccu.table_sc
     "hr.employee_document -> documents.document"
 }
 
-# Upload multipart via curl.exe: o Windows PowerShell 5.1 nao tem -Form, que
-# so existe no PowerShell 7.
+# Upload multipart via curl: o Windows PowerShell 5.1 nao tem -Form, que so
+# existe no PowerShell 7.
 function Invoke-Upload {
     param([string]$FilePath, [string]$Category, [string]$Token)
 
-    $body = curl.exe -s -X POST "$base/documents" `
+    $body = & $curl -s -X POST "$base/documents" `
         -H "Authorization: Bearer $Token" `
         -F "file=@$FilePath" `
         -F "category=$Category" 2>$null
@@ -100,12 +111,12 @@ function Get-CurlStatus {
     param([string]$Url, [string]$Token, [string]$FilePath, [string]$Category)
 
     if ($FilePath) {
-        return (curl.exe -s -o NUL -w "%{http_code}" -X POST $Url -H "Authorization: Bearer $Token" -F "file=@$FilePath" -F "category=$Category" 2>$null)
+        return (& $curl -s -o $nul -w "%{http_code}" -X POST $Url -H "Authorization: Bearer $Token" -F "file=@$FilePath" -F "category=$Category" 2>$null)
     }
     if ($Token) {
-        return (curl.exe -s -o NUL -w "%{http_code}" $Url -H "Authorization: Bearer $Token" 2>$null)
+        return (& $curl -s -o $nul -w "%{http_code}" $Url -H "Authorization: Bearer $Token" 2>$null)
     }
-    return (curl.exe -s -o NUL -w "%{http_code}" $Url 2>$null)
+    return (& $curl -s -o $nul -w "%{http_code}" $Url 2>$null)
 }
 
 $script:documentId = $null
@@ -122,8 +133,8 @@ Test-Case "4. Upload com permissao devolve metadados e hash correcto" {
 }
 
 Test-Case "5. Download devolve o conteudo original" {
-    $out = Join-Path $env:TEMP "rivo-down-$stamp.txt"
-    curl.exe -s -o $out "$base/documents/$($script:documentId)" -H "Authorization: Bearer $adminToken" 2>$null
+    $out = Join-Path $temp "rivo-down-$stamp.txt"
+    & $curl -s -o $out "$base/documents/$($script:documentId)" -H "Authorization: Bearer $adminToken" 2>$null
     $downloaded = Get-Content $out -Raw -Encoding UTF8
     if ($downloaded -ne $content) { throw "conteudo difere: '$downloaded'" }
     Remove-Item $out -Force
@@ -144,7 +155,7 @@ Test-Case "6. Sem autenticacao -> 401; sem permissao -> 403" {
 }
 
 Test-Case "7. Ficheiro vazio e recusado" {
-    $empty = Join-Path $env:TEMP "rivo-empty-$stamp.txt"
+    $empty = Join-Path $temp "rivo-empty-$stamp.txt"
     New-Item -ItemType File -Path $empty -Force | Out-Null
     $code = Get-CurlStatus "$base/documents" $adminToken $empty "contrato"
     Remove-Item $empty -Force
@@ -220,8 +231,8 @@ Test-Case "13. Ficheiro sobrevive ao reinicio da stack" {
     if (-not $up) { throw "API nao voltou" }
 
     $t = Get-Token $dotenv["BOOTSTRAP_ADMIN_EMAIL"] $dotenv["BOOTSTRAP_ADMIN_PASSWORD"]
-    $out = Join-Path $env:TEMP "rivo-after-$stamp.txt"
-    curl.exe -s -o $out "$base/documents/$($script:documentId)" -H "Authorization: Bearer $t" 2>$null
+    $out = Join-Path $temp "rivo-after-$stamp.txt"
+    & $curl -s -o $out "$base/documents/$($script:documentId)" -H "Authorization: Bearer $t" 2>$null
     $after = Get-Content $out -Raw -Encoding UTF8
     Remove-Item $out -Force
     if ($after -ne $content) { throw "conteudo perdido ou alterado" }

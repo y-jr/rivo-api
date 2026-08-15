@@ -185,7 +185,11 @@ Test-Case "9. Passwords ausentes do codigo e dos logs" {
     # no .gitignore.
     $tracked = @()
     $tracked += Get-ChildItem "src" -Recurse -File -Include *.cs,*.csproj,*.json
-    $tracked += Get-Item "docker-compose.yml", ".env.example", "Dockerfile"
+    # -Force porque em Linux um ficheiro comecado por ponto e oculto, e o
+    # Get-Item ignora ocultos por omissao. Sem isto, `.env.example` da
+    # "Could not find item" no CI e passa em Windows, onde o ponto nao marca
+    # nada.
+    $tracked += Get-Item -Force "docker-compose.yml", ".env.example", "Dockerfile"
 
     foreach ($secret in @($adminPass, $deciderPass)) {
         $hit = $tracked | Select-String -Pattern ([regex]::Escape($secret)) -SimpleMatch -ErrorAction SilentlyContinue

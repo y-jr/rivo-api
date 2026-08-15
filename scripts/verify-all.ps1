@@ -97,6 +97,19 @@ foreach ($suite in $suites) {
     $total += $casos.Count
     $passed += @($casos | Where-Object { $_.Line -cmatch '^\s{2}PASSA\s' }).Count
 
+    # Uma suite que rebenta antes do primeiro Test-Case nao produz linhas de
+    # caso, e o filtro acima engolia-lhe a saida inteira: via-se que falhou,
+    # nunca porque. Aqui a saida crua e a unica pista que existe.
+    #
+    # Nota: os literais de texto deste ficheiro sao ASCII de proposito. Sem BOM,
+    # o Windows PowerShell 5.1 le-o como ANSI, e um travessao UTF-8 decodifica
+    # com o byte 0x94, que em cp1252 e a aspa curva de fecho - que o PowerShell
+    # aceita como delimitador e termina a string a meio.
+    if ($casos.Count -eq 0) {
+        Write-Output "  (a suite nao produziu nenhum caso - saida crua abaixo)"
+        $output | ForEach-Object { Write-Output ("  | " + $_) }
+    }
+
     if ($exit -ne 0) { $failed += $suite }
 
     # Deixa a stack assentar: a suite anterior pode ter reiniciado containers.
