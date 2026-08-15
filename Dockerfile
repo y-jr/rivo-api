@@ -5,17 +5,26 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /source
 
-# Copia-se a árvore inteira antes do restore, em vez de listar cada .csproj.
+# Copia-se `src/` inteiro antes do restore, em vez de listar cada .csproj.
 #
 # Listar os projectos um a um preservaria a cache do restore entre alterações
 # de código, mas obriga a editar este ficheiro sempre que nasce um módulo — e
 # o esquecimento só aparece como falha de build. Num monólito modular que vai
 # crescer para catorze módulos, a correcção vale mais do que os segundos de
 # cache.
-COPY Rivo.slnx ./
 COPY src/ src/
 
-RUN dotnet restore
+# Restaura a partir do projecto da API, e **não** da solução.
+#
+# A solução inclui os projectos de teste (ADR-022), que vivem em `tests/` e não
+# entram nesta imagem: ela serve para correr a API, não para a testar — disso
+# encarrega-se o job 1 do CI (ADR-023). Restaurar pela solução obrigaria a
+# copiar `tests/` para cá só para o restore passar, e a arrastar os pacotes de
+# teste para dentro de uma imagem de produção.
+#
+# `src/Rivo.Api` puxa transitivamente todos os módulos, por referência de
+# projecto — nenhum módulo fica por restaurar.
+RUN dotnet restore src/Rivo.Api
 RUN dotnet publish src/Rivo.Api -c Release -o /app --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final

@@ -79,13 +79,23 @@ foreach ($suite in $suites) {
     $output = & $shell -NoProfile -File $suitePath 2>&1
     $exit = $LASTEXITCODE
 
+    # Reconhece uma linha de caso pelo formato que `Test-Case` emite: dois
+    # espacos, PASSA ou FALHA em maiusculas, espaco.
+    #
+    # `-CaseSensitive` e o ancoramento nao sao zelo excessivo — sao a correccao
+    # de um defeito. `Select-String` e case-insensitive por omissao, e cinco das
+    # seis suites terminam com "Todos os testes passaram.": a palavra "passaram"
+    # casava com o padrao "PASSA" e era contada como um caso. O total reportado
+    # vinha inflacionado em 5 (dizia 71 onde ha 66).
+    $casos = $output | Select-String -CaseSensitive -Pattern '^\s{2}(PASSA|FALHA)\s'
+
     # Write-Output e nao Write-Host: o Write-Host escreve directamente na
     # consola e nao passa pelo pipeline, o que torna o resultado invisivel a
     # quem redirecciona ou filtra a saida deste script.
-    $output | Select-String -Pattern "PASSA|FALHA" | ForEach-Object { Write-Output $_.Line }
+    $casos | ForEach-Object { Write-Output $_.Line }
 
-    $total += ($output | Select-String -Pattern "PASSA|FALHA").Count
-    $passed += ($output | Select-String -Pattern "PASSA").Count
+    $total += $casos.Count
+    $passed += @($casos | Where-Object { $_.Line -cmatch '^\s{2}PASSA\s' }).Count
 
     if ($exit -ne 0) { $failed += $suite }
 

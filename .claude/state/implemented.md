@@ -124,9 +124,15 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
 
 ## Verificação
 
-Seis suites PowerShell caixa-preta contra a stack em Docker, **66 casos**
-(`Test-Case` é o único helper que emite resultado; a contagem é directa e
-nenhuma invocação está dentro de um ciclo):
+Seis suites PowerShell caixa-preta contra a stack em Docker, **66 casos**,
+confirmado por execução completa em 2026-08-16.
+
+> **O runner reportava 71 até 2026-08-16.** `Select-String` é case-insensitive
+> por omissão, e cinco das seis suites terminam com "Todos os testes
+> passaram." — a palavra "passaram" casava com o padrão `PASSA` e era contada
+> como um caso. Corrigido com `-CaseSensitive` e ancoragem ao formato que
+> `Test-Case` emite. Os 66 são reais; os 71 eram 66 mais cinco linhas de
+> resumo.
 
 | Suite | Casos |
 |---|---|
