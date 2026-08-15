@@ -1,0 +1,158 @@
+# Estado do Projecto
+
+_Última actualização: 2026-08-15_
+
+## Fase actual
+
+Arquitectura fechada ao nível de domínio, fronteiras, ownership, dados,
+integrações e segurança. **Cinco dos catorze módulos estão implementados e
+verificados.** As quatro capacidades transversais estão feitas menos uma:
+falta `approval`.
+
+O que falta não é sobretudo código de negócio — é a malha que impede o código
+de negócio de se degradar: testes automatizados, imposição de fronteiras e um
+caminho até produção. Ver os riscos abaixo.
+
+## Implementado
+
+| Módulo | Estado |
+|---|---|
+| `identity` | Autenticação JWT com sessão revogável, RBAC com 7 perfis, bootstrap por seed |
+| `audit` | Trilha append-only, consulta filtrada, registo das acções dos outros módulos |
+| `hr` | Núcleo: Colaborador, Departamento, Cargo, Atribuição de Cargo, contrato `EmployeeReference` |
+| `documents` | Upload/download, hash de integridade, ligação a `hr` com FK entre schemas |
+| `notifications` | Fila com estado, worker de entrega, leitura por destinatário — **sem envio de e-mail** (K13) |
+
+Detalhe por funcionalidade, com datas e ressalvas, em
+[implemented.md](implemented.md). Os restantes nove módulos estão definidos em
+[modules/](../modules/) e não têm código.
+
+Verificado em Docker por seis suites, **66 de 66 casos**, a partir de
+`docker compose down -v`:
+
+```
+pwsh -File scripts/verify-all.ps1
+```
+
+O runner espera que a stack assente entre suites: várias reiniciam containers
+para verificar persistência, e em cadeia sem pausa a seguinte começaria contra
+uma API ainda a subir.
+
+### As capacidades transversais estão feitas menos uma
+
+`audit`, `documents` e `notifications` implementadas; **`approval` é a que
+falta**. Os módulos de negócio seguintes já encontram tudo o que precisam para
+registar, anexar e notificar — mas não para decidir.
+
+### Bloqueio activo
+
+Atribuir um Cargo com autoridade de aprovação devolve `501` e não grava nada:
+BR-20 exige decisão de `approval`, que não existe. É recusa deliberada — ver
+[modules/hr.md](../modules/hr.md). É o único endpoint da plataforma que
+devolve `501`, e desaparece quando `approval` for implementado.
+
+## O que existe
+
+| Área | Estado |
+|---|---|
+| Documentos-fonte (`docs/`) | Completos, com resoluções R1–R5 aplicadas |
+| Mapa de domínios, fronteiras e regras de dependência | Fechados |
+| 14 módulos definidos | Responsabilidade, ownership, contratos e proibições definidos |
+| 23 ADRs | Aceites. ADR-018 a ADR-021 são registo retroactivo de decisões tomadas em código |
+| Padrões (código, nomes, testes, erros, persistência, API, segurança) | Definidos |
+| Código de aplicação | 5 módulos, 25 projectos, ~84 ficheiros `.cs` |
+| Persistência | PostgreSQL, schema por domínio, migrações EF Core por módulo |
+| Ambiente local | Docker Compose (API + PostgreSQL 17), um comando |
+| Verificação end-to-end | 6 suites PowerShell caixa-preta, 66 casos |
+| Testes de domínio | 100 testes em 5 módulos, xUnit (ADR-022) |
+| Integração contínua | GitHub Actions, 2 jobs (ADR-023) — **pressupõe git e remoto, que ainda não existem** |
+| Documentação de API | OpenAPI gerado em runtime, exposto só em `Development` |
+
+## O que não existe
+
+- **Testes de Application, Infrastructure e API.** O domínio está coberto
+  (ADR-022); as outras três camadas de
+  [standards/testing.md](../standards/testing.md) não têm nada próprio.
+- **Testes de arquitectura.** Nenhum. As fronteiras do ADR-017 continuam a
+  depender de revisão humana.
+- **⚠ Controlo de versões.** O repositório **não está sob git**. Não há
+  `.git/`, nem remoto, nem histórico. O workflow de CI existe em ficheiro mas
+  não corre em lado nenhum até isso mudar — é hoje o bloqueio mais elementar
+  do projecto.
+- **CD e ambientes.** O CI está fechado (ADR-023); publicar não. Produção não
+  existe em lado nenhum.
+- **Infraestrutura como código**, nem qualquer ambiente para além do local.
+  Produção não existe em lado nenhum.
+- **Caminho de migração para produção.** As migrações aplicam-se no arranque
+  apenas em `Development` — deliberadamente, porque migrar automaticamente em
+  produção com várias instâncias é perigoso. Falta o passo de pipeline que o
+  substitui.
+- **Frontend.** React + Tailwind está decidido; não há código.
+- **`SharedKernel`.** O [CLAUDE.md](../CLAUDE.md) refere-o e manda mantê-lo
+  mínimo; nunca chegou a ser criado. Até hoje não fez falta.
+- **Gestão central de versões de pacotes em `src/`.** Cada um dos 25 `.csproj`
+  fixa as suas versões. Os projectos de teste já não têm esse problema —
+  `tests/Directory.Build.props` centraliza-os — mas `src/` continua por fazer.
+- Modelo de dados definitivo do Approval Engine (`docs` remete para fase
+  seguinte).
+- Regras fiscais angolanas de cálculo (o **modelo de dados** está fixado pelo
+  XSD do SAF-T AO; as **regras** não).
+- Contratos de API desenhados por domínio. O documento OpenAPI existe, mas é
+  gerado a partir do código — descreve o que há, não é contrato acordado.
+
+## Riscos principais
+
+1. **Erosão de fronteiras — o risco continua por mitigar.** Foi o que produziu
+   os problemas do protótipo (5 implementações de aprovação, 2 de auditoria).
+   O ADR-017 dá a ferramenta certa (assemblies de contratos), mas **nada o
+   impõe automaticamente**: não existem testes de arquitectura. Com cinco
+   módulos ainda é vigiável por revisão; com catorze não é. O primeiro caso
+   difícil — a dependência mútua `hr ↔ approval` — chega com `approval`.
+2. **O CI existe em ficheiro mas não corre.** O domínio tem 100 testes
+   verificados por mutação (ADR-022) e o workflow está escrito (ADR-023) —
+   mas **o repositório não está sob git**, logo nada disto se activa. Até
+   haver `git init` e um remoto, a cobertura continua a depender de alguém se
+   lembrar. Além disso, Application, Infrastructure e API continuam sem
+   cobertura própria, e a autorização declarada nos endpoints (ADR-018) não é
+   verificada por nada.
+3. **Lacuna de requisitos fiscais** — `fiscal` é o módulo com maior
+   indefinição, e bloqueia `commercial`, `procurement` e `payroll` em tudo o
+   que envolva imposto. O bloqueio é **jurídico**, não técnico.
+4. **`hr.Colaborador` como ponto de acoplamento** — mitigado por ADR-010 e já
+   respeitado no código (o acesso passa pelo contrato), mas exige vigilância à
+   medida que os consumidores aparecerem.
+
+**Risco fechado em 2026-08-15:** as decisões de stack tomadas em código sem
+ADR — framework, ORM, tooling de migrações e containerização — passaram a
+estar registadas em ADR-018 a ADR-021. A escrita desses ADRs expôs um desvio
+que ninguém tinha notado: o ADR-002 exige coluna `version` para concorrência
+optimista e **nenhuma entidade a tem** (K14).
+
+## Próximos passos
+
+Ordenados por quanto desbloqueiam. A sequência completa proposta é uma decisão
+por ratificar, não estado assente — se adoptada, regista-se como ADR.
+
+1. ~~Registar os ADRs em falta das decisões já tomadas em código.~~ **Feito em
+   2026-08-15** — ADR-018 a ADR-021.
+2. ~~Criar os projectos de teste de domínio e decidir a stack de testes.~~
+   **Feito em 2026-08-15** — ADR-022, 100 testes em 5 módulos.
+3. **⚠ Pôr o repositório sob git e publicá-lo no GitHub.** É agora o passo
+   mais elementar e o mais urgente: o workflow de CI já existe (ADR-023) e não
+   corre porque não há repositório. Tudo o resto depende disto.
+4. Testes de arquitectura que impõem
+   [dependency-rules.md](../architecture/dependency-rules.md) e o ADR-017
+   (risco 1). O ADR-018 §Risks identifica outro que deve existir desde cedo:
+   **todo o endpoint tem de declarar autorização** ou ser explicitamente
+   marcado como anónimo — hoje um `MapPost` esquecido fica público em silêncio.
+5. Desenho detalhado do Approval Engine (modelo de dados, semântica de SLA,
+   invariantes) e sua implementação. Desbloqueia o `501` de `hr` e seis
+   módulos. **Traz consigo o K14:** BR-17 exige concorrência optimista, que
+   ainda não existe em lado nenhum.
+6. Fechar as decisões de infraestrutura de produção — segredos, migrações
+   (que o ADR-020 deixa deliberadamente em aberto), topologia (que o K8 exige),
+   object storage (que o K11 exige).
+
+Ver também [implemented.md](implemented.md),
+[in-progress.md](in-progress.md), [known-issues.md](known-issues.md),
+[pending-decisions.md](pending-decisions.md).

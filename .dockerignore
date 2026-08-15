@@ -1,0 +1,17 @@
+# Fora do contexto de build: reduz o que é enviado ao daemon e impede que
+# artefactos compilados no host contaminem a imagem.
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+**/.idea/
+
+.git/
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose*.yml
+
+# Documentação arquitectural: não é necessária em runtime.
+.claude/
+README.md

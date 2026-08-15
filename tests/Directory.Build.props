@@ -1,0 +1,45 @@
+<Project>
+
+  <!--
+    Propriedades e pacotes comuns a todos os projectos de teste.
+
+    Existe para que um projecto de teste novo seja só um `.csproj` com a
+    referência ao módulo que testa. Sem isto, a versão do xUnit ficaria
+    repetida em catorze ficheiros e divergiria sozinha — que é o mesmo
+    problema que a gestão central de versões resolve para `src/`, e que
+    continua por fazer lá.
+
+    Nota: o MSBuild pára no primeiro `Directory.Build.props` que encontra a
+    subir. Como não existe nenhum na raiz do repositório, este aplica-se a
+    tudo o que está sob `tests/` e a mais nada.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- Projectos de teste nunca são publicados como pacote. -->
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+
+    <!--
+      Um aviso do compilador num teste é quase sempre um teste errado: uma
+      asserção sobre valor possivelmente nulo, uma variável atribuída e nunca
+      usada. Tratá-los como erro impede que se acumulem.
+    -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

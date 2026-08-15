@@ -1,0 +1,72 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: rivo-postgres
+    environment:
+      POSTGRES_DB: rivo
+      POSTGRES_USER: rivo
+      # Credencial de desenvolvimento apenas. Produção usa gestão de segredos.
+      POSTGRES_PASSWORD: rivo_dev
+    ports:
+      # 5433 no host: a 5432 costuma estar ocupada por uma instalação local do
+      # PostgreSQL. Dentro do container o porto continua a ser o 5432.
+      - "5433:5432"
+    volumes:
+      - rivo-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rivo -d rivo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rivo-api
+    # Um arranque falhado não pode deixar o container morto. `depends_on` só
+    # espera pela base de dados no `up`, não no `restart` — sem política de
+    # reinício, uma corrida no arranque exigiria intervenção manual.
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        # Espera que a base de dados aceite ligações, não apenas que o
+        # container arranque: a API aplica migrações logo no arranque.
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: 8080
+      # Dentro da rede do compose o anfitrião é o nome do serviço, e o porto é
+      # o interno (5432), não o publicado no host.
+      ConnectionStrings__Rivo: "Host=postgres;Port=5432;Database=rivo;Username=rivo;Password=rivo_dev"
+      Jwt__Issuer: rivo-api
+      Jwt__Audience: rivo-client
+      Jwt__SessionLifetimeMinutes: "60"
+      # Segredos vêm do ficheiro .env, que não é versionado. Ver .env.example.
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?defina JWT_SIGNING_KEY no .env}
+
+      # Utilizadores iniciais. Admin e decisor usam o mesmo mecanismo — são
+      # apenas entradas diferentes da mesma lista, com perfis diferentes.
+      Bootstrap__Users__0__Email: ${BOOTSTRAP_ADMIN_EMAIL:?defina BOOTSTRAP_ADMIN_EMAIL no .env}
+      Bootstrap__Users__0__Password: ${BOOTSTRAP_ADMIN_PASSWORD:?defina BOOTSTRAP_ADMIN_PASSWORD no .env}
+      Bootstrap__Users__0__Profiles__0: Admin
+
+      Bootstrap__Users__1__Email: ${BOOTSTRAP_DECIDER_EMAIL:?defina BOOTSTRAP_DECIDER_EMAIL no .env}
+      Bootstrap__Users__1__Password: ${BOOTSTRAP_DECIDER_PASSWORD:?defina BOOTSTRAP_DECIDER_PASSWORD no .env}
+      Bootstrap__Users__1__Profiles__0: Finance
+
+      # Raiz do armazenamento de documentos, num volume. Sem serviço de
+      # objectos nesta fase — trocar por S3 é implementar IDocumentStorage.
+      DocumentStorage__RootPath: /var/rivo/documents
+
+      # Intervalo curto em desenvolvimento, para que a entrega seja observável
+      # sem esperar. Em produção, um valor maior reduz a carga de sondagem.
+      NotificationDelivery__PollIntervalSeconds: "2"
+    volumes:
+      - rivo-documents-data:/var/rivo/documents
+    ports:
+      - "5080:8080"
+
+volumes:
+  rivo-postgres-data:
+  rivo-documents-data:

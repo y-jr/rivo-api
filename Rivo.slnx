@@ -1,0 +1,56 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Rivo.Api/Rivo.Api.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/" />
+  <Folder Name="/src/Modules/Audit/">
+    <Project Path="src/Modules/Audit/Rivo.Audit.Api/Rivo.Audit.Api.csproj" />
+    <Project Path="src/Modules/Audit/Rivo.Audit.Application/Rivo.Audit.Application.csproj" />
+    <Project Path="src/Modules/Audit/Rivo.Audit.Contracts/Rivo.Audit.Contracts.csproj" />
+    <Project Path="src/Modules/Audit/Rivo.Audit.Domain/Rivo.Audit.Domain.csproj" />
+    <Project Path="src/Modules/Audit/Rivo.Audit.Infrastructure/Rivo.Audit.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Documents/">
+    <Project Path="src/Modules/Documents/Rivo.Documents.Api/Rivo.Documents.Api.csproj" />
+    <Project Path="src/Modules/Documents/Rivo.Documents.Application/Rivo.Documents.Application.csproj" />
+    <Project Path="src/Modules/Documents/Rivo.Documents.Contracts/Rivo.Documents.Contracts.csproj" />
+    <Project Path="src/Modules/Documents/Rivo.Documents.Domain/Rivo.Documents.Domain.csproj" />
+    <Project Path="src/Modules/Documents/Rivo.Documents.Infrastructure/Rivo.Documents.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Hr/">
+    <Project Path="src/Modules/Hr/Rivo.Hr.Api/Rivo.Hr.Api.csproj" />
+    <Project Path="src/Modules/Hr/Rivo.Hr.Application/Rivo.Hr.Application.csproj" />
+    <Project Path="src/Modules/Hr/Rivo.Hr.Contracts/Rivo.Hr.Contracts.csproj" />
+    <Project Path="src/Modules/Hr/Rivo.Hr.Domain/Rivo.Hr.Domain.csproj" />
+    <Project Path="src/Modules/Hr/Rivo.Hr.Infrastructure/Rivo.Hr.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Identity/">
+    <Project Path="src/Modules/Identity/Rivo.Identity.Api/Rivo.Identity.Api.csproj" />
+    <Project Path="src/Modules/Identity/Rivo.Identity.Application/Rivo.Identity.Application.csproj" />
+    <Project Path="src/Modules/Identity/Rivo.Identity.Domain/Rivo.Identity.Domain.csproj" />
+    <Project Path="src/Modules/Identity/Rivo.Identity.Infrastructure/Rivo.Identity.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Notifications/">
+    <Project Path="src/Modules/Notifications/Rivo.Notifications.Api/Rivo.Notifications.Api.csproj" />
+    <Project Path="src/Modules/Notifications/Rivo.Notifications.Application/Rivo.Notifications.Application.csproj" />
+    <Project Path="src/Modules/Notifications/Rivo.Notifications.Contracts/Rivo.Notifications.Contracts.csproj" />
+    <Project Path="src/Modules/Notifications/Rivo.Notifications.Domain/Rivo.Notifications.Domain.csproj" />
+    <Project Path="src/Modules/Notifications/Rivo.Notifications.Infrastructure/Rivo.Notifications.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/Audit/">
+    <Project Path="tests/Modules/Audit/Rivo.Audit.Domain.Tests/Rivo.Audit.Domain.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Documents/">
+    <Project Path="tests/Modules/Documents/Rivo.Documents.Domain.Tests/Rivo.Documents.Domain.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Hr/">
+    <Project Path="tests/Modules/Hr/Rivo.Hr.Domain.Tests/Rivo.Hr.Domain.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Identity/">
+    <Project Path="tests/Modules/Identity/Rivo.Identity.Domain.Tests/Rivo.Identity.Domain.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Notifications/">
+    <Project Path="tests/Modules/Notifications/Rivo.Notifications.Domain.Tests/Rivo.Notifications.Domain.Tests.csproj" />
+  </Folder>
+</Solution>

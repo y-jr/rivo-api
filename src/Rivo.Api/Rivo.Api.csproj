@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.6" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Modules\Identity\Rivo.Identity.Api\Rivo.Identity.Api.csproj" />
+    <ProjectReference Include="..\Modules\Identity\Rivo.Identity.Infrastructure\Rivo.Identity.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Audit\Rivo.Audit.Api\Rivo.Audit.Api.csproj" />
+    <ProjectReference Include="..\Modules\Audit\Rivo.Audit.Infrastructure\Rivo.Audit.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Hr\Rivo.Hr.Api\Rivo.Hr.Api.csproj" />
+    <ProjectReference Include="..\Modules\Hr\Rivo.Hr.Infrastructure\Rivo.Hr.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Documents\Rivo.Documents.Api\Rivo.Documents.Api.csproj" />
+    <ProjectReference Include="..\Modules\Documents\Rivo.Documents.Infrastructure\Rivo.Documents.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Notifications\Rivo.Notifications.Api\Rivo.Notifications.Api.csproj" />
+    <ProjectReference Include="..\Modules\Notifications\Rivo.Notifications.Infrastructure\Rivo.Notifications.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,109 @@
+# Corre todas as suites de verificação, por ordem.
+#
+#   docker compose down -v
+#   docker compose up -d --build
+#   pwsh -File scripts/verify-all.ps1
+#
+# Existe porque várias suites reiniciam containers para verificar persistência.
+# Corridas em cadeia sem pausa, essas reinicializações acumulam-se e a suite
+# seguinte começa contra uma API ainda a subir — falhas que não são defeitos da
+# aplicação. Este ficheiro espera que a stack assente entre suites.
+
+$ErrorActionPreference = "Continue"
+$base = "http://localhost:5080"
+
+$suites = @(
+    "verify-bootstrap",
+    "verify-authorization",
+    "verify-audit",
+    "verify-hr",
+    "verify-documents",
+    "verify-notifications"
+)
+
+function Wait-ForApi {
+    param([int]$TimeoutSeconds = 180)
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        Start-Sleep -Seconds 3
+        $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false }
+    } while (-not $up -and (Get-Date) -lt $deadline)
+
+    return $up
+}
+
+$root = Split-Path $PSScriptRoot -Parent
+Set-Location $root
+
+# Interpretador para as suites individuais.
+#
+# `pwsh` (PowerShell 7+) e o preferido e o unico que existe em Linux, onde
+# este ficheiro corre no CI. Em Windows sem pwsh instalado, recorre-se ao
+# `powershell` 5.1 que vem com o sistema.
+#
+# A preferencia nao e estetica: `verify-authorization` usa `Join-String`, que
+# so existe a partir do PowerShell 6.2. Sob o 5.1 essa linha falha — mas so no
+# caminho de erro, por isso o problema so aparece quando uma verificacao ja
+# esta a falhar, que e o pior momento possivel para descobrir.
+$shell = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" }
+         elseif (Get-Command powershell -ErrorAction SilentlyContinue) { "powershell" }
+         else { $null }
+
+if (-not $shell) {
+    Write-Host "Nao foi encontrado nem 'pwsh' nem 'powershell'." -ForegroundColor Red
+    exit 1
+}
+
+if ($shell -eq "powershell") {
+    Write-Host "Aviso: a correr sob Windows PowerShell 5.1. Recomenda-se instalar o PowerShell 7+ ('winget install Microsoft.PowerShell')." -ForegroundColor Yellow
+}
+
+if (-not (Wait-ForApi)) {
+    Write-Host "API não responde. Arranque a stack antes de correr as suites." -ForegroundColor Red
+    exit 1
+}
+
+$failed = @()
+$total = 0
+$passed = 0
+
+foreach ($suite in $suites) {
+    Write-Host ("`n" + ("=" * 60)) -ForegroundColor Cyan
+    Write-Host $suite -ForegroundColor Cyan
+    Write-Host ("=" * 60) -ForegroundColor Cyan
+
+    # Join-Path e nao "scripts\...": a barra invertida literal nao e separador
+    # de caminho fora do Windows, e este runner tambem corre em Linux no CI.
+    $suitePath = Join-Path "scripts" "$suite.ps1"
+    $output = & $shell -NoProfile -File $suitePath 2>&1
+    $exit = $LASTEXITCODE
+
+    # Write-Output e nao Write-Host: o Write-Host escreve directamente na
+    # consola e nao passa pelo pipeline, o que torna o resultado invisivel a
+    # quem redirecciona ou filtra a saida deste script.
+    $output | Select-String -Pattern "PASSA|FALHA" | ForEach-Object { Write-Output $_.Line }
+
+    $total += ($output | Select-String -Pattern "PASSA|FALHA").Count
+    $passed += ($output | Select-String -Pattern "PASSA").Count
+
+    if ($exit -ne 0) { $failed += $suite }
+
+    # Deixa a stack assentar: a suite anterior pode ter reiniciado containers.
+    if (-not (Wait-ForApi)) {
+        Write-Host "API não recuperou depois de $suite." -ForegroundColor Red
+        $failed += "$suite (recuperação)"
+        break
+    }
+}
+
+Write-Output ("`n" + ("=" * 60))
+Write-Output "$passed de $total casos passaram."
+
+if ($failed.Count -gt 0) {
+    Write-Output ("Suites com falhas: " + ($failed -join ", "))
+    exit 1
+}
+
+Write-Output "Todas as suites passaram."
+exit 0

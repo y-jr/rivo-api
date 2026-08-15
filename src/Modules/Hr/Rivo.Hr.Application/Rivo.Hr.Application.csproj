@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rivo.Hr.Domain\Rivo.Hr.Domain.csproj" />
+    <ProjectReference Include="..\Rivo.Hr.Contracts\Rivo.Hr.Contracts.csproj" />
+    <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
+    <ProjectReference Include="..\..\Documents\Rivo.Documents.Contracts\Rivo.Documents.Contracts.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

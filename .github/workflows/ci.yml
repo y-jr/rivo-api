@@ -1,0 +1,142 @@
+name: CI
+
+# O risco número 1 declarado do projecto é erosão de fronteiras, e a mitigação
+# registada são testes automatizados. Um teste que ninguém corre não mitiga
+# nada — é este ficheiro que fecha essa lacuna.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Um push novo sobre o mesmo ramo cancela a execução anterior: não vale a pena
+# gastar runners a validar código que já foi substituído. `main` fica de fora
+# do cancelamento — lá interessa o histórico completo de execuções.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Compila e corre os testes de domínio. Rápido, determinístico, sem Docker.
+  # É este job que tem de bloquear um PR.
+  # ---------------------------------------------------------------------------
+  build-and-test:
+    name: Build e testes de domínio
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Sem ficheiros de lock, a chave é o hash dos ficheiros de projecto.
+      # Serve: as versões dos pacotes vivem lá (e, para os testes, em
+      # tests/Directory.Build.props).
+      - name: Cache de pacotes NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Build.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore Rivo.slnx
+
+      - name: Build
+        run: dotnet build Rivo.slnx --configuration Release --no-restore
+
+      # `--no-build` garante que se testa exactamente o que foi compilado no
+      # passo anterior, e não uma recompilação silenciosa com outras opções.
+      - name: Testes de domínio
+        run: dotnet test Rivo.slnx --configuration Release --no-build --logger "trx;LogFileName=test-results.trx" --results-directory ./artefactos/testes
+
+      - name: Guardar resultados
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-testes
+          path: ./artefactos/testes
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Sobe a stack completa e corre as seis suites caixa-preta (66 casos).
+  # Mais lento e mais frágil do que o job acima — por isso corre depois, e
+  # falha sem bloquear a compilação já validada.
+  # ---------------------------------------------------------------------------
+  verify-stack:
+    name: Verificação end-to-end
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # As suites lêem credenciais do .env, que nunca é versionado. Aqui são
+      # geradas por execução: o ambiente é efémero e destruído no fim, e uma
+      # credencial fixa no workflow acabaria copiada para algum lado.
+      #
+      # A password cumpre a política do ASP.NET Core Identity — maiúscula,
+      # minúscula, dígito e símbolo, 12+ caracteres — senão o arranque falha
+      # de propósito, em vez de deixar o ambiente sem administrador.
+      - name: Gerar credenciais efémeras
+        run: |
+          set -euo pipefail
+          senha="Ci$(openssl rand -hex 12)aA1!"
+          {
+            echo "BOOTSTRAP_ADMIN_EMAIL=admin@ci.rivo.local"
+            echo "BOOTSTRAP_ADMIN_PASSWORD=${senha}"
+            echo "BOOTSTRAP_DECIDER_EMAIL=decisor@ci.rivo.local"
+            echo "BOOTSTRAP_DECIDER_PASSWORD=${senha}"
+            echo "JWT_SIGNING_KEY=$(openssl rand -hex 32)"
+          } > .env
+
+      - name: Arrancar a stack
+        run: docker compose up -d --build
+
+      # A API aplica migrações e seed no arranque; sondar /health é o que
+      # distingue "container a correr" de "aplicação utilizável".
+      - name: Esperar que a API responda
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:5080/health > /dev/null 2>&1; then
+              echo "API pronta ao fim de ${i} tentativas."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "A API não respondeu em 5 minutos."
+          exit 1
+
+      - name: Correr as suites
+        shell: pwsh
+        run: ./scripts/verify-all.ps1
+
+      # Sem isto, uma falha no CI mostra só que a suite falhou. Os logs dizem
+      # porquê — e não há como reproduzir localmente um container já destruído.
+      - name: Logs em caso de falha
+        if: failure()
+        run: |
+          echo "=== api ==="
+          docker compose logs --tail 300 api || true
+          echo "=== postgres ==="
+          docker compose logs --tail 100 postgres || true
+
+      - name: Destruir a stack
+        if: always()
+        run: docker compose down -v

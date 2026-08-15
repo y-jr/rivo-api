@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Audit\Rivo.Audit.Domain\Rivo.Audit.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
