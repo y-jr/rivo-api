@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\src\Modules\Notifications\Rivo.Notifications.Infrastructure\Rivo.Notifications.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\Rivo.TestSupport\Rivo.TestSupport.csproj" />
   </ItemGroup>
 
 </Project>
