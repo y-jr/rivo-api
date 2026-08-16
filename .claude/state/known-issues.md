@@ -43,6 +43,16 @@ Registados porque a tentação de os repetir é real:
 
 ## Defeitos activos
 
+### ~~K8 — IP da sessão é o do proxy~~ — **RESOLVIDO 2026-08-16**
+
+Fechado na Fase 1. `ForwardedHeadersMiddleware` activo fora de `Development`,
+com `KnownNetworks` e `KnownProxies` vazios e `ForwardLimit = 1` — a confiança
+vem de o front-end do App Service reescrever o cabeçalho, e não de aceitar
+`X-Forwarded-For` de qualquer origem, que tornaria o registo falsificável.
+**Reavaliar se a topologia mudar** (ADR-027).
+
+<details><summary>Registo original</summary>
+
 ### K8 — IP da sessão é o do proxy, não o do cliente
 
 - **Módulo:** `identity`
@@ -84,6 +94,19 @@ Registados porque a tentação de os repetir é real:
   vez de perda silenciosa de auditoria.
 - **Seguimento:** padrão outbox, se o volume ou a fiabilidade o exigirem.
   Não é necessário à escala actual.
+
+### ~~K11 — Documentos sem cifra em repouso~~ — **RESOLVIDO EM AZURE 2026-08-16**
+
+`BlobDocumentStorage` sobre Azure Blob Storage, com cifra do serviço e acesso
+por identidade gerida. A razão pela qual o defeito ficou aberto tanto tempo era
+que cifrar na aplicação exigia gestão de chaves — aqui a aplicação não vê nem
+gere chave nenhuma.
+
+**⚠ Continua aberto no caminho de sistema de ficheiros**, que é o usado em
+desenvolvimento local. Aceitável aí: não guarda dados reais. A escolha é por
+configuração (`DocumentStorage:AccountName`), não por ambiente.
+
+<details><summary>Registo original</summary>
 
 ### K11 — Documentos sem cifra em repouso
 

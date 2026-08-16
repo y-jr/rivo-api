@@ -102,17 +102,30 @@ dotnet test
 |---|---|
 | Domain | **100 testes**, 5 módulos — `hr` 45, `notifications` 20, `documents` 16, `audit` 10, `identity` 9 |
 | Application | Nenhum |
-| Infrastructure | Nenhum (as suites PowerShell tocam-lhe indirectamente) |
-| API | Nenhum (idem) |
-| Arquitectura | Nenhum — fronteiras ainda não são impostas automaticamente |
+| Infrastructure | **4 testes** em `notifications`, PostgreSQL real (ADR-026). Restantes quatro módulos por cobrir |
+| API | Nenhum (as suites PowerShell tocam-lhe indirectamente) |
+| Arquitectura | **21 testes** (ADR-024, ADR-025) |
 
 As seis suites PowerShell (66 casos) continuam a valer como smoke end-to-end.
 Não substituem teste de domínio, nem o inverso.
 
+## Integração
+
+**Testcontainers com PostgreSQL real** (ADR-026), em
+`tests/Modules/<Módulo>/Rivo.<Módulo>.Infrastructure.Tests/`. A imagem
+acompanha a do `docker-compose.yml`: testar contra uma versão diferente
+daquela em que se corre é uma classe de defeitos que só aparece em produção.
+
+O fixture partilhado vive em `tests/Rivo.TestSupport`, que **não referencia
+módulo nenhum e não pode passar a referenciar**. A `[CollectionDefinition]`
+tem de estar no assembly de cada teste — constrangimento do xUnit.
+
+**Exige Docker.** Os testes de domínio e de arquitectura continuam a correr
+sem ele.
+
 ## Em aberto
 
-- Frameworks para teste de integração com infraestrutura real (candidato:
-  Testcontainers).
-- Tooling de testes de arquitectura.
+- Testes de Application e de API.
+- Testes de integração nos restantes quatro módulos.
 
 Ver [architecture/technology-decisions.md](../architecture/technology-decisions.md).

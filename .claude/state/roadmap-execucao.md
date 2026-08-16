@@ -1,254 +1,315 @@
-# Roadmap de Execução
+# Percurso de Execução
 
-_Criado: 2026-08-16. Última actualização: 2026-08-16._
+_Adoptado em 2026-08-16. Substitui o roadmap provisório criado nesse mesmo dia._
 
-**Fonte de verdade sobre em que fase o projecto está.** Derivado de
-[project-state.md](project-state.md) §"Próximos passos",
-[known-issues.md](known-issues.md) e
-[pending-decisions.md](pending-decisions.md).
+**Fonte de verdade sobre em que fase o projecto está.**
 
-Ordenação por: (1) quanto desbloqueiam, (2) custo crescente de corrigir mais
-tarde, (3) prazos externos.
+Origem: o percurso publicado em
+<https://claude.ai/code/artifact/45b9d84a-5336-4ab2-a4e2-bceb60b96e83>,
+destilado do estado do repositório a 15 de Agosto de 2026 contra `docs/`.
+As fases, a ordenação e os critérios de saída são os desse documento. **O
+estado de execução abaixo é o de hoje**, que já não é o de 15 de Agosto.
 
-## Fase corrente
+Onde este documento contradisser `docs/`, prevalece `docs/`. As sequências e
+as escolhas de infraestrutura aqui propostas são decisões por tomar — se
+adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 
-**Fase 1 — Consolidar a imposição do CI.** PARADA. O PR #1 continua por mergir
-e `origin/main` não tem os testes de arquitectura.
+## Como as fases estão ordenadas
+
+1. **Desbloqueio.** O que destrava mais trabalho a jusante vai primeiro.
+   `approval` desbloqueia seis módulos; `fiscal` desbloqueia quatro.
+2. **Custo crescente de retrofit.** Testes, imposição de fronteiras e caminho
+   de produção custam N vezes mais com N módulos. Com cinco é barato; com
+   catorze deixa de se fazer.
+3. **Prazo externo.** O que depende de terceiros arranca desde já. A
+   certificação junto da AGT é o item de prazo mais longo do projecto inteiro.
 
 ## Quadro
 
 | # | Fase | Estado |
 |---|---|---|
-| 1 | Consolidar a imposição do CI | **PARADA** — merge bloqueado por permissões |
-| 2 | Concorrência optimista (K14) | **Implementada** — por verificar em CI |
-| 3 | Approval Engine | Por iniciar |
-| 4 | Fundação fiscal (parte não bloqueada) | Por iniciar |
-| 5 | Finance | Por iniciar |
-| 6 | Procurement e Commercial | Por iniciar |
-| 7 | Payroll | Por iniciar |
-| 8 | Projects, Inventory, Fleet | Por iniciar |
-| 9 | Camadas de composição | Por iniciar |
+| 0 | Fundação de verificação e CI | ✅ **Fechada** em 2026-08-16 |
+| 1 | Aterrar em Azure — staging primeiro | **Em curso** — infraestrutura de pé, CD por correr |
+| 2 | `approval` — governança de decisões | Por iniciar |
+| 3 | `fiscal` — o que não está bloqueado | Por iniciar |
+| 4 | `finance` — o núcleo | Por iniciar |
+| 5 | `procurement` e `commercial` | Por iniciar |
+| 6 | `payroll` | Por iniciar |
+| 7 | `projects`, `inventory`, `fleet` | Por iniciar |
+| 8 | Camadas de composição e portais | Por iniciar |
 
-**Faixas paralelas** (não são fases; correm ao lado): conformidade
-AGT/jurídico, segurança contínua, frontend. Ver
-[pending-decisions.md](pending-decisions.md).
-
----
-
-## Fase 1 — Consolidar a imposição do CI
-
-**Entrada:** repositório sob git com remoto; CI escrito (ADR-023) e a correr.
-
-**Porquê primeiro:** o trabalho das fases seguintes só está protegido se o
-pipeline for vinculativo. Enquanto os testes de arquitectura (ADR-024) não
-chegassem a `main`, `main` não tinha a verificação de fronteiras que todas as
-fases seguintes pressupõem.
-
-**Critérios de saída:**
-
-1. **`origin/main`** contém os testes de arquitectura (ADR-024). Lê-se sobre o
-   remoto: é esse o ramo que o ruleset protege e que o CI verifica. `main`
-   local adiantado não conta.
-2. `gh run list --branch main` mostra a última execução em `success` **para o
-   commit que traz o ADR-024** — não basta estar verde num commit anterior.
-3. O ruleset `build_and_domain_test` está `active` e exige os **dois** jobs:
-   `Build e testes de domínio` e `Verificação end-to-end`.
-4. `dotnet test Rivo.slnx` verde: 117 testes.
-5. `state/` reconciliado, incluindo `roadmap-execucao.md` versionado.
-
-**Dependências:** nenhuma.
-
-**Veredito de 2026-08-16, primeira passagem: PARAR — bloqueante real (§4.2a).**
-
-Critérios 3 e 4 cumpridos. 1, 2 e 5 dependiam de um merge que **ninguém podia
-fazer**: o ruleset exigia `required_approving_review_count: 1`, o repositório
-tem um único colaborador, o GitHub não aceita auto-aprovação e `bypass_actors`
-estava vazio (`current_user_can_bypass: never`).
-
-**Alteração ao ruleset, 2026-08-16 02:23 — ⚠ autoria por confirmar.**
-`required_approving_review_count` passou de 1 para 0. Tudo o resto ficou
-preservado: `enforcement: active`, PR obrigatório, os dois status checks com
-`strict: true`, sem force-push, sem apagar o ramo, `bypass_actors` vazio.
-
-O histórico do ruleset atribui a alteração à conta `y-jr`, mas isso não
-distingue nada — o `gh` autentica-se com essa mesma conta, logo uma alteração
-feita pela interface e uma feita por um agente são indistinguíveis. **Não há
-confirmação do utilizador de que a decisão foi dele.** Até haver, esta linha
-descreve um facto observado, não uma decisão ratificada.
-
-**Estado real em 2026-08-16:** o veredito da Fase 1 continua **PARAR**. O
-PR #1 está `OPEN` e `origin/main` está em `dcc4512` — os testes de arquitectura
-**não estão em `main`**. Os critérios 1, 2 e 5 continuam por cumprir.
+**Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
+arranca na Fase 3. Ver no fim.
 
 ---
 
-## Fase 2 — Concorrência optimista (K14)
+## Fase 0 — Fundação de verificação e CI
 
-**Entrada:** Fase 1 fechada.
+**Porquê agora:** é o único momento em que a dívida ainda é pequena. Cada
+módulo acrescentado antes desta fase multiplica o custo de a fazer.
 
-**Porquê antes de `approval`:** o ADR-002 exige coluna `version` e **nenhuma
-entidade a tem**. Hoje não morde — nenhum agregado implementado tem contenção
-real. Deixa de ser tolerável em `approval`, onde BR-17 exige explicitamente
-concorrência optimista nas decisões. É o caso-exemplo de risco de acumulação:
-implementada depois, propaga-se a todos os módulos consumidores.
-
-**Critérios de saída:**
-
-1. Mecanismo de concorrência optimista decidido e registado em ADR (estende
-   ADR-002 / ADR-019, que regista o desvio).
-2. Aplicado aos agregados com contenção plausível; a ausência nos restantes é
-   decisão registada, não omissão.
-3. Teste de domínio ou de integração que demonstra que duas escritas
-   concorrentes sobre o mesmo agregado não se sobrepõem em silêncio.
-4. Migração por módulo afectado, aplicada e verificada.
-5. K14 removido de `known-issues.md`, ou reduzido ao que ficou por cobrir.
-6. 117+ testes verdes; `verify-all.ps1` 66/66.
-
-**Dependências:** Fase 1.
-
-**Execução de 2026-08-16 — implementada, por verificar em CI.**
-
-Feita fora de ordem, por a Fase 1 estar bloqueada por permissões e este
-trabalho não depender dela. Vive no ramo `fase-2/concorrencia-optimista`.
-
-| Critério | Estado |
+| Item | Estado |
 |---|---|
-| 1 — mecanismo decidido e em ADR | **Sim** — [ADR-025](../decisions/adr-025-concorrencia-optimista.md) |
-| 2 — aplicado, com isenções registadas | **Sim** — 6 agregados; 3 isentos com razão escrita |
-| 3 — teste que demonstra a detecção | **Parcial** — provado ao nível do PostgreSQL (`UPDATE 1` / `UPDATE 0`); falta teste automatizado, que precisa de infraestrutura de teste de integração ainda por decidir |
-| 4 — migração por módulo, aplicada | **Sim** — 4 migrações; 6 colunas `version` verificadas na base de dados |
-| 5 — K14 fechado | **Sim** — deixou o K15 (colisão devolve `500`, não `409`) |
-| 6 — testes verdes | **Sim** — 121 testes, `verify-all` 66/66 |
+| `Directory.Build.props` para testes | ✅ 2026-08-15 |
+| `Directory.Packages.props` para `src/` | ✅ 2026-08-16 — 14 pacotes centralizados |
+| Testes de domínio xUnit | ✅ 100 testes (ADR-022) |
+| `Rivo.Architecture.Tests` | ✅ 21 testes (ADR-024, ADR-025) |
+| Testes de integração com Testcontainers | ✅ 2026-08-16 — ADR-026, 4 testes em `notifications` |
+| GitHub Actions em PR e `main` | ✅ ADR-023, dois jobs |
+| Reconciliar `.claude/state/` | ✅ 2026-08-15 |
+| Saldar a dívida de ADR | ✅ ADR-018 a ADR-021 |
+| Fechar o K14 (coluna `version`) | ✅ ADR-025, 2026-08-16 |
+| ADRs de stack de testes, CI, testes de arquitectura | ✅ ADR-022, 023, 024 |
+| Teste: todo o endpoint declara autorização | ✅ ADR-024 |
+
+**Critério de saída:** um PR que viole uma fronteira de módulo falha o build
+sem intervenção humana.
+
+**Estado: fechada em 2026-08-16.** Os PR #1 e #2 foram mergidos; `origin/main`
+tem os testes de arquitectura e a concorrência optimista, e o ruleset
+`build_and_domain_test` exige PR mais os dois jobs de CI. O critério de saída
+está cumprido: uma violação de fronteira falha o build sem intervenção humana.
+
+**Fica por cobrir:** testes de integração nos outros quatro módulos. Só
+`notifications` os tem — escolhido por ser onde a contenção é real hoje.
+Registado no ADR-026 §Risks, não é dívida escondida.
 
 ---
 
-## Fase 3 — Approval Engine
+## Fase 1 — Aterrar em Azure, staging primeiro
 
-**Entrada:** Fases 1 e 2 fechadas.
+**Depende de:** Fase 0.
 
-**Porquê agora:** é a última capacidade transversal em falta e desbloqueia seis
-módulos. Construir `finance` antes obrigaria a retrofitar governança — o
-anti-padrão A1/A3 do protótipo, onde a aprovação acabou embutida em cinco
-sítios.
+**Porquê antes de `approval`:** descobrir os problemas de produção com cinco
+módulos é barato; com catorze não é. E três decisões pendentes — gestão de
+segredos, migrações em produção, e a topologia que o K8 exige — não se fecham
+em abstracto.
 
-**Critérios de saída:**
+- IaC em **Bicep**, parametrizado por ambiente (dev / staging / prod). Nada
+  criado à mão no portal.
+- ~~**Container Apps** como destino da API.~~ **Alterado para App Service
+  Linux B1** (ADR-027). A subscrição permite um só ambiente de Container Apps e
+  ele já está ocupado por outro projecto — é restrição de quota, não mudança de
+  análise. A justificação original volta a valer numa subscrição própria, e o
+  ADR diz exactamente o que se perde entretanto.
+- **PostgreSQL Flexible Server**, com os schemas por domínio do ADR-002.
+- **Key Vault + Managed Identity.** Chave JWT e credencial da base de dados
+  saem do `.env`. Fecha "gestão de segredos em produção".
+- **Migrações como passo de pipeline** (`dotnet ef migrations bundle`), com
+  gate antes de produção. O arranque continua a migrar só em `Development` —
+  está correcto como está (ADR-020).
+- **Resolver K8** — `ForwardedHeadersMiddleware` com as redes de confiança do
+  ambiente. Sem restringir os proxies, trocaria um registo inútil por um
+  falsificável.
+- **Resolver K11** — `IDocumentStorage` sobre Blob Storage, cifrado em
+  repouso. A porta já existe.
+- **Resolver K9** — utilizador aplicacional sem `UPDATE`/`DELETE` na tabela de
+  auditoria, com papel separado para retenção.
+- **Observabilidade** desde o primeiro deploy, não depois do primeiro
+  incidente.
+- **CD:** `main` → staging automático; produção por tag com aprovação manual.
 
-1. ADR com o modelo de dados definitivo (Política, Passo, Pedido, Atribuição,
-   Decisão, Delegação) e semântica de SLA — `docs` remete explicitamente para
-   esta fase.
-2. `Rivo.Approval.Contracts` publicado; `hr ↔ approval` compila — primeiro
-   teste real do ADR-017.
-3. Invariantes no domínio, com testes: BR-2 (submissor ≠ decisor), BR-3/BR-4
-   (segregação), BR-6 (aprovadores congelados), BR-17 (concorrência).
-4. `POST /hr/employees/{id}/positions` com Cargo de autoridade **deixa de
-   devolver `501`** e grava.
-5. `BootstrapUserSeeder` estendido ao primeiro Cargo com autoridade
-   (ADR-015 §R2, ADR-016 §R1).
-6. Suite `verify-approval.ps1`, e `verify-hr` actualizada (o caso do `501`
-   muda de significado).
-7. Testes de arquitectura verdes com o módulo novo na tabela de dependências.
+**Critério de saída:** as seis suites de verificação passam contra staging em
+Azure, não apenas contra Docker local.
 
-**Adiado deliberadamente:** BR-7 (anti-fraccionamento) e BR-8 (verificação
-orçamental) dependem de `finance`. Modelar as portas; implementar na Fase 5.
+**Execução de 2026-08-16 — infraestrutura de pé, deployment por correr.**
 
-**Dependências:** Fases 1, 2.
+| Item | Estado |
+|---|---|
+| IaC em Bicep | ✅ `infra/main.bicep`, provisionado em `rg-rivo-staging` |
+| Destino da API | ✅ App Service Linux B1 (ADR-027, não Container Apps) |
+| PostgreSQL Flexible | ✅ versão 17, `psql-rivo-staging-qeodyktoxeh2s` |
+| Key Vault + Managed Identity | ✅ sem credenciais em configuração |
+| Migrações no pipeline | ✅ `cd-staging.yml`, um bundle por módulo |
+| K8 — cabeçalhos reencaminhados | ✅ fechado |
+| K11 — cifra em repouso | ✅ fechado em Azure; aberto no sistema de ficheiros local |
+| K9 — append-only na base de dados | ✅ fechado, verificado contra o PostgreSQL |
+| Observabilidade | ✅ App Insights + Log Analytics |
+| CD para staging | ⏳ escrito, **nunca executado** |
 
----
-
-## Fase 4 — Fundação fiscal (parte não bloqueada)
-
-**Entrada:** Fase 3 fechada.
-
-**Porquê agora:** `fiscal` bloqueia `commercial`, `procurement` e `payroll`,
-mas o bloqueio é **jurídico**, não técnico (K2). A infraestrutura de dados
-fiscais pode e deve ser construída antes dos pareceres.
-
-**Critérios de saída:**
-
-1. ADR-011 concretizado: taxas e escalões como dados de referência com
-   vigência temporal, nunca em código.
-2. Motor de determinação com as regras já fechadas: códigos de isenção de IVA,
-   INSS 8%/3%, dedutibilidade ao IRT só da parcela do trabalhador.
-3. Modelo de dados alinhado ao XSD do SAF-T AO 1.01_01.
-4. K7 desenhado (cadeia `Hash`/`HashControl`) — **não deixar para
-   `commercial`**, tem impacto em concorrência de emissão.
-5. Testes dos cenários explícitos de `standards/testing.md`, incluindo as
-   descontinuidades de escalão fixadas.
-6. Lacunas jurídicas reduzidas a lista fechada em `pending-decisions.md`, com
-   o que cada uma bloqueia.
-
-**Dependências:** Fase 3.
+**Por fechar:** o CD nunca correu, portanto o critério de saída — as suites
+contra staging — continua por cumprir. Depende do merge para `main`.
 
 ---
 
-## Fase 5 — Finance
+## Fase 2 — `approval`, governança de decisões
 
-**Entrada:** Fases 3 e 4 fechadas.
+**Depende de:** Fase 0. **Desbloqueia seis módulos.**
 
-**Critérios de saída:**
+**Porquê agora:** é a última das quatro capacidades transversais e a que todos
+os módulos de negócio consomem. Construir `finance` antes obrigaria a
+retrofitar governança — o anti-padrão A1/A3 do protótipo.
 
-1. Contextos internos por esta ordem: Planeamento → AP → Tesouraria → AR →
-   Contabilidade & Fecho.
-2. BR-7 e BR-8 fechados com implementação real, não fakes.
-3. BR-1/BR-5: execução de pagamento só com decisão "Aprovado" **revalidada no
-   momento**.
-4. K1 resolvido por ADR (fronteira Activos Fixos vs. Activos) **antes** de
-   modelar activos.
-5. Ciclo pedido → aprovação → execução verificável ponta a ponta.
+- Fechar o modelo de dados por ADR: Política, Passo, Pedido, Atribuição,
+  Decisão, Delegação, mais semântica de SLA e escalonamento. Os
+  documentos-fonte remetem-no explicitamente para aqui.
+- **Primeiro teste real do ADR-017:** `Rivo.Approval.Contracts` e
+  `Rivo.Hr.Contracts` referenciam-se mutuamente. Se os contratos estiverem
+  certos, compila; se não, o ciclo aparece com dois módulos e não com dez.
+- Invariantes no domínio, com testes (ADR-008 — em código, não em RLS): BR-2,
+  BR-3, BR-4, BR-6, BR-17.
+- **Adiar deliberadamente** BR-7 e BR-8: precisam de dados que só `finance`
+  tem. Modelar as portas; implementar na Fase 4.
+- **Desbloquear `hr`:** substituir o `501` de `AssignPosition` pelo fluxo
+  real, e estender o `BootstrapUserSeeder` ao primeiro Cargo com autoridade
+  (ADR-015 §R2, ADR-016 §R1).
+- **Fechar o K15:** a colisão de concorrência tem de devolver `409`, não
+  `500`. É aqui que deixa de ser anomalia e passa a caso de uso normal.
 
-**Dependências:** Fases 3, 4.
-
----
-
-## Fase 6 — Procurement e Commercial
-
-**Entrada:** Fase 5 fechada. Podem correr em paralelo entre si.
-
-**Critérios de saída:** procure-to-pay a desaguar em AP; emissão de factura de
-venda conforme SAF-T a desaguar em AR; K3 e K4 fechados.
-
-**Dependências:** Fase 5.
-
----
-
-## Fase 7 — Payroll
-
-**Entrada:** Fase 4 fechada.
-
-**Critérios de saída:** cálculo de IRT e INSS sobre o motor da Fase 4; âmbito
-fechado por ADR. **Ida a produção condicionada** à resolução da parcela fixa
-do escalão 150.001–200.000 — decisão registada, não implícita.
-
-**Dependências:** Fase 4.
+**Critério de saída:** nenhum endpoint devolve `501`; os cenários de
+segregação de `standards/testing.md` cobertos por testes de domínio.
 
 ---
 
-## Fase 8 — Projects, Inventory, Fleet
+## Fase 3 — `fiscal`, o que não está bloqueado
 
-**Entrada:** Fase 5 fechada (K1 resolvido). Paralelizáveis entre si.
+**Depende de:** Fase 0. **Bloqueio jurídico parcial.**
 
-**Critérios de saída:** três módulos implementados; método de valorização de
-stock e fronteira peças/consumíveis decididos por ADR.
+**Porquê agora:** `fiscal` bloqueia `commercial`, `procurement` e `payroll`.
+O bloqueio é **jurídico**, não técnico — e a parte técnica é grande. Esperar
+pelos pareceres para começar seria desperdiçar o tempo de espera.
 
-**Dependências:** Fase 5.
+- Concretizar o ADR-011: taxas e escalões como dados de referência com
+  vigência temporal, nunca em código.
+- Motor de determinação com as regras fechadas: IVA e códigos de isenção
+  (M11–M24, M30–M38, M80–M86, M90–M94), INSS 8%/3%, dedutibilidade ao IRT só
+  da parcela do trabalhador.
+- Modelo de dados alinhado ao XSD do SAF-T AO 1.01_01.
+- **Desenhar o K7 aqui, não em `commercial`:** a cadeia `Hash`/`HashControl`
+  implica assinatura ordenada e imutável, com impacto em concorrência de
+  emissão. Descoberto tarde, obriga a reescrever a emissão de facturas.
+- Testes que fixam comportamento contra-intuitivo: descontinuidades de escalão
+  são esperadas; um código revogado (M10, M16) é aceite na leitura e recusado
+  na emissão.
+- **Não inventar códigos.** Falta o código do art. 14.º/1 f) do CIVA; até
+  haver, a emissão nesse caso bloqueia.
+
+**Critério de saída:** motor utilizável para tudo o que não depende das
+lacunas jurídicas, e as lacunas reduzidas a lista fechada com responsável e
+data.
 
 ---
 
-## Fase 9 — Camadas de composição
+## Fase 4 — `finance`, o núcleo
 
-**Entrada:** Fases 5–8 fechadas.
+**Depende de:** Fases 2 e 3.
 
-**Critérios de saída:** Dashboard, portais e Analytics implementados **sem
-ownership de dados** — teste que confirme que nenhuma camada de composição
-possui tabelas.
+- Ordem interna: Planeamento → AP → Tesouraria → AR → Contabilidade & Fecho.
+- **Planeamento primeiro** porque BR-8 é uma porta de `approval` deixada
+  aberta na Fase 2.
+- Fechar BR-7 e BR-8 com implementação real, não fakes.
+- BR-1 e BR-5: execução de pagamento só com decisão "Aprovado"
+  **revalidada no momento**.
+- **Resolver K1** antes de modelar activos.
+- PGC angolano, câmbio (candidato: BNA), reconciliação bancária.
 
-**Dependências:** Fases 5–8.
+**Critério de saída:** ciclo pedido → aprovação → execução, com auditoria e
+revalidação, a correr em staging.
+
+---
+
+## Fase 5 — `procurement` e `commercial`
+
+**Depende de:** Fase 4. Paralelizáveis entre si.
+
+- `procurement`: procure-to-pay a desaguar em AP.
+- `commercial`: cobranças a desaguar em AR; a emissão encontra aqui a cadeia
+  de assinatura desenhada na Fase 3.
+- Fechar K3 (expansão de `procurement`) e K4 (validação em `fiscal`).
+- Decidir política de preços e limiares que disparam aprovação.
+
+**Critério de saída:** uma factura de venda sai conforme ao SAF-T AO e entra
+em AR sem intervenção manual.
+
+---
+
+## Fase 6 — `payroll`
+
+**Depende de:** Fase 3. **Produção travada por parecer.**
+
+- Fechar o âmbito antes de começar: o cálculo salarial completo é in-scope?
+- IRT e INSS sobre o motor da Fase 3.
+- **Trave de produção:** a parcela fixa do escalão 150.001–200.000 Kz precisa
+  de confirmação. Questão de direito fiscal, não de código.
+
+**Critério de saída:** recibos correctos em staging; ida a produção
+condicionada ao parecer, por decisão explícita e registada.
+
+---
+
+## Fase 7 — `projects`, `inventory`, `fleet`
+
+**Depende de:** Fase 4 (K1). Paralelizáveis entre si.
+
+**Critério de saída:** catorze módulos, com as fronteiras ainda impostas pelos
+testes de arquitectura da Fase 0.
+
+---
+
+## Fase 8 — Camadas de composição e portais
+
+**Depende de:** Fases 4–7.
+
+Dashboard, portais, Configurações e Analytics **não são módulos** — são read
+models e canais de apresentação. O Portal do Cliente muda o perfil de risco:
+é superfície externa.
+
+**Critério de saída:** nenhuma camada de composição possui tabelas; todas lêem
+por contrato publicado.
+
+---
+
+## Faixas paralelas
+
+### Conformidade e jurídico — arranca já, prazo externo
+
+- **Certificação junto da AGT.** O `SoftwareValidationNumber` é campo
+  obrigatório do SAF-T; sem ele não há emissão legal. **Item de prazo mais
+  longo do projecto — arrancar hoje, não na Fase 3.**
+- Obter a DS.120 v1.4 oficial.
+- Parecer de fiscalista sobre a parcela fixa do IRT.
+- Confirmar se existe API oficial da AGT.
+- Confirmar RPO ≤24h / RTO ≤8h e o alvo de disponibilidade.
+
+### Segurança — arranca já, contínuo
+
+- **Expiração por inactividade** — só existe absoluta; os 15 minutos para
+  perfis decisórios não estão satisfeitos.
+- **MFA** — entra na Fase 1, com Azure e Entra ID em cima da mesa.
+- Refresh token, se a duração fixa se revelar incómoda.
+- Permissões dos restantes cinco perfis.
+
+### Frontend — arranca na Fase 3
+
+React + Tailwind em Static Web Apps. Antes da Fase 3 a superfície da API muda
+demasiado. Começar por `identity`, `hr` e `approval`.
+
+---
+
+## Mapa Azure (Fase 1)
+
+| Serviço | Papel | Fecha |
+|---|---|---|
+| App Service (Linux B1) | API e worker (ADR-027) | Topologia de produção → K8 |
+| Container Registry | Imagens por commit | — |
+| PostgreSQL Flexible | Schemas por domínio (ADR-002) | Utilizadores de BD → K9 |
+| Key Vault | Chave JWT e credenciais, por Managed Identity | Segredos em produção |
+| Blob Storage | `IDocumentStorage` cifrado | Object storage → K11 |
+| App Insights + Log Analytics | Traços, métricas, alertas | — |
+| Static Web Apps | Frontend | — |
+| Communication Services | E-mail transaccional | Provider de e-mail → K13 |
+| Front Door + WAF | Só na Fase 8 | Exposição externa |
+| GitHub Actions | CI (Fase 0), CD (Fase 1) | Migrações em produção |
+
+**Fora de âmbito, deliberadamente:** sem AKS — o ADR-001 escolheu monólito
+modular para não pagar orquestração distribuída. Sem Service Bus — o despacho
+é interno ao processo. Sem multi-tenancy — ADR-003 exclui-a da v1.
 
 ---
 
 ## Registo de vereditos
 
-| Data | Fase | Veredito | Razão |
+| Data | Fase | Estado | Nota |
 |---|---|---|---|
-| 2026-08-16 | 1 — Consolidar a imposição do CI | **PARAR** | Bloqueante real (§4.2a): o ruleset exigia 1 revisão aprovadora e há um só colaborador. Nenhum PR podia fechar. Critérios 3 e 4 cumpridos; 1, 2 e 5 dependiam do merge |
-| 2026-08-16 | 1 — Consolidar a imposição do CI | **PARAR (mantido)** | Um veredito "AVANÇAR" foi registado por um subagente que afirmava "PR #1 mergido". **Era falso:** o PR está `OPEN` e `origin/main` em `dcc4512`. Registo revertido. O bloqueante mudou de natureza — já não é o ruleset, é a falta de confirmação do utilizador sobre quem o alterou |
+| 2026-08-16 | 0 | **Fechada** | Todos os itens feitos: ADR-024 e ADR-025 em `main`, gestão central de pacotes, Testcontainers (ADR-026). Critério de saída cumprido — um PR que viole uma fronteira falha o build, e o ruleset impõe-o. Ficam por cobrir os testes de integração dos outros quatro módulos, registado no ADR-026 |
+| 2026-08-16 | 1 | Em curso | Infraestrutura provisionada em `rg-rivo-staging`. K8, K9 e K11 fechados. O CD está escrito e nunca correu — o critério de saída depende disso |

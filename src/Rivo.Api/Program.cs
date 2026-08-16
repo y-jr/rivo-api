@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.EntityFrameworkCore;
 using Rivo.Api.OpenApi;
 using Rivo.Audit.Api;
 using Rivo.Audit.Infrastructure;
@@ -52,6 +53,36 @@ if (app.Environment.IsDevelopment())
     await app.Services.InitialiseNotificationsModuleAsync();
     await app.Services.InitialiseHrModuleAsync();
     await app.Services.InitialiseIdentityModuleAsync();
+}
+
+// Cabeçalhos reencaminhados — fecha o K8.
+//
+// `HttpContext.Connection.RemoteIpAddress` devolve o endereço de quem
+// estabelece a ligação TCP. Atrás do front-end do App Service, isso é o
+// balanceador, não o cliente — e o IP guardado em `user_session` deixava de
+// identificar quem se autenticou, o que esvaziava o requisito de auditoria
+// BR-9.
+//
+// **Tem de vir antes de tudo o que lê o IP**, incluindo a autenticação: o
+// `AuditContext` é construído a partir do `HttpContext` já processado.
+//
+// `KnownNetworks` e `KnownProxies` são limpos de propósito. Aceitar
+// `X-Forwarded-For` de qualquer origem permitiria a um cliente forjar o
+// próprio endereço — trocaria um registo inútil por um falsificável, que é
+// pior. Em Azure App Service a confiança vem de a plataforma reescrever o
+// cabeçalho no seu front-end, ao qual só ela tem acesso; fora dessa
+// topologia, esta configuração tem de ser reavaliada.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseForwardedHeaders(new ForwardedHeadersOptions
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+        KnownNetworks = { },
+        KnownProxies = { },
+        // Um só salto: o front-end do App Service. Aceitar mais permitiria a
+        // um cliente prefixar a cadeia com endereços à escolha.
+        ForwardLimit = 1,
+    });
 }
 
 // A ordem importa: autenticar (quem é) antes de autorizar (pode fazer isto).

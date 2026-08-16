@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testes de integração de `notifications`: a camada Infrastructure contra um
+    PostgreSQL real (ADR-026).
+
+    Referencia apenas o seu próprio módulo e o suporte de teste — a mesma regra
+    dos testes de domínio (ADR-022).
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Notifications\Rivo.Notifications.Infrastructure\Rivo.Notifications.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\Rivo.TestSupport\Rivo.TestSupport.csproj" />
+  </ItemGroup>
+
+</Project>

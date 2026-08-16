@@ -31,7 +31,27 @@ public static class DocumentsModuleExtensions
             .Bind(configuration.GetSection(DocumentStorageOptions.SectionName));
 
         services.AddScoped<IDocumentRepository, DocumentRepository>();
-        services.AddSingleton<IDocumentStorage, FileSystemDocumentStorage>();
+
+        // Blob Storage quando há conta configurada; sistema de ficheiros quando
+        // não há. A escolha é por configuração e não por ambiente, para que o
+        // desenvolvimento local continue a correr sem Azure nenhum e o mesmo
+        // binário sirva os dois casos (ADR-027).
+        //
+        // O K11 — anexos sem cifra em repouso — fica fechado no caminho de
+        // Blob Storage. **Continua aberto no de sistema de ficheiros**, que é
+        // o usado localmente, e é aceitável aí: não guarda dados reais.
+        var storage = configuration
+            .GetSection(DocumentStorageOptions.SectionName)
+            .Get<DocumentStorageOptions>() ?? new DocumentStorageOptions();
+
+        if (string.IsNullOrWhiteSpace(storage.AccountName))
+        {
+            services.AddSingleton<IDocumentStorage, FileSystemDocumentStorage>();
+        }
+        else
+        {
+            services.AddSingleton<IDocumentStorage, BlobDocumentStorage>();
+        }
         services.AddScoped<IDocumentCatalogue, DocumentCatalogue>();
         services.AddScoped<UploadDocument>();
         services.AddScoped<DownloadDocument>();
