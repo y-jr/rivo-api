@@ -30,11 +30,28 @@ param postgresAdminPassword string
 @minLength(32)
 param jwtSigningKey string
 
-@description('Imagem do contentor a correr. O pipeline substitui-a a cada deployment; o valor por omissão só serve para o primeiro provisionamento, quando o registo ainda está vazio.')
+@description('''
+Imagem do contentor a correr.
+
+**Passar sempre a imagem em produção ao reimplantar a infraestrutura.** O
+valor por omissão é um placeholder que só faz sentido no primeiro
+provisionamento, quando o registo ainda está vazio — e um `az deployment group
+create` sem este parâmetro **repõe o placeholder e derruba a aplicação**.
+
+Aconteceu em 2026-08-16: três reimplantações de infraestrutura seguidas
+apagaram silenciosamente o Rivo de staging, e o sintoma foi um `404` no login
+que parecia um problema de seed.
+
+Para saber o que está a correr:
+  az webapp config show -g <grupo> -n <app> --query linuxFxVersion -o tsv
+''')
 param containerImage string = 'mcr.microsoft.com/dotnet/samples:aspnetapp'
 
 @description('Principal ID da identidade que corre o pipeline de deployment. Precisa de ler a connection string para aplicar migrações.')
 param deployerPrincipalId string = ''
+
+@description('Object ID de quem opera o ambiente. Recebe leitura dos segredos — necessária para correr as suites de verificação contra staging, que se autenticam como o administrador de arranque.')
+param operatorPrincipalId string = ''
 
 @description('E-mail do administrador de arranque (ADR-016).')
 param bootstrapAdminEmail string = 'admin@rivo.local'
@@ -220,6 +237,22 @@ var secretsUserRole = subscriptionResourceId(
 // de recursos **não chega** — o Key Vault com RBAC separa o plano de gestão do
 // plano de dados, e ler um segredo é plano de dados. Foi exactamente aqui que
 // o primeiro deployment falhou.
+// Acesso humano de operação. `Owner` na subscrição **não** dá leitura de
+// segredos: com RBAC, o Key Vault separa plano de gestão de plano de dados, e
+// ser dono do cofre não é o mesmo que poder ler o que está lá dentro.
+//
+// É parâmetro e não valor fixo para não hardcodar uma pessoa no template —
+// quem opera muda, a infraestrutura não.
+resource operatorVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(operatorPrincipalId)) {
+  name: guid(vault.id, operatorPrincipalId, secretsUserRole)
+  scope: vault
+  properties: {
+    roleDefinitionId: secretsUserRole
+    principalId: operatorPrincipalId
+    principalType: 'User'
+  }
+}
+
 resource deployerVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(deployerPrincipalId)) {
   name: guid(vault.id, deployerPrincipalId, secretsUserRole)
   scope: vault
