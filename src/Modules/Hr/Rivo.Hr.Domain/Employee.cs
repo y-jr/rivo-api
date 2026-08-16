@@ -32,6 +32,14 @@ public sealed class Employee
 
     public Guid Id { get; private set; }
 
+    /// <summary>
+    /// Contador de concorrência optimista (ADR-002, ADR-025).
+    ///
+    /// Incrementado pela infraestrutura ao gravar, nunca pelo domínio. O
+    /// <c>private set</c> existe só para o EF Core o materializar.
+    /// </summary>
+    public int Version { get; private set; }
+
     public string FullName { get; private set; }
 
     public Guid? DepartmentId { get; private set; }

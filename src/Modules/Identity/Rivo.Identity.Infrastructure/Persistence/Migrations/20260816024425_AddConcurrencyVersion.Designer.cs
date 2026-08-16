@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Rivo.Identity.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using Rivo.Identity.Infrastructure.Persistence;
 namespace Rivo.Identity.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(RivoIdentityDbContext))]
-    partial class RivoIdentityDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260816024425_AddConcurrencyVersion")]
+    partial class AddConcurrencyVersion
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

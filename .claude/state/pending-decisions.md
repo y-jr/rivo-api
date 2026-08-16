@@ -32,6 +32,7 @@ re-litigação:
 | Ambiente local / containerização | ADR-021 — Docker Compose, imagem multi-fase, utilizador não-root |
 | Framework de teste e estrutura do domínio | ADR-022 — xUnit v2.9.3, sem biblioteca de asserções, um projecto por domínio de módulo |
 | Pipeline de CI | ADR-023 — GitHub Actions, dois jobs: build+testes de domínio (bloqueia PR) e verificação end-to-end |
+| Tooling de testes de arquitectura | ADR-024 — reflexão e leitura de `.csproj`, sem biblioteca; 17 testes |
 
 ## Stack tecnológica
 
@@ -41,11 +42,10 @@ re-litigação:
 - [ ] **Frameworks de teste de integração** com infraestrutura real
       (candidato: Testcontainers). O domínio está resolvido pelo ADR-022;
       Application, Infrastructure e API continuam sem cobertura própria.
-- [ ] **Tooling de testes de arquitectura** (imposição de fronteiras) —
-      mitigação do risco 1 em [project-state.md](project-state.md). O ADR-017
-      dá a estrutura; falta quem a imponha automaticamente. O ADR-018 §Risks
-      acrescenta um caso concreto: verificar que **todo o endpoint declara
-      autorização**.
+- [ ] **Testes de arquitectura para regras de persistência** (ADR-010). O
+      ADR-024 fechou as regras de referência; FKs entre schemas não são
+      verificáveis por reflexão e exigiriam inspecção da base de dados, ou
+      seja, teste de integração.
 - [ ] **Mecanismo geral de despacho de eventos** entre módulos. O worker de
       `notifications` resolve o caso dele; os eventos de domínio previstos em
       [modules/](../modules/) não têm mecanismo.

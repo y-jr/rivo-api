@@ -25,6 +25,8 @@ public sealed class HrDbContext(DbContextOptions<HrDbContext> options) : DbConte
         {
             employee.ToTable("employee");
             employee.HasKey(e => e.Id);
+            // Concorrência optimista (ADR-002, ADR-025).
+            employee.Property(e => e.Version).IsConcurrencyToken();
             employee.Property(e => e.FullName).HasMaxLength(200).IsRequired();
             employee.Property(e => e.Status).HasConversion<string>().HasMaxLength(20);
 
@@ -39,6 +41,8 @@ public sealed class HrDbContext(DbContextOptions<HrDbContext> options) : DbConte
         {
             department.ToTable("department");
             department.HasKey(d => d.Id);
+            // Concorrência optimista (ADR-002, ADR-025).
+            department.Property(d => d.Version).IsConcurrencyToken();
             department.Property(d => d.Name).HasMaxLength(200).IsRequired();
             department.HasIndex(d => d.Name).IsUnique();
         });
@@ -59,6 +63,8 @@ public sealed class HrDbContext(DbContextOptions<HrDbContext> options) : DbConte
         {
             assignment.ToTable("position_assignment");
             assignment.HasKey(a => a.Id);
+            // Concorrência optimista (ADR-002, ADR-025).
+            assignment.Property(a => a.Version).IsConcurrencyToken();
             assignment.Property(a => a.Status).HasConversion<string>().HasMaxLength(20);
 
             // As duas consultas que `approval` fará: o cargo de uma pessoa à
@@ -99,5 +105,34 @@ public sealed class HrDbContext(DbContextOptions<HrDbContext> options) : DbConte
             link.HasIndex(l => l.EmployeeId);
             link.HasIndex(l => l.DocumentId).IsUnique();
         });
+    }
+
+    /// <summary>
+    /// Incrementa o contador de concorrência de tudo o que vai ser alterado.
+    ///
+    /// <para>
+    /// O domínio nunca mexe no <c>Version</c>: obrigá-lo a lembrar-se disso em
+    /// cada método que altera estado seria uma regra que se esquece uma vez e
+    /// falha em silêncio para sempre. Aqui é impossível esquecer.
+    /// </para>
+    ///
+    /// <para>
+    /// Subir o <c>CurrentValue</c> basta — o EF Core usa o <c>OriginalValue</c>
+    /// na cláusula <c>WHERE</c>, que é o que detecta a escrita concorrente.
+    /// </para>
+    /// </summary>
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        foreach (var entry in ChangeTracker.Entries().Where(e => e.State == EntityState.Modified))
+        {
+            var version = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "Version");
+
+            if (version?.CurrentValue is int current)
+            {
+                version.CurrentValue = current + 1;
+            }
+        }
+
+        return base.SaveChangesAsync(cancellationToken);
     }
 }

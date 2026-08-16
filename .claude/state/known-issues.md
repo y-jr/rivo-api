@@ -6,7 +6,7 @@ Este ficheiro regista duas coisas distintas, e a distinção importa:
 
 - **Lacunas de arquitectura (K1–K7)** — pontos assinalados em `docs/` e não
   resolvidos. Não são decisões em aberto; são buracos conhecidos no desenho.
-- **Defeitos activos (K8–K14)** — comportamento real do código implementado
+- **Defeitos activos (K8–K15)** — comportamento real do código implementado
   que não satisfaz um requisito. Cinco módulos estão em produção de
   desenvolvimento, logo há defeitos de código a registar.
 
@@ -123,20 +123,30 @@ Registados porque a tentação de os repetir é real:
   e-mail para nada que tenha consequência — designadamente para pedidos de
   aprovação quando `approval` existir.
 
-### K14 — Concorrência optimista exigida pelo ADR-002 não está implementada
+### ~~K14 — Concorrência optimista não implementada~~ — **RESOLVIDO 2026-08-16**
 
-- **Módulo:** todos os implementados
-- **Impacto:** o ADR-002 fixa concorrência optimista por coluna `version`.
-  **Nenhuma entidade declara token de concorrência.** Duas escritas
-  simultâneas sobre o mesmo agregado sobrepõem-se em silêncio — a última a
-  gravar ganha, sem erro.
-- **Contorno:** nenhum ao nível do código. Na prática não morde ainda: nenhum
-  dos cinco agregados implementados tem contenção real de escrita concorrente.
-- **Seguimento:** **deixa de ser aceitável em `approval`.** BR-17 exige
-  explicitamente concorrência optimista nas decisões, e é o cenário clássico —
-  duas pessoas a decidir o mesmo pedido ao mesmo tempo. Implementar aí, e
-  retroactivamente onde a contenção aparecer. Registado como desvio explícito
-  em [ADR-019](../decisions/adr-019-persistencia-ef-core.md).
+Fechado por [ADR-025](../decisions/adr-025-concorrencia-optimista.md). Coluna
+`version` como token de concorrência em seis agregados, com três isenções
+justificadas e imposição por teste de arquitectura. Verificado contra o
+PostgreSQL: duas escritas com a mesma versão de partida dão `UPDATE 1` e
+`UPDATE 0`.
+
+Deixou atrás de si o K15, que é a metade que faltava.
+
+### K15 — Colisão de concorrência devolve `500`, não `409`
+
+- **Módulo:** todos os que têm agregados com `version`
+- **Impacto:** o ADR-025 fez com que uma escrita concorrente passe a lançar
+  `DbUpdateConcurrencyException` em vez de sobrepor em silêncio. Mas **nenhum
+  handler a trata**: a excepção sobe e o cliente recebe `500 Internal Server
+  Error`. Semanticamente errado — não é falha do servidor, é conflito de
+  estado, e o cliente devia poder reler e repetir.
+- **Contorno:** nenhum. O comportamento erra do lado seguro — falha ruidosa em
+  vez de perda silenciosa de escrita, que era o defeito anterior.
+- **Seguimento:** mapear para `409 Conflict` na camada API, e decidir a
+  semântica de retry. **A fase de `approval` tem de o resolver**: é lá que a
+  colisão deixa de ser anomalia e passa a caso de uso normal (BR-17, duas
+  pessoas a decidir o mesmo pedido).
 
 ## Formato para defeitos futuros
 

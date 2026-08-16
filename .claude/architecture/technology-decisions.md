@@ -22,6 +22,7 @@ _Última actualização: 2026-08-15._
 | Framework de teste | xUnit v2.9.3, sem biblioteca de asserções | ADR-022 |
 | Estrutura de testes | Um projecto por domínio de módulo, em `tests/Modules/` | ADR-022 |
 | Integração contínua | GitHub Actions, dois jobs separados | ADR-023 |
+| Testes de arquitectura | Reflexão e leitura de `.csproj`, sem biblioteca | ADR-024 |
 | Chaves primárias | UUID (chave substituta) | ADR-002 |
 | Concorrência optimista | Coluna `version` | ADR-002 |
 | Valores monetários | `numeric` — nunca vírgula flutuante | ADR-002 |
@@ -42,7 +43,6 @@ avançar, decidir explicitamente e registar ADR.
   Arrasta consigo o passo de migrações em produção (ADR-020).
 - Frameworks de teste de integração com infraestrutura real (candidato:
   Testcontainers). O domínio está fechado pelo ADR-022.
-- Tooling de testes de arquitectura (imposição de fronteiras).
 - Gestão central de versões de pacotes em `src/` (`tests/` já está resolvido).
 - Mecanismo geral de despacho de eventos entre módulos (o worker de
   `notifications` resolve só o caso dele).

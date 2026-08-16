@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    O único projecto de teste que alcança todos os módulos.
+
+    Não é violação de fronteira — é a função dele: para verificar que os
+    módulos não se alcançam uns aos outros, tem de os poder ver a todos.
+    Nenhum outro projecto de teste faz isto (ADR-022).
+
+    Basta referenciar o host: `Rivo.Api` referencia a `Api` e a
+    `Infrastructure` de cada módulo, e por transitividade traz todos os
+    assemblies da solução. Listá-los um a um aqui obrigaria a editar este
+    ficheiro a cada módulo novo — e o esquecimento apareceria como um módulo
+    silenciosamente por verificar, que é o pior modo de falha possível para um
+    teste de arquitectura.
+  -->
+
+  <ItemGroup>
+    <!-- Necessário para inspeccionar endpoints e a autorização declarada. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rivo.Api\Rivo.Api.csproj" />
+  </ItemGroup>
+
+</Project>

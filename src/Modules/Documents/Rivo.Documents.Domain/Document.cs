@@ -52,6 +52,14 @@ public sealed class Document
 
     public Guid Id { get; private set; }
 
+    /// <summary>
+    /// Contador de concorrência optimista (ADR-002, ADR-025).
+    ///
+    /// Incrementado pela infraestrutura ao gravar, nunca pelo domínio. O
+    /// <c>private set</c> existe só para o EF Core o materializar.
+    /// </summary>
+    public int Version { get; private set; }
+
     /// <summary>Nome original, para devolver ao descarregar. Não é o nome em disco.</summary>
     public string FileName { get; private set; }
 
