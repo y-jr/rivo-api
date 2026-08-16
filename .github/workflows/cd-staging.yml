@@ -93,6 +93,11 @@ jobs:
           dotnet tool install --global dotnet-ef
           export PATH="$PATH:$HOME/.dotnet/tools"
 
+          # `migrations bundle` compila o projecto, e compilar exige os assets
+          # do NuGet. Sem restore, o primeiro módulo falha com NETSDK1004 e o
+          # pipeline nunca chega a tocar na base de dados.
+          dotnet restore Rivo.slnx
+
           ligacao=$(az keyvault secret show \
             --vault-name "${{ steps.infra.outputs.vault }}" \
             --name connection-string-rivo \

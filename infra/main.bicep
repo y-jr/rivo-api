@@ -33,6 +33,9 @@ param jwtSigningKey string
 @description('Imagem do contentor a correr. O pipeline substitui-a a cada deployment; o valor por omissão só serve para o primeiro provisionamento, quando o registo ainda está vazio.')
 param containerImage string = 'mcr.microsoft.com/dotnet/samples:aspnetapp'
 
+@description('Principal ID da identidade que corre o pipeline de deployment. Precisa de ler a connection string para aplicar migrações.')
+param deployerPrincipalId string = ''
+
 
 // Sufixo determinístico. O nome de uma conta de armazenamento tem de ser único
 // à escala global e só aceita minúsculas e dígitos — derivar do id do grupo de
@@ -193,8 +196,23 @@ var secretsUserRole = subscriptionResourceId(
   '4633458b-17de-408a-b874-0445c86b69e6'
 )
 
-// A atribuição em si está mais abaixo, junto ao site: a identidade que lê os
-// segredos é a do próprio App Service, criada neste mesmo template.
+// A atribuição para o site está mais abaixo, junto a ele: a identidade que lê
+// os segredos em runtime é a do próprio App Service, criada neste template.
+//
+// O pipeline precisa do mesmo acesso, por outra razão: aplica as migrações
+// (ADR-020) e para isso tem de ler a connection string. `Contributor` no grupo
+// de recursos **não chega** — o Key Vault com RBAC separa o plano de gestão do
+// plano de dados, e ler um segredo é plano de dados. Foi exactamente aqui que
+// o primeiro deployment falhou.
+resource deployerVaultAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(deployerPrincipalId)) {
+  name: guid(vault.id, deployerPrincipalId, secretsUserRole)
+  scope: vault
+  properties: {
+    roleDefinitionId: secretsUserRole
+    principalId: deployerPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
 
 // --- Ambiente de execução ----------------------------------------------------
 //

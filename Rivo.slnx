@@ -28,7 +28,6 @@
     <Project Path="src/Modules/Identity/Rivo.Identity.Api/Rivo.Identity.Api.csproj" />
     <Project Path="src/Modules/Identity/Rivo.Identity.Application/Rivo.Identity.Application.csproj" />
     <Project Path="src/Modules/Identity/Rivo.Identity.Domain/Rivo.Identity.Domain.csproj" />
-    <Project Path="src/Modules/Identity/Rivo.Identity.Infrastructure/Rivo.Identity.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/src/Modules/Notifications/">
     <Project Path="src/Modules/Notifications/Rivo.Notifications.Api/Rivo.Notifications.Api.csproj" />
