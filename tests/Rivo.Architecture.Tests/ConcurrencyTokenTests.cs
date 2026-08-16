@@ -1,0 +1,171 @@
+using System.Reflection;
+
+namespace Rivo.Architecture.Tests;
+
+/// <summary>
+/// Concorrência optimista (ADR-002, ADR-025).
+///
+/// <para>
+/// O ADR-002 exige coluna `version` em todos os agregados, e durante muito
+/// tempo **nenhum a tinha** — o desvio ficou registado como K14 e só foi
+/// descoberto ao escrever o ADR-019. Este ficheiro existe para que não volte a
+/// acontecer em silêncio.
+/// </para>
+///
+/// <para>
+/// O modo de falha que interessa não é o de hoje: é o agregado que alguém
+/// acrescenta daqui a seis meses, sem se lembrar da regra, e que só dá sinal
+/// quando duas escritas concorrentes se sobrepõem em produção.
+/// </para>
+/// </summary>
+public class ConcurrencyTokenTests
+{
+    /// <summary>
+    /// Agregados sem contador de concorrência, e a razão.
+    ///
+    /// <para>
+    /// A lista é a inversão deliberada da regra: por omissão, <strong>todo</strong>
+    /// o agregado precisa de contador. Isentar um é uma decisão que tem de
+    /// aparecer aqui, com justificação — não a ausência silenciosa de uma
+    /// propriedade.
+    /// </para>
+    /// </summary>
+    private static readonly Dictionary<string, string> IsentosPorDesenho = new(StringComparer.Ordinal)
+    {
+        ["AuditEvent"] =
+            "Append-only por BR-10. Nunca é alterado depois de escrito, logo não há escrita " +
+            "concorrente que possa sobrepor-se. Um contador aqui seria peso morto.",
+
+        ["Position"] =
+            "Sem métodos que alterem estado: o catálogo de Cargos cria-se e não se edita. " +
+            "Quando a marca de autoridade passar a ser alterável (BR-21), passa a precisar.",
+
+        ["EmployeeDocument"] =
+            "Linha de ligação: cria-se e elimina-se, nunca se altera.",
+    };
+
+    /// <summary>
+    /// Todo o agregado mutável tem `Version`, ou está isento com razão escrita.
+    /// </summary>
+    [Fact]
+    public void EveryAggregate_HasAConcurrencyCounterOrADocumentedExemption()
+    {
+        var violations = new List<string>();
+
+        foreach (var aggregate in Aggregates())
+        {
+            var name = aggregate.Name;
+            var temVersion = aggregate.GetProperty("Version", BindingFlags.Public | BindingFlags.Instance) is not null;
+            var isento = IsentosPorDesenho.ContainsKey(name);
+
+            if (!temVersion && !isento)
+            {
+                violations.Add(
+                    $"{aggregate.FullName} não tem `Version` nem está isento. " +
+                    "Acrescenta o contador, ou a isenção com razão em IsentosPorDesenho.");
+            }
+
+            if (temVersion && isento)
+            {
+                violations.Add(
+                    $"{aggregate.FullName} tem `Version` mas está listado como isento — " +
+                    "a isenção deixou de fazer sentido e deve sair da lista.");
+            }
+        }
+
+        Assert.Empty(violations);
+    }
+
+    /// <summary>
+    /// O contador é `int` e não tem `set` público.
+    ///
+    /// <para>
+    /// É a infraestrutura que o incrementa, ao gravar. Um `set` público
+    /// convidaria o domínio a mexer-lhe — e uma regra que obriga cada método de
+    /// negócio a lembrar-se de incrementar um contador é uma regra que se
+    /// esquece uma vez e falha em silêncio para sempre.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void ConcurrencyCounter_IsNotWritableFromOutside()
+    {
+        var violations = new List<string>();
+
+        foreach (var aggregate in Aggregates())
+        {
+            var version = aggregate.GetProperty("Version", BindingFlags.Public | BindingFlags.Instance);
+
+            if (version is null)
+            {
+                continue;
+            }
+
+            if (version.PropertyType != typeof(int))
+            {
+                violations.Add($"{aggregate.FullName}.Version é {version.PropertyType.Name}, devia ser int");
+            }
+
+            if (version.SetMethod is { IsPublic: true })
+            {
+                violations.Add($"{aggregate.FullName}.Version tem setter público");
+            }
+        }
+
+        Assert.Empty(violations);
+    }
+
+    /// <summary>
+    /// A lista de isenções não cria entradas mortas — um agregado que
+    /// desapareceu ou mudou de nome deixaria lá uma justificação que já não
+    /// corresponde a nada, e esconderia que a lista deixou de ser revista.
+    /// </summary>
+    [Fact]
+    public void EveryExemption_StillMatchesAnAggregate()
+    {
+        var existentes = Aggregates().Select(a => a.Name).ToHashSet(StringComparer.Ordinal);
+
+        var mortas = IsentosPorDesenho.Keys
+            .Where(name => !existentes.Contains(name))
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
+
+        Assert.Empty(mortas);
+    }
+
+    /// <summary>
+    /// A descoberta encontra agregados. Sem isto, tudo acima passaria por
+    /// vacuidade.
+    /// </summary>
+    [Fact]
+    public void AggregateDiscovery_FindsTheDomainEntities()
+    {
+        var nomes = Aggregates().Select(a => a.Name).ToList();
+
+        Assert.NotEmpty(nomes);
+        Assert.Contains("Notification", nomes);
+        Assert.Contains("Employee", nomes);
+        Assert.Contains("AuditEvent", nomes);
+    }
+
+    /// <summary>
+    /// Agregados: tipos de domínio com construtor privado sem parâmetros — a
+    /// marca de materialização do EF Core, e portanto de "isto é uma linha
+    /// numa tabela", que é o que a concorrência optimista protege.
+    ///
+    /// <para>
+    /// Distingue-os de DTOs, enumerações e tipos de valor, que não são
+    /// persistidos por si.
+    /// </para>
+    /// </summary>
+    private static IEnumerable<Type> Aggregates() =>
+        RivoAssemblies
+            .InLayer(RivoAssemblies.DomainLayer)
+            .SelectMany(a => a.GetExportedTypes())
+            .Where(t => t is { IsClass: true, IsAbstract: false })
+            .Where(t => t.GetConstructor(
+                BindingFlags.NonPublic | BindingFlags.Instance,
+                binder: null,
+                types: Type.EmptyTypes,
+                modifiers: null) is not null)
+            .OrderBy(t => t.Name, StringComparer.Ordinal);
+}

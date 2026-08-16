@@ -59,6 +59,23 @@ public sealed class Notification
 
     public Guid Id { get; private set; }
 
+    /// <summary>
+    /// Contador de concorrência optimista (ADR-002, ADR-025).
+    ///
+    /// <para>
+    /// É aqui que mais interessa de todo o Rivo hoje: o worker de entrega e o
+    /// destinatário tocam na mesma linha ao mesmo tempo — um a marcar a entrega,
+    /// o outro a marcar como lida. Sem isto, a última escrita a chegar apagava
+    /// silenciosamente a outra.
+    /// </para>
+    ///
+    /// <para>
+    /// Incrementado pela infraestrutura ao gravar, nunca pelo domínio. O
+    /// <c>private set</c> existe só para o EF Core o materializar.
+    /// </para>
+    /// </summary>
+    public int Version { get; private set; }
+
     public Guid RecipientUserId { get; private set; }
 
     public string Type { get; private set; }

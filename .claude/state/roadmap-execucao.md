@@ -19,8 +19,8 @@ e `origin/main` não tem os testes de arquitectura.
 
 | # | Fase | Estado |
 |---|---|---|
-| 1 | Consolidar a imposição do CI | **PARADA** — PR #1 por mergir |
-| 2 | Concorrência optimista (K14) | Por iniciar |
+| 1 | Consolidar a imposição do CI | **PARADA** — merge bloqueado por permissões |
+| 2 | Concorrência optimista (K14) | **Implementada** — por verificar em CI |
 | 3 | Approval Engine | Por iniciar |
 | 4 | Fundação fiscal (parte não bloqueada) | Por iniciar |
 | 5 | Finance | Por iniciar |
@@ -105,6 +105,20 @@ implementada depois, propaga-se a todos os módulos consumidores.
 6. 117+ testes verdes; `verify-all.ps1` 66/66.
 
 **Dependências:** Fase 1.
+
+**Execução de 2026-08-16 — implementada, por verificar em CI.**
+
+Feita fora de ordem, por a Fase 1 estar bloqueada por permissões e este
+trabalho não depender dela. Vive no ramo `fase-2/concorrencia-optimista`.
+
+| Critério | Estado |
+|---|---|
+| 1 — mecanismo decidido e em ADR | **Sim** — [ADR-025](../decisions/adr-025-concorrencia-optimista.md) |
+| 2 — aplicado, com isenções registadas | **Sim** — 6 agregados; 3 isentos com razão escrita |
+| 3 — teste que demonstra a detecção | **Parcial** — provado ao nível do PostgreSQL (`UPDATE 1` / `UPDATE 0`); falta teste automatizado, que precisa de infraestrutura de teste de integração ainda por decidir |
+| 4 — migração por módulo, aplicada | **Sim** — 4 migrações; 6 colunas `version` verificadas na base de dados |
+| 5 — K14 fechado | **Sim** — deixou o K15 (colisão devolve `500`, não `409`) |
+| 6 — testes verdes | **Sim** — 121 testes, `verify-all` 66/66 |
 
 ---
 
