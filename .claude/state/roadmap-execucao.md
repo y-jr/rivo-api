@@ -29,7 +29,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | # | Fase | Estado |
 |---|---|---|
 | 0 | Fundação de verificação e CI | ✅ **Fechada** em 2026-08-16 |
-| 1 | Aterrar em Azure — staging primeiro | **Próxima** |
+| 1 | Aterrar em Azure — staging primeiro | **Em curso** — infraestrutura de pé, CD por correr |
 | 2 | `approval` — governança de decisões | Por iniciar |
 | 3 | `fiscal` — o que não está bloqueado | Por iniciar |
 | 4 | `finance` — o núcleo | Por iniciar |
@@ -65,17 +65,14 @@ módulo acrescentado antes desta fase multiplica o custo de a fazer.
 **Critério de saída:** um PR que viole uma fronteira de módulo falha o build
 sem intervenção humana.
 
-**Estado:** o mecanismo existe e está verificado por mutação, **mas ainda não
-protege `main`** — os testes de arquitectura vivem no PR #2, que está `CLEAN`
-com ambos os jobs verdes e por mergir. `origin/main` está em `dcc4512`.
+**Estado: fechada em 2026-08-16.** Os PR #1 e #2 foram mergidos; `origin/main`
+tem os testes de arquitectura e a concorrência optimista, e o ruleset
+`build_and_domain_test` exige PR mais os dois jobs de CI. O critério de saída
+está cumprido: uma violação de fronteira falha o build sem intervenção humana.
 
-**Por fechar:**
-
-1. Merge do PR #2 (contém integralmente o PR #1). Só o utilizador o pode
-   fazer — o merge está bloqueado ao assistente pelo classificador de
-   permissões.
-2. ~~`Directory.Packages.props` em `src/`.~~ **Feito em 2026-08-16.**
-3. ~~Testes de integração com Testcontainers.~~ **Feito em 2026-08-16** — ADR-026.
+**Fica por cobrir:** testes de integração nos outros quatro módulos. Só
+`notifications` os tem — escolhido por ser onde a contenção é real hoje.
+Registado no ADR-026 §Risks, não é dívida escondida.
 
 ---
 
@@ -114,6 +111,24 @@ em abstracto.
 
 **Critério de saída:** as seis suites de verificação passam contra staging em
 Azure, não apenas contra Docker local.
+
+**Execução de 2026-08-16 — infraestrutura de pé, deployment por correr.**
+
+| Item | Estado |
+|---|---|
+| IaC em Bicep | ✅ `infra/main.bicep`, provisionado em `rg-rivo-staging` |
+| Destino da API | ✅ App Service Linux B1 (ADR-027, não Container Apps) |
+| PostgreSQL Flexible | ✅ versão 17, `psql-rivo-staging-qeodyktoxeh2s` |
+| Key Vault + Managed Identity | ✅ sem credenciais em configuração |
+| Migrações no pipeline | ✅ `cd-staging.yml`, um bundle por módulo |
+| K8 — cabeçalhos reencaminhados | ✅ fechado |
+| K11 — cifra em repouso | ✅ fechado em Azure; aberto no sistema de ficheiros local |
+| K9 — append-only na base de dados | ✅ fechado, verificado contra o PostgreSQL |
+| Observabilidade | ✅ App Insights + Log Analytics |
+| CD para staging | ⏳ escrito, **nunca executado** |
+
+**Por fechar:** o CD nunca correu, portanto o critério de saída — as suites
+contra staging — continua por cumprir. Depende do merge para `main`.
 
 ---
 
@@ -297,3 +312,4 @@ modular para não pagar orquestração distribuída. Sem Service Bus — o despa
 | Data | Fase | Estado | Nota |
 |---|---|---|---|
 | 2026-08-16 | 0 | **Fechada** | Todos os itens feitos: ADR-024 e ADR-025 em `main`, gestão central de pacotes, Testcontainers (ADR-026). Critério de saída cumprido — um PR que viole uma fronteira falha o build, e o ruleset impõe-o. Ficam por cobrir os testes de integração dos outros quatro módulos, registado no ADR-026 |
+| 2026-08-16 | 1 | Em curso | Infraestrutura provisionada em `rg-rivo-staging`. K8, K9 e K11 fechados. O CD está escrito e nunca correu — o critério de saída depende disso |

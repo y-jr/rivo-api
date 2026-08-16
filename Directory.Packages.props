@@ -50,6 +50,12 @@
     <PackageVersion Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
   </ItemGroup>
 
+  <!-- Azure (ADR-027). -->
+  <ItemGroup>
+    <PackageVersion Include="Azure.Identity" Version="1.21.0" />
+    <PackageVersion Include="Azure.Storage.Blobs" Version="12.29.1" />
+  </ItemGroup>
+
   <!-- Testes de integração (ADR-026). -->
   <ItemGroup>
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.14.0" />

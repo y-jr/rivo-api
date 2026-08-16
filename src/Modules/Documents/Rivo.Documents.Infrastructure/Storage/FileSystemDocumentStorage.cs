@@ -68,6 +68,21 @@ public sealed class DocumentStorageOptions
 {
     public const string SectionName = "DocumentStorage";
 
-    /// <summary>Raiz do armazenamento. Em Docker, aponta para um volume.</summary>
+    /// <summary>Raiz do armazenamento em sistema de ficheiros. Em Docker, aponta para um volume.</summary>
     public string RootPath { get; init; } = "/var/rivo/documents";
+
+    /// <summary>
+    /// Conta de Azure Storage. <strong>Se estiver preenchida, é usado Blob
+    /// Storage; se não, o sistema de ficheiros.</strong>
+    ///
+    /// <para>
+    /// A escolha é por configuração e não por ambiente: assim o
+    /// desenvolvimento local continua a correr sem Azure nenhum, e o mesmo
+    /// binário serve os dois casos sem ramo condicional no código.
+    /// </para>
+    /// </summary>
+    public string? AccountName { get; init; }
+
+    /// <summary>Container de blobs. Criado pelo Bicep (ADR-027).</summary>
+    public string Container { get; init; } = "documents";
 }
