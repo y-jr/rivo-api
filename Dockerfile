@@ -12,6 +12,11 @@ WORKDIR /source
 # o esquecimento só aparece como falha de build. Num monólito modular que vai
 # crescer para catorze módulos, a correcção vale mais do que os segundos de
 # cache.
+# A gestão central de versões vive na raiz e aplica-se a tudo o que está
+# abaixo. Sem ela na imagem, o restore não sabe que versão de cada pacote usar
+# e falha — os `.csproj` declaram o pacote, não a versão.
+COPY Directory.Packages.props ./
+
 COPY src/ src/
 
 # Restaura a partir do projecto da API, e **não** da solução.

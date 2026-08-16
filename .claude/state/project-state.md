@@ -99,9 +99,6 @@ devolve `501`, e desaparece quando `approval` for implementado.
 - **Frontend.** React + Tailwind está decidido; não há código.
 - **`SharedKernel`.** O [CLAUDE.md](../CLAUDE.md) refere-o e manda mantê-lo
   mínimo; nunca chegou a ser criado. Até hoje não fez falta.
-- **Gestão central de versões de pacotes em `src/`.** Cada um dos 25 `.csproj`
-  fixa as suas versões. Os projectos de teste já não têm esse problema —
-  `tests/Directory.Build.props` centraliza-os — mas `src/` continua por fazer.
 - Modelo de dados definitivo do Approval Engine (`docs` remete para fase
   seguinte).
 - Regras fiscais angolanas de cálculo (o **modelo de dados** está fixado pelo

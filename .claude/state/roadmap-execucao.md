@@ -51,7 +51,7 @@ módulo acrescentado antes desta fase multiplica o custo de a fazer.
 | Item | Estado |
 |---|---|
 | `Directory.Build.props` para testes | ✅ 2026-08-15 |
-| **`Directory.Packages.props` para `src/`** | ❌ **por fazer** — 25 `.csproj` fixam versões à mão |
+| `Directory.Packages.props` para `src/` | ✅ 2026-08-16 — 14 pacotes centralizados |
 | Testes de domínio xUnit | ✅ 100 testes (ADR-022) |
 | `Rivo.Architecture.Tests` | ✅ 21 testes (ADR-024, ADR-025) |
 | **Testes de integração com Testcontainers** | ❌ **por fazer** |
@@ -74,7 +74,7 @@ com ambos os jobs verdes e por mergir. `origin/main` está em `dcc4512`.
 1. Merge do PR #2 (contém integralmente o PR #1). Só o utilizador o pode
    fazer — o merge está bloqueado ao assistente pelo classificador de
    permissões.
-2. `Directory.Packages.props` em `src/`.
+2. ~~`Directory.Packages.props` em `src/`.~~ **Feito em 2026-08-16.**
 3. Testes de integração com Testcontainers para repositórios. Substituem a
    parte de persistência das suites PowerShell; as PowerShell ficam como smoke
    end-to-end, que é onde valem.
@@ -296,4 +296,4 @@ modular para não pagar orquestração distribuída. Sem Service Bus — o despa
 
 | Data | Fase | Estado | Nota |
 |---|---|---|---|
-| 2026-08-16 | 0 | Quase fechada | Mecanismo verificado por mutação, mas `origin/main` ainda não o tem. Faltam `Directory.Packages.props` e Testcontainers |
+| 2026-08-16 | 0 | Quase fechada | ADR-024 e ADR-025 em `main` (PR #1 e #2 mergidos). Gestão central de pacotes feita. Falta apenas Testcontainers |
