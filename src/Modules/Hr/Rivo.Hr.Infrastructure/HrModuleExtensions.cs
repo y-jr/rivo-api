@@ -58,7 +58,7 @@ public static class HrModuleExtensions
     /// Aplica as migrações. `hr` não tem seed: colaboradores, departamentos e
     /// cargos são dados de negócio, e semeá-los seria inventar organização.
     /// </summary>
-    public static async Task InitialiseHrModuleAsync(
+    public static async Task MigrateHrModuleAsync(
         this IServiceProvider services,
         CancellationToken cancellationToken = default)
     {

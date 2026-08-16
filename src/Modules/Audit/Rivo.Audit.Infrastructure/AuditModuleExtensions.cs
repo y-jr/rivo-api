@@ -47,7 +47,7 @@ public static class AuditModuleExtensions
     }
 
     /// <summary>Aplica as migrações do módulo. `audit` não tem seed: a trilha nasce vazia.</summary>
-    public static async Task InitialiseAuditModuleAsync(
+    public static async Task MigrateAuditModuleAsync(
         this IServiceProvider services,
         CancellationToken cancellationToken = default)
     {

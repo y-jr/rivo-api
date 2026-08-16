@@ -74,7 +74,7 @@ public static class DocumentsModuleExtensions
     ///
     /// Sem seed: documentos são dados de negócio.
     /// </summary>
-    public static async Task InitialiseDocumentsModuleAsync(
+    public static async Task MigrateDocumentsModuleAsync(
         this IServiceProvider services,
         CancellationToken cancellationToken = default)
     {

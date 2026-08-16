@@ -36,6 +36,14 @@ param containerImage string = 'mcr.microsoft.com/dotnet/samples:aspnetapp'
 @description('Principal ID da identidade que corre o pipeline de deployment. Precisa de ler a connection string para aplicar migrações.')
 param deployerPrincipalId string = ''
 
+@description('E-mail do administrador de arranque (ADR-016).')
+param bootstrapAdminEmail string = 'admin@rivo.local'
+
+@description('Password do administrador de arranque. Política do Identity: 12+ caracteres, com maiúscula, minúscula, dígito e símbolo.')
+@secure()
+@minLength(12)
+param bootstrapAdminPassword string
+
 
 // Sufixo determinístico. O nome de uma conta de armazenamento tem de ser único
 // à escala global e só aceita minúsculas e dígitos — derivar do id do grupo de
@@ -186,6 +194,14 @@ resource vault 'Microsoft.KeyVault/vaults@2023-07-01' = {
       value: 'Host=${postgres.properties.fullyQualifiedDomainName};Port=5432;Database=rivo;Username=${postgresAdminUser};Password=${postgresAdminPassword};SslMode=Require'
     }
   }
+
+  // Credencial do administrador de arranque (ADR-016, ADR-028). Fica no Key
+  // Vault e não em app settings: é a credencial que abre o sistema inteiro na
+  // primeira utilização, e o seed nunca a altera depois de a conta existir.
+  resource bootstrapPassword 'secrets@2023-07-01' = {
+    name: 'bootstrap-admin-password'
+    properties: { value: bootstrapAdminPassword }
+  }
 }
 
 // A aplicação lê segredos; não os escreve nem os apaga. `Key Vault Secrets
@@ -283,6 +299,16 @@ resource api 'Microsoft.Web/sites@2023-12-01' = {
 
         { name: 'DocumentStorage__AccountName', value: storage.name }
         { name: 'DocumentStorage__Container', value: 'documents' }
+
+        // Utilizador de arranque (ADR-016). O seed corre fora de Production
+        // (ADR-028) e é idempotente: cria a conta se faltar, e **nunca**
+        // altera uma que já exista — incluindo a password.
+        { name: 'Bootstrap__Users__0__Email', value: bootstrapAdminEmail }
+        {
+          name: 'Bootstrap__Users__0__Password'
+          value: '@Microsoft.KeyVault(SecretUri=${vault::bootstrapPassword.properties.secretUri})'
+        }
+        { name: 'Bootstrap__Users__0__Profiles__0', value: 'Admin' }
       ]
     }
   }

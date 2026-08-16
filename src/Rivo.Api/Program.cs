@@ -38,21 +38,39 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
     app.UseSwaggerUI(options => options.SwaggerEndpoint("/openapi/v1.json", "Rivo API"));
 
-    // Migrações e seed no arranque, para que `docker compose up` deixe o
-    // ambiente utilizável num só comando.
+    // Migrações no arranque, para que `docker compose up` deixe o ambiente
+    // utilizável num só comando.
     //
     // Deliberadamente restrito a Development: em produção, migrar
     // automaticamente no arranque é perigoso — várias instâncias competiriam
     // pelo mesmo schema, e uma migração destrutiva correria sem ninguém a
-    // aprovar. Aí é passo próprio do pipeline.
+    // aprovar. Aí é passo próprio do pipeline (ADR-020).
     //
-    // `identity` vem por último: o seu seed de perfis atribui permissões
-    // declaradas por `audit` e `hr`, cujos schemas têm de existir primeiro.
-    await app.Services.InitialiseAuditModuleAsync();
-    await app.Services.InitialiseDocumentsModuleAsync();
-    await app.Services.InitialiseNotificationsModuleAsync();
-    await app.Services.InitialiseHrModuleAsync();
-    await app.Services.InitialiseIdentityModuleAsync();
+    // A ordem importa: `identity` vem por último porque o seu seed depende de
+    // schemas dos outros.
+    await app.Services.MigrateAuditModuleAsync();
+    await app.Services.MigrateDocumentsModuleAsync();
+    await app.Services.MigrateNotificationsModuleAsync();
+    await app.Services.MigrateHrModuleAsync();
+    await app.Services.MigrateIdentityModuleAsync();
+}
+
+// Seed fora de Production — ADR-028.
+//
+// **Não acompanha a migração, e a distinção é o ponto.** Migrar
+// automaticamente é perigoso pelas razões acima; semear não é: o seed é
+// idempotente (ADR-016), nunca altera contas existentes e só acrescenta o que
+// falta.
+//
+// Estarem juntos era acidente de implementação, e o preço apareceu no primeiro
+// deployment: staging ficou com as tabelas todas e nenhum Perfil de Acesso,
+// porque o gate de `Development` levou o seed atrás da migração.
+//
+// Produção fica de fora: lá, criar o primeiro administrador é acto deliberado
+// e auditado, não efeito colateral de um arranque.
+if (!app.Environment.IsProduction())
+{
+    await app.Services.SeedIdentityModuleAsync();
 }
 
 // Cabeçalhos reencaminhados — fecha o K8.

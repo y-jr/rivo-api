@@ -47,7 +47,7 @@ public static class NotificationsModuleExtensions
     }
 
     /// <summary>Aplica as migrações. Sem seed: notificações são geradas em uso.</summary>
-    public static async Task InitialiseNotificationsModuleAsync(
+    public static async Task MigrateNotificationsModuleAsync(
         this IServiceProvider services,
         CancellationToken cancellationToken = default)
     {

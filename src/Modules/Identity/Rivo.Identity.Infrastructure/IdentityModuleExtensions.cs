@@ -177,13 +177,39 @@ public static class IdentityModuleExtensions
     /// utilizadores.
     /// </para>
     /// </summary>
-    public static async Task InitialiseIdentityModuleAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
+    public static async Task MigrateIdentityModuleAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
     {
         using var scope = services.CreateScope();
 
         await scope.ServiceProvider
             .GetRequiredService<RivoIdentityDbContext>()
             .Database.MigrateAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Semeia os Perfis de Acesso e os utilizadores de arranque.
+    ///
+    /// <para>
+    /// <strong>Separado da migração de propósito</strong> (ADR-028). O ADR-020
+    /// tirou a migração do arranque por duas razões — várias instâncias a
+    /// competir pelo mesmo schema, e uma migração destrutiva a correr sem
+    /// ninguém aprovar. <strong>O seed não tem nenhuma delas:</strong> é
+    /// idempotente por desenho (ADR-016) e só acrescenta.
+    /// </para>
+    ///
+    /// <para>
+    /// Ficaram juntos por acidente de implementação, e o preço apareceu no
+    /// primeiro deployment: staging tinha as tabelas todas e nenhum Perfil de
+    /// Acesso, porque o gate de `Development` levou o seed atrás da migração.
+    /// </para>
+    ///
+    /// <para>
+    /// Pressupõe que as migrações já correram — quem chama garante a ordem.
+    /// </para>
+    /// </summary>
+    public static async Task SeedIdentityModuleAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
+    {
+        using var scope = services.CreateScope();
 
         await scope.ServiceProvider
             .GetRequiredService<AccessProfileSeeder>()
