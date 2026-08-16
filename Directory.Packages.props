@@ -50,6 +50,11 @@
     <PackageVersion Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
   </ItemGroup>
 
+  <!-- Testes de integração (ADR-026). -->
+  <ItemGroup>
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.14.0" />
+  </ItemGroup>
+
   <!-- Testes (ADR-022). -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

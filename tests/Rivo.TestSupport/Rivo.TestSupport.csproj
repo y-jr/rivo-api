@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Ferramenta de teste partilhada: levanta um PostgreSQL real em container.
+
+    **Não referencia módulo nenhum, e não pode passar a referenciar.** Se o
+    fizesse, tornava-se o sítio onde todos os módulos se encontram — o que a
+    arquitectura proíbe e o que o ADR-022 evitou ao dar um projecto de teste a
+    cada domínio.
+
+    O que aqui vive é infraestrutura de teste, não domínio: saber arrancar um
+    container e devolver uma connection string. Duplicar isso por catorze
+    módulos seria repetir código de container, não preservar fronteiras.
+  -->
+
+  <PropertyGroup>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      O xUnit vem de `tests/Directory.Build.props`, que se aplica a tudo o que
+      está sob `tests/`. Declará-lo aqui seria referência duplicada.
+    -->
+    <PackageReference Include="Testcontainers.PostgreSql" />
+  </ItemGroup>
+
+</Project>

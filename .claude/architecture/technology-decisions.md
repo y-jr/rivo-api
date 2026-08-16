@@ -23,6 +23,7 @@ _Última actualização: 2026-08-15._
 | Estrutura de testes | Um projecto por domínio de módulo, em `tests/Modules/` | ADR-022 |
 | Integração contínua | GitHub Actions, dois jobs separados | ADR-023 |
 | Testes de arquitectura | Reflexão e leitura de `.csproj`, sem biblioteca | ADR-024 |
+| Testes de integração | Testcontainers com PostgreSQL real | ADR-026 |
 | Chaves primárias | UUID (chave substituta) | ADR-002 |
 | Concorrência optimista | Coluna `version` | ADR-002 |
 | Valores monetários | `numeric` — nunca vírgula flutuante | ADR-002 |
@@ -41,8 +42,6 @@ avançar, decidir explicitamente e registar ADR.
 
 - **CD, ambientes e alojamento** — o CI está fechado (ADR-023); publicar não.
   Arrasta consigo o passo de migrações em produção (ADR-020).
-- Frameworks de teste de integração com infraestrutura real (candidato:
-  Testcontainers). O domínio está fechado pelo ADR-022.
 - Gestão central de versões de pacotes em `src/` (`tests/` já está resolvido).
 - Mecanismo geral de despacho de eventos entre módulos (o worker de
   `notifications` resolve só o caso dele).

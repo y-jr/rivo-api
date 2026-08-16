@@ -28,8 +28,8 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 
 | # | Fase | Estado |
 |---|---|---|
-| 0 | Fundação de verificação e CI | **Quase fechada** — falta o merge e 2 itens |
-| 1 | Aterrar em Azure — staging primeiro | Por iniciar |
+| 0 | Fundação de verificação e CI | ✅ **Fechada** em 2026-08-16 |
+| 1 | Aterrar em Azure — staging primeiro | **Próxima** |
 | 2 | `approval` — governança de decisões | Por iniciar |
 | 3 | `fiscal` — o que não está bloqueado | Por iniciar |
 | 4 | `finance` — o núcleo | Por iniciar |
@@ -54,7 +54,7 @@ módulo acrescentado antes desta fase multiplica o custo de a fazer.
 | `Directory.Packages.props` para `src/` | ✅ 2026-08-16 — 14 pacotes centralizados |
 | Testes de domínio xUnit | ✅ 100 testes (ADR-022) |
 | `Rivo.Architecture.Tests` | ✅ 21 testes (ADR-024, ADR-025) |
-| **Testes de integração com Testcontainers** | ❌ **por fazer** |
+| Testes de integração com Testcontainers | ✅ 2026-08-16 — ADR-026, 4 testes em `notifications` |
 | GitHub Actions em PR e `main` | ✅ ADR-023, dois jobs |
 | Reconciliar `.claude/state/` | ✅ 2026-08-15 |
 | Saldar a dívida de ADR | ✅ ADR-018 a ADR-021 |
@@ -75,9 +75,7 @@ com ambos os jobs verdes e por mergir. `origin/main` está em `dcc4512`.
    fazer — o merge está bloqueado ao assistente pelo classificador de
    permissões.
 2. ~~`Directory.Packages.props` em `src/`.~~ **Feito em 2026-08-16.**
-3. Testes de integração com Testcontainers para repositórios. Substituem a
-   parte de persistência das suites PowerShell; as PowerShell ficam como smoke
-   end-to-end, que é onde valem.
+3. ~~Testes de integração com Testcontainers.~~ **Feito em 2026-08-16** — ADR-026.
 
 ---
 
@@ -296,4 +294,4 @@ modular para não pagar orquestração distribuída. Sem Service Bus — o despa
 
 | Data | Fase | Estado | Nota |
 |---|---|---|---|
-| 2026-08-16 | 0 | Quase fechada | ADR-024 e ADR-025 em `main` (PR #1 e #2 mergidos). Gestão central de pacotes feita. Falta apenas Testcontainers |
+| 2026-08-16 | 0 | **Fechada** | Todos os itens feitos: ADR-024 e ADR-025 em `main`, gestão central de pacotes, Testcontainers (ADR-026). Critério de saída cumprido — um PR que viole uma fronteira falha o build, e o ruleset impõe-o. Ficam por cobrir os testes de integração dos outros quatro módulos, registado no ADR-026 |

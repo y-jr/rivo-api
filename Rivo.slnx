@@ -39,6 +39,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rivo.Architecture.Tests/Rivo.Architecture.Tests.csproj" />
+    <Project Path="tests/Rivo.TestSupport/Rivo.TestSupport.csproj" />
   </Folder>
   <Folder Name="/tests/Audit/">
     <Project Path="tests/Modules/Audit/Rivo.Audit.Domain.Tests/Rivo.Audit.Domain.Tests.csproj" />
@@ -54,5 +55,6 @@
   </Folder>
   <Folder Name="/tests/Notifications/">
     <Project Path="tests/Modules/Notifications/Rivo.Notifications.Domain.Tests/Rivo.Notifications.Domain.Tests.csproj" />
+    <Project Path="tests/Modules/Notifications/Rivo.Notifications.Infrastructure.Tests/Rivo.Notifications.Infrastructure.Tests.csproj" />
   </Folder>
 </Solution>
