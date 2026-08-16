@@ -37,7 +37,9 @@
     <Project Path="src/Modules/Notifications/Rivo.Notifications.Domain/Rivo.Notifications.Domain.csproj" />
     <Project Path="src/Modules/Notifications/Rivo.Notifications.Infrastructure/Rivo.Notifications.Infrastructure.csproj" />
   </Folder>
-  <Folder Name="/tests/" />
+  <Folder Name="/tests/">
+    <Project Path="tests/Rivo.Architecture.Tests/Rivo.Architecture.Tests.csproj" />
+  </Folder>
   <Folder Name="/tests/Audit/">
     <Project Path="tests/Modules/Audit/Rivo.Audit.Domain.Tests/Rivo.Audit.Domain.Tests.csproj" />
   </Folder>

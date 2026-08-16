@@ -152,13 +152,25 @@ determina *quando* e *porquê* são usados permanece no módulo de origem.
 
 ## Imposição
 
-Desde ADR-017, a fronteira pública é imposta pelo **compilador**: um módulo
-que só publica contratos não pode ter as suas internals referenciadas.
+Três camadas, da mais forte para a mais fraca:
 
-O que continua por rever manualmente: que os contratos não engordem até
-serem a `Application` inteira, e que não exponham entidades de domínio.
+1. **O compilador.** Desde ADR-017, um módulo que só publica contratos não
+   pode ter as suas internals referenciadas.
+2. **Os testes de arquitectura** (ADR-024), em
+   `tests/Rivo.Architecture.Tests`, corridos pelo CI a cada PR. Verificam as
+   referências declaradas nos `.csproj` **e** o que os assemblies
+   efectivamente usam — a distinção importa, porque o compilador poda
+   referências que nenhum tipo usa, e uma referência declarada e não usada
+   fica invisível a quem só olha para os assemblies.
+3. **A revisão humana**, para o que resta.
 
-Testes de arquitectura automatizados — ver
-[state/pending-decisions.md](../state/pending-decisions.md).
+**A tabela acima tem um equivalente executável** em
+`ProjectReferenceTests.DependenciasDeclaradas`. Acrescentar uma direcção aqui
+sem a acrescentar lá faz o teste falhar — e é essa a intenção: uma direcção
+nova é decisão arquitectural, não um detalhe de implementação.
+
+O que continua por rever manualmente: que os contratos não engordem até serem
+a `Application` inteira. Que não exponham entidades de domínio **já é
+verificado** (`Contracts_ExposeNoTypeFromAnotherRivoAssembly`).
 
 

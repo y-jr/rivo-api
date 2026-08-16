@@ -1,6 +1,6 @@
 # Estado do Projecto
 
-_Última actualização: 2026-08-15_
+_Última actualização: 2026-08-16_
 
 ## Fase actual
 
@@ -58,14 +58,15 @@ devolve `501`, e desaparece quando `approval` for implementado.
 | Documentos-fonte (`docs/`) | Completos, com resoluções R1–R5 aplicadas |
 | Mapa de domínios, fronteiras e regras de dependência | Fechados |
 | 14 módulos definidos | Responsabilidade, ownership, contratos e proibições definidos |
-| 23 ADRs | Aceites. ADR-018 a ADR-021 são registo retroactivo de decisões tomadas em código |
+| 24 ADRs | Aceites. ADR-018 a ADR-021 são registo retroactivo de decisões tomadas em código |
 | Padrões (código, nomes, testes, erros, persistência, API, segurança) | Definidos |
 | Código de aplicação | 5 módulos, 25 projectos, ~84 ficheiros `.cs` |
 | Persistência | PostgreSQL, schema por domínio, migrações EF Core por módulo |
 | Ambiente local | Docker Compose (API + PostgreSQL 17), um comando |
 | Verificação end-to-end | 6 suites PowerShell caixa-preta, 66 casos |
 | Testes de domínio | 100 testes em 5 módulos, xUnit (ADR-022) |
-| Integração contínua | GitHub Actions, 2 jobs (ADR-023) — **pressupõe git e remoto, que ainda não existem** |
+| Testes de arquitectura | 17 testes: fronteiras, camadas e autorização de endpoints (ADR-024) |
+| Integração contínua | GitHub Actions, 2 jobs (ADR-023), verde em `y-jr/rivo_back` |
 | Documentação de API | OpenAPI gerado em runtime, exposto só em `Development` |
 
 ## O que não existe
@@ -73,16 +74,12 @@ devolve `501`, e desaparece quando `approval` for implementado.
 - **Testes de Application, Infrastructure e API.** O domínio está coberto
   (ADR-022); as outras três camadas de
   [standards/testing.md](../standards/testing.md) não têm nada próprio.
-- **Testes de arquitectura.** Nenhum. As fronteiras do ADR-017 continuam a
-  depender de revisão humana.
-- **⚠ Controlo de versões.** O repositório **não está sob git**. Não há
-  `.git/`, nem remoto, nem histórico. O workflow de CI existe em ficheiro mas
-  não corre em lado nenhum até isso mudar — é hoje o bloqueio mais elementar
-  do projecto.
-- **CD e ambientes.** O CI está fechado (ADR-023); publicar não. Produção não
-  existe em lado nenhum.
+- **CD e ambientes.** O CI está fechado (ADR-023) e verde; publicar não.
 - **Infraestrutura como código**, nem qualquer ambiente para além do local.
   Produção não existe em lado nenhum.
+- **Protecção do ramo `main`.** O CI reporta mas ainda não obriga: falta a
+  regra que exige o job de build e testes antes de merge. Enquanto faltar, o
+  pipeline avisa e ninguém é obrigado a corrigir.
 - **Caminho de migração para produção.** As migrações aplicam-se no arranque
   apenas em `Development` — deliberadamente, porque migrar automaticamente em
   produção com várias instâncias é perigoso. Falta o passo de pipeline que o
@@ -102,19 +99,15 @@ devolve `501`, e desaparece quando `approval` for implementado.
 
 ## Riscos principais
 
-1. **Erosão de fronteiras — o risco continua por mitigar.** Foi o que produziu
-   os problemas do protótipo (5 implementações de aprovação, 2 de auditoria).
-   O ADR-017 dá a ferramenta certa (assemblies de contratos), mas **nada o
-   impõe automaticamente**: não existem testes de arquitectura. Com cinco
-   módulos ainda é vigiável por revisão; com catorze não é. O primeiro caso
-   difícil — a dependência mútua `hr ↔ approval` — chega com `approval`.
-2. **O CI existe em ficheiro mas não corre.** O domínio tem 100 testes
-   verificados por mutação (ADR-022) e o workflow está escrito (ADR-023) —
-   mas **o repositório não está sob git**, logo nada disto se activa. Até
-   haver `git init` e um remoto, a cobertura continua a depender de alguém se
-   lembrar. Além disso, Application, Infrastructure e API continuam sem
-   cobertura própria, e a autorização declarada nos endpoints (ADR-018) não é
-   verificada por nada.
+1. **Cobertura desigual entre camadas.** O domínio tem 100 testes e a
+   arquitectura 17, ambos verificados por mutação. **Application,
+   Infrastructure e API não têm cobertura própria** — o que lá existe é
+   exercitado indirectamente pelas 66 verificações caixa-preta, que testam o
+   sistema montado e não as unidades.
+2. **O CI reporta mas não obriga.** Falta a regra de protecção do ramo que
+   exige o job de build e testes antes de merge. Sem ela, uma violação de
+   fronteira aparece no PR e pode ser ignorada — e o risco de erosão, que os
+   testes do ADR-024 passaram a detectar, volta a depender de disciplina.
 3. **Lacuna de requisitos fiscais** — `fiscal` é o módulo com maior
    indefinição, e bloqueia `commercial`, `procurement` e `payroll` em tudo o
    que envolva imposto. O bloqueio é **jurídico**, não técnico.
@@ -137,19 +130,20 @@ por ratificar, não estado assente — se adoptada, regista-se como ADR.
    2026-08-15** — ADR-018 a ADR-021.
 2. ~~Criar os projectos de teste de domínio e decidir a stack de testes.~~
    **Feito em 2026-08-15** — ADR-022, 100 testes em 5 módulos.
-3. **⚠ Pôr o repositório sob git e publicá-lo no GitHub.** É agora o passo
-   mais elementar e o mais urgente: o workflow de CI já existe (ADR-023) e não
-   corre porque não há repositório. Tudo o resto depende disto.
-4. Testes de arquitectura que impõem
-   [dependency-rules.md](../architecture/dependency-rules.md) e o ADR-017
-   (risco 1). O ADR-018 §Risks identifica outro que deve existir desde cedo:
-   **todo o endpoint tem de declarar autorização** ou ser explicitamente
-   marcado como anónimo — hoje um `MapPost` esquecido fica público em silêncio.
-5. Desenho detalhado do Approval Engine (modelo de dados, semântica de SLA,
+3. ~~Pôr o repositório sob git e publicá-lo no GitHub, com o CI a correr.~~
+   **Feito em 2026-08-16** — `y-jr/rivo_back`, ambos os jobs verdes.
+4. ~~Testes de arquitectura que impõem
+   [dependency-rules.md](../architecture/dependency-rules.md) e o ADR-017.~~
+   **Feito em 2026-08-16** — ADR-024, 17 testes, incluindo o que garante que
+   **todo o endpoint declara autorização**.
+5. **⚠ Proteger o ramo `main`**, exigindo o job de build e testes antes de
+   merge. É o passo que transforma o CI de informativo em vinculativo, e sem
+   ele os pontos 2 e 4 não fecham o risco que existem para fechar.
+6. Desenho detalhado do Approval Engine (modelo de dados, semântica de SLA,
    invariantes) e sua implementação. Desbloqueia o `501` de `hr` e seis
    módulos. **Traz consigo o K14:** BR-17 exige concorrência optimista, que
    ainda não existe em lado nenhum.
-6. Fechar as decisões de infraestrutura de produção — segredos, migrações
+7. Fechar as decisões de infraestrutura de produção — segredos, migrações
    (que o ADR-020 deixa deliberadamente em aberto), topologia (que o K8 exige),
    object storage (que o K11 exige).
 
