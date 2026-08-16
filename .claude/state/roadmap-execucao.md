@@ -12,15 +12,15 @@ tarde, (3) prazos externos.
 
 ## Fase corrente
 
-**Fase 1 — Consolidar a imposição do CI.** PARADA em 2026-08-16 por bloqueante
-real; aguarda decisão de governação do repositório.
+**Fase 2 — Concorrência optimista (K14).** Por iniciar. A Fase 1 fechou em
+2026-08-16.
 
 ## Quadro
 
 | # | Fase | Estado |
 |---|---|---|
-| 1 | Consolidar a imposição do CI | **PARADA** — bloqueante real |
-| 2 | Concorrência optimista (K14) | Por iniciar |
+| 1 | Consolidar a imposição do CI | **Concluída** em 2026-08-16 |
+| 2 | Concorrência optimista (K14) | **Próxima** |
 | 3 | Approval Engine | Por iniciar |
 | 4 | Fundação fiscal (parte não bloqueada) | Por iniciar |
 | 5 | Finance | Por iniciar |
@@ -40,9 +40,9 @@ AGT/jurídico, segurança contínua, frontend. Ver
 **Entrada:** repositório sob git com remoto; CI escrito (ADR-023) e a correr.
 
 **Porquê primeiro:** o trabalho das fases seguintes só está protegido se o
-pipeline for vinculativo. Hoje há um PR aberto com os testes de arquitectura
-(ADR-024) que ainda não chegou a `main` — até chegar, `main` não tem a
-verificação de fronteiras que todas as fases seguintes pressupõem.
+pipeline for vinculativo. Enquanto os testes de arquitectura (ADR-024) não
+chegassem a `main`, `main` não tinha a verificação de fronteiras que todas as
+fases seguintes pressupõem.
 
 **Critérios de saída:**
 
@@ -58,17 +58,24 @@ verificação de fronteiras que todas as fases seguintes pressupõem.
 
 **Dependências:** nenhuma.
 
-**Veredito de 2026-08-16: PARAR — bloqueante real (§4.2a).**
+**Veredito de 2026-08-16, primeira passagem: PARAR — bloqueante real (§4.2a).**
 
-Critérios 3 e 4 cumpridos. 1, 2 e 5 dependem de um merge que **ninguém pode
-fazer**: o ruleset exige `required_approving_review_count: 1`, o repositório
+Critérios 3 e 4 cumpridos. 1, 2 e 5 dependiam de um merge que **ninguém podia
+fazer**: o ruleset exigia `required_approving_review_count: 1`, o repositório
 tem um único colaborador, o GitHub não aceita auto-aprovação e `bypass_actors`
-está vazio (`current_user_can_bypass: never`).
+estava vazio (`current_user_can_bypass: never`).
 
-Os dois checks do PR #1 estão em SUCCESS. O único item por satisfazer é a
-aprovação humana. **Sair daqui exige alterar a governação do repositório, o
-que não é decisão de executor.** Opções em [project-state.md](project-state.md)
-e no relatório da sessão.
+**Decisão de governação, 2026-08-16:** `required_approving_review_count`
+baixado de 1 para 0. Tudo o resto preservado — `enforcement: active`, PR
+obrigatório, os dois status checks com `strict: true`, sem force-push, sem
+apagar o ramo, `bypass_actors` vazio.
+
+Perde-se a revisão por outro par, que com um só colaborador nunca chegou a
+existir. Mantém-se o que a fase existia para conseguir: nada entra em `main`
+sem os dois jobs verdes. **Repor a 1 quando houver um segundo colaborador.**
+
+**Veredito de 2026-08-16, segunda passagem: AVANÇAR.** Os cinco critérios
+cumpridos; ver o registo no fim do documento.
 
 ---
 
@@ -226,4 +233,5 @@ possui tabelas.
 
 | Data | Fase | Veredito | Razão |
 |---|---|---|---|
-| 2026-08-16 | 1 — Consolidar a imposição do CI | **PARAR** | Bloqueante real (§4.2a): o ruleset exige 1 revisão aprovadora e há um só colaborador. Nenhum PR pode fechar. Critérios 3 e 4 cumpridos; 1, 2 e 5 dependem do merge |
+| 2026-08-16 | 1 — Consolidar a imposição do CI | **PARAR** | Bloqueante real (§4.2a): o ruleset exigia 1 revisão aprovadora e há um só colaborador. Nenhum PR podia fechar. Critérios 3 e 4 cumpridos; 1, 2 e 5 dependiam do merge |
+| 2026-08-16 | 1 — Consolidar a imposição do CI | **AVANÇAR** | Bloqueante levantado por decisão de governação: `required_approving_review_count` de 1 para 0, resto do ruleset intacto. PR #1 mergido com os dois jobs verdes. Os cinco critérios cumpridos |

@@ -67,6 +67,7 @@ devolve `501`, e desaparece quando `approval` for implementado.
 | Testes de domínio | 100 testes em 5 módulos, xUnit (ADR-022) |
 | Testes de arquitectura | 17 testes: fronteiras, camadas e autorização de endpoints (ADR-024) |
 | Integração contínua | GitHub Actions, 2 jobs (ADR-023), verde em `y-jr/rivo_back` |
+| Protecção de `main` | Ruleset `build_and_domain_test` activo: PR obrigatório, os dois jobs de CI verdes, sem force-push nem apagar o ramo |
 | Documentação de API | OpenAPI gerado em runtime, exposto só em `Development` |
 
 ## O que não existe
@@ -77,11 +78,12 @@ devolve `501`, e desaparece quando `approval` for implementado.
 - **CD e ambientes.** O CI está fechado (ADR-023) e verde; publicar não.
 - **Infraestrutura como código**, nem qualquer ambiente para além do local.
   Produção não existe em lado nenhum.
-- **Revisor para os pull requests.** O ruleset `build_and_domain_test` está
-  **activo** e exige PR, os dois jobs de CI verdes, e **1 revisão aprovadora**.
-  O repositório tem um único colaborador, e o GitHub não permite aprovar o
-  próprio PR — logo **nenhum PR pode ser fechado**. É o bloqueio da Fase 1 em
-  [roadmap-execucao.md](roadmap-execucao.md).
+- **Revisão humana dos pull requests.** O ruleset exige PR e CI verde, mas
+  `required_approving_review_count` está a **0**: com um único colaborador, o
+  GitHub não permite aprovar o próprio PR, e exigir 1 revisão impedia qualquer
+  merge. A imposição que interessa — nada entra em `main` sem os dois jobs
+  verdes — está activa; a revisão por outro par não. **Repor a 1 quando houver
+  um segundo colaborador.**
 - **Caminho de migração para produção.** As migrações aplicam-se no arranque
   apenas em `Development` — deliberadamente, porque migrar automaticamente em
   produção com várias instâncias é perigoso. Falta o passo de pipeline que o
@@ -106,13 +108,10 @@ devolve `501`, e desaparece quando `approval` for implementado.
    Infrastructure e API não têm cobertura própria** — o que lá existe é
    exercitado indirectamente pelas 66 verificações caixa-preta, que testam o
    sistema montado e não as unidades.
-2. **A protecção obriga a mais do que o projecto consegue cumprir.** O ruleset
-   está activo e exige PR + dois jobs verdes + 1 revisão aprovadora. Os dois
-   primeiros são exactamente o que se queria; o terceiro é impossível de
-   satisfazer com um só colaborador. O efeito prático é o inverso do
-   pretendido: em vez de garantir que só código verificado entra em `main`,
-   garante que **nada entra**. `origin/main` está por isso sem os testes de
-   arquitectura que já existem e passam.
+2. **Nada revê o código além do próprio autor.** O ruleset garante que só entra
+   em `main` o que passa nos dois jobs, mas não há segundo par de olhos: com um
+   colaborador, a revisão aprovadora teve de ficar a 0. O CI apanha regressões
+   e violações de fronteira; não apanha desenho errado que compile e passe.
 3. **Lacuna de requisitos fiscais** — `fiscal` é o módulo com maior
    indefinição, e bloqueia `commercial`, `procurement` e `payroll` em tudo o
    que envolva imposto. O bloqueio é **jurídico**, não técnico.
@@ -143,9 +142,10 @@ por ratificar, não estado assente — se adoptada, regista-se como ADR.
    **todo o endpoint declara autorização**.
 5. ~~Proteger o ramo `main`, exigindo os jobs de CI antes de merge.~~
    **Feito em 2026-08-16** — ruleset `build_and_domain_test` activo, a exigir
-   PR e os dois jobs. **Mas ficou apertado a mais:** exige também 1 revisão
-   aprovadora, impossível com um único colaborador. Nada entra em `main` até
-   isso ser decidido — ver Fase 1 em [roadmap-execucao.md](roadmap-execucao.md).
+   PR e os dois jobs. Nasceu a exigir também 1 revisão aprovadora, o que com um
+   só colaborador impedia qualquer merge; baixado a 0 no mesmo dia, por decisão
+   registada na Fase 1 de [roadmap-execucao.md](roadmap-execucao.md). O CI
+   passou de informativo a vinculativo.
 6. Desenho detalhado do Approval Engine (modelo de dados, semântica de SLA,
    invariantes) e sua implementação. Desbloqueia o `501` de `hr` e seis
    módulos. **Traz consigo o K14:** BR-17 exige concorrência optimista, que
