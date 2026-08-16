@@ -90,9 +90,11 @@ em abstracto.
 
 - IaC em **Bicep**, parametrizado por ambiente (dev / staging / prod). Nada
   criado à mão no portal.
-- **Container Apps** como destino da API. Preferido a App Service porque o
-  worker de notificações vive no mesmo processo: dá revisões, escala por regra
-  e caminho directo para o separar depois sem mudar de plataforma.
+- ~~**Container Apps** como destino da API.~~ **Alterado para App Service
+  Linux B1** (ADR-027). A subscrição permite um só ambiente de Container Apps e
+  ele já está ocupado por outro projecto — é restrição de quota, não mudança de
+  análise. A justificação original volta a valer numa subscrição própria, e o
+  ADR diz exactamente o que se perde entretanto.
 - **PostgreSQL Flexible Server**, com os schemas por domínio do ADR-002.
 - **Key Vault + Managed Identity.** Chave JWT e credencial da base de dados
   saem do `.env`. Fecha "gestão de segredos em produção".
@@ -273,7 +275,7 @@ demasiado. Começar por `identity`, `hr` e `approval`.
 
 | Serviço | Papel | Fecha |
 |---|---|---|
-| Container Apps | API e worker | Topologia de produção → K8 |
+| App Service (Linux B1) | API e worker (ADR-027) | Topologia de produção → K8 |
 | Container Registry | Imagens por commit | — |
 | PostgreSQL Flexible | Schemas por domínio (ADR-002) | Utilizadores de BD → K9 |
 | Key Vault | Chave JWT e credenciais, por Managed Identity | Segredos em produção |

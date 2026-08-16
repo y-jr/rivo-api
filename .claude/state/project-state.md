@@ -58,7 +58,7 @@ devolve `501`, e desaparece quando `approval` for implementado.
 | Documentos-fonte (`docs/`) | Completos, com resoluções R1–R5 aplicadas |
 | Mapa de domínios, fronteiras e regras de dependência | Fechados |
 | 14 módulos definidos | Responsabilidade, ownership, contratos e proibições definidos |
-| 26 ADRs | Aceites. ADR-018 a ADR-021 são registo retroactivo de decisões tomadas em código |
+| 27 ADRs | Aceites. ADR-018 a ADR-021 são registo retroactivo de decisões tomadas em código |
 | Padrões (código, nomes, testes, erros, persistência, API, segurança) | Definidos |
 | Código de aplicação | 5 módulos, 25 projectos, ~84 ficheiros `.cs` |
 | Persistência | PostgreSQL, schema por domínio, migrações EF Core por módulo |
