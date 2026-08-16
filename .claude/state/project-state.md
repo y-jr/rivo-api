@@ -77,9 +77,11 @@ devolve `501`, e desaparece quando `approval` for implementado.
 - **CD e ambientes.** O CI está fechado (ADR-023) e verde; publicar não.
 - **Infraestrutura como código**, nem qualquer ambiente para além do local.
   Produção não existe em lado nenhum.
-- **Protecção do ramo `main`.** O CI reporta mas ainda não obriga: falta a
-  regra que exige o job de build e testes antes de merge. Enquanto faltar, o
-  pipeline avisa e ninguém é obrigado a corrigir.
+- **Revisor para os pull requests.** O ruleset `build_and_domain_test` está
+  **activo** e exige PR, os dois jobs de CI verdes, e **1 revisão aprovadora**.
+  O repositório tem um único colaborador, e o GitHub não permite aprovar o
+  próprio PR — logo **nenhum PR pode ser fechado**. É o bloqueio da Fase 1 em
+  [roadmap-execucao.md](roadmap-execucao.md).
 - **Caminho de migração para produção.** As migrações aplicam-se no arranque
   apenas em `Development` — deliberadamente, porque migrar automaticamente em
   produção com várias instâncias é perigoso. Falta o passo de pipeline que o
@@ -104,10 +106,13 @@ devolve `501`, e desaparece quando `approval` for implementado.
    Infrastructure e API não têm cobertura própria** — o que lá existe é
    exercitado indirectamente pelas 66 verificações caixa-preta, que testam o
    sistema montado e não as unidades.
-2. **O CI reporta mas não obriga.** Falta a regra de protecção do ramo que
-   exige o job de build e testes antes de merge. Sem ela, uma violação de
-   fronteira aparece no PR e pode ser ignorada — e o risco de erosão, que os
-   testes do ADR-024 passaram a detectar, volta a depender de disciplina.
+2. **A protecção obriga a mais do que o projecto consegue cumprir.** O ruleset
+   está activo e exige PR + dois jobs verdes + 1 revisão aprovadora. Os dois
+   primeiros são exactamente o que se queria; o terceiro é impossível de
+   satisfazer com um só colaborador. O efeito prático é o inverso do
+   pretendido: em vez de garantir que só código verificado entra em `main`,
+   garante que **nada entra**. `origin/main` está por isso sem os testes de
+   arquitectura que já existem e passam.
 3. **Lacuna de requisitos fiscais** — `fiscal` é o módulo com maior
    indefinição, e bloqueia `commercial`, `procurement` e `payroll` em tudo o
    que envolva imposto. O bloqueio é **jurídico**, não técnico.
@@ -136,9 +141,11 @@ por ratificar, não estado assente — se adoptada, regista-se como ADR.
    [dependency-rules.md](../architecture/dependency-rules.md) e o ADR-017.~~
    **Feito em 2026-08-16** — ADR-024, 17 testes, incluindo o que garante que
    **todo o endpoint declara autorização**.
-5. **⚠ Proteger o ramo `main`**, exigindo o job de build e testes antes de
-   merge. É o passo que transforma o CI de informativo em vinculativo, e sem
-   ele os pontos 2 e 4 não fecham o risco que existem para fechar.
+5. ~~Proteger o ramo `main`, exigindo os jobs de CI antes de merge.~~
+   **Feito em 2026-08-16** — ruleset `build_and_domain_test` activo, a exigir
+   PR e os dois jobs. **Mas ficou apertado a mais:** exige também 1 revisão
+   aprovadora, impossível com um único colaborador. Nada entra em `main` até
+   isso ser decidido — ver Fase 1 em [roadmap-execucao.md](roadmap-execucao.md).
 6. Desenho detalhado do Approval Engine (modelo de dados, semântica de SLA,
    invariantes) e sua implementação. Desbloqueia o `501` de `hr` e seis
    módulos. **Traz consigo o K14:** BR-17 exige concorrência optimista, que

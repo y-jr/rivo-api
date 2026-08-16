@@ -12,7 +12,7 @@ using Rivo.Notifications.Infrastructure;
 using Rivo.Identity.Infrastructure;
 using Rivo.Identity.Infrastructure.Persistence;
 
-var builder = WebApplication.CreateBuilder(args); 
+var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi(options =>
 {
