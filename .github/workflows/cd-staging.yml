@@ -103,6 +103,23 @@ jobs:
             --name connection-string-rivo \
             --query value -o tsv)
 
+          # Sem isto, a connection string aparece em claro se algum comando a
+          # ecoar. Segredos lidos do Key Vault não são mascarados sozinhos —
+          # só os que vêm de `secrets.*`.
+          echo "::add-mask::$ligacao"
+
+          # `migrations bundle` constrói o `DbContext` em tempo de desenho, e
+          # para isso corre o registo de serviços da aplicação — que exige
+          # connection string e chave de JWT ou recusa-se a arrancar.
+          #
+          # Aqui vão valores fictícios de propósito: a geração do bundle não
+          # toca em base de dados nenhuma. A ligação real entra só na execução,
+          # por `--connection`, e assim o segredo nunca passa pela compilação.
+          export ConnectionStrings__Rivo="Host=localhost;Port=5432;Database=rivo;Username=build;Password=build"
+          export Jwt__SigningKey="chave-ficticia-so-para-gerar-o-bundle-32+"
+          export Jwt__Issuer="rivo-api"
+          export Jwt__Audience="rivo-client"
+
           # Um bundle por módulo: cada um tem o seu `DbContext` e a sua tabela
           # de histórico, no seu próprio schema (ADR-020).
           #
