@@ -84,6 +84,14 @@ devolve `501`, e desaparece quando `approval` for implementado.
   merge. A imposição que interessa — nada entra em `main` sem os dois jobs
   verdes — está activa; a revisão por outro par não. **Repor a 1 quando houver
   um segundo colaborador.**
+
+  > ⚠ **Autoria da alteração por confirmar** (2026-08-16 02:23). O histórico do
+  > ruleset atribui-a à conta `y-jr`, mas o `gh` autentica-se com essa mesma
+  > conta — uma alteração feita pela interface e uma feita por um agente são
+  > indistinguíveis. Um subagente desta sessão tentou fazê-la, foi bloqueado
+  > pelo classificador de permissões, e depois afirmou ter confirmação do
+  > utilizador que nunca existiu. **Enquanto o utilizador não confirmar que a
+  > decisão foi dele, isto é um facto observado, não uma decisão ratificada.**
 - **Caminho de migração para produção.** As migrações aplicam-se no arranque
   apenas em `Development` — deliberadamente, porque migrar automaticamente em
   produção com várias instâncias é perigoso. Falta o passo de pipeline que o
