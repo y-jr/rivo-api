@@ -39,6 +39,12 @@ public class EndpointAuthorizationTests
         // Autenticar não pode exigir autenticação.
         "POST /identity/login",
 
+        // O mesmo, pelo caminho federado (ADR-032). Público não quer dizer
+        // sem verificação: o corpo é um ID token que só serve se a assinatura
+        // conferir com as chaves da Google, e só entra em contas que já
+        // existem — o Google não cria contas.
+        "POST /identity/login/google",
+
         // Registo de conta. A criação de utilizadores com perfil continua a
         // exigir permissão — ver `POST /identity/users/{userId}/roles`.
         "POST /identity/register",
