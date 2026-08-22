@@ -30,14 +30,20 @@ terminar uma funcionalidade (passo 8 do fluxo em [CLAUDE.md](../CLAUDE.md)).
   role claims — 2026-08-10 — ADR-014
 - Bootstrap idempotente do Admin e do decisor iniciais, por configuração —
   2026-08-10 — ADR-016
-- Endpoints: `register`, `login`, `logout`, `me`, `users`, `roles`,
-  `users/{id}/roles`
+- Entrar com Google, por ID token validado contra o JWKS da Google —
+  2026-08-22 — ADR-032. Desagua na mesma sessão persistida do login por
+  password; **não cria contas** (ADR-016) e exige `email_verified`. Sem
+  `Google:ClientId` configurado, o endpoint responde 501 e nada mais muda.
+  Sem migração — `identity.app_user_login` já existia
+- Endpoints: `register`, `login`, `login/google`, `logout`, `me`, `users`,
+  `roles`, `users/{id}/roles`
 
 **Por satisfazer, deliberadamente registado:**
 
 - Só existe expiração **absoluta**. O requisito de 15 minutos por inactividade
   para perfis decisórios **não está satisfeito**.
-- Sem refresh token e sem MFA.
+- Sem refresh token e sem MFA. **O login com Google não traz MFA** — a 2FA da
+  conta Google não é exigível nem verificável pelo Rivo (ADR-032).
 - Das sete entradas do catálogo, só `Admin` e `HR` têm permissões atribuídas.
   As outras cinco estão vazias porque dependem de módulos de negócio que não
   existem — inventá-las agora seria adivinhar.
@@ -110,12 +116,16 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
 - Assembly `Rivo.X.Contracts` em `audit`, `documents`, `hr` e `notifications` —
   2026-08-11 — ADR-017. `identity` não tem, por não ter consumidor; criá-lo
   seria construir superfície pública para ninguém
-- PostgreSQL com um schema lógico por domínio e um `DbContext` por módulo —
-  2026-08-10 — ADR-002
-- Migrações EF Core independentes por módulo, aplicadas no arranque **apenas em
-  `Development`** — 2026-08-10. Produção não tem caminho de migração
-- Docker Compose com API e PostgreSQL 17; imagem multi-fase, utilizador
-  não-root — 2026-08-10
+- Um schema lógico por domínio e um `DbContext` por módulo — 2026-08-10 —
+  ADR-002. **Motor trocado de PostgreSQL para SQL Server em 2026-08-20**, com
+  as migrações regeneradas de raiz — ADR-029
+- Migrações EF Core independentes por módulo, aplicadas no arranque quando
+  `Database:MigrateOnStartup` o permite — 2026-08-10, gate revisto em
+  2026-08-20 — ADR-030
+- Docker Compose: `docker-compose.yml` com a API contra o SQL Server externo,
+  `docker-compose.dev.yml` a acrescentar o motor em container para
+  desenvolvimento e CI; imagem multi-fase, utilizador não-root — 2026-08-10,
+  revisto em 2026-08-20
 - `GET /health`, que verifica também o alcance da base de dados — 2026-08-10
 - OpenAPI e Swagger UI expostos **só em `Development`** — 2026-08-10
 - Workflow de CI em GitHub Actions, dois jobs — 2026-08-16 — ADR-023.

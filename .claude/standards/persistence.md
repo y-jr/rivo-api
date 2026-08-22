@@ -2,8 +2,8 @@
 
 ## Base de dados
 
-Um PostgreSQL, **um schema lógico por domínio**, ownership exclusivo de
-tabela (ADR-002).
+Uma base de dados SQL Server, **um schema lógico por domínio**, ownership
+exclusivo de tabela (ADR-002 para o desenho, ADR-029 para o motor).
 
 Partilhar a instância não é partilhar ownership.
 
@@ -80,7 +80,7 @@ RLS é usada para **segregação de funções**, não para isolamento de tenant
 
 - `Domain`/`Application` definem as interfaces em termos dos agregados do
   próprio módulo.
-- `Infrastructure` implementa contra PostgreSQL. `Domain` nunca importa a
+- `Infrastructure` implementa contra o motor. `Domain` nunca importa a
   tecnologia de persistência.
 - Um repositório devolve e aceita agregados, não linhas nem DTOs.
 
@@ -90,11 +90,12 @@ Cada módulo evolui o seu schema de forma independente. As migrações devem
 ser organizadas para que a migração de um módulo não obrigue a tocar
 noutro.
 
-PostgreSQL tem DDL transaccional — uma migração que falhe reverte
+O SQL Server tem DDL transaccional — uma migração que falhe reverte
 atomicamente. Não é desculpa para migrações grandes, mas elimina a classe de
 falha "schema em estado parcial".
 
 ## Em aberto
 
-ORM e tooling de migrações — ver
+Utilizador de base de dados restrito aos schemas do Rivo: a instância é
+partilhada com outros sistemas (ADR-029), e o isolamento é só por schema. Ver
 [architecture/technology-decisions.md](../architecture/technology-decisions.md).

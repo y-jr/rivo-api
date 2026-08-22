@@ -64,6 +64,14 @@ public static class AuditActions
     public const string UserLoginFailed = "identity.user.login_failed";
     public const string UserLoggedOut = "identity.user.logged_out";
     public const string ProfileAssigned = "identity.user.profile_assigned";
+
+    /// <summary>
+    /// Uma identidade de provider externo passou a poder entrar nesta conta
+    /// (ADR-032). Acção própria, e não um login qualquer: a conta ganhou um
+    /// caminho de credencial novo, o que é alteração de estado com peso de
+    /// segurança. Acontece uma vez por pessoa e por provider.
+    /// </summary>
+    public const string ExternalLoginLinked = "identity.user.external_login_linked";
 }
 
 /// <summary>

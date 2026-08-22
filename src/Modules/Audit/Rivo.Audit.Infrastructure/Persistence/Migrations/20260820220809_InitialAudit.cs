@@ -19,16 +19,16 @@ namespace Rivo.Audit.Infrastructure.Persistence.Migrations
                 schema: "audit",
                 columns: table => new
                 {
-                    id = table.Column<Guid>(type: "uuid", nullable: false),
-                    action = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    entity_type = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    entity_id = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    actor_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    ip_address = table.Column<string>(type: "character varying(45)", maxLength: 45, nullable: true),
-                    correlation_id = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
-                    previous_value = table.Column<string>(type: "jsonb", nullable: true),
-                    new_value = table.Column<string>(type: "jsonb", nullable: true),
-                    occurred_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                    id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    action = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+                    entity_type = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+                    entity_id = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+                    actor_id = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    ip_address = table.Column<string>(type: "nvarchar(45)", maxLength: 45, nullable: true),
+                    correlation_id = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
+                    previous_value = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    new_value = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    occurred_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
                 },
                 constraints: table =>
                 {

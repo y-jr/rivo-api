@@ -2,6 +2,11 @@
 
 ## Status
 
+**Substituído pelo [ADR-031](adr-031-deployment-em-vps.md)** (2026-08-20): o
+deployment passa a ser numa VPS, por SSH e `docker compose`. Todo o caminho de
+Azure descrito aqui — App Service, Container Registry, Key Vault, Bicep — saiu
+do repositório. Fica como registo de porque é que existiu.
+
 Aceite (2026-08-16)
 
 ## Context

@@ -2,7 +2,13 @@
 
 ## Status
 
-Aceite.
+Aceite — **escolha de motor substituída pelo
+[ADR-029](adr-029-sql-server-em-vez-de-postgresql.md)** (2026-08-20): o motor
+passa a ser SQL Server. O desenho de
+schemas que este ADR fixa — um schema lógico por domínio, ownership exclusivo
+de tabela, sem FK entre schemas excepto para a chave primária do contexto
+dono — mantém-se integralmente, e é o que tornou a troca possível sem
+redesenhar nada.
 
 > **Nota (2026-08-10):** SQL Server e MySQL foram considerados durante esta
 > fase e **PostgreSQL foi mantido**. Achados relevantes dessa avaliação

@@ -1,10 +1,11 @@
 # Verificação do módulo `documents` e da ligação a `hr` (ADR-009).
 #
-#   docker compose up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 #   pwsh -File scripts/verify-documents.ps1
 
 $ErrorActionPreference = "Stop"
-$base = "http://localhost:5080"
+. (Join-Path $PSScriptRoot "_ambiente.ps1")
+$base = Get-RivoBaseUrl
 $failures = 0
 
 function Test-Case {
@@ -29,12 +30,9 @@ function Get-StatusCode {
     }
 }
 
-function Invoke-Sql { param([string]$q) return (docker exec rivo-postgres psql -U rivo -d rivo -t -A -c $q).Trim() }
+function Invoke-Sql { param([string]$q) return (Invoke-RivoSql $q) }
 
-$dotenv = @{}
-Get-Content ".env" | Where-Object { $_ -match "=" -and $_ -notmatch "^\s*#" } | ForEach-Object {
-    $p = $_ -split "=", 2; $dotenv[$p[0].Trim()] = $p[1].Trim()
-}
+$dotenv = Get-RivoCredentials
 
 function Get-Token {
     param([string]$Email, [string]$Password)
@@ -77,9 +75,15 @@ Test-Case "2. documents nao referencia registos de negocio (ADR-009)" {
     # Nenhuma FK a sair de documents para outro schema: a ligacao vive no
     # contexto de origem, nao aqui.
     $out = Invoke-Sql @"
-select count(*) from information_schema.table_constraints tc
-join information_schema.constraint_column_usage ccu on ccu.constraint_name = tc.constraint_name
-where tc.constraint_type='FOREIGN KEY' and tc.table_schema='documents' and ccu.table_schema<>'documents'
+-- INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE nao serve aqui: em SQL Server
+-- devolve as colunas da tabela que *tem* a restricao, e nao a tabela
+-- referida. Quem sabe o outro lado da FK e sys.foreign_keys.
+select count(*) from sys.foreign_keys fk
+join sys.tables ot on ot.object_id = fk.parent_object_id
+join sys.schemas os on os.schema_id = ot.schema_id
+join sys.tables dt on dt.object_id = fk.referenced_object_id
+join sys.schemas ds on ds.schema_id = dt.schema_id
+where os.name = 'documents' and ds.name <> 'documents'
 "@
     if ($out -ne "0") { throw "documents tem $out FK para fora" }
     "sem chaves estrangeiras para fora"
@@ -87,9 +91,12 @@ where tc.constraint_type='FOREIGN KEY' and tc.table_schema='documents' and ccu.t
 
 Test-Case "3. FK entre schemas de hr para documents existe" {
     $fk = Invoke-Sql @"
-select count(*) from information_schema.table_constraints tc
-join information_schema.constraint_column_usage ccu on ccu.constraint_name = tc.constraint_name
-where tc.constraint_type='FOREIGN KEY' and tc.table_schema='hr' and ccu.table_schema='documents'
+select count(*) from sys.foreign_keys fk
+join sys.tables ot on ot.object_id = fk.parent_object_id
+join sys.schemas os on os.schema_id = ot.schema_id
+join sys.tables dt on dt.object_id = fk.referenced_object_id
+join sys.schemas ds on ds.schema_id = dt.schema_id
+where os.name = 'hr' and ds.name = 'documents'
 "@
     if ($fk -ne "1") { throw "esperada 1 FK, obtidas $fk" }
     "hr.employee_document -> documents.document"
@@ -200,15 +207,16 @@ Test-Case "11. FK impede eliminar documento ligado" {
     # A restricao tem de existir na base de dados, e nao so na aplicacao:
     # e isso que a chave polimorfica nao dava.
     #
-    # O psql escreve o erro para stderr, e com ErrorActionPreference=Stop isso
+    # O sqlcmd escreve o erro para stderr, e com ErrorActionPreference=Stop isso
     # tornar-se-ia excepcao terminante antes da verificacao. Baixa-se o nivel
     # so para esta chamada.
     $previous = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    $err = (docker exec rivo-postgres psql -U rivo -d rivo -c "delete from documents.document where id='$($script:documentId)';" 2>&1) | Out-String
+    $err = (Invoke-RivoSql "delete from documents.document where id='$($script:documentId)';" -Raw) | Out-String
     $ErrorActionPreference = $previous
 
-    if ($err -notmatch "violates foreign key") { throw "eliminacao nao foi bloqueada: $err" }
+    # SQL Server: "The DELETE statement conflicted with the REFERENCE constraint".
+    if ($err -notmatch "REFERENCE constraint") { throw "eliminacao nao foi bloqueada: $err" }
 
     # Confirma que o documento continua la.
     $still = Invoke-Sql "select count(*) from documents.document where id='$($script:documentId)'"
@@ -225,7 +233,7 @@ Test-Case "12. Upload auditado" {
 }
 
 Test-Case "13. Ficheiro sobrevive ao reinicio da stack" {
-    docker compose restart | Out-Null
+    Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(180)
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
     if (-not $up) { throw "API nao voltou" }

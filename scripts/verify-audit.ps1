@@ -1,10 +1,11 @@
 # Verificação do módulo `audit` e do registo de acções por `identity`.
 #
-#   docker compose up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 #   pwsh -File scripts/verify-audit.ps1
 
 $ErrorActionPreference = "Stop"
-$base = "http://localhost:5080"
+. (Join-Path $PSScriptRoot "_ambiente.ps1")
+$base = Get-RivoBaseUrl
 $failures = 0
 
 function Test-Case {
@@ -31,13 +32,10 @@ function Get-StatusCode {
 
 function Invoke-Sql {
     param([string]$Query)
-    return (docker exec rivo-postgres psql -U rivo -d rivo -t -A -c $Query).Trim()
+    return (Invoke-RivoSql $Query)
 }
 
-$dotenv = @{}
-Get-Content ".env" | Where-Object { $_ -match "=" -and $_ -notmatch "^\s*#" } | ForEach-Object {
-    $p = $_ -split "=", 2; $dotenv[$p[0].Trim()] = $p[1].Trim()
-}
+$dotenv = Get-RivoCredentials
 $adminEmail = $dotenv["BOOTSTRAP_ADMIN_EMAIL"]
 $adminPass = $dotenv["BOOTSTRAP_ADMIN_PASSWORD"]
 
@@ -101,7 +99,7 @@ Test-Case "5. Login e logout auditados, com IP e correlation" {
 
 Test-Case "6. Atribuicao de perfil auditada (BR-13)" {
     $adminHeaders = @{ Authorization = "Bearer " + (Get-Token $adminEmail $adminPass) }
-    $userId = Invoke-Sql "select id from identity.app_user where email='$newEmail'"
+    $userId = Invoke-Sql "select id from [identity].app_user where email='$newEmail'"
     $body = @{ profile = "Finance" } | ConvertTo-Json
     Invoke-RestMethod "$base/identity/users/$userId/roles" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
 
@@ -110,7 +108,7 @@ Test-Case "6. Atribuicao de perfil auditada (BR-13)" {
 
     # O actor tem de ser o Admin, nao o alvo: e isso que torna a trilha util.
     $actor = Invoke-Sql "select actor_id from audit.audit_event where action='identity.user.profile_assigned' and entity_id='$userId'"
-    $adminId = Invoke-Sql "select id from identity.app_user where email='$adminEmail'"
+    $adminId = Invoke-Sql "select id from [identity].app_user where email='$adminEmail'"
     if ($actor -ne $adminId) { throw "actor registado '$actor' nao e o Admin '$adminId'" }
     "actor=Admin, new_value contem o perfil"
 }
@@ -136,7 +134,7 @@ Test-Case "8. Admin consulta a trilha; permissao de outro modulo funciona" {
 
 Test-Case "9. Filtro por entidade" {
     $adminHeaders = @{ Authorization = "Bearer " + (Get-Token $adminEmail $adminPass) }
-    $userId = Invoke-Sql "select id from identity.app_user where email='$newEmail'"
+    $userId = Invoke-Sql "select id from [identity].app_user where email='$newEmail'"
     $entries = Invoke-RestMethod "$base/audit/entries?entityType=identity.user&entityId=$userId" -Headers $adminHeaders
     if ($entries.Count -lt 1) { throw "filtro nao devolveu nada" }
     $wrong = $entries | Where-Object { $_.entityId -ne $userId }
@@ -146,7 +144,7 @@ Test-Case "9. Filtro por entidade" {
 
 Test-Case "10. Trilha sobrevive ao reinicio da stack" {
     $before = Invoke-Sql "select count(*) from audit.audit_event"
-    docker compose restart | Out-Null
+    Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(180)
     do {
         Start-Sleep -Seconds 3

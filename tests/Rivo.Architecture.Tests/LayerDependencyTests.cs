@@ -47,7 +47,7 @@ public class LayerDependencyTests
             "Microsoft.Extensions.DependencyInjection",
             "Microsoft.Extensions.Configuration",
             "Microsoft.Extensions.Hosting",
-            "Npgsql",
+            "Microsoft.Data.SqlClient",
             "System.IdentityModel",
         ];
 

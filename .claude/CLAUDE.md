@@ -46,8 +46,8 @@ de uso emergiram, que conceitos o negócio distingue, que erros já aconteceram.
   (ADR-001).
 - Fronteiras por bounded context, domain-driven design.
 - Arquitectura em camadas dentro de cada módulo.
-- PostgreSQL, um schema lógico por domínio, ownership exclusivo de tabela
-  (ADR-002).
+- SQL Server, um schema lógico por domínio, ownership exclusivo de tabela
+  (ADR-002 fixa o desenho; ADR-029 o motor).
 - Empresa única, sem multi-tenancy na v1 (ADR-003).
 - Backend em C#/.NET.
 

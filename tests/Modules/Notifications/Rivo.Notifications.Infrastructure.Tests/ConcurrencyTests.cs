@@ -6,13 +6,13 @@ using Rivo.TestSupport;
 namespace Rivo.Notifications.Infrastructure.Tests;
 
 /// <summary>
-/// Concorrência optimista contra um PostgreSQL real (ADR-025, ADR-026).
+/// Concorrência optimista contra um SQL Server real (ADR-025, ADR-026).
 ///
 /// <para>
 /// <strong>Fecha a lacuna que o ADR-025 deixou aberta.</strong> Quando a coluna
 /// `version` foi implementada, o mecanismo só foi provado por SQL escrito à
-/// mão — dois `UPDATE` com a mesma versão de partida dando `UPDATE 1` e
-/// `UPDATE 0`. Isso mostra que o PostgreSQL faz a sua parte; não mostra que o
+/// mão — dois `UPDATE` com a mesma versão de partida, afectando uma linha e
+/// depois nenhuma. Isso mostra que o motor faz a sua parte; não mostra que o
 /// EF Core está configurado para tirar partido dela. É o que se verifica aqui.
 /// </para>
 ///
@@ -22,12 +22,12 @@ namespace Rivo.Notifications.Infrastructure.Tests;
 /// tempo — um a marcar a entrega, o outro a marcar como lida.
 /// </para>
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class ConcurrencyTests(PostgresFixture postgres) : IAsyncLifetime
+[Collection(SqlServerCollection.Name)]
+public sealed class ConcurrencyTests(SqlServerFixture sqlServer) : IAsyncLifetime
 {
     private NotificationsDbContext Context() =>
         new(new DbContextOptionsBuilder<NotificationsDbContext>()
-            .UseNpgsql(postgres.ConnectionString)
+            .UseSqlServer(sqlServer.ConnectionString)
             .UseSnakeCaseNamingConvention()
             .Options);
 

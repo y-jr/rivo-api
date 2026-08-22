@@ -57,7 +57,10 @@ arquitectura.
 
 A disponibilidade de RLS foi factor na escolha do motor: MySQL foi avaliado
 e não a oferece, o que deixaria o domínio como única sede da invariante.
-PostgreSQL foi mantido em parte por isso (ADR-002).
+PostgreSQL foi mantido em parte por isso (ADR-002). **A troca para SQL Server
+(ADR-029) não custou esta propriedade:** o SQL Server tem Row-Level Security
+desde a versão 2016, com a mesma função — defesa em profundidade, nunca a sede
+da regra.
 
 ## Nota sobre a ausência de multi-tenancy
 

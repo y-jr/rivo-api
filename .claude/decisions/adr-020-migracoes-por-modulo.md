@@ -4,6 +4,12 @@
 
 Aceite (2026-08-15).
 
+**O gate de execução foi ajustado pelo
+[ADR-030](adr-030-migracao-no-arranque-por-interruptor.md)** (2026-08-20): a
+migração volta ao arranque da aplicação, ligada por interruptor explícito de
+configuração. O desenho descrito aqui — um `DbContext`, um histórico e um
+schema por módulo — mantém-se sem alteração.
+
 **Registo retroactivo.** Implementado em 2026-08-10 com `identity` e replicado
 nos quatro módulos seguintes.
 

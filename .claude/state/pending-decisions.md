@@ -14,7 +14,7 @@ re-litigação:
 | Questão | Resolução |
 |---|---|
 | Modular Monolith vs. Microservices | ADR-001 |
-| Base de dados e ownership | ADR-002 — PostgreSQL. SQL Server e MySQL avaliados e rejeitados |
+| Base de dados e ownership | ADR-002 (desenho de schemas) + ADR-029 (motor) — SQL Server, contra a instância que a organização já opera |
 | Multi-tenancy | ADR-003 — não há na v1 |
 | Autenticação vs. autorização | ADR-004 |
 | Cargo vs. Perfil; Departamento vs. Centro de Custo | ADR-005 |
@@ -33,13 +33,20 @@ re-litigação:
 | Framework de teste e estrutura do domínio | ADR-022 — xUnit v2.9.3, sem biblioteca de asserções, um projecto por domínio de módulo |
 | Pipeline de CI | ADR-023 — GitHub Actions, dois jobs: build+testes de domínio (bloqueia PR) e verificação end-to-end |
 | Tooling de testes de arquitectura | ADR-024 — reflexão e leitura de `.csproj`, sem biblioteca; 21 testes |
-| Frameworks de teste de integração | ADR-026 — Testcontainers com PostgreSQL real, um container por assembly |
+| Frameworks de teste de integração | ADR-026 — Testcontainers com SQL Server real, um container por assembly |
+| Alojamento, CD e migrações em produção | ADR-031 (VPS por SSH e `docker compose`) + ADR-030 (migração no arranque, por interruptor) |
 
 ## Stack tecnológica
 
-- [ ] **⚠ CD e ambientes.** O CI está fechado (ADR-023); **o deployment não**.
-      Continua por decidir onde e como se publica, e com ele o passo de
-      migrações em produção que o ADR-020 deixou deliberadamente em aberto.
+- [ ] **⚠ Observabilidade em produção.** Com o Azure abandonado (ADR-031), o
+      diagnóstico é `docker compose logs` numa máquina: sem métricas, sem
+      alertas, sem retenção. É uma regressão assumida, não um esquecimento.
+- [ ] **⚠ Utilizador de base de dados restrito aos schemas do Rivo.** A
+      instância é partilhada com outros sistemas (ADR-029) e o isolamento é só
+      por schema. Arrasta consigo o K9 — o papel separado para retenção da
+      auditoria, que continua por criar.
+- [ ] **Cópia de segurança do volume de documentos da VPS.** A base de dados
+      tem backup; `rivo-documents-data` não (ADR-031).
 - [ ] **Frameworks de teste de integração** com infraestrutura real
       (candidato: Testcontainers). O domínio está resolvido pelo ADR-022;
       Application, Infrastructure e API continuam sem cobertura própria.

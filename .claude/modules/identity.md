@@ -91,6 +91,17 @@ revogável (ADR-012, ADR-013), catálogo dos sete Perfis de Acesso semeados com
 permissões como role claims (ADR-014), e bootstrap idempotente do Admin e do
 decisor iniciais por configuração (ADR-016).
 
+**Dois caminhos de autenticação:** password e Google (ADR-032). O segundo
+recebe um ID token do frontend, valida-o contra as chaves públicas da Google e
+desagua na **mesma** sessão persistida — o Google diz quem a pessoa é, o Rivo
+continua a ser dono da sessão, do IP na trilha e da revogação.
+
+O caminho federado **não cria contas**: uma identidade Google válida sem conta
+Rivo correspondente é recusada, porque a existência de uma conta é acto
+deliberado de quem administra (ADR-016). A primeira entrada liga a identidade
+à conta com o mesmo e-mail, e só quando a Google confirma ser dono desse
+endereço.
+
 Verificado em `scripts/verify-bootstrap.ps1` (9 casos) e
 `scripts/verify-authorization.ps1` (8 casos).
 
@@ -121,6 +132,9 @@ tem**.
   escrita por pedido ou estratégia de janela.
 - **MFA não existe.** A regra de negócio torna-o obrigatório para perfis com
   poder de aprovação ou execução financeira. O mecanismo concreto está em
-  aberto.
+  aberto. **O login com Google não o resolve, e é fácil pensar que sim:** a
+  2FA da conta Google é da Google, e o Rivo não a consegue exigir nem sequer
+  verificar a partir do ID token. O requisito continua por satisfazer, agora
+  com aparência de resolvido (ADR-032).
 - **K8** — o IP registado na sessão é o do proxy, não o do cliente, o que
   esvazia BR-9. Ver [state/known-issues.md](../state/known-issues.md).

@@ -1,0 +1,72 @@
+# Sobreposição de desenvolvimento e de CI.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#
+# Acrescenta um SQL Server em container e aponta a API para ele. Existe por
+# uma razão só: **nem o desenvolvimento nem o CI podem escrever na base de
+# dados real** (ADR-029). O `docker-compose.yml` sozinho fala com o servidor
+# externo, e é esse que a VPS usa.
+#
+# A versão da imagem acompanha a do servidor de produção, e a mesma imagem é
+# usada pelos testes de integração (ADR-021, ADR-026).
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: rivo-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      # Credencial de desenvolvimento apenas. Produção usa gestão de segredos.
+      MSSQL_SA_PASSWORD: "Rivo_Dev_2026!"
+      MSSQL_PID: Developer
+    ports:
+      # 14330 no host: a 1433 costuma estar ocupada por uma instalação local do
+      # SQL Server. Dentro do container o porto continua a ser o 1433.
+      - "14330:1433"
+    volumes:
+      - rivo-sqlserver-data:/var/opt/mssql
+    healthcheck:
+      # `-C` confia no certificado auto-assinado do container; sem isso o
+      # sqlcmd 18 recusa a ligação e o healthcheck nunca fica verde.
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - proxy
+
+  api:
+    depends_on:
+      sqlserver:
+        # Espera que a base de dados aceite ligações, não apenas que o
+        # container arranque: a API migra logo no arranque.
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+
+      # A ligação continua a vir de `CONNECTION_STRING`, no `.env` — aqui
+      # aponta para o serviço `sqlserver` desta sobreposição, e não para o
+      # servidor externo. Ver `.env.example`.
+      #
+      # Não se repete aqui de propósito: repetida em dois sítios, um deles
+      # acabaria desactualizado, e o esquecido seria o que manda no CI.
+
+      # Intervalo curto em desenvolvimento, para que a entrega seja observável
+      # sem esperar.
+      NotificationDelivery__PollIntervalSeconds: "2"
+    ports:
+      # Em produção a API não publica porto nenhum — chega-se lá pelo proxy.
+      # Localmente não há proxy, e as suites de verificação falam com
+      # http://localhost:5080.
+      - "5080:8080"
+
+volumes:
+  rivo-sqlserver-data:
+
+# Localmente a rede é criada pelo compose, em vez de se exigir um
+# `docker network create proxy` antes do primeiro arranque.
+networks:
+  proxy:
+    external: false
+    name: rivo-dev

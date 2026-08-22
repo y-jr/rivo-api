@@ -1,10 +1,11 @@
 # Verificação do módulo `notifications`.
 #
-#   docker compose up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 #   pwsh -File scripts/verify-notifications.ps1
 
 $ErrorActionPreference = "Stop"
-$base = "http://localhost:5080"
+. (Join-Path $PSScriptRoot "_ambiente.ps1")
+$base = Get-RivoBaseUrl
 $failures = 0
 
 function Test-Case {
@@ -29,12 +30,9 @@ function Get-StatusCode {
     }
 }
 
-function Invoke-Sql { param([string]$q) return (docker exec rivo-postgres psql -U rivo -d rivo -t -A -c $q).Trim() }
+function Invoke-Sql { param([string]$q) return (Invoke-RivoSql $q) }
 
-$dotenv = @{}
-Get-Content ".env" | Where-Object { $_ -match "=" -and $_ -notmatch "^\s*#" } | ForEach-Object {
-    $p = $_ -split "=", 2; $dotenv[$p[0].Trim()] = $p[1].Trim()
-}
+$dotenv = Get-RivoCredentials
 
 function Get-Token {
     param([string]$Email, [string]$Password)
@@ -54,7 +52,7 @@ foreach ($e in @($alvoEmail, $outroEmail)) {
     $b = @{ email = $e; password = $pass } | ConvertTo-Json
     Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json" | Out-Null
 }
-$alvoId = Invoke-Sql "select id from identity.app_user where email='$alvoEmail'"
+$alvoId = Invoke-Sql "select id from [identity].app_user where email='$alvoEmail'"
 
 Write-Host "`n=== Modulo notifications ===`n"
 
@@ -67,9 +65,15 @@ Test-Case "1. Schema notifications com migration propria" {
 
 Test-Case "2. notifications nao referencia outros schemas" {
     $out = Invoke-Sql @"
-select count(*) from information_schema.table_constraints tc
-join information_schema.constraint_column_usage ccu on ccu.constraint_name = tc.constraint_name
-where tc.constraint_type='FOREIGN KEY' and tc.table_schema='notifications' and ccu.table_schema<>'notifications'
+-- INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE nao serve aqui: em SQL Server
+-- devolve as colunas da tabela que *tem* a restricao, e nao a tabela
+-- referida. Quem sabe o outro lado da FK e sys.foreign_keys.
+select count(*) from sys.foreign_keys fk
+join sys.tables ot on ot.object_id = fk.parent_object_id
+join sys.schemas os on os.schema_id = ot.schema_id
+join sys.tables dt on dt.object_id = fk.referenced_object_id
+join sys.schemas ds on ds.schema_id = dt.schema_id
+where os.name = 'notifications' and ds.name <> 'notifications'
 "@
     if ($out -ne "0") { throw "notifications tem $out FK para fora" }
     "sem chaves estrangeiras para fora"
@@ -142,7 +146,7 @@ Test-Case "10. Worker de entrega esta activo" {
     # Compara-se com o nome da categoria de log, que e ASCII: o Windows
     # PowerShell 5.1 le ficheiros .ps1 sem BOM na codepage ANSI, e acentos
     # neste ficheiro nao sobreviveriam a comparacao.
-    $logs = docker compose logs api 2>&1 | Out-String
+    $logs = docker compose -f docker-compose.yml -f docker-compose.dev.yml logs api 2>&1 | Out-String
     if ($logs -notmatch "NotificationDeliveryWorker") { throw "worker nao arrancou" }
     "BackgroundService a correr"
 }
@@ -153,9 +157,9 @@ Test-Case "11. Worker entrega pendentes e faz backoff" {
     $id = [Guid]::NewGuid().ToString()
     Invoke-Sql @"
 insert into notifications.notification
- (id, recipient_user_id, type, title, message, created_at, delivery_status, delivery_attempts, next_attempt_at)
+ (id, version, recipient_user_id, type, title, message, created_at, delivery_status, delivery_attempts, next_attempt_at)
 values
- ('$id', '$alvoId', 'teste.entrega', 'Teste de entrega', 'corpo', now(), 'Pending', 0, now())
+ ('$id', 0, '$alvoId', 'teste.entrega', 'Teste de entrega', 'corpo', SYSDATETIMEOFFSET(), 'Pending', 0, SYSDATETIMEOFFSET())
 "@ | Out-Null
 
     # O intervalo de sondagem em dev sao 2s.
@@ -167,7 +171,9 @@ values
 
     if ($status -ne "Delivered") { throw "estado '$status', esperado Delivered" }
 
-    $when = Invoke-Sql "select delivered_at is not null from notifications.notification where id='$id'"
+    # SQL Server nao devolve booleanos num SELECT: mapeia-se para o mesmo 't'
+    # que a suite ja esperava.
+    $when = Invoke-Sql "select case when delivered_at is not null then 't' else 'f' end from notifications.notification where id='$id'"
     if ($when -ne "t") { throw "delivered_at por preencher" }
     "entregue pelo worker"
 }
@@ -175,8 +181,8 @@ values
 Test-Case "12. Enfileirar nao derruba a operacao de negocio" {
     # A atribuicao de perfil gravou mesmo, e a notificacao seguiu em separado.
     $role = Invoke-Sql @"
-select count(*) from identity.app_user_role ur
-join identity.app_role r on r.id = ur.role_id
+select count(*) from [identity].app_user_role ur
+join [identity].app_role r on r.id = ur.role_id
 where ur.user_id = '$alvoId' and r.name = 'Finance'
 "@
     if ($role -ne "1") { throw "perfil nao foi atribuido" }
@@ -187,7 +193,7 @@ where ur.user_id = '$alvoId' and r.name = 'Finance'
 
 Test-Case "13. Notificacoes sobrevivem ao reinicio da stack" {
     $before = Invoke-Sql "select count(*) from notifications.notification"
-    docker compose restart | Out-Null
+    Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(180)
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
     if (-not $up) { throw "API nao voltou" }

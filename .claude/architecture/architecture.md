@@ -77,8 +77,8 @@ canais de apresentação, sem ownership de dados. Ver `domain-map.md`.
 
 ## Dados
 
-- Um PostgreSQL, **um schema lógico por domínio**, ownership exclusivo de
-  tabela (ADR-002).
+- Uma base de dados SQL Server, **um schema lógico por domínio**, ownership
+  exclusivo de tabela (ADR-002 para o desenho, ADR-029 para o motor).
 - Sem `tenant_id`, sem partição multi-tenant (ADR-003).
 - Chaves substitutas UUID.
 - Concorrência optimista em entidades decididas por mais de uma pessoa.
@@ -143,8 +143,9 @@ Parte da arquitectura, não camada acrescentada depois. Ver
 
 ## Tecnologia
 
-Backend em **C#/.NET**. **PostgreSQL** (ADR-002). Frontend React/Tailwind
-(documento de produto).
+Backend em **C#/.NET**. **SQL Server** (ADR-002, ADR-029). Frontend
+React/Tailwind (documento de produto).
 
-Framework, ORM, tooling de migrações e restantes escolhas concretas estão
-em aberto — ver [technology-decisions.md](technology-decisions.md).
+Framework, ORM, tooling de migrações e alojamento estão decididos — ver
+[technology-decisions.md](technology-decisions.md), que também lista o que
+continua em aberto.

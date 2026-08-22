@@ -37,7 +37,7 @@ public sealed class NotificationsDbContext(DbContextOptions<NotificationsDbConte
             // a esmagadora maioria das linhas nunca fica pendente e não vale a
             // pena indexá-las.
             notification.HasIndex(n => n.NextAttemptAt)
-                .HasFilter("delivery_status = 'Pending'");
+                .HasFilter("[delivery_status] = 'Pending'");
 
             // Sem chave estrangeira para identity.app_user: `notifications`
             // guarda o identificador do destinatário mas não conhece

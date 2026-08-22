@@ -1,13 +1,14 @@
 # Verificação do bootstrap de autoridade a partir de uma base limpa.
 #
-#   docker compose down -v
-#   docker compose up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 #   pwsh -File scripts/verify-bootstrap.ps1
 #
 # Falha com código de saída diferente de zero se algum ponto não passar.
 
 $ErrorActionPreference = "Stop"
-$base = "http://localhost:5080"
+. (Join-Path $PSScriptRoot "_ambiente.ps1")
+$base = Get-RivoBaseUrl
 $failures = 0
 
 function Test-Case {
@@ -34,7 +35,7 @@ function Get-StatusCode {
 
 function Invoke-Sql {
     param([string]$Query)
-    return (docker exec rivo-postgres psql -U rivo -d rivo -t -A -c $Query).Trim()
+    return (Invoke-RivoSql $Query)
 }
 
 function Get-Token {
@@ -45,11 +46,7 @@ function Get-Token {
 
 # Credenciais lidas do .env — nunca escritas neste ficheiro.
 $env:PATH | Out-Null
-$dotenv = @{}
-Get-Content ".env" | Where-Object { $_ -match "=" -and $_ -notmatch "^\s*#" } | ForEach-Object {
-    $parts = $_ -split "=", 2
-    $dotenv[$parts[0].Trim()] = $parts[1].Trim()
-}
+$dotenv = Get-RivoCredentials
 
 $adminEmail = $dotenv["BOOTSTRAP_ADMIN_EMAIL"]
 $adminPass = $dotenv["BOOTSTRAP_ADMIN_PASSWORD"]
@@ -59,21 +56,21 @@ $deciderPass = $dotenv["BOOTSTRAP_DECIDER_PASSWORD"]
 Write-Host "`n=== Bootstrap de autoridade ===`n"
 
 Test-Case "1. Migrations aplicadas" {
-    $count = Invoke-Sql "select count(*) from identity.__ef_migrations_history"
+    $count = Invoke-Sql "select count(*) from [identity].__ef_migrations_history"
     if ([int]$count -lt 1) { throw "nenhuma migration registada" }
     $tables = Invoke-Sql "select count(*) from information_schema.tables where table_schema='identity'"
     "$count migration(s), $tables tabelas"
 }
 
 Test-Case "2. Seed criou os perfis" {
-    $roles = Invoke-Sql "select count(*) from identity.app_role"
+    $roles = Invoke-Sql "select count(*) from [identity].app_role"
     if ($roles -ne "7") { throw "esperados 7 perfis, obtidos $roles" }
 
     # Sem contagem absoluta de permissoes: cresce legitimamente a cada modulo
     # novo. Verifica-se que o Admin tem as que deve e que nenhuma se repete.
     $adminPerms = Invoke-Sql @"
-select count(*) from identity.app_role_claim c
-join identity.app_role r on r.id = c.role_id
+select count(*) from [identity].app_role_claim c
+join [identity].app_role r on r.id = c.role_id
 where r.name = 'Admin' and c.claim_type = 'permission'
 "@
     if ([int]$adminPerms -lt 1) { throw "Admin sem permissoes" }
@@ -85,16 +82,16 @@ where r.name = 'Admin' and c.claim_type = 'permission'
     # catalogo, porque quem controla a marca de autoridade controla quem pode
     # vir a aprovar pagamentos.
     $hrHasCatalogue = Invoke-Sql @"
-select count(*) from identity.app_role_claim c
-join identity.app_role r on r.id = c.role_id
+select count(*) from [identity].app_role_claim c
+join [identity].app_role r on r.id = c.role_id
 where r.name = 'HR' and c.claim_value = 'hr.positions.write'
 "@
     if ($hrHasCatalogue -ne "0") { throw "HR tem hr.positions.write, contra ADR-015" }
 
     # Perfis ainda sem modulos de negocio que os justifiquem.
     $shouldBeEmpty = Invoke-Sql @"
-select count(*) from identity.app_role_claim c
-join identity.app_role r on r.id = c.role_id
+select count(*) from [identity].app_role_claim c
+join [identity].app_role r on r.id = c.role_id
 where r.name in ('Manager','Finance','Sales','AssetManager','ProjectManager')
 "@
     if ($shouldBeEmpty -ne "0") { throw "perfis sem modulo atribuido tem $shouldBeEmpty permissoes" }
@@ -103,30 +100,30 @@ where r.name in ('Manager','Finance','Sales','AssetManager','ProjectManager')
 }
 
 Test-Case "3. Seed criou o Admin" {
-    $exists = Invoke-Sql "select count(*) from identity.app_user where email = '$adminEmail'"
+    $exists = Invoke-Sql "select count(*) from [identity].app_user where email = '$adminEmail'"
     if ($exists -ne "1") { throw "Admin nao encontrado" }
     "conta $adminEmail criada"
 }
 
 Test-Case "4. Seed criou o decisor" {
-    $exists = Invoke-Sql "select count(*) from identity.app_user where email = '$deciderEmail'"
+    $exists = Invoke-Sql "select count(*) from [identity].app_user where email = '$deciderEmail'"
     if ($exists -ne "1") { throw "decisor nao encontrado" }
     "conta $deciderEmail criada"
 }
 
 Test-Case "5. Associacoes correctas" {
     $adminRole = Invoke-Sql @"
-select r.name from identity.app_user u
-join identity.app_user_role ur on ur.user_id = u.id
-join identity.app_role r on r.id = ur.role_id
+select r.name from [identity].app_user u
+join [identity].app_user_role ur on ur.user_id = u.id
+join [identity].app_role r on r.id = ur.role_id
 where u.email = '$adminEmail'
 "@
     if ($adminRole -ne "Admin") { throw "Admin tem perfil '$adminRole'" }
 
     $deciderRole = Invoke-Sql @"
-select r.name from identity.app_user u
-join identity.app_user_role ur on ur.user_id = u.id
-join identity.app_role r on r.id = ur.role_id
+select r.name from [identity].app_user u
+join [identity].app_user_role ur on ur.user_id = u.id
+join [identity].app_role r on r.id = ur.role_id
 where u.email = '$deciderEmail'
 "@
     if ($deciderRole -ne "Finance") { throw "decisor tem perfil '$deciderRole'" }
@@ -134,8 +131,8 @@ where u.email = '$deciderEmail'
 }
 
 Test-Case "6. Segunda execucao nao duplica" {
-    $before = Invoke-Sql "select count(*) from identity.app_user"
-    docker compose restart api | Out-Null
+    $before = Invoke-Sql "select count(*) from [identity].app_user"
+    Restart-RivoStack -ApiOnly
 
     $deadline = (Get-Date).AddSeconds(180)
     do {
@@ -144,14 +141,14 @@ Test-Case "6. Segunda execucao nao duplica" {
     } while (-not $up -and (Get-Date) -lt $deadline)
     if (-not $up) { throw "API nao voltou a responder" }
 
-    $after = Invoke-Sql "select count(*) from identity.app_user"
+    $after = Invoke-Sql "select count(*) from [identity].app_user"
     if ($after -ne $before) { throw "utilizadores duplicados: $before -> $after" }
 
     # Duplicacao verificada directamente, e nao por total: outras suites criam
     # utilizadores, e um total fixo tornaria este teste falsamente vermelho.
-    $dupRoles = Invoke-Sql "select count(*) from (select name from identity.app_role group by name having count(*)>1) d"
-    $dupLinks = Invoke-Sql "select count(*) from (select user_id, role_id from identity.app_user_role group by 1,2 having count(*)>1) d"
-    $dupClaims = Invoke-Sql "select count(*) from (select role_id, claim_type, claim_value from identity.app_role_claim group by 1,2,3 having count(*)>1) d"
+    $dupRoles = Invoke-Sql "select count(*) from (select name from [identity].app_role group by name having count(*)>1) d"
+    $dupLinks = Invoke-Sql "select count(*) from (select user_id, role_id from [identity].app_user_role group by user_id, role_id having count(*)>1) d"
+    $dupClaims = Invoke-Sql "select count(*) from (select role_id, claim_type, claim_value from [identity].app_role_claim group by role_id, claim_type, claim_value having count(*)>1) d"
 
     if ($dupRoles -ne "0") { throw "$dupRoles perfis duplicados" }
     if ($dupLinks -ne "0") { throw "$dupLinks associacoes duplicadas" }
@@ -200,7 +197,7 @@ Test-Case "9. Passwords ausentes do codigo e dos logs" {
     $ignored = Select-String -Path ".gitignore" -Pattern "^\.env$" -Quiet
     if (-not $ignored) { throw ".env nao esta no .gitignore" }
 
-    $logs = docker compose logs 2>&1 | Out-String
+    $logs = docker compose -f docker-compose.yml -f docker-compose.dev.yml logs 2>&1 | Out-String
     foreach ($secret in @($adminPass, $deciderPass)) {
         if ($logs -match [regex]::Escape($secret)) { throw "password presente nos logs" }
     }

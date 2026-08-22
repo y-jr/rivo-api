@@ -26,16 +26,19 @@ public static class IdentityModuleExtensions
             ?? throw new InvalidOperationException("Falta a connection string 'Rivo'.");
 
         services.AddDbContext<RivoIdentityDbContext>(options => options
-            .UseNpgsql(connectionString, npgsql =>
-                npgsql.MigrationsHistoryTable("__ef_migrations_history", RivoIdentityDbContext.Schema)
-                    // Resiliencia de ligacao: a base de dados pode nao estar
-                    // pronta no arranque (o depends_on do compose so vale no up,
-                    // nao no restart), e em producao ha failover e reinicios.
-                    .EnableRetryOnFailure(maxRetryCount: 6, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null))
+            .UseSqlServer(connectionString, sqlServer =>
+                sqlServer.MigrationsHistoryTable("__ef_migrations_history", RivoIdentityDbContext.Schema)
+                    // Resiliencia de ligacao: o SQL Server e externo ao container e
+                    // vive noutra maquina. Falhas de rede transitorias sao normais,
+                    // nao excepcionais — e o arranque pode apanhar a base indisponivel.
+                    .EnableRetryOnFailure(maxRetryCount: 6, maxRetryDelay: TimeSpan.FromSeconds(5), errorNumbersToAdd: null))
             // Tabelas, colunas, índices e chaves em snake_case (standards/naming.md).
-            // Sem isto, os nomes PascalCase do .NET ficariam permanentemente
-            // dependentes de aspas: o PostgreSQL dobra para minúsculas tudo o
-            // que não venha citado.
+            //
+            // A convenção nasceu do PostgreSQL, que dobra para minúsculas tudo o
+            // que não venha citado. Em SQL Server deixou de ser obrigatória — e
+            // mantém-se na mesma, porque é o padrão de nomes escrito do projecto
+            // e trocá-la renomearia o esquema inteiro sem que nenhum requisito o
+            // peça (ADR-029).
             .UseSnakeCaseNamingConvention());
 
         services
@@ -71,8 +74,22 @@ public static class IdentityModuleExtensions
         services.AddScoped<ISessionStore, SessionStore>();
         services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
 
+        // Login federado (ADR-032). Sem `ValidateOnStart` de propósito: o
+        // Google é opcional, e exigi-lo derrubaria o arranque em
+        // desenvolvimento e no CI, que não têm credenciais da Google.
+        services
+            .AddOptions<GoogleAuthOptions>()
+            .Bind(configuration.GetSection(GoogleAuthOptions.SectionName));
+
+        // Singleton porque o verificador cacheia o documento de descoberta e as
+        // chaves da Google. Scoped faria um pedido HTTP à Google por login.
+        services.AddSingleton<IExternalIdentityVerifier, GoogleIdentityVerifier>();
+
+        services.AddScoped<SessionIssuer>();
+
         services.AddScoped<RegisterUser>();
         services.AddScoped<LogIn>();
+        services.AddScoped<LogInWithGoogle>();
         services.AddScoped<LogOut>();
         services.AddScoped<ListUsers>();
         services.AddScoped<AssignAccessProfile>();

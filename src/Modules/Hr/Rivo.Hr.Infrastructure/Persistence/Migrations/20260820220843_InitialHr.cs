@@ -19,9 +19,10 @@ namespace Rivo.Hr.Infrastructure.Persistence.Migrations
                 schema: "hr",
                 columns: table => new
                 {
-                    id = table.Column<Guid>(type: "uuid", nullable: false),
-                    name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    manager_id = table.Column<Guid>(type: "uuid", nullable: true)
+                    id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    version = table.Column<int>(type: "int", nullable: false),
+                    name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    manager_id = table.Column<Guid>(type: "uniqueidentifier", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -33,12 +34,13 @@ namespace Rivo.Hr.Infrastructure.Persistence.Migrations
                 schema: "hr",
                 columns: table => new
                 {
-                    id = table.Column<Guid>(type: "uuid", nullable: false),
-                    full_name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    department_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    user_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    hired_on = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false)
+                    id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    version = table.Column<int>(type: "int", nullable: false),
+                    full_name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    department_id = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    user_id = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    hired_on = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -50,10 +52,10 @@ namespace Rivo.Hr.Infrastructure.Persistence.Migrations
                 schema: "hr",
                 columns: table => new
                 {
-                    id = table.Column<Guid>(type: "uuid", nullable: false),
-                    name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    hierarchy_level = table.Column<int>(type: "integer", nullable: false),
-                    grants_approval_authority = table.Column<bool>(type: "boolean", nullable: false)
+                    id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    hierarchy_level = table.Column<int>(type: "int", nullable: false),
+                    grants_approval_authority = table.Column<bool>(type: "bit", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -61,16 +63,40 @@ namespace Rivo.Hr.Infrastructure.Persistence.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "employee_document",
+                schema: "hr",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    employee_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    document_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    category = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+                    attached_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_employee_document", x => x.id);
+                    table.ForeignKey(
+                        name: "fk_employee_document_employee_employee_id",
+                        column: x => x.employee_id,
+                        principalSchema: "hr",
+                        principalTable: "employee",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "position_assignment",
                 schema: "hr",
                 columns: table => new
                 {
-                    id = table.Column<Guid>(type: "uuid", nullable: false),
-                    employee_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    position_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    effective_from = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    effective_to = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false)
+                    id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    version = table.Column<int>(type: "int", nullable: false),
+                    employee_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    position_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    effective_from = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    effective_to = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -111,6 +137,19 @@ namespace Rivo.Hr.Infrastructure.Persistence.Migrations
                 column: "user_id");
 
             migrationBuilder.CreateIndex(
+                name: "ix_employee_document_document_id",
+                schema: "hr",
+                table: "employee_document",
+                column: "document_id",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "ix_employee_document_employee_id",
+                schema: "hr",
+                table: "employee_document",
+                column: "employee_id");
+
+            migrationBuilder.CreateIndex(
                 name: "ix_position_grants_approval_authority",
                 schema: "hr",
                 table: "position",
@@ -141,6 +180,10 @@ namespace Rivo.Hr.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.DropTable(
                 name: "department",
+                schema: "hr");
+
+            migrationBuilder.DropTable(
+                name: "employee_document",
                 schema: "hr");
 
             migrationBuilder.DropTable(

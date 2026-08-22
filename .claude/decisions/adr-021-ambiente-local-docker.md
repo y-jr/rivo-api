@@ -4,6 +4,12 @@
 
 Aceite (2026-08-15).
 
+**Actualizado pelo [ADR-029](adr-029-sql-server-em-vez-de-postgresql.md)**
+(2026-08-20): o container de base de dados passa a ser SQL Server e vive em
+`docker-compose.dev.yml`, porque o `docker-compose.yml` fala com um servidor
+externo. O princípio — a stack local sobe com um comando, na mesma versão de
+motor que a de produção — não muda.
+
 **Registo retroactivo.** Implementado em 2026-08-10, quando a stack se tornou
 executável pela primeira vez.
 

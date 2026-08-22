@@ -12,6 +12,16 @@
 Dockerfile
 docker-compose*.yml
 
+# Segredos. O container recebe configuração por variável de ambiente; um
+# `.env` copiado para dentro da imagem ficaria lá para sempre, legível por
+# quem tiver a imagem.
+.env*
+
+# Não entram na imagem: o Dockerfile copia `Directory.Packages.props` e `src/`,
+# e mais nada. Ficam fora do contexto para não serem enviados ao daemon.
+tests/
+scripts/
+
 # Documentação arquitectural: não é necessária em runtime.
 .claude/
 README.md

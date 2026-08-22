@@ -19,9 +19,9 @@ public sealed class RivoIdentityDbContext(DbContextOptions<RivoIdentityDbContext
         // Um schema por domínio, ownership exclusivo (ADR-002).
         builder.HasDefaultSchema(Schema);
 
-        // Nomes em snake_case: o PostgreSQL dobra identificadores não citados para
-        // minúsculas, e os nomes PascalCase do Identity ficariam permanentemente
-        // dependentes de aspas.
+        // Nomes em snake_case, como o resto do esquema (standards/naming.md).
+        // Sem isto, as tabelas do ASP.NET Core Identity entrariam em PascalCase
+        // e destoariam de tudo o resto.
         builder.Entity<ApplicationUser>().ToTable("app_user");
         builder.Entity<ApplicationRole>().ToTable("app_role");
         builder.Entity<IdentityUserRole<Guid>>().ToTable("app_user_role");

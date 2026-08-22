@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testa a camada Application de `identity`, e não o domínio.
+
+    O ADR-022 fixou um projecto por *domínio* de módulo, porque era aí que
+    estavam as invariantes. O login federado (ADR-032) trouxe regras que não
+    vivem em nenhuma entidade — "não se criam contas", "e-mail por verificar é
+    recusado" — e que são decisões de orquestração. Testá-las pela suite
+    caixa-preta exigiria um ID token verdadeiro da Google, que o CI nunca vai
+    ter.
+
+    Segue a mesma estrutura: um projecto de teste referencia um módulo, e este
+    referencia só a Application de `identity`.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Identity\Rivo.Identity.Application\Rivo.Identity.Application.csproj" />
+  </ItemGroup>
+
+</Project>

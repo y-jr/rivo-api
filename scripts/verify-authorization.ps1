@@ -1,12 +1,13 @@
 # Verificação da autorização por perfis.
 #
-# Pressupõe a stack a correr:  docker compose up -d --build
+# Pressupõe a stack a correr:  docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 #
 # Cobre os seis cenários obrigatórios desta etapa. Falha com código de saída
 # diferente de zero se algum não passar, para poder correr em CI.
 
 $ErrorActionPreference = "Stop"
-$base = "http://localhost:5080"
+. (Join-Path $PSScriptRoot "_ambiente.ps1")
+$base = Get-RivoBaseUrl
 $failures = 0
 
 function Test-Case {
@@ -60,10 +61,13 @@ New-User $plainEmail $pass | Out-Null
 
 # O primeiro Admin é atribuído fora de banda: nenhum utilizador é semeado, por
 # isso não há ninguém com permissão para conceder o primeiro perfil.
-docker exec rivo-postgres psql -U rivo -d rivo -q -c @"
-insert into identity.app_user_role (user_id, role_id)
-select '$adminId', id from identity.app_role where name = 'Admin'
-on conflict do nothing;
+Invoke-RivoSql @"
+insert into [identity].app_user_role (user_id, role_id)
+select '$adminId', r.id from [identity].app_role r
+where r.name = 'Admin'
+  and not exists (
+    select 1 from [identity].app_user_role ur
+    where ur.user_id = '$adminId' and ur.role_id = r.id);
 "@ | Out-Null
 
 $adminToken = Get-Token $adminEmail $pass
@@ -91,15 +95,19 @@ Test-Case "3. Autenticado com perfil adequado -> 200" {
 
 Test-Case "4. Seed nao cria perfis fora do catalogo" {
     $expected = @("Admin", "AssetManager", "Finance", "HR", "Manager", "ProjectManager", "Sales")
-    $actual = (docker exec rivo-postgres psql -U rivo -d rivo -t -A -c "select name from identity.app_role order by name") -split "`n" | Where-Object { $_ }
+    $actual = (Invoke-RivoSql "select name from [identity].app_role order by name") -split "`n" | Where-Object { $_ }
     $diff = Compare-Object $expected $actual
-    if ($diff) { throw "divergencia: " + ($diff | ForEach-Object { $_.InputObject } | Join-String -Separator ",") }
+    # `-join` e nao `Join-String`: este ultimo so existe a partir do PowerShell
+    # 6.2, e esta linha vive no caminho de erro — falhava exactamente quando
+    # havia algo a reportar, escondendo a divergencia atras de um erro de
+    # cmdlet inexistente.
+    if ($diff) { throw "divergencia: " + (($diff | ForEach-Object { $_.InputObject }) -join ",") }
     "exactamente os 7 esperados"
 }
 
 Test-Case "5. Seed repetido nao duplica" {
     # O seed corre a cada arranque; reiniciar a API executa-o segunda vez.
-    docker compose restart api | Out-Null
+    Restart-RivoStack -ApiOnly
     $deadline = (Get-Date).AddSeconds(180)
     do {
         Start-Sleep -Seconds 3
@@ -107,18 +115,18 @@ Test-Case "5. Seed repetido nao duplica" {
     } while (-not $up -and (Get-Date) -lt $deadline)
     if (-not $up) { throw "API nao voltou a responder" }
 
-    $roleCount = (docker exec rivo-postgres psql -U rivo -d rivo -t -A -c "select count(*) from identity.app_role").Trim()
+    $roleCount = (Invoke-RivoSql "select count(*) from [identity].app_role")
     if ($roleCount -ne "7") { throw "perfis duplicados: $roleCount" }
 
     # Duplicacao verificada directamente. O total de permissoes cresce a cada
     # modulo novo, por isso nao serve de asercao.
-    $dupClaims = (docker exec rivo-postgres psql -U rivo -d rivo -t -A -c "select count(*) from (select role_id, claim_type, claim_value from identity.app_role_claim group by 1,2,3 having count(*)>1) d").Trim()
+    $dupClaims = (Invoke-RivoSql "select count(*) from (select role_id, claim_type, claim_value from [identity].app_role_claim group by role_id, claim_type, claim_value having count(*)>1) d")
     if ($dupClaims -ne "0") { throw "$dupClaims permissoes duplicadas" }
     "7 perfis, sem permissoes duplicadas apos segunda execucao"
 }
 
 Test-Case "6. Permissoes sobrevivem ao reinicio da stack" {
-    docker compose restart | Out-Null
+    Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(180)
     do {
         Start-Sleep -Seconds 3

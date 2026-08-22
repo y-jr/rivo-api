@@ -1,7 +1,7 @@
 # Corre todas as suites de verificação, por ordem.
 #
-#   docker compose down -v
-#   docker compose up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 #   pwsh -File scripts/verify-all.ps1
 #
 # Existe porque várias suites reiniciam containers para verificar persistência.

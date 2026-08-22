@@ -1,7 +1,7 @@
 # Rivo
 
 Plataforma de gestão empresarial para PMEs em Angola. Monólito modular em
-C#/.NET com PostgreSQL.
+C#/.NET sobre SQL Server.
 
 A documentação arquitectural vive em [`.claude/`](.claude/). As fontes de
 verdade estão em [`.claude/docs/`](.claude/docs/); as decisões em
@@ -12,18 +12,30 @@ verdade estão em [`.claude/docs/`](.claude/docs/); as decisões em
 - .NET SDK 10.0+
 - Docker
 
+## Dois ficheiros de compose, e a diferença importa
+
+| Ficheiro | Base de dados | Para quê |
+|---|---|---|
+| `docker-compose.yml` | **SQL Server externo**, via `CONNECTION_STRING` | Produção, na VPS (ADR-031) |
+| `+ docker-compose.dev.yml` | SQL Server **em container** | Desenvolvimento e CI |
+
+A sobreposição de desenvolvimento existe para que nem o CI nem o
+desenvolvimento escrevam na base de dados real (ADR-029). O `docker-compose.yml`
+sozinho fala com o servidor externo — é esse que a VPS usa.
+
 ## Arrancar
 
-Tudo em Docker — um comando:
-
 ```bash
-docker compose up -d --build
+cp .env.example .env
+# preencher, depois:
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
 curl http://localhost:5080/health
 # {"status":"ok","database":"up"}
 ```
 
-A API aplica as migrações no arranque (só em `Development`), por isso não é
-preciso mais nenhum passo.
+A API aplica as migrações no arranque quando `MIGRATE_ON_STARTUP=true`
+(ADR-030), por isso não é preciso mais nenhum passo.
 
 ### Alternativa: API no host, base de dados em Docker
 
@@ -31,7 +43,7 @@ Ciclo de desenvolvimento mais rápido, sem reconstruir a imagem a cada
 alteração:
 
 ```bash
-docker compose up -d postgres
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d sqlserver
 dotnet run --project src/Rivo.Api
 ```
 
@@ -48,9 +60,9 @@ Para experimentar os endpoints protegidos: `POST /identity/login`, copiar o
 `accessToken` da resposta, clicar em **Authorize** e colar. O prefixo `Bearer`
 é acrescentado automaticamente.
 
-> O container publica em **5433**, não 5432, porque a 5432 costuma estar
-> ocupada por uma instalação local do PostgreSQL. Dentro do container o porto
-> continua a ser 5432.
+> O container de base de dados publica em **14330**, não 1433, porque a 1433
+> costuma estar ocupada por uma instalação local do SQL Server. Dentro do
+> container o porto continua a ser 1433.
 
 ## Migrações
 
@@ -67,6 +79,16 @@ dotnet ef database update \
   --startup-project src/Rivo.Api
 ```
 
+> **Uma migração de cada vez, com build pelo meio.** As ferramentas do EF Core
+> lêem o assembly compilado, não o código-fonte: gerar duas migrações seguidas
+> com `--no-build` faz a segunda repetir a primeira, porque o snapshot da
+> anterior ainda não está no binário.
+
+A ordem entre módulos importa e está no `Program.cs`: `hr` depois de
+`documents`, porque a chave estrangeira entre schemas exige que
+`documents.document` já exista; `identity` por último, porque o seu seed
+depende dos schemas dos outros.
+
 ## Autenticação
 
 JWT bearer com sessão persistida (ADR-013). O token transporta `sid`; cada
@@ -77,6 +99,7 @@ revogação imediata.
 |---|---|---|---|
 | POST | `/identity/register` | — | Cria conta |
 | POST | `/identity/login` | — | Abre sessão e emite token |
+| POST | `/identity/login/google` | — | O mesmo, a partir de um ID token da Google (ADR-032) |
 | POST | `/identity/logout` | autenticação | Revoga a sessão |
 | GET | `/identity/me` | autenticação | Identidade, perfis e permissões |
 | GET | `/identity/users` | `identity.users.read` | Lista contas |
@@ -97,6 +120,49 @@ curl http://localhost:5080/identity/me -H "Authorization: Bearer $TOKEN"
 
 Password: mínimo 12 caracteres, com maiúscula, minúscula, dígito e símbolo.
 Bloqueio após 5 tentativas falhadas.
+
+### Entrar com Google
+
+Segundo caminho de autenticação, não substituto (ADR-032). O frontend obtém um
+ID token junto da Google e envia-o ao servidor, que valida a assinatura contra
+as chaves públicas da Google e devolve **o mesmo** `LoginResponse` do login por
+password — mesmo token, mesma sessão revogável, mesma trilha.
+
+```bash
+curl -X POST http://localhost:5080/identity/login/google \
+  -H "Content-Type: application/json" \
+  -d '{"idToken":"<ID token devolvido pela Google>"}'
+```
+
+Configura-se com uma variável, opcional:
+
+```bash
+GOOGLE_CLIENT_ID=   # OAuth 2.0 Client ID, tipo "Web application"
+```
+
+Não há `ClientSecret`: validar uma assinatura precisa da chave pública, e o
+fluxo de redirect que exigiria o segredo foi rejeitado por reintroduzir
+cookies que o ADR-013 tinha afastado.
+
+**Três comportamentos que convém saber antes de testar:**
+
+| Situação | Resposta |
+|---|---|
+| `GOOGLE_CLIENT_ID` vazio | **501** — o Google não está ligado neste ambiente |
+| Token válido, sem conta Rivo com esse e-mail | **401** — o Google não cria contas (ADR-016) |
+| Token válido, com conta | **200**, com `accessToken` |
+
+O 501 é deliberado: um 401 mandaria procurar o defeito na conta de quem
+tentou, que é o sítio errado.
+
+Um Admin cria a conta primeiro (`POST /identity/register` ou o seed de
+arranque); a primeira entrada por Google liga-se a ela pelo e-mail, e só se a
+Google confirmar ser dono desse endereço. As entradas seguintes usam o `sub`,
+que não muda se a pessoa trocar de e-mail.
+
+⚠ **Isto não é MFA.** A 2FA da conta Google é da Google — o Rivo não a exige
+nem a consegue verificar. O requisito de MFA para perfis decisórios continua
+por satisfazer.
 
 ## Autorização
 
@@ -129,7 +195,7 @@ As credenciais vêm do ficheiro `.env`, **nunca do repositório**:
 ```bash
 cp .env.example .env
 # preencher, depois:
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
 | Variável | Para quê |
@@ -137,6 +203,8 @@ docker compose up -d --build
 | `BOOTSTRAP_ADMIN_EMAIL` / `_PASSWORD` | Utilizador com perfil `Admin` |
 | `BOOTSTRAP_DECIDER_EMAIL` / `_PASSWORD` | Utilizador com perfil `Finance` |
 | `JWT_SIGNING_KEY` | Assinatura do token, mínimo 32 caracteres |
+| `CONNECTION_STRING` | Ligação ao SQL Server |
+| `MIGRATE_ON_STARTUP` / `SEED_ON_STARTUP` | Interruptores de migração e seed (ADR-030) |
 
 Admin e decisor usam **o mesmo mecanismo** — são entradas diferentes da mesma
 lista em `docker-compose.yml`, com perfis diferentes. Acrescentar um terceiro
@@ -171,6 +239,12 @@ Docker, sem base de dados, sem rede. Testam invariantes: `hr` 45,
 Um projecto por domínio de módulo, em
 `tests/Modules/<Módulo>/Rivo.<Módulo>.Domain.Tests/`.
 
+Junta-se-lhes `Rivo.Identity.Application.Tests` (8 casos): as regras do login
+federado — não criar contas, recusar e-mail por verificar, desaguar sempre
+numa sessão persistida — são de orquestração e não vivem em entidade nenhuma
+(ADR-032). Testá-las pela suite caixa-preta exigiria um ID token verdadeiro da
+Google, que o CI nunca vai ter.
+
 Um teste de domínio que precise de `DbContext`, `HttpContext` ou de ficheiros
 está a assinalar que a regra vazou da camada — é defeito de arquitectura, não
 de teste.
@@ -178,8 +252,8 @@ de teste.
 ### End-to-end — o sistema montado
 
 ```bash
-docker compose down -v
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 pwsh -File scripts/verify-all.ps1
 ```
 
@@ -221,7 +295,48 @@ Seis suites, 66 casos:
 Separados para que uma falha de infraestrutura não se disfarce de falha de
 código. As credenciais das suites são geradas a cada execução com
 `openssl rand` — o ambiente é efémero, e não há segredos de repositório
-envolvidos.
+envolvidos. O `verify-stack` usa a sobreposição de desenvolvimento, por isso
+corre contra um SQL Server em container e nunca toca na base de dados real.
+
+## Deployment
+
+`.github/workflows/main.yml`, em cada push para `main` (ADR-031). Liga por SSH
+à VPS e corre, em `/opt/projects/rivo`:
+
+```bash
+git pull origin main
+docker compose down
+docker compose up -d --build
+docker image prune -f
+```
+
+Repare-se no `docker compose` **sem `-f`**: na VPS vale só o
+`docker-compose.yml`, que fala com o SQL Server externo. A sobreposição de
+desenvolvimento fica de fora.
+
+No fim, sonda `/health` a partir de um container descartável na rede `proxy` —
+a API não publica porto no host, e a imagem de runtime do .NET não traz `curl`.
+Sem essa sonda, uma migração falhada passava por deployment bem sucedido.
+
+### O que a VPS tem de ter, uma vez
+
+```bash
+git clone <remoto> /opt/projects/rivo
+cp /opt/projects/rivo/.env.example /opt/projects/rivo/.env   # e preencher
+docker network create proxy
+```
+
+O `.env` é escrito à mão e o deployment nunca lhe toca. Uma variável nova no
+compose e esquecida ali derruba o arranque — com mensagem explícita, porque as
+obrigatórias usam `${VAR:?...}`.
+
+Segredos do repositório no GitHub: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`,
+`PORT`.
+
+> ⚠ **A API não deve publicar porto no host.** O único caminho até ela é o
+> reverse proxy na rede `proxy`, e é disso — não de configuração — que depende
+> a confiança em `X-Forwarded-For` (K8). Publicar 8080 reabre o defeito sem
+> nenhum sinal.
 
 ## Convenções de código
 
@@ -261,8 +376,8 @@ Rivo.Api ──> Identity.Api ──> Identity.Application ──> Identity.Doma
 `audit` (ADR-017). Os contratos não dependem de nada, o que impede ciclos
 entre módulos por construção.
 
-Cada módulo tem o seu schema PostgreSQL (`identity`, `audit`) e as suas
-próprias migrações.
+Cada módulo tem o seu schema na base de dados (`identity`, `audit`) e as suas
+próprias migrações, com tabela de histórico própria (ADR-020).
 
 ## Auditoria
 

@@ -1,21 +1,23 @@
 using Rivo.Audit.Contracts;
 using Rivo.Identity.Application.Abstractions;
-using Rivo.Identity.Domain.Sessions;
 
 namespace Rivo.Identity.Application.UseCases;
 
 /// <summary>
-/// Autentica um utilizador, abre uma sessão e emite o token de acesso.
+/// Autentica um utilizador por password, abre uma sessão e emite o token de
+/// acesso.
 ///
-/// A ordem importa: a sessão é criada <em>antes</em> do token, porque o token
-/// transporta o identificador da sessão. Sem isso o token não seria revogável.
+/// <para>
+/// Verificada a credencial, o resto — sessão, token, auditoria da entrada — é
+/// o mesmo de qualquer outro caminho de autenticação e vive no
+/// <see cref="SessionIssuer"/> (ADR-032). O que é próprio deste caso de uso é
+/// só a verificação da password e o registo da tentativa falhada.
+/// </para>
 /// </summary>
 public sealed class LogIn(
     IUserAccounts accounts,
-    ISessionStore sessions,
-    IAccessTokenIssuer tokens,
-    IAuditTrail audit,
-    TimeProvider clock)
+    SessionIssuer sessions,
+    IAuditTrail audit)
 {
     /// <param name="ipAddress">
     /// Origem do pedido. Registado na sessão por exigência de auditoria (BR-9)
@@ -42,32 +44,19 @@ public sealed class LogIn(
                     AuditActions.UserLoginFailed,
                     AuditEntityTypes.User,
                     email,
-                    new AuditContext(null, ipAddress, correlationId)),
+                    new AuditContext(null, ipAddress, correlationId),
+                    NewValue: $$"""{"method":"{{AuthenticationMethods.Password}}"}"""),
                 cancellationToken);
 
             return LogInResult.Failed();
         }
 
-        var now = clock.GetUtcNow();
-
-        var session = Session.Start(
-            userId: account.UserId,
-            ipAddress: ipAddress,
-            userAgent: userAgent,
-            now: now,
-            lifetime: tokens.SessionLifetime);
-
-        await sessions.AddAsync(session, cancellationToken);
-        await sessions.SaveChangesAsync(cancellationToken);
-
-        var token = tokens.Issue(account, session.Id, session.ExpiresAt);
-
-        await audit.RecordAsync(
-            new AuditRecord(
-                AuditActions.UserLoggedIn,
-                AuditEntityTypes.User,
-                account.UserId.ToString(),
-                new AuditContext(account.UserId, ipAddress, correlationId)),
+        var token = await sessions.IssueAsync(
+            account,
+            AuthenticationMethods.Password,
+            ipAddress,
+            userAgent,
+            correlationId,
             cancellationToken);
 
         return LogInResult.Success(token.Value, token.ExpiresAt);

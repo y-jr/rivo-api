@@ -1,6 +1,6 @@
 # Problemas Conhecidos
 
-_Última actualização: 2026-08-15._
+_Última actualização: 2026-08-20._
 
 Este ficheiro regista duas coisas distintas, e a distinção importa:
 
@@ -46,10 +46,15 @@ Registados porque a tentação de os repetir é real:
 ### ~~K8 — IP da sessão é o do proxy~~ — **RESOLVIDO 2026-08-16**
 
 Fechado na Fase 1. `ForwardedHeadersMiddleware` activo fora de `Development`,
-com `KnownNetworks` e `KnownProxies` vazios e `ForwardLimit = 1` — a confiança
-vem de o front-end do App Service reescrever o cabeçalho, e não de aceitar
-`X-Forwarded-For` de qualquer origem, que tornaria o registo falsificável.
-**Reavaliar se a topologia mudar** (ADR-027).
+com `KnownNetworks` e `KnownProxies` vazios e `ForwardLimit = 1`.
+
+Com as duas listas vazias o cabeçalho é aceite de qualquer origem, e isso só é
+seguro porque não há outra origem: o container não publica porto nenhum no
+host, e o único caminho até ele é o reverse proxy, que reescreve
+`X-Forwarded-For`.
+
+**⚠ Publicar o porto 8080 no host reabre este defeito em silêncio**, e nada no
+código o detecta. A garantia é topológica, e a topologia é a do ADR-031.
 
 <details><summary>Registo original</summary>
 
@@ -70,7 +75,28 @@ vem de o front-end do App Service reescrever o cabeçalho, e não de aceitar
   saber a topologia de produção (há proxy? qual? que redes?), que ainda não
   está decidida.
 
-### K9 — Garantia append-only da trilha não é imposta pela base de dados
+### ~~K9 — Garantia append-only não é imposta pela base de dados~~ — **RESOLVIDO 2026-08-16, refeito em SQL Server 2026-08-20**
+
+Fechado pela migração `EnforceAppendOnly`. Em SQL Server (ADR-029), os três
+caminhos de destruição estão cobertos por duas peças:
+
+| Caminho | O que o impede |
+|---|---|
+| `UPDATE` | Gatilho `INSTEAD OF`, que lança e aborta a transacção |
+| `DELETE` | O mesmo gatilho |
+| `TRUNCATE` | A tabela `audit.audit_event_truncate_guard`: o motor recusa truncar uma tabela referenciada por FK |
+
+`TRUNCATE` precisou de peça própria porque, ao contrário do PostgreSQL, o SQL
+Server não dispara gatilhos nessa instrução.
+
+**⚠ Fica por fazer a metade que depende de privilégios:** quem for dono da
+tabela pode remover o gatilho e a sentinela. Protege contra o erro, não contra
+o adversário com privilégios totais — e a base de dados é hoje acedida com
+`sa`. O seguimento é um utilizador aplicacional restrito aos schemas do Rivo,
+com papel separado para retenção; está em
+[pending-decisions.md](pending-decisions.md).
+
+<details><summary>Registo original</summary>
 
 - **Módulo:** `audit`
 - **Impacto:** `AuditEvent` é imutável em código (sem setters públicos, sem
@@ -81,6 +107,8 @@ vem de o front-end do App Service reescrever o cabeçalho, e não de aceitar
 - **Seguimento:** revogar `UPDATE`/`DELETE` na tabela para o utilizador
   aplicacional, com um papel separado para retenção. Depende da decisão sobre
   utilizadores de base de dados por módulo, que está em aberto.
+
+</details>
 
 ### K10 — Escrita da trilha não é transaccional com a operação auditada
 
@@ -95,16 +123,21 @@ vem de o front-end do App Service reescrever o cabeçalho, e não de aceitar
 - **Seguimento:** padrão outbox, se o volume ou a fiabilidade o exigirem.
   Não é necessário à escala actual.
 
-### ~~K11 — Documentos sem cifra em repouso~~ — **RESOLVIDO EM AZURE 2026-08-16**
+### K11 — Documentos sem cifra em repouso — **REABERTO EM 2026-08-20**
 
-`BlobDocumentStorage` sobre Azure Blob Storage, com cifra do serviço e acesso
-por identidade gerida. A razão pela qual o defeito ficou aberto tanto tempo era
-que cifrar na aplicação exigia gestão de chaves — aqui a aplicação não vê nem
-gere chave nenhuma.
+Esteve fechado entre 2026-08-16 e 2026-08-20, por `BlobDocumentStorage` sobre
+Azure Blob Storage: cifra do serviço, sem a aplicação ver nem gerir chave
+nenhuma.
 
-**⚠ Continua aberto no caminho de sistema de ficheiros**, que é o usado em
-desenvolvimento local. Aceitável aí: não guarda dados reais. A escolha é por
-configuração (`DocumentStorage:AccountName`), não por ambiente.
+**Com o deployment em VPS (ADR-031) não há Blob Storage.** O armazenamento
+volta a ser o sistema de ficheiros, no volume `rivo-documents-data` — sem cifra
+em repouso, e desta vez com dados reais, que era exactamente a distinção que
+tornava o caminho local aceitável.
+
+O código de Blob continua lá e a escolha é por configuração
+(`DocumentStorage:AccountName`), não por ambiente: basta uma conta para o
+fechar outra vez. Alternativas na VPS: cifra ao nível do sistema de ficheiros
+ou do disco, ou um serviço compatível com S3.
 
 <details><summary>Registo original</summary>
 
@@ -150,9 +183,12 @@ configuração (`DocumentStorage:AccountName`), não por ambiente.
 
 Fechado por [ADR-025](../decisions/adr-025-concorrencia-optimista.md). Coluna
 `version` como token de concorrência em seis agregados, com três isenções
-justificadas e imposição por teste de arquitectura. Verificado contra o
-PostgreSQL: duas escritas com a mesma versão de partida dão `UPDATE 1` e
-`UPDATE 0`.
+justificadas e imposição por teste de arquitectura. Verificado contra o motor
+real: de duas escritas com a mesma versão de partida, a primeira afecta uma
+linha e a segunda nenhuma — e o EF Core lança em vez de sobrepor.
+
+O mecanismo é gerido pela aplicação e não pelo motor, e foi por isso que
+atravessou a troca para SQL Server sem uma linha de alteração (ADR-029).
 
 Deixou atrás de si o K15, que é a metade que faltava.
 

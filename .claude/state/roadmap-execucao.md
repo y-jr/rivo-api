@@ -29,7 +29,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | # | Fase | Estado |
 |---|---|---|
 | 0 | Fundação de verificação e CI | ✅ **Fechada** em 2026-08-16 |
-| 1 | Aterrar em Azure — staging primeiro | **Em curso** — infraestrutura de pé, CD por correr |
+| 1 | Aterrar em produção — VPS | **Em curso** — reorientada de Azure para VPS em 2026-08-20 (ADR-031) |
 | 2 | `approval` — governança de decisões | Por iniciar |
 | 3 | `fiscal` — o que não está bloqueado | Por iniciar |
 | 4 | `finance` — o núcleo | Por iniciar |
@@ -76,9 +76,18 @@ Registado no ADR-026 §Risks, não é dívida escondida.
 
 ---
 
-## Fase 1 — Aterrar em Azure, staging primeiro
+## Fase 1 — Aterrar em produção
 
 **Depende de:** Fase 0.
+
+> **Reorientada em 2026-08-20.** O destino deixou de ser Azure e passou a ser
+> uma **VPS da organização**, contra o **SQL Server** que ela já opera
+> (ADR-029, ADR-031). O planeamento abaixo — escrito para Azure — fica como
+> registo do que se tinha decidido; o que substitui cada item está na secção
+> "Execução de 2026-08-20", no fim desta fase.
+>
+> **O critério de saída não mudou:** as seis suites de verificação têm de
+> passar contra o ambiente publicado, não apenas contra Docker local.
 
 **Porquê antes de `approval`:** descobrir os problemas de produção com cinco
 módulos é barato; com catorze não é. E três decisões pendentes — gestão de
@@ -129,6 +138,35 @@ Azure, não apenas contra Docker local.
 
 **Por fechar:** o CD nunca correu, portanto o critério de saída — as suites
 contra staging — continua por cumprir. Depende do merge para `main`.
+
+**Execução de 2026-08-20 — reorientação para VPS.**
+
+O CD para Azure não chegou a correr, e deixou de fazer sentido correr: o
+destino passou a ser uma VPS da organização, contra o SQL Server que ela já
+opera. O que isso substitui, item a item:
+
+| Planeado para Azure | Substituído por |
+|---|---|
+| IaC em Bicep | Nada. `infra/main.bicep` removido — não há infraestrutura a descrever (ADR-031) |
+| App Service Linux B1 | `docker compose` na VPS, atrás do reverse proxy da rede `proxy` |
+| PostgreSQL Flexible Server | SQL Server externo, já operado pela organização (ADR-029) |
+| Key Vault + Managed Identity | `/opt/projects/rivo/.env`, escrito à mão na máquina |
+| Migrações como passo de pipeline | Migração no arranque, por interruptor explícito (ADR-030) |
+| App Insights + Log Analytics | `docker compose logs`. **Regressão assumida** — observabilidade volta a estar em aberto |
+| `cd-staging.yml` | `.github/workflows/main.yml`: SSH, `git pull`, `compose up --build`, sonda de `/health` |
+
+O que se manteve sem alteração:
+
+| Item | Estado |
+|---|---|
+| K8 — cabeçalhos reencaminhados | ✅ fechado; a confiança passa a vir de o container não publicar porto no host |
+| K9 — append-only na base de dados | ✅ fechado em SQL Server: gatilho `INSTEAD OF` + tabela sentinela contra `TRUNCATE` (ADR-029) |
+| K11 — cifra em repouso | ⚠ **reaberto**: sem Blob Storage, o armazenamento é o sistema de ficheiros da VPS. O caminho de Blob continua no código |
+| As 66 verificações caixa-preta | ✅ passam contra a stack local em SQL Server |
+| 125 testes .NET | ✅ passam, incluindo os 4 de integração contra SQL Server real |
+
+**Por fechar:** o critério de saída continua a ser as suites contra o ambiente
+publicado — agora a VPS, não staging em Azure. Depende do primeiro deployment.
 
 ---
 
@@ -275,35 +313,36 @@ por contrato publicado.
 
 - **Expiração por inactividade** — só existe absoluta; os 15 minutos para
   perfis decisórios não estão satisfeitos.
-- **MFA** — entra na Fase 1, com Azure e Entra ID em cima da mesa.
+- **MFA** — entra na Fase 1. Com o Azure fora de cena (ADR-031), o Entra ID deixou de estar em cima da mesa: o mecanismo fica por decidir.
 - Refresh token, se a duração fixa se revelar incómoda.
 - Permissões dos restantes cinco perfis.
 
 ### Frontend — arranca na Fase 3
 
-React + Tailwind em Static Web Apps. Antes da Fase 3 a superfície da API muda
+React + Tailwind, servido pelo mesmo reverse proxy da VPS. Antes da Fase 3 a superfície da API muda
 demasiado. Começar por `identity`, `hr` e `approval`.
 
 ---
 
-## Mapa Azure (Fase 1)
+## Mapa de execução (Fase 1)
 
-| Serviço | Papel | Fecha |
+Substitui o mapa Azure, abandonado em 2026-08-20 (ADR-031).
+
+| Peça | Papel | Fecha |
 |---|---|---|
-| App Service (Linux B1) | API e worker (ADR-027) | Topologia de produção → K8 |
-| Container Registry | Imagens por commit | — |
-| PostgreSQL Flexible | Schemas por domínio (ADR-002) | Utilizadores de BD → K9 |
-| Key Vault | Chave JWT e credenciais, por Managed Identity | Segredos em produção |
-| Blob Storage | `IDocumentStorage` cifrado | Object storage → K11 |
-| App Insights + Log Analytics | Traços, métricas, alertas | — |
-| Static Web Apps | Frontend | — |
-| Communication Services | E-mail transaccional | Provider de e-mail → K13 |
-| Front Door + WAF | Só na Fase 8 | Exposição externa |
-| GitHub Actions | CI (Fase 0), CD (Fase 1) | Migrações em produção |
+| VPS + `docker compose` | API e worker, num container (ADR-031) | Topologia de produção → K8 |
+| Reverse proxy na rede `proxy` | Único caminho até à API; termina TLS | Exposição externa |
+| SQL Server externo | Schemas por domínio (ADR-002, ADR-029) | Utilizador de BD restrito → K9 |
+| `/opt/projects/rivo/.env` | Chave JWT e credenciais, fora do repositório | Segredos em produção |
+| Volume `rivo-documents-data` | `IDocumentStorage` em sistema de ficheiros | — (K11 fica aberto) |
+| `docker compose logs` | Diagnóstico | — (observabilidade fica aberta) |
+| GitHub Actions | CI (Fase 0) e deploy por SSH (Fase 1) | Migrações em produção (ADR-030) |
 
-**Fora de âmbito, deliberadamente:** sem AKS — o ADR-001 escolheu monólito
-modular para não pagar orquestração distribuída. Sem Service Bus — o despacho
-é interno ao processo. Sem multi-tenancy — ADR-003 exclui-a da v1.
+**Fora de âmbito, deliberadamente:** sem orquestrador — o ADR-001 escolheu
+monólito modular para não pagar orquestração distribuída. Sem broker de
+mensagens — o despacho é interno ao processo. Sem multi-tenancy — ADR-003
+exclui-a da v1. Sem registo de imagens — a VPS constrói a sua, e o ADR-031
+diz quando é que isso deixa de servir.
 
 ---
 

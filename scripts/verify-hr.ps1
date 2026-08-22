@@ -1,10 +1,11 @@
 # Verificação do módulo `hr`.
 #
-#   docker compose up -d --build
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 #   pwsh -File scripts/verify-hr.ps1
 
 $ErrorActionPreference = "Stop"
-$base = "http://localhost:5080"
+. (Join-Path $PSScriptRoot "_ambiente.ps1")
+$base = Get-RivoBaseUrl
 $failures = 0
 
 function Test-Case {
@@ -29,12 +30,9 @@ function Get-StatusCode {
     }
 }
 
-function Invoke-Sql { param([string]$q) return (docker exec rivo-postgres psql -U rivo -d rivo -t -A -c $q).Trim() }
+function Invoke-Sql { param([string]$q) return (Invoke-RivoSql $q) }
 
-$dotenv = @{}
-Get-Content ".env" | Where-Object { $_ -match "=" -and $_ -notmatch "^\s*#" } | ForEach-Object {
-    $p = $_ -split "=", 2; $dotenv[$p[0].Trim()] = $p[1].Trim()
-}
+$dotenv = Get-RivoCredentials
 
 function Get-Token {
     param([string]$Email, [string]$Password)
@@ -68,9 +66,9 @@ Test-Case "1. Schema hr com migration propria e isolado" {
 }
 
 Test-Case "2. Perfil HR nao recebe hr.positions.write (ADR-015)" {
-    $has = Invoke-Sql "select count(*) from identity.app_role_claim c join identity.app_role r on r.id=c.role_id where r.name='HR' and c.claim_value='hr.positions.write'"
+    $has = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='HR' and c.claim_value='hr.positions.write'"
     if ($has -ne "0") { throw "HR tem hr.positions.write" }
-    $assign = Invoke-Sql "select count(*) from identity.app_role_claim c join identity.app_role r on r.id=c.role_id where r.name='HR' and c.claim_value='hr.positions.assign'"
+    $assign = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='HR' and c.claim_value='hr.positions.assign'"
     if ($assign -ne "1") { throw "HR nao tem hr.positions.assign" }
     "HR atribui cargos mas nao gere o catalogo"
 }
@@ -168,7 +166,7 @@ Test-Case "12. Sem autenticacao -> 401; sem permissao -> 403" {
 }
 
 Test-Case "13. Dados sobrevivem ao reinicio da stack" {
-    docker compose restart | Out-Null
+    Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(180)
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
     if (-not $up) { throw "API nao voltou" }

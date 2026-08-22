@@ -81,7 +81,10 @@ jobs:
     name: Verificação end-to-end
     runs-on: ubuntu-latest
     needs: build-and-test
-    timeout-minutes: 25
+    # 40 e não 25: várias suites reiniciam a stack para verificar persistência,
+    # e um SQL Server frio demora perto de um minuto a voltar — contra o pouco
+    # mais de um segundo do PostgreSQL que aqui estava antes (ADR-029).
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@v7
@@ -103,10 +106,18 @@ jobs:
             echo "BOOTSTRAP_DECIDER_EMAIL=decisor@ci.rivo.local"
             echo "BOOTSTRAP_DECIDER_PASSWORD=${senha}"
             echo "JWT_SIGNING_KEY=$(openssl rand -hex 32)"
+            echo "ASPNETCORE_ENVIRONMENT=Development"
+            echo "MIGRATE_ON_STARTUP=true"
+            echo "SEED_ON_STARTUP=true"
+            # O anfitrião é o serviço do compose de desenvolvimento, nunca o
+            # servidor externo: o CI não pode escrever na base de dados real.
+            echo "CONNECTION_STRING=Server=sqlserver,1433;Database=rivo;User Id=sa;Password=Rivo_Dev_2026!;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=True;"
           } > .env
 
+      # A sobreposição de desenvolvimento acrescenta o SQL Server em container
+      # e publica o porto 5080, que é onde as suites batem.
       - name: Arrancar a stack
-        run: docker compose up -d --build
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 
       # A API aplica migrações e seed no arranque; sondar /health é o que
       # distingue "container a correr" de "aplicação utilizável".
@@ -133,10 +144,10 @@ jobs:
         if: failure()
         run: |
           echo "=== api ==="
-          docker compose logs --tail 300 api || true
-          echo "=== postgres ==="
-          docker compose logs --tail 100 postgres || true
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml logs --tail 300 api || true
+          echo "=== sqlserver ==="
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml logs --tail 100 sqlserver || true
 
       - name: Destruir a stack
         if: always()
-        run: docker compose down -v
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml down -v

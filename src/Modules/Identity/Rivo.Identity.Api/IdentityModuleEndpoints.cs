@@ -23,6 +23,7 @@ public static class IdentityModuleEndpoints
 
         group.MapPost("/register", RegisterAsync);
         group.MapPost("/login", LogInAsync);
+        group.MapPost("/login/google", LogInWithGoogleAsync);
         group.MapPost("/logout", LogOutAsync).RequireAuthorization();
         group.MapGet("/me", GetCurrentUser).RequireAuthorization();
 
@@ -125,6 +126,47 @@ public static class IdentityModuleEndpoints
         return result.Succeeded
             ? Results.Ok(new LoginResponse(result.AccessToken!, result.ExpiresAt!.Value))
             : Results.Unauthorized();
+    }
+
+    /// <summary>
+    /// Entrada por Google (ADR-032). O corpo traz o ID token que o frontend
+    /// obteve junto da Google; o servidor valida-o e, se corresponder a uma
+    /// conta existente, devolve o mesmo <see cref="LoginResponse"/> do login
+    /// por password — mesmo token, mesma sessão revogável.
+    /// </summary>
+    private static async Task<IResult> LogInWithGoogleAsync(
+        GoogleLoginRequest request,
+        LogInWithGoogle logIn,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var ipAddress = http.Connection.RemoteIpAddress?.ToString() ?? string.Empty;
+        var userAgent = http.Request.Headers.UserAgent.ToString();
+
+        var result = await logIn.ExecuteAsync(
+            request.IdToken,
+            ipAddress,
+            string.IsNullOrWhiteSpace(userAgent) ? null : userAgent,
+            http.TraceIdentifier,
+            cancellationToken);
+
+        return result.Outcome switch
+        {
+            GoogleLogInOutcome.Succeeded =>
+                Results.Ok(new LoginResponse(result.AccessToken!, result.ExpiresAt!.Value)),
+
+            // 501 e não 401: neste ambiente o Google não está ligado de todo.
+            // Um 401 mandaria procurar o defeito na conta de quem tentou, que
+            // é o sítio errado — mesma lógica do 501 de `hr` (ADR-015).
+            GoogleLogInOutcome.NotConfigured =>
+                Results.Problem(
+                    "Autenticação com Google não está configurada neste ambiente.",
+                    statusCode: StatusCodes.Status501NotImplemented),
+
+            // 401 sem detalhe: não revelar se o token era inválido, se o
+            // e-mail não estava verificado ou se não existe conta.
+            _ => Results.Unauthorized(),
+        };
     }
 
     private static async Task<IResult> LogOutAsync(

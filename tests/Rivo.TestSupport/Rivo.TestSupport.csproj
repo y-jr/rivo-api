@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Ferramenta de teste partilhada: levanta um PostgreSQL real em container.
+    Ferramenta de teste partilhada: levanta um SQL Server real em container.
 
     **Não referencia módulo nenhum, e não pode passar a referenciar.** Se o
     fizesse, tornava-se o sítio onde todos os módulos se encontram — o que a
@@ -22,7 +22,7 @@
       O xUnit vem de `tests/Directory.Build.props`, que se aplica a tudo o que
       está sob `tests/`. Declará-lo aqui seria referência duplicada.
     -->
-    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Testcontainers.MsSql" />
   </ItemGroup>
 
 </Project>

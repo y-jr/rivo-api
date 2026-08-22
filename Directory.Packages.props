@@ -9,7 +9,7 @@
     arqueologia assim que deixarem de coincidir.
 
     Com catorze módulos previstos, cada um com cinco projectos, a divergência
-    era questão de tempo. E divergência de versões de EF Core ou de Npgsql
+    era questão de tempo. E divergência de versões de EF Core ou do provider de SQL Server
     entre módulos não dá erro de compilação — dá comportamento diferente em
     módulos diferentes, que é bastante pior.
 
@@ -32,13 +32,15 @@
   <ItemGroup>
     <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10" />
-    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.10" />
   </ItemGroup>
 
   <!-- Identidade e autenticação. -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.10" />
     <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.10" />
+    <!-- Descoberta OIDC e JWKS, para validar o ID token da Google (ADR-032). -->
+    <PackageVersion Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.22.0" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.22.0" />
   </ItemGroup>
 
@@ -58,7 +60,7 @@
 
   <!-- Testes de integração (ADR-026). -->
   <ItemGroup>
-    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.14.0" />
+    <PackageVersion Include="Testcontainers.MsSql" Version="4.14.0" />
   </ItemGroup>
 
   <!-- Testes (ADR-022). -->

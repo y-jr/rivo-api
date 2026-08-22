@@ -26,7 +26,7 @@ quando o teste é especificamente de integração.
 
 ### Infrastructure
 
-Testes de integração contra a tecnologia real (PostgreSQL efectivo) para as
+Testes de integração contra a tecnologia real (SQL Server efectivo) para as
 peças que implementam ports: repositórios, gateways externos. É aqui que
 tocar numa dependência real é correcto, não um atalho.
 
@@ -102,7 +102,7 @@ dotnet test
 |---|---|
 | Domain | **100 testes**, 5 módulos — `hr` 45, `notifications` 20, `documents` 16, `audit` 10, `identity` 9 |
 | Application | Nenhum |
-| Infrastructure | **4 testes** em `notifications`, PostgreSQL real (ADR-026). Restantes quatro módulos por cobrir |
+| Infrastructure | **4 testes** em `notifications`, SQL Server real (ADR-026, ADR-029). Restantes quatro módulos por cobrir |
 | API | Nenhum (as suites PowerShell tocam-lhe indirectamente) |
 | Arquitectura | **21 testes** (ADR-024, ADR-025) |
 
@@ -111,9 +111,9 @@ Não substituem teste de domínio, nem o inverso.
 
 ## Integração
 
-**Testcontainers com PostgreSQL real** (ADR-026), em
+**Testcontainers com SQL Server real** (ADR-026, ADR-029), em
 `tests/Modules/<Módulo>/Rivo.<Módulo>.Infrastructure.Tests/`. A imagem
-acompanha a do `docker-compose.yml`: testar contra uma versão diferente
+acompanha a do `docker-compose.dev.yml`: testar contra uma versão diferente
 daquela em que se corre é uma classe de defeitos que só aparece em produção.
 
 O fixture partilhado vive em `tests/Rivo.TestSupport`, que **não referencia

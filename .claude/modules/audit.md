@@ -18,7 +18,7 @@ Tratá-los da mesma forma seria erro nos dois sentidos.
 
 | Conceito | Atributos |
 |---|---|
-| Evento de Auditoria | utilizador, entidade_tipo, entidade_id, acção, valor anterior (jsonb), valor novo (jsonb), **ip**, correlation_id, criado em |
+| Evento de Auditoria | utilizador, entidade_tipo, entidade_id, acção, valor anterior (JSON em `nvarchar(max)`), valor novo (JSON em `nvarchar(max)`), **ip**, correlation_id, criado em |
 
 A coluna **`ip` é obrigatória por desenho** — o `audit_logs` do protótipo
 não a tinha, o que era lacuna face ao requisito absorvido do SGAP.
@@ -90,8 +90,10 @@ atribuíveis a uma identidade de execução apropriada.
 
 ## Perguntas em aberto
 
-- Mecanismo concreto de garantia append-only (permissões de BD, tabela
-  particionada, outro).
+- ~~Mecanismo concreto de garantia append-only.~~ **Decidido:** gatilho
+  `INSTEAD OF` mais tabela sentinela contra `TRUNCATE` (ADR-029). O que
+  continua em aberto é a metade complementar — um utilizador de base de dados
+  sem privilégios sobre a tabela.
 - Política de retenção diferenciada por módulo/regulação.
 
 ## Estado
@@ -121,12 +123,12 @@ perder uma notificação não é.
 
 ### ⚠ Defeitos conhecidos
 
-- **K9** — o append-only é imposto em código (sem setters, sem métodos de
-  alteração), mas nada impede um `UPDATE` ou `DELETE` directo na tabela.
-  BR-10 exige a garantia; hoje ela depende de a aplicação ser o único caminho
-  de escrita.
+- ~~**K9**~~ — **fechado.** O append-only deixou de depender só do código:
+  `UPDATE` e `DELETE` são recusados por um gatilho `INSTEAD OF`, e `TRUNCATE`
+  pela FK da tabela sentinela `audit_event_truncate_guard` (ADR-029). Fica por
+  fazer a metade que depende de privilégios — um utilizador de base de dados
+  que não seja dono da tabela.
 - **K10** — a escrita da trilha não é transaccional com a operação auditada,
   porque `audit` tem `DbContext` próprio.
 
-Ambos em [state/known-issues.md](../state/known-issues.md). O K9 é a resposta
-por dar à primeira pergunta em aberto acima.
+Ambos em [state/known-issues.md](../state/known-issues.md).

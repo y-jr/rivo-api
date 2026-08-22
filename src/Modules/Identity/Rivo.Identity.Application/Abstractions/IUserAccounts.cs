@@ -24,6 +24,40 @@ public interface IUserAccounts
     /// </summary>
     Task<AuthenticatedAccount?> VerifyPasswordAsync(string email, string password, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Procura a conta já ligada a uma identidade de provider externo
+    /// (ADR-032). É o caminho de todas as entradas menos a primeira.
+    /// </summary>
+    /// <param name="providerKey">
+    /// O `sub` do provider, não o e-mail: é estável e sobrevive a uma mudança
+    /// de endereço do lado do provider.
+    /// </param>
+    Task<AuthenticatedAccount?> FindByExternalLoginAsync(
+        string provider,
+        string providerKey,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Liga uma identidade externa à conta Rivo com este e-mail. É o que
+    /// acontece na primeira entrada por Google.
+    ///
+    /// <para>
+    /// <strong>Nunca cria contas.</strong> Sem conta correspondente devolve
+    /// <see cref="LinkExternalLoginOutcome.AccountNotFound"/> e não escreve
+    /// nada — a criação de contas é acto deliberado de quem administra
+    /// (ADR-016), e não consequência de alguém se ter autenticado num provider.
+    /// </para>
+    /// </summary>
+    /// <param name="email">
+    /// Endereço <strong>já verificado pelo provider</strong>. Quem chama
+    /// garante-o; ligar por um endereço não verificado é via de tomada de conta.
+    /// </param>
+    Task<LinkExternalLoginResult> LinkExternalLoginAsync(
+        string email,
+        string provider,
+        string providerKey,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<UserSummary>> ListAsync(CancellationToken cancellationToken);
 
     /// <summary>
@@ -37,6 +71,37 @@ public interface IUserAccounts
 }
 
 public sealed record UserSummary(Guid UserId, string Email);
+
+/// <param name="Account">Preenchido apenas quando a ligação foi feita.</param>
+public sealed record LinkExternalLoginResult(LinkExternalLoginOutcome Outcome, AuthenticatedAccount? Account)
+{
+    public static LinkExternalLoginResult Linked(AuthenticatedAccount account) =>
+        new(LinkExternalLoginOutcome.Linked, account);
+
+    public static LinkExternalLoginResult AccountNotFound() =>
+        new(LinkExternalLoginOutcome.AccountNotFound, null);
+
+    public static LinkExternalLoginResult Rejected() =>
+        new(LinkExternalLoginOutcome.Rejected, null);
+}
+
+public enum LinkExternalLoginOutcome
+{
+    Linked,
+
+    /// <summary>
+    /// Não existe conta com este e-mail. <strong>Não é erro</strong> — é a
+    /// política do ADR-032 a funcionar: o Google entra em contas que já
+    /// existem, não cria contas novas.
+    /// </summary>
+    AccountNotFound,
+
+    /// <summary>
+    /// A conta existe mas o armazenamento recusou a ligação — tipicamente
+    /// porque esta identidade externa já está ligada a outra conta.
+    /// </summary>
+    Rejected,
+}
 
 public enum AssignProfileOutcome
 {

@@ -26,10 +26,15 @@ public sealed class AuditDbContext(DbContextOptions<AuditDbContext> options) : D
             entry.Property(e => e.IpAddress).HasMaxLength(45);
             entry.Property(e => e.CorrelationId).HasMaxLength(100);
 
-            // jsonb em vez de texto: permite consultar dentro do valor sem
-            // desserializar, quando a investigação o exigir.
-            entry.Property(e => e.PreviousValue).HasColumnType("jsonb");
-            entry.Property(e => e.NewValue).HasColumnType("jsonb");
+            // `nvarchar(max)` com JSON lá dentro.
+            //
+            // Era `jsonb` no PostgreSQL, que valida e indexa o documento. O SQL
+            // Server não tem tipo equivalente: guarda-se texto e consulta-se com
+            // as funções `JSON_VALUE`/`OPENJSON`, que operam sobre `nvarchar`
+            // (ADR-029). O valor continua a ser JSON — muda a garantia, que
+            // passa a ser da aplicação e não do motor.
+            entry.Property(e => e.PreviousValue).HasColumnType("nvarchar(max)");
+            entry.Property(e => e.NewValue).HasColumnType("nvarchar(max)");
 
             // Consulta típica: trilha de um registo, mais recente primeiro.
             entry.HasIndex(e => new { e.EntityType, e.EntityId, e.OccurredAt });

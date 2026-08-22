@@ -19,16 +19,17 @@ namespace Rivo.Documents.Infrastructure.Persistence.Migrations
                 schema: "documents",
                 columns: table => new
                 {
-                    id = table.Column<Guid>(type: "uuid", nullable: false),
-                    file_name = table.Column<string>(type: "character varying(400)", maxLength: 400, nullable: false),
-                    content_type = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    version = table.Column<int>(type: "int", nullable: false),
+                    file_name = table.Column<string>(type: "nvarchar(400)", maxLength: 400, nullable: false),
+                    content_type = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
                     size_in_bytes = table.Column<long>(type: "bigint", nullable: false),
-                    category = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    content_hash = table.Column<string>(type: "character(64)", fixedLength: true, maxLength: 64, nullable: false),
-                    storage_path = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
-                    uploaded_by = table.Column<Guid>(type: "uuid", nullable: true),
-                    uploaded_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    voided_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                    category = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+                    content_hash = table.Column<string>(type: "nchar(64)", fixedLength: true, maxLength: 64, nullable: false),
+                    storage_path = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
+                    uploaded_by = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
+                    uploaded_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    voided_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
                 },
                 constraints: table =>
                 {

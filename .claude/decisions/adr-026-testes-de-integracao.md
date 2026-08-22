@@ -4,6 +4,10 @@
 
 Aceite (2026-08-16)
 
+**Actualizado pelo [ADR-029](adr-029-sql-server-em-vez-de-postgresql.md)**
+(2026-08-20): o container passa a ser SQL Server (`Testcontainers.MsSql`). O
+argumento — motor real e não substituto em memória — é o mesmo, e vale igual.
+
 ## Context
 
 `standards/testing.md` exige, para a camada Infrastructure, "testes de

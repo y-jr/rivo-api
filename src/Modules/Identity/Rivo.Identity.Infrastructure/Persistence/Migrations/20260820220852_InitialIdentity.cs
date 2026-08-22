@@ -1,6 +1,5 @@
 ﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
@@ -20,10 +19,10 @@ namespace Rivo.Identity.Infrastructure.Persistence.Migrations
                 schema: "identity",
                 columns: table => new
                 {
-                    id = table.Column<Guid>(type: "uuid", nullable: false),
-                    name = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
-                    normalized_name = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
-                    concurrency_stamp = table.Column<string>(type: "text", nullable: true)
+                    id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    name = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    normalized_name = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    concurrency_stamp = table.Column<string>(type: "nvarchar(max)", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -35,21 +34,21 @@ namespace Rivo.Identity.Infrastructure.Persistence.Migrations
                 schema: "identity",
                 columns: table => new
                 {
-                    id = table.Column<Guid>(type: "uuid", nullable: false),
-                    user_name = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
-                    normalized_user_name = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
-                    email = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
-                    normalized_email = table.Column<string>(type: "character varying(256)", maxLength: 256, nullable: true),
-                    email_confirmed = table.Column<bool>(type: "boolean", nullable: false),
-                    password_hash = table.Column<string>(type: "text", nullable: true),
-                    security_stamp = table.Column<string>(type: "text", nullable: true),
-                    concurrency_stamp = table.Column<string>(type: "text", nullable: true),
-                    phone_number = table.Column<string>(type: "text", nullable: true),
-                    phone_number_confirmed = table.Column<bool>(type: "boolean", nullable: false),
-                    two_factor_enabled = table.Column<bool>(type: "boolean", nullable: false),
-                    lockout_end = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    lockout_enabled = table.Column<bool>(type: "boolean", nullable: false),
-                    access_failed_count = table.Column<int>(type: "integer", nullable: false)
+                    id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    user_name = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    normalized_user_name = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    email = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    normalized_email = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    email_confirmed = table.Column<bool>(type: "bit", nullable: false),
+                    password_hash = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    security_stamp = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    concurrency_stamp = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    phone_number = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    phone_number_confirmed = table.Column<bool>(type: "bit", nullable: false),
+                    two_factor_enabled = table.Column<bool>(type: "bit", nullable: false),
+                    lockout_end = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    lockout_enabled = table.Column<bool>(type: "bit", nullable: false),
+                    access_failed_count = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -61,13 +60,14 @@ namespace Rivo.Identity.Infrastructure.Persistence.Migrations
                 schema: "identity",
                 columns: table => new
                 {
-                    id = table.Column<Guid>(type: "uuid", nullable: false),
-                    user_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    ip_address = table.Column<string>(type: "character varying(45)", maxLength: 45, nullable: false),
-                    user_agent = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: true),
-                    created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    expires_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    revoked_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                    id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    version = table.Column<int>(type: "int", nullable: false),
+                    user_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    ip_address = table.Column<string>(type: "nvarchar(45)", maxLength: 45, nullable: false),
+                    user_agent = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: true),
+                    created_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    expires_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    revoked_at = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -79,11 +79,11 @@ namespace Rivo.Identity.Infrastructure.Persistence.Migrations
                 schema: "identity",
                 columns: table => new
                 {
-                    id = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    role_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    claim_type = table.Column<string>(type: "text", nullable: true),
-                    claim_value = table.Column<string>(type: "text", nullable: true)
+                    id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    role_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    claim_type = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    claim_value = table.Column<string>(type: "nvarchar(max)", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -102,11 +102,11 @@ namespace Rivo.Identity.Infrastructure.Persistence.Migrations
                 schema: "identity",
                 columns: table => new
                 {
-                    id = table.Column<int>(type: "integer", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    user_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    claim_type = table.Column<string>(type: "text", nullable: true),
-                    claim_value = table.Column<string>(type: "text", nullable: true)
+                    id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    user_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    claim_type = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    claim_value = table.Column<string>(type: "nvarchar(max)", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -125,10 +125,10 @@ namespace Rivo.Identity.Infrastructure.Persistence.Migrations
                 schema: "identity",
                 columns: table => new
                 {
-                    login_provider = table.Column<string>(type: "text", nullable: false),
-                    provider_key = table.Column<string>(type: "text", nullable: false),
-                    provider_display_name = table.Column<string>(type: "text", nullable: true),
-                    user_id = table.Column<Guid>(type: "uuid", nullable: false)
+                    login_provider = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    provider_key = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    provider_display_name = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    user_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -147,8 +147,8 @@ namespace Rivo.Identity.Infrastructure.Persistence.Migrations
                 schema: "identity",
                 columns: table => new
                 {
-                    user_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    role_id = table.Column<Guid>(type: "uuid", nullable: false)
+                    user_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    role_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -174,10 +174,10 @@ namespace Rivo.Identity.Infrastructure.Persistence.Migrations
                 schema: "identity",
                 columns: table => new
                 {
-                    user_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    login_provider = table.Column<string>(type: "text", nullable: false),
-                    name = table.Column<string>(type: "text", nullable: false),
-                    value = table.Column<string>(type: "text", nullable: true)
+                    user_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    login_provider = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    name = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    value = table.Column<string>(type: "nvarchar(max)", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -196,7 +196,8 @@ namespace Rivo.Identity.Infrastructure.Persistence.Migrations
                 schema: "identity",
                 table: "app_role",
                 column: "normalized_name",
-                unique: true);
+                unique: true,
+                filter: "[normalized_name] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "ix_app_role_claim_role_id",
@@ -215,7 +216,8 @@ namespace Rivo.Identity.Infrastructure.Persistence.Migrations
                 schema: "identity",
                 table: "app_user",
                 column: "normalized_user_name",
-                unique: true);
+                unique: true,
+                filter: "[normalized_user_name] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "ix_app_user_claim_user_id",

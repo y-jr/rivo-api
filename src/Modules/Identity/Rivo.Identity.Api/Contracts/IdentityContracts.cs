@@ -7,6 +7,13 @@ public sealed record RegisterRequest(string Email, string Password);
 
 public sealed record LoginRequest(string Email, string Password);
 
+/// <param name="IdToken">
+/// ID token emitido pela Google ao frontend (ADR-032). É uma afirmação
+/// assinada sobre quem o utilizador é — o servidor valida-a contra as chaves
+/// públicas da Google antes de a aceitar.
+/// </param>
+public sealed record GoogleLoginRequest(string IdToken);
+
 public sealed record LoginResponse(string AccessToken, DateTimeOffset ExpiresAt);
 
 /// <summary>Identidade do utilizador autenticado, para o cliente se orientar.</summary>

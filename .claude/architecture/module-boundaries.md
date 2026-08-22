@@ -3,7 +3,7 @@
 ## O que é um módulo
 
 Um bounded context: linguagem ubíqua própria, regras de negócio próprias,
-camadas API/Application/Domain próprias, schema PostgreSQL próprio e
+camadas API/Application/Domain próprias, schema próprio na base de dados e
 fronteira pública explícita.
 
 ## O que um módulo possui
@@ -11,7 +11,7 @@ fronteira pública explícita.
 - Os seus agregados, entidades, value objects e serviços de domínio.
 - As invariantes que protegem esses conceitos.
 - Os seus casos de uso e fronteiras de transacção.
-- **O seu schema PostgreSQL e as suas tabelas**, em exclusivo.
+- **O seu schema e as suas tabelas**, em exclusivo.
 
 Partilhar a mesma instância de base de dados não é partilhar ownership.
 

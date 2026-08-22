@@ -39,7 +39,7 @@ Nunca usar "Perfil" e "Cargo" como sinónimos. Nunca usar "Departamento" e
 - O nome do módulo é o namespace de topo de tudo o que esse módulo possui.
 - As camadas nomeiam-se consistentemente em todos os módulos: `Api`,
   `Application`, `Domain`, `Infrastructure`.
-- Schema PostgreSQL = nome do módulo, em minúsculas: `identity`, `hr`,
+- Schema da base de dados = nome do módulo, em minúsculas: `identity`, `hr`,
   `payroll`, `finance`, `procurement`, `commercial`, `approval`, `fiscal`,
   `projects`, `fleet`, `inventory`, `documents`, `notifications`, `audit`.
 
@@ -50,11 +50,11 @@ Nunca usar "Perfil" e "Cargo" como sinónimos. Nunca usar "Departamento" e
 - Interfaces com prefixo `I`.
 - Um tipo público por ficheiro; nome do ficheiro = nome do tipo.
 
-## Convenções PostgreSQL
+## Convenções da base de dados
 
 - Tabelas e colunas: `snake_case`, singular para a entidade
   (`colaborador`, não `colaboradores`).
-- Chave primária: `id` (`uuid`).
+- Chave primária: `id` (`uniqueidentifier`, UUIDv7).
 - Concorrência optimista: coluna `version`.
 - FK: `<entidade>_id`. FK entre schemas qualifica o schema
   (`hr.colaborador(id)`).

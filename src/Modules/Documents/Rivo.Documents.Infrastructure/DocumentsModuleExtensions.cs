@@ -18,12 +18,12 @@ public static class DocumentsModuleExtensions
             ?? throw new InvalidOperationException("Falta a connection string 'Rivo'.");
 
         services.AddDbContext<DocumentsDbContext>(options => options
-            .UseNpgsql(connectionString, npgsql =>
-                npgsql.MigrationsHistoryTable("__ef_migrations_history", DocumentsDbContext.Schema)
-                    // Resiliencia de ligacao: a base de dados pode nao estar
-                    // pronta no arranque (o depends_on do compose so vale no up,
-                    // nao no restart), e em producao ha failover e reinicios.
-                    .EnableRetryOnFailure(maxRetryCount: 6, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null))
+            .UseSqlServer(connectionString, sqlServer =>
+                sqlServer.MigrationsHistoryTable("__ef_migrations_history", DocumentsDbContext.Schema)
+                    // Resiliencia de ligacao: o SQL Server e externo ao container e
+                    // vive noutra maquina. Falhas de rede transitorias sao normais,
+                    // nao excepcionais — e o arranque pode apanhar a base indisponivel.
+                    .EnableRetryOnFailure(maxRetryCount: 6, maxRetryDelay: TimeSpan.FromSeconds(5), errorNumbersToAdd: null))
             .UseSnakeCaseNamingConvention());
 
         services

@@ -4,7 +4,12 @@
 ## Get latest from `dotnet new gitignore`
 
 # dotenv files
-.env
+#
+# `.env*` e nao so `.env`: os ficheiros preparados para uma maquina concreta
+# (`.env.vps`, `.env.local`) levam credenciais reais e nunca podem ser
+# versionados. `.env.example` e a excepcao, e e o unico que viaja.
+.env*
+!.env.example
 
 # User-specific files
 *.rsuser

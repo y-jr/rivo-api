@@ -1,0 +1,87 @@
+name: Deploy VPS
+
+# Publica na VPS o que entrar em `main`.
+#
+# Separado do CI de propósito. O CI responde "isto está correcto?" e bloqueia
+# PRs; este responde "isto está a correr?" e não bloqueia nada — misturá-los
+# faria uma falha de deployment parecer uma falha de código.
+#
+# O deployment é `git pull` + `docker compose up --build` na máquina de
+# destino (ADR-031). Não há registo de imagens: a VPS constrói a sua.
+#
+# Pressupõe, na VPS:
+#   - o repositório clonado em /opt/projects/rivo, com acesso de leitura ao
+#     remoto;
+#   - /opt/projects/rivo/.env preenchido à mão (ver .env.example) — este
+#     workflow nunca lhe toca;
+#   - a rede `proxy` criada (`docker network create proxy`) e um reverse proxy
+#     ligado a ela.
+#
+# Segredos necessários: VPS_HOST, VPS_USER, VPS_SSH_KEY, PORT.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Dois deployments em simultâneo aplicariam migrações concorrentes ao mesmo
+# schema. Sem cancelamento — um deployment a meio não se interrompe.
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Publicar na VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Executar deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.PORT }}
+
+          # `set -e`: sem isto, um `git pull` falhado não impede o resto do
+          # script de correr, e o deployment ficava verde a reconstruir código
+          # antigo.
+          script: |
+            set -e
+            cd /opt/projects/rivo
+
+            git pull origin main
+
+            docker compose down
+
+            docker compose up -d --build
+
+            docker image prune -f
+
+            # A API migra e semeia no arranque (ADR-030), o que demora mais do
+            # que subir o processo. Sondar /health é o que distingue "container
+            # a correr" de "aplicação utilizável" — e é o que faz o deployment
+            # ficar vermelho quando a migração falha.
+            #
+            # A sonda corre num container descartável dentro da rede `proxy`,
+            # porque a API não publica porto no host e a imagem de runtime do
+            # .NET não traz `curl` lá dentro.
+            for i in $(seq 1 30); do
+              if docker run --rm --network proxy curlimages/curl:latest \
+                   -fsS http://rivo-api:8080/health > /dev/null 2>&1; then
+                echo "Saudável ao fim de ${i} tentativas."
+                exit 0
+              fi
+              sleep 10
+            done
+
+            echo "A aplicação não respondeu em 5 minutos."
+            docker compose logs --tail 200 api
+            exit 1
