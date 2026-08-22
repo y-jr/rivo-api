@@ -194,8 +194,27 @@ Test-Case "9. Passwords ausentes do codigo e dos logs" {
     }
 
     # Confirma que o .env nao e versionado, senao o ponto anterior nao vale.
-    $ignored = Select-String -Path ".gitignore" -Pattern "^\.env$" -Quiet
-    if (-not $ignored) { throw ".env nao esta no .gitignore" }
+    #
+    # Pergunta-se ao git, em vez de procurar o texto da regra no .gitignore.
+    # A assercao anterior exigia uma linha literalmente `.env` e passou a
+    # falhar quando a regra mudou para `.env*` com `!.env.example` — que
+    # ignora o .env na mesma, e ainda o .env.vps e o .env.local, que levam
+    # credenciais reais. Afirmava a forma da regra, e nao o efeito dela; o
+    # ADR-022 manda o contrario.
+    git check-ignore -q ".env"
+    if ($LASTEXITCODE -ne 0) { throw ".env nao seria ignorado pelo git" }
+
+    # Estar ignorado nao chega: um ficheiro que ja tenha sido versionado
+    # continua a se-lo depois de entrar no .gitignore, e as credenciais
+    # ficariam no historico na mesma.
+    git ls-files --error-unmatch ".env" 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { throw ".env esta versionado" }
+
+    # O exemplo tem de continuar a viajar: e o unico sitio onde esta escrito
+    # que variaveis o ambiente precisa. Um `.env*` sem a excepcao levava-o
+    # atras sem ninguem dar por isso.
+    git check-ignore -q ".env.example"
+    if ($LASTEXITCODE -eq 0) { throw ".env.example ficou ignorado" }
 
     $logs = docker compose -f docker-compose.yml -f docker-compose.dev.yml logs 2>&1 | Out-String
     foreach ($secret in @($adminPass, $deciderPass)) {
