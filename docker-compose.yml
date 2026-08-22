@@ -41,6 +41,11 @@ services:
       # Depois do primeiro arranque de um ambiente pode passar a `false`.
       Bootstrap__SeedOnStartup: ${SEED_ON_STARTUP:-true}
 
+      # Origens de browser autorizadas (ADR-033). Lista separada por vírgulas,
+      # sem barra final — o browser compara a origem por igualdade textual.
+      # Vazio significa que só um cliente no mesmo domínio consegue chamar.
+      Cors__AllowedOrigins: ${CORS_ALLOWED_ORIGINS:-}
+
       # Login com Google (ADR-032). Opcional: sem ClientId, o endpoint
       # /identity/login/google responde 501 e o resto da aplicação não muda.
       # Não é segredo — viaja no frontend — mas é ele que fixa a audiência

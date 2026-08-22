@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
+using Rivo.Api.Cors;
 using Rivo.Api.OpenApi;
 using Rivo.Audit.Api;
 using Rivo.Audit.Infrastructure;
@@ -20,6 +21,10 @@ builder.Services.AddOpenApi(options =>
     options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
     options.AddOperationTransformer<BearerSecurityRequirementTransformer>();
 });
+
+// Origens de browser autorizadas (ADR-033). Concern do host e não de módulo:
+// é o processo inteiro que é chamado de fora, não cada módulo por si.
+builder.Services.AddBrowserClientCors(builder.Configuration);
 
 // Cada módulo regista os seus próprios serviços e policies. A ordem segue as
 // dependências de contrato: `identity` consome os contratos de `audit` e `hr`.
@@ -125,6 +130,13 @@ if (!app.Environment.IsDevelopment())
         ForwardLimit = 1,
     });
 }
+
+// CORS antes da autenticação, e depois dos cabeçalhos reencaminhados.
+//
+// O pedido `OPTIONS` de verificação prévia não leva `Authorization`: se a
+// autenticação o visse primeiro, respondia 401 e o pedido verdadeiro nunca
+// chegava a sair do browser.
+app.UseBrowserClientCors();
 
 // A ordem importa: autenticar (quem é) antes de autorizar (pode fazer isto).
 app.UseAuthentication();
