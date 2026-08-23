@@ -89,14 +89,36 @@ where r.name = 'HR' and c.claim_value = 'hr.positions.write'
     if ($hrHasCatalogue -ne "0") { throw "HR tem hr.positions.write, contra ADR-015" }
 
     # Perfis ainda sem modulos de negocio que os justifiquem.
+    #
+    # `Manager` e `Finance` sairam desta lista em 2026-08-23 (ADR-034): decidir
+    # sobre pedidos de aprovacao e a primeira competencia que um perfil de
+    # chefia tem no sistema. Os outros tres continuam vazios, e inventar-lhes
+    # permissoes seria adivinhar.
     $shouldBeEmpty = Invoke-Sql @"
 select count(*) from [identity].app_role_claim c
 join [identity].app_role r on r.id = c.role_id
-where r.name in ('Manager','Finance','Sales','AssetManager','ProjectManager')
+where r.name in ('Sales','AssetManager','ProjectManager')
 "@
     if ($shouldBeEmpty -ne "0") { throw "perfis sem modulo atribuido tem $shouldBeEmpty permissoes" }
 
-    "7 perfis; Admin com $adminPerms permissoes; HR sem catalogo de cargos"
+    # `Manager` e `Finance` decidem, mas **nao configuram as alcadas**: quem
+    # configura decidiria indirectamente o que pode aprovar sozinho, que e a
+    # mesma escalada que o ADR-015 fecha em `hr`.
+    $decidem = Invoke-Sql @"
+select count(*) from [identity].app_role_claim c
+join [identity].app_role r on r.id = c.role_id
+where r.name in ('Manager','Finance') and c.claim_value = 'approval.requests.decide'
+"@
+    if ($decidem -ne "2") { throw "Manager e Finance deviam decidir sobre pedidos; tem $decidem" }
+
+    $configuram = Invoke-Sql @"
+select count(*) from [identity].app_role_claim c
+join [identity].app_role r on r.id = c.role_id
+where r.name in ('Manager','Finance') and c.claim_value = 'approval.policies.write'
+"@
+    if ($configuram -ne "0") { throw "Manager ou Finance gerem politicas de aprovacao" }
+
+    "7 perfis; Admin com $adminPerms permissoes; HR sem catalogo; Manager/Finance decidem sem configurar"
 }
 
 Test-Case "3. Seed criou o Admin" {
