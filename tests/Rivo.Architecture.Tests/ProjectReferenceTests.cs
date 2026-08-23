@@ -39,6 +39,18 @@ public class ProjectReferenceTests
         ["Documents"] = ["Audit"],
         ["Hr"] = ["Audit", "Documents"],
         ["Identity"] = ["Audit", "Hr", "Documents", "Notifications"],
+
+        // `approval` resolve aprovadores por Cargo, que é de `hr` (ADR-034).
+        //
+        // Isto forma o ciclo `hr ↔ approval` que o ADR-015 §R1 previu, e a
+        // resolução é a que ele fixou: cada lado referencia o assembly de
+        // *contratos* do outro, e os contratos não dependem de nada. O teste
+        // `Modules_HaveNoDependencyCycles` continua a valer, e é ele que
+        // garante que a resolução se mantém.
+        //
+        // O domínio de `approval` ainda não referencia `hr`: a resolução de
+        // aprovadores é feita na camada Application, que não existe ainda.
+        ["Approval"] = ["Hr"],
     };
 
     [Fact]

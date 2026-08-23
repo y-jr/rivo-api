@@ -3,6 +3,10 @@
     <Project Path="src/Rivo.Api/Rivo.Api.csproj" />
   </Folder>
   <Folder Name="/src/Modules/" />
+  <Folder Name="/src/Modules/Approval/">
+    <Project Path="src/Modules/Approval/Rivo.Approval.Contracts/Rivo.Approval.Contracts.csproj" />
+    <Project Path="src/Modules/Approval/Rivo.Approval.Domain/Rivo.Approval.Domain.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/Audit/">
     <Project Path="src/Modules/Audit/Rivo.Audit.Api/Rivo.Audit.Api.csproj" />
     <Project Path="src/Modules/Audit/Rivo.Audit.Application/Rivo.Audit.Application.csproj" />
@@ -49,6 +53,9 @@
   </Folder>
   <Folder Name="/tests/Hr/">
     <Project Path="tests/Modules/Hr/Rivo.Hr.Domain.Tests/Rivo.Hr.Domain.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Approval/">
+    <Project Path="tests/Modules/Approval/Rivo.Approval.Domain.Tests/Rivo.Approval.Domain.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/Identity/">
     <Project Path="tests/Modules/Identity/Rivo.Identity.Application.Tests/Rivo.Identity.Application.Tests.csproj" />

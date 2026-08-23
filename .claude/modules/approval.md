@@ -123,4 +123,34 @@ que exista apenas em RLS é um defeito de arquitectura.
 
 ## Estado
 
-Não iniciado.
+**Desenho fixado e domínio iniciado** (2026-08-23) — ADR-034, que é a "fase de
+desenho detalhado" para que `docs` remetia.
+
+Existem `Rivo.Approval.Contracts` e `Rivo.Approval.Domain`, com 17 testes de
+domínio.
+
+### O que já está imposto
+
+| Regra | Forma concreta |
+|---|---|
+| **BR-2** | O autor da decisão não pode ser o requisitante — vale mesmo que esteja atribuído ao passo |
+| **BR-4** | Uma pessoa decide no máximo uma vez por pedido; com dois cargos, satisfaria sozinha um workflow de dois passos |
+| **BR-6** | Aprovadores congelados na submissão. A política fica como rasto, **não como chave estrangeira viva** |
+| **BR-17** | `Version` em `ApprovalRequest` |
+| Decisões imutáveis | `Decision` sem setters. Corrigir é decidir outra vez, não reescrever |
+
+BR-2 e BR-4 lançam `SegregationOfDutiesException`, distinta de um erro de
+estado qualquer: uma tentativa de as violar é evento de segurança e vai para a
+trilha como tal, não como um 409 anónimo.
+
+### Por fazer
+
+- **Camadas Application, Infrastructure e Api.** O domínio não é alcançável
+  ainda; não há persistência nem endpoints.
+- **BR-7 e BR-8** — anti-fraccionamento e verificação orçamental exigem
+  `finance`. Uma política pode declarar `RequiresBudgetCheck`, e enquanto
+  `finance` não existir isso **recusa a submissão** em vez de fingir que
+  verificou (ADR-034).
+- **Metade de BR-3** — "quem aprova não paga" precisa de `finance`.
+- **SLA e escalonamento.** O passo guarda o prazo; nada o faz cumprir.
+- **Delegação** — modelada em `docs`, ainda sem código.
