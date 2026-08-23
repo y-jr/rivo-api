@@ -36,6 +36,12 @@ public sealed class HrStore(HrDbContext context) : IHrStore
     public async Task AddAssignmentAsync(PositionAssignment assignment, CancellationToken cancellationToken) =>
         await context.PositionAssignments.AddAsync(assignment, cancellationToken);
 
+    public async Task<PositionAssignment?> FindAssignmentAsync(
+        Guid assignmentId,
+        CancellationToken cancellationToken) =>
+        await context.PositionAssignments
+            .FirstOrDefaultAsync(a => a.Id == assignmentId, cancellationToken);
+
     public async Task<IReadOnlyList<PositionAssignment>> ListAssignmentsForEmployeeAsync(
         Guid employeeId,
         CancellationToken cancellationToken) =>

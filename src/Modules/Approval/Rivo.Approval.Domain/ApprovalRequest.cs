@@ -272,14 +272,22 @@ public sealed class ApprovalRequest
     /// Faz avançar o passo quando estiver satisfeito.
     ///
     /// <para>
-    /// Em paralelo, o passo só fica satisfeito quando <strong>todas</strong> as
-    /// atribuições tiverem aprovado. Em sequencial há uma só por passo, pelo
-    /// que a mesma condição serve os dois modos sem ramo especial.
+    /// <strong>Por omissão basta um ocupante do Cargo</strong>
+    /// (<see cref="StepMode.AnyApprover"/>): quem ocupa um Cargo representa-o, e
+    /// exigir todos travaria o processo sempre que um estivesse ausente. Com
+    /// <see cref="StepMode.AllApprovers"/>, o passo espera por todos.
     /// </para>
     /// </summary>
     private void AdvanceIfStepComplete(DateTimeOffset at)
     {
-        if (_assignments.Any(a => a.Step == CurrentStep && !a.HasDecided))
+        var doPasso = _assignments.Where(a => a.Step == CurrentStep).ToList();
+
+        var satisfeito = doPasso.Count != 0
+            && (doPasso[0].Mode == StepMode.AllApprovers
+                ? doPasso.All(a => a.HasDecided)
+                : doPasso.Any(a => a.HasDecided));
+
+        if (!satisfeito)
         {
             return;
         }

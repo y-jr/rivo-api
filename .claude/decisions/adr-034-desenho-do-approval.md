@@ -89,17 +89,26 @@ departamento nulo; faixa mais estreita bate faixa mais larga. Empate é erro de
 configuração e recusa-se a submissão, em vez de escolher uma ao acaso — duas
 políticas igualmente aplicáveis significam que ninguém sabe qual é a alçada.
 
-### 4. Modo do passo: sequencial ou paralelo, e paralelo é unânime
+### 4. Modo do passo: quantos ocupantes do Cargo têm de decidir
 
-- **Sequencial:** o passo `N` só abre quando `N-1` estiver aprovado.
-- **Paralelo:** todas as atribuições do passo ficam abertas ao mesmo tempo, e
-  **todas têm de aprovar**.
+Os passos correm **sempre por ordem**. O modo é sobre pessoas *dentro* do
+passo — e um passo aponta para um **Cargo**, que pode ter mais do que um
+ocupante.
 
-Paralelo com quórum — "basta um dos três" — foi rejeitado. Autoridade de
-aprovação não é fungível: se bastasse um, os outros dois não estariam lá por
-uma razão, e o passo seria um passo de uma pessoa com dois nomes a mais.
-Quando aparecer requisito real de quórum, é um campo no passo e não um
-redesenho.
+- **`AnyApprover`** (omissão): basta um dos ocupantes.
+- **`AllApprovers`**: todos têm de decidir.
+
+**A omissão é "basta um", e a razão é que quem ocupa um Cargo representa esse
+Cargo.** Dois directores financeiros são intermutáveis para decidir em nome da
+direcção financeira; exigir os dois travaria o processo sempre que um
+estivesse de férias. `AllApprovers` existe para o caso genuíno de assinatura
+conjunta — duas chaves para o mesmo cofre — e é escolha explícita de quem
+configura a política.
+
+**Uma versão anterior deste ADR chamou a isto "sequencial/paralelo" e fez do
+unânime a omissão.** Estava errado, e apareceu na primeira verificação
+ponta-a-ponta: dois ocupantes do mesmo Cargo ficaram ambos obrigados a
+aprovar, e o processo parou. Os nomes passaram a dizer o que o código faz.
 
 ### 5. Uma rejeição em qualquer ponto termina o processo
 

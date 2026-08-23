@@ -34,7 +34,7 @@ public class SegregationOfDutiesTests
     private static ApprovalRequest Request(params Guid[][] approversPerStep)
     {
         var steps = approversPerStep
-            .Select((approvers, index) => new ResolvedStep(index + 1, StepMode.Sequential, approvers, null))
+            .Select((approvers, index) => new ResolvedStep(index + 1, StepMode.AnyApprover, approvers, null))
             .ToList();
 
         return ApprovalRequest.Submit(

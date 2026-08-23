@@ -166,10 +166,6 @@ namespace Rivo.Approval.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
-                    b.Property<Guid?>("ApprovalRequestId")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("approval_request_id");
-
                     b.Property<Guid>("ApproverEmployeeId")
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("approver_employee_id");
@@ -198,9 +194,6 @@ namespace Rivo.Approval.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_assignment");
-
-                    b.HasIndex("ApprovalRequestId")
-                        .HasDatabaseName("ix_assignment_approval_request_id");
 
                     b.HasIndex("ApproverEmployeeId", "HasDecided")
                         .HasDatabaseName("ix_assignment_approver_employee_id_has_decided");
@@ -302,11 +295,6 @@ namespace Rivo.Approval.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Rivo.Approval.Domain.Assignment", b =>
                 {
                     b.HasOne("Rivo.Approval.Domain.ApprovalRequest", null)
-                        .WithMany("PendingAssignments")
-                        .HasForeignKey("ApprovalRequestId")
-                        .HasConstraintName("fk_assignment_request_approval_request_id");
-
-                    b.HasOne("Rivo.Approval.Domain.ApprovalRequest", null)
                         .WithMany("Assignments")
                         .HasForeignKey("RequestId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -344,8 +332,6 @@ namespace Rivo.Approval.Infrastructure.Persistence.Migrations
                     b.Navigation("Assignments");
 
                     b.Navigation("Decisions");
-
-                    b.Navigation("PendingAssignments");
                 });
 #pragma warning restore 612, 618
         }

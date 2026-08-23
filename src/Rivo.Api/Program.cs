@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
+using Rivo.Api.Composition;
 using Rivo.Api.Cors;
 using Rivo.Api.OpenApi;
 using Rivo.Audit.Api;
@@ -9,6 +10,7 @@ using Rivo.Documents.Infrastructure;
 using Rivo.Approval.Api;
 using Rivo.Approval.Infrastructure;
 using Rivo.Hr.Api;
+using Rivo.Hr.Application.Abstractions;
 using Rivo.Hr.Infrastructure;
 using Rivo.Identity.Api;
 using Rivo.Notifications.Api;
@@ -36,6 +38,14 @@ builder.Services.AddNotificationsModule(builder.Configuration);
 builder.Services.AddHrModule(builder.Configuration);
 builder.Services.AddApprovalModule(builder.Configuration);
 builder.Services.AddIdentityModule(builder.Configuration);
+
+// Apresenta `hr` a `approval`, sem que nenhum dos dois conheça o outro.
+//
+// É trabalho de composition root, e tem de ser feito aqui por desenho: `hr`
+// declara `IPositionApprovalSubmission` nas suas palavras, e referenciar
+// `Rivo.Approval.Contracts` a partir de `hr` recriaria o ciclo `hr ↔ approval`
+// que o ADR-015 §R1 deixou por fechar. Ver Composition/PositionApprovalSubmission.
+builder.Services.AddScoped<IPositionApprovalSubmission, PositionApprovalSubmission>();
 
 var app = builder.Build();
 

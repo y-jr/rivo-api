@@ -103,10 +103,14 @@ terminar uma funcionalidade (passo 8 do fluxo em [CLAUDE.md](../CLAUDE.md)).
   tarefas pendentes**, e a recusa diz quantas faltam. Um processo sem tarefas
   nenhumas também não fecha. O último dia de trabalho é obrigatório na saída
 
-**Recusa deliberada:** atribuir um Cargo que confira autoridade de aprovação
-devolve `501` e não grava nada. BR-20 exige decisão de `approval`, que não
-existe. Não é defeito — é o sistema a recusar-se a criar autoridade sem
-governança. Ver [modules/hr.md](../modules/hr.md).
+- **BR-20 fechado** — 2026-08-23 — ADR-034. Atribuir um Cargo com autoridade
+  de aprovação deixou de devolver `501`: cria uma atribuição **pendente** e
+  submete-a a `approval`. Pendente **não confere Cargo nenhum**
+  (`IsEffectiveAt` só reconhece efectivas), e é isso que mantém fechado o
+  caminho de escalada. `POST /hr/position-assignments/{id}/approval-outcome`
+  aplica a decisão — idempotente, e é `hr` que pergunta, porque `approval` não
+  pode modificar dados do módulo de origem. Sem política configurada, a
+  submissão é recusada com `409` e nada fica gravado
 
 ## documents
 

@@ -37,6 +37,7 @@ public static class HrModuleExtensions
         services.AddScoped<ListPositions>();
         services.AddScoped<CreatePosition>();
         services.AddScoped<AssignPosition>();
+        services.AddScoped<ApplyPositionApprovalOutcome>();
         services.AddScoped<AttachDocumentToEmployee>();
         services.AddScoped<ListEmployeeDocuments>();
 

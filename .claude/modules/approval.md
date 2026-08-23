@@ -170,10 +170,28 @@ interessa detectar.
 `approval.requests.read` e `.decide`, **sem** gestão de políticas — quem
 configura as alçadas decidiria indirectamente o que pode aprovar sozinho.
 
+### O `501` de `hr` está fechado (2026-08-23)
+
+Uma atribuição de Cargo com autoridade deixa de ser recusada: cria-se
+**pendente** e submete-se. Pendente não confere Cargo nenhum, e é isso que
+mantém fechado o caminho de escalada.
+
+**A ligação `hr → approval` é feita por inversão, no composition root.** `hr`
+declara `IPositionApprovalSubmission` nas suas palavras e não sabe que
+`approval` existe; o adaptador vive em `Rivo.Api`. A alternativa que o ADR-015
+§R1 previa — assemblies de contratos dos dois lados — resolve a compilação mas
+deixa o ciclo no grafo de módulos, e o teste `Modules_HaveNoDependencyCycles`
+continuaria a vê-lo. Com razão: dois módulos que se lêem mutuamente estão
+acoplados, compilem ou não.
+
+`approval` nunca empurra a decisão — `hr` pergunta, por
+`POST /hr/position-assignments/{id}/approval-outcome`, que é idempotente.
+
 ### Por fazer
 
-- **Nenhum módulo submete ainda.** O `501` de `hr` continua de pé: fechá-lo é
-  ligar `AssignPosition` ao `IApprovalGateway`, e é a próxima alteração.
+- **Automatizar a aplicação da decisão.** Hoje alguém tem de chamar o
+  endpoint. Um worker de reconciliação fecha isto quando o mecanismo de
+  eventos for decidido.
 - **BR-7 e BR-8** — anti-fraccionamento e verificação orçamental exigem
   `finance`. Uma política pode declarar `RequiresBudgetCheck`, e enquanto
   `finance` não existir isso **recusa a submissão** em vez de fingir que

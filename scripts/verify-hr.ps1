@@ -129,18 +129,89 @@ Test-Case "9. Contrato resolve o cargo actual (ADR-010)" {
     "EmployeeReference com cargo, estado e departamento"
 }
 
-Test-Case "10. ⚠ Cargo COM autoridade e recusado ate existir approval (BR-20)" {
+Test-Case "10. Cargo COM autoridade sem politica configurada e recusado (BR-20)" {
+    # Sem politica de aprovacao, a governanca recusa receber o processo — e `hr`
+    # nao grava atribuicao nenhuma. A escalada continua fechada.
     $b = @{ positionId = $script:authorityPositionId } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/hr/employees/$($script:employeeId)/positions" -Method Post -Body $b -ContentType "application/json" -Headers $hrHeaders }
-    if ($code -ne 501) { throw "esperado 501, obtido $code" }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
 
-    # Nada foi gravado: a escalada continua fechada.
     $count = Invoke-Sql "select count(*) from hr.position_assignment where position_id='$($script:authorityPositionId)'"
     if ($count -ne "0") { throw "atribuicao gravada apesar da recusa" }
-    "HTTP 501 e nenhuma atribuicao gravada"
+    "HTTP 409 e nenhuma atribuicao gravada"
 }
 
-Test-Case "11. Acoes de hr auditadas" {
+Test-Case "11. ⚠ Cargo COM autoridade fica PENDENTE e nao confere nada (BR-20)" {
+    # Politica de um passo, aprovada por quem ocupa o cargo simples.
+    $aprovador = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+        -Body (@{ fullName = "Aprovador Verify" } | ConvertTo-Json)).employeeId
+    Invoke-RestMethod "$base/hr/employees/$aprovador/positions" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+        -Body (@{ positionId = $script:plainPositionId } | ConvertTo-Json) | Out-Null
+
+    Invoke-RestMethod "$base/approval/policies" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+        -Body (@{ processType = "hr.position_assignment"; steps = @(@{ approverPositionId = $script:plainPositionId }) } | ConvertTo-Json -Depth 5) | Out-Null
+
+    $alvo = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+        -Body (@{ fullName = "Alvo Verify" } | ConvertTo-Json)).employeeId
+
+    $resposta = Invoke-RestMethod "$base/hr/employees/$alvo/positions" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+        -Body (@{ positionId = $script:authorityPositionId } | ConvertTo-Json)
+
+    $estado = Invoke-Sql "select status from hr.position_assignment where id='$($resposta.assignmentId)'"
+    if ($estado -ne "Pending") { throw "estado '$estado', esperado Pending" }
+
+    # **O ponto todo de BR-20:** pendente nao confere o cargo.
+    $ref = Invoke-RestMethod "$base/hr/employees/$alvo" -Headers $hrHeaders
+    if ($null -ne $ref.currentPosition) { throw "cargo conferido antes da aprovacao" }
+
+    $script:pendingAssignmentId = $resposta.assignmentId
+    $script:pendingApprover = $aprovador
+    $script:pendingTarget = $alvo
+    "atribuicao Pending; cargo nao resolvido"
+}
+
+Test-Case "12. Aprovado, o cargo passa a ser conferido" {
+    $pedido = (Invoke-RestMethod "$base/approval/requests?processType=hr.position_assignment" -Headers $adminHeaders |
+        Where-Object { $_.sourceReference -eq $script:pendingAssignmentId })[0]
+
+    Invoke-RestMethod "$base/approval/requests/$($pedido.requestId)/decisions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+        -Body (@{ decidedByEmployeeId = $script:pendingApprover; action = "Approved" } | ConvertTo-Json) | Out-Null
+
+    Invoke-RestMethod "$base/hr/position-assignments/$($script:pendingAssignmentId)/approval-outcome" -Method Post -Headers $hrHeaders | Out-Null
+
+    $estado = Invoke-Sql "select status from hr.position_assignment where id='$($script:pendingAssignmentId)'"
+    if ($estado -ne "Effective") { throw "estado '$estado', esperado Effective" }
+
+    $ref = Invoke-RestMethod "$base/hr/employees/$($script:pendingTarget)" -Headers $hrHeaders
+    if ($null -eq $ref.currentPosition) { throw "cargo nao conferido apos aprovacao" }
+    if ($ref.currentPosition.grantsApprovalAuthority -ne $true) { throw "marca de autoridade errada" }
+    "decisao aplicada; cargo com autoridade conferido"
+}
+
+Test-Case "13. BR-2: quem submete nao decide sobre o proprio pedido" {
+    $alvo = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+        -Body (@{ fullName = "Alvo BR2" } | ConvertTo-Json)).employeeId
+
+    $resposta = Invoke-RestMethod "$base/hr/employees/$alvo/positions" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+        -Body (@{ positionId = $script:authorityPositionId } | ConvertTo-Json)
+
+    $pedido = (Invoke-RestMethod "$base/approval/requests?processType=hr.position_assignment" -Headers $adminHeaders |
+        Where-Object { $_.sourceReference -eq $resposta.assignmentId })[0]
+
+    # O requisitante e o proprio alvo. Decidir sobre si mesmo e 403, nao 409:
+    # nao e o estado que impede, e a pessoa.
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/approval/requests/$($pedido.requestId)/decisions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+            -Body (@{ decidedByEmployeeId = $alvo; action = "Approved" } | ConvertTo-Json)
+    }
+    if ($code -ne 403) { throw "esperado 403, obtido $code" }
+
+    $estado = Invoke-Sql "select status from hr.position_assignment where id='$($resposta.assignmentId)'"
+    if ($estado -ne "Pending") { throw "estado '$estado' — a recusa nao travou nada" }
+    "HTTP 403 e atribuicao continua Pending"
+}
+
+Test-Case "14. Acoes de hr auditadas" {
     $hired = Invoke-Sql "select count(*) from audit.audit_event where action='hr.employee.hired' and entity_id='$($script:employeeId)'"
     if ($hired -ne "1") { throw "admissao nao auditada" }
     $assigned = Invoke-Sql "select count(*) from audit.audit_event where action='hr.position.assigned' and entity_id='$($script:employeeId)'"
@@ -151,7 +222,7 @@ Test-Case "11. Acoes de hr auditadas" {
     "admissao, atribuicao e criacao de cargo com marca"
 }
 
-Test-Case "12. Sem autenticacao -> 401; sem permissao -> 403" {
+Test-Case "15. Sem autenticacao -> 401; sem permissao -> 403" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/hr/employees" }
     if ($code -ne 401) { throw "esperado 401, obtido $code" }
 
@@ -165,7 +236,7 @@ Test-Case "12. Sem autenticacao -> 401; sem permissao -> 403" {
     "401 e 403 correctos"
 }
 
-Test-Case "13. Dados sobrevivem ao reinicio da stack" {
+Test-Case "16. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(180)
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)

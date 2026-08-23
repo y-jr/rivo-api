@@ -41,6 +41,12 @@ public interface IHrStore
     Task AddAssignmentAsync(PositionAssignment assignment, CancellationToken cancellationToken);
 
     /// <summary>Atribuições de um colaborador, para resolver o cargo à data.</summary>
+    /// <summary>
+    /// Uma atribuição concreta, rastreada — quem a procura vai promovê-la a
+    /// efectiva ou fechá-la depois da decisão de `approval`.
+    /// </summary>
+    Task<PositionAssignment?> FindAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<PositionAssignment>> ListAssignmentsForEmployeeAsync(Guid employeeId, CancellationToken cancellationToken);
 
     /// <summary>Atribuições de um cargo, para resolver quem o ocupa à data.</summary>

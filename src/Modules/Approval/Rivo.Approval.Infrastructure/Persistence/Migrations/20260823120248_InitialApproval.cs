@@ -94,18 +94,11 @@ namespace Rivo.Approval.Infrastructure.Persistence.Migrations
                     mode = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     approver_employee_id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     sla_hours = table.Column<int>(type: "int", nullable: true),
-                    has_decided = table.Column<bool>(type: "bit", nullable: false),
-                    approval_request_id = table.Column<Guid>(type: "uniqueidentifier", nullable: true)
+                    has_decided = table.Column<bool>(type: "bit", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_assignment", x => x.id);
-                    table.ForeignKey(
-                        name: "fk_assignment_request_approval_request_id",
-                        column: x => x.approval_request_id,
-                        principalSchema: "approval",
-                        principalTable: "request",
-                        principalColumn: "id");
                     table.ForeignKey(
                         name: "fk_assignment_request_request_id",
                         column: x => x.request_id,
@@ -139,12 +132,6 @@ namespace Rivo.Approval.Infrastructure.Persistence.Migrations
                         principalColumn: "id",
                         onDelete: ReferentialAction.Cascade);
                 });
-
-            migrationBuilder.CreateIndex(
-                name: "ix_assignment_approval_request_id",
-                schema: "approval",
-                table: "assignment",
-                column: "approval_request_id");
 
             migrationBuilder.CreateIndex(
                 name: "ix_assignment_approver_employee_id_has_decided",

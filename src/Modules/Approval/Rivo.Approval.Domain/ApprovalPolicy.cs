@@ -105,7 +105,7 @@ public sealed class ApprovalPolicy
     /// passo é sempre o seguinte do anterior, sem números à escolha que possam
     /// colidir ou deixar buracos.
     /// </summary>
-    public PolicyStep AddStep(Guid approverPositionId, StepMode mode = StepMode.Sequential, int? slaHours = null)
+    public PolicyStep AddStep(Guid approverPositionId, StepMode mode = StepMode.AnyApprover, int? slaHours = null)
     {
         if (approverPositionId == Guid.Empty)
         {
@@ -226,15 +226,37 @@ public sealed class PolicyStep
         new(Guid.CreateVersion7(), policyId, order, approverPositionId, mode, slaHours);
 }
 
+/// <summary>
+/// Quantos dos aprovadores resolvidos para um passo têm de decidir.
+///
+/// <para>
+/// <strong>O modo é sobre pessoas dentro do passo, não sobre a ordem dos
+/// passos</strong> — os passos correm sempre por ordem. Um passo aponta para
+/// um <em>Cargo</em>, e um Cargo pode ter mais do que um ocupante.
+/// </para>
+/// </summary>
 public enum StepMode
 {
-    /// <summary>Este passo só abre quando o anterior estiver aprovado.</summary>
-    Sequential,
+    /// <summary>
+    /// Basta um dos ocupantes do Cargo (omissão).
+    ///
+    /// <para>
+    /// Quem ocupa um Cargo <strong>representa esse Cargo</strong>: dois
+    /// directores financeiros são intermutáveis para efeitos de decidir em nome
+    /// da direcção financeira. Exigir os dois travaria o processo sempre que um
+    /// estivesse de férias.
+    /// </para>
+    /// </summary>
+    AnyApprover,
 
     /// <summary>
-    /// Todas as atribuições do passo abrem ao mesmo tempo, e
-    /// <strong>todas têm de aprovar</strong>. Autoridade de aprovação não é
-    /// fungível (ADR-034).
+    /// Todos os ocupantes têm de decidir.
+    ///
+    /// <para>
+    /// Para passos em que a assinatura conjunta é o ponto — duas chaves para o
+    /// mesmo cofre. Escolha deliberada de quem configura a política, e não o
+    /// comportamento por omissão.
+    /// </para>
     /// </summary>
-    Parallel,
+    AllApprovers,
 }

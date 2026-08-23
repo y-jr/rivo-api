@@ -29,7 +29,7 @@ public class ApprovalFlowTests
     [Fact]
     public void Submit_StartsAtFirstStepInProgress()
     {
-        var request = Build(Step(1, StepMode.Sequential, A));
+        var request = Build(Step(1, StepMode.AnyApprover, A));
 
         Assert.Equal(ApprovalStatus.InProgress, request.Status);
         Assert.Equal(1, request.CurrentStep);
@@ -40,7 +40,7 @@ public class ApprovalFlowTests
     [Fact]
     public void Approve_TheOnlyStep_ClosesAsApproved()
     {
-        var request = Build(Step(1, StepMode.Sequential, A));
+        var request = Build(Step(1, StepMode.AnyApprover, A));
 
         request.Decide(A, DecisionAction.Approved, Now);
 
@@ -49,11 +49,11 @@ public class ApprovalFlowTests
     }
 
     [Fact]
-    public void Approve_AdvancesThroughSequentialSteps()
+    public void Approve_AdvancesThroughStepsInOrder()
     {
         var request = Build(
-            Step(1, StepMode.Sequential, A),
-            Step(2, StepMode.Sequential, B));
+            Step(1, StepMode.AnyApprover, A),
+            Step(2, StepMode.AnyApprover, B));
 
         request.Decide(A, DecisionAction.Approved, Now);
         Assert.Equal(ApprovalStatus.InProgress, request.Status);
@@ -64,13 +64,14 @@ public class ApprovalFlowTests
     }
 
     /// <summary>
-    /// Paralelo é unânime: autoridade de aprovação não é fungível (ADR-034).
-    /// Um passo com três pessoas exige as três.
+    /// `AllApprovers` exige todos os ocupantes — assinatura conjunta, duas
+    /// chaves para o mesmo cofre. E a escolha deliberada de quem configura,
+    /// nao o comportamento por omissao (ADR-034).
     /// </summary>
     [Fact]
-    public void ParallelStep_RequiresEveryApprover()
+    public void AllApprovers_RequiresEveryApprover()
     {
-        var request = Build(Step(1, StepMode.Parallel, A, B, C));
+        var request = Build(Step(1, StepMode.AllApprovers, A, B, C));
 
         request.Decide(A, DecisionAction.Approved, Now);
         Assert.Equal(ApprovalStatus.InProgress, request.Status);
@@ -91,8 +92,8 @@ public class ApprovalFlowTests
     public void Reject_ClosesImmediatelyEvenWithStepsRemaining()
     {
         var request = Build(
-            Step(1, StepMode.Sequential, A),
-            Step(2, StepMode.Sequential, B));
+            Step(1, StepMode.AnyApprover, A),
+            Step(2, StepMode.AnyApprover, B));
 
         request.Decide(A, DecisionAction.Rejected, Now, "Fora de política");
 
@@ -102,9 +103,9 @@ public class ApprovalFlowTests
     }
 
     [Fact]
-    public void Reject_InParallelStep_ClosesWithoutWaitingForOthers()
+    public void Reject_InAllApproversStep_ClosesWithoutWaitingForOthers()
     {
-        var request = Build(Step(1, StepMode.Parallel, A, B, C));
+        var request = Build(Step(1, StepMode.AllApprovers, A, B, C));
 
         request.Decide(A, DecisionAction.Rejected, Now);
 
@@ -114,7 +115,7 @@ public class ApprovalFlowTests
     [Fact]
     public void Decide_OnClosedRequest_IsRejected()
     {
-        var request = Build(Step(1, StepMode.Sequential, A), Step(2, StepMode.Sequential, B));
+        var request = Build(Step(1, StepMode.AnyApprover, A), Step(2, StepMode.AnyApprover, B));
         request.Decide(A, DecisionAction.Rejected, Now);
 
         Assert.Throws<InvalidOperationException>(() =>
@@ -128,7 +129,7 @@ public class ApprovalFlowTests
     [Fact]
     public void ClarificationRequested_SuspendsWithoutClosing()
     {
-        var request = Build(Step(1, StepMode.Parallel, A, B));
+        var request = Build(Step(1, StepMode.AllApprovers, A, B));
 
         request.Decide(A, DecisionAction.ClarificationRequested, Now, "Falta a factura");
 
@@ -142,7 +143,7 @@ public class ApprovalFlowTests
     [Fact]
     public void Decisions_AreRecordedInOrderWithStepAndAuthor()
     {
-        var request = Build(Step(1, StepMode.Sequential, A), Step(2, StepMode.Sequential, B));
+        var request = Build(Step(1, StepMode.AnyApprover, A), Step(2, StepMode.AnyApprover, B));
 
         request.Decide(A, DecisionAction.Approved, Now, "Ok");
         request.Decide(B, DecisionAction.Approved, Now.AddHours(1));
@@ -157,7 +158,7 @@ public class ApprovalFlowTests
     [Fact]
     public void Cancel_ClosesAnOpenRequest()
     {
-        var request = Build(Step(1, StepMode.Sequential, A));
+        var request = Build(Step(1, StepMode.AnyApprover, A));
 
         request.Cancel(Now);
 
@@ -168,7 +169,7 @@ public class ApprovalFlowTests
     [Fact]
     public void Cancel_AfterClosing_IsRejected()
     {
-        var request = Build(Step(1, StepMode.Sequential, A));
+        var request = Build(Step(1, StepMode.AnyApprover, A));
         request.Decide(A, DecisionAction.Approved, Now);
 
         Assert.Throws<InvalidOperationException>(() => request.Cancel(Now));
@@ -188,7 +189,7 @@ public class ApprovalFlowTests
         var request = ApprovalRequest.Submit(
             "hr.leave_request", "hr", "leave-1", Requester,
             null, null, null, policy,
-            [Step(1, StepMode.Sequential, A)], Now);
+            [Step(1, StepMode.AnyApprover, A)], Now);
 
         // A política muda depois da submissão.
         policy.AddStep(Guid.CreateVersion7());

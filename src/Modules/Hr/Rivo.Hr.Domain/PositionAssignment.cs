@@ -104,6 +104,72 @@ public sealed class PositionAssignment
         && (EffectiveTo is null || instant < EffectiveTo);
 
     /// <summary>Termina a ocupação do Cargo.</summary>
+    /// <summary>
+    /// Processo de aprovação que governa esta atribuição. Só existe nas
+    /// pendentes — uma atribuição de Cargo sem autoridade produz efeito de
+    /// imediato e não passa por `approval` (ADR-015).
+    /// </summary>
+    public Guid? ApprovalRequestId { get; private set; }
+
+    /// <summary>
+    /// Liga a atribuição ao processo submetido. Feito logo a seguir à
+    /// submissão, para que ninguém tenha de descobrir depois qual processo
+    /// decide qual atribuição.
+    /// </summary>
+    public void LinkToApprovalRequest(Guid requestId)
+    {
+        if (Status != PositionAssignmentStatus.Pending)
+        {
+            throw new InvalidOperationException(
+                "Só uma atribuição pendente está ligada a um processo de aprovação.");
+        }
+
+        ApprovalRequestId = requestId;
+    }
+
+    /// <summary>
+    /// Torna efectiva uma atribuição aprovada — <strong>é aqui que BR-20 se
+    /// cumpre</strong>.
+    ///
+    /// <para>
+    /// Deliberadamente sem argumentos: não recebe a decisão nem a consulta.
+    /// Quem chama é que confirmou, junto de `approval`, que o processo terminou
+    /// aprovado. O domínio de `hr` não sabe o que é uma aprovação, e não é aqui
+    /// que essa regra vive.
+    /// </para>
+    /// </summary>
+    public void MakeEffective()
+    {
+        if (Status != PositionAssignmentStatus.Pending)
+        {
+            throw new InvalidOperationException(
+                "Só uma atribuição pendente passa a efectiva.");
+        }
+
+        Status = PositionAssignmentStatus.Effective;
+    }
+
+    /// <summary>
+    /// Fecha uma atribuição recusada em aprovação.
+    ///
+    /// <para>
+    /// <strong>Conserva-se em vez de se apagar.</strong> Que alguém tenha
+    /// tentado atribuir um Cargo com autoridade de aprovação, e que isso tenha
+    /// sido recusado, é informação de segurança — apagá-la deixaria a trilha a
+    /// falar de um registo que já não existe.
+    /// </para>
+    /// </summary>
+    public void RejectByApproval()
+    {
+        if (Status != PositionAssignmentStatus.Pending)
+        {
+            throw new InvalidOperationException(
+                "Só uma atribuição pendente pode ser recusada em aprovação.");
+        }
+
+        Status = PositionAssignmentStatus.Rejected;
+    }
+
     public void End(DateTimeOffset endsAt)
     {
         if (endsAt < EffectiveFrom)

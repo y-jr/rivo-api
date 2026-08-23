@@ -51,7 +51,7 @@ public static class ApprovalModuleEndpoints
         CancellationToken cancellationToken)
     {
         var steps = (request.Steps ?? [])
-            .Select(s => new NewPolicyStep(s.ApproverPositionId, s.Mode ?? "Sequential", s.SlaHours))
+            .Select(s => new NewPolicyStep(s.ApproverPositionId, s.Mode ?? "AnyApprover", s.SlaHours))
             .ToList();
 
         var result = await createPolicy.ExecuteAsync(
@@ -163,7 +163,7 @@ public sealed record CreatePolicyRequest(
     bool? RequiresBudgetCheck,
     IReadOnlyList<PolicyStepRequest>? Steps);
 
-/// <param name="Mode">Sequential ou Parallel. Omitido, assume-se Sequential.</param>
+/// <param name="Mode">AnyApprover (omissão) ou AllApprovers.</param>
 public sealed record PolicyStepRequest(Guid ApproverPositionId, string? Mode, int? SlaHours);
 
 /// <param name="DecidedByEmployeeId">

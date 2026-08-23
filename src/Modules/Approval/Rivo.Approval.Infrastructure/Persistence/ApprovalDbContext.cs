@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Rivo.Approval.Domain;
 
 namespace Rivo.Approval.Infrastructure.Persistence;
@@ -17,6 +18,7 @@ public sealed class ApprovalDbContext(DbContextOptions<ApprovalDbContext> option
 
         // Um schema por domínio, ownership exclusivo (ADR-002).
         builder.HasDefaultSchema(Schema);
+
 
         builder.Entity<ApprovalPolicy>(policy =>
         {
@@ -81,6 +83,15 @@ public sealed class ApprovalDbContext(DbContextOptions<ApprovalDbContext> option
             request.HasIndex(r => new { r.SourceModule, r.SourceReference });
             request.HasIndex(r => new { r.ProcessType, r.Status });
 
+            // `PendingAssignments` é uma consulta sobre `Assignments`, não uma
+            // relação — devolve uma lista nova a cada chamada.
+            //
+            // Sem este `Ignore`, a convenção do EF Core descobre-a como
+            // navegação por ser `IReadOnlyList<Assignment>`, cria uma chave
+            // estrangeira própria para ela, e rebenta ao materializar: tenta
+            // acrescentar a uma colecção só de leitura.
+            request.Ignore(r => r.PendingAssignments);
+
             request.HasMany(r => r.Assignments)
                 .WithOne()
                 .HasForeignKey(a => a.RequestId)
@@ -122,6 +133,26 @@ public sealed class ApprovalDbContext(DbContextOptions<ApprovalDbContext> option
             // Quem interveio num processo — a consulta de BR-4.
             decision.HasIndex(d => d.DecidedByEmployeeId);
         });
+
+        // As chaves são geradas pelo domínio (`Guid.CreateVersion7`), nunca
+        // pela base de dados. Corre no fim, quando o modelo já tem todas as
+        // entidades.
+        //
+        // **Sem isto o EF Core grava mal, e em silêncio.** Por convenção uma
+        // chave `Guid` é `ValueGenerated.OnAdd`, e é por aí que o EF decide se
+        // uma entidade encontrada num grafo já rastreado é nova ou existente:
+        // chave preenchida quer dizer "já existe". Uma `Decision` acrescentada
+        // a um `ApprovalRequest` carregado da base de dados era classificada
+        // como *Modified*, e saía um `UPDATE` a uma linha que nunca fora
+        // inserida — zero linhas afectadas, e uma excepção de concorrência a
+        // apontar para o sítio errado.
+        foreach (var key in builder.Model.GetEntityTypes()
+                     .Select(entity => entity.FindPrimaryKey())
+                     .SelectMany(primaryKey => primaryKey?.Properties ?? [])
+                     .Where(property => property.ClrType == typeof(Guid)))
+        {
+            key.ValueGenerated = ValueGenerated.Never;
+        }
     }
 
     /// <summary>

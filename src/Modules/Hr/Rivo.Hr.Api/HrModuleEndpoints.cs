@@ -42,6 +42,13 @@ public static class HrModuleEndpoints
         group.MapPost("/employees/{employeeId:guid}/positions", AssignPositionAsync)
             .RequireAuthorization(HrPermissions.PositionsAssign);
 
+        // Aplica a decisão já tomada em governança a uma atribuição pendente.
+        //
+        // É `hr` que pergunta: `approval` não pode modificar dados de negócio
+        // do módulo de origem, por isso a promoção a efectiva parte daqui.
+        group.MapPost("/position-assignments/{assignmentId:guid}/approval-outcome", ApplyApprovalOutcomeAsync)
+            .RequireAuthorization(HrPermissions.PositionsAssign);
+
         // Anexar exige permissão de escrita em colaboradores, não de
         // documentos: está a alterar-se o registo do colaborador. O upload do
         // ficheiro é que exige `documents.write`.
@@ -266,13 +273,56 @@ public static class HrModuleEndpoints
             AssignPositionOutcome.EmployeeNotFound or AssignPositionOutcome.PositionNotFound =>
                 Results.NotFound(new { erro = result.Message }),
 
-            // 501: a regra existe e é conhecida, mas falta a capacidade do
-            // sistema para a satisfazer. Não é erro do chamador (4xx) nem
-            // falha inesperada (500).
-            AssignPositionOutcome.RequiresApproval =>
+            // 202: aceite, mas **sem efeito ainda** (BR-20). A distinção face
+            // ao 201 é o ponto — o cargo não foi atribuído, foi submetido, e
+            // não confere autoridade nenhuma enquanto não for aprovado.
+            AssignPositionOutcome.PendingApproval =>
+                Results.Accepted(
+                    $"/hr/employees/{employeeId}",
+                    new { assignmentId = result.AssignmentId, estado = "PendenteAprovacao", detalhe = result.Message }),
+
+            // 501: a regra existe e é conhecida, mas não há motor de governança
+            // ligado neste ambiente. Não é erro do chamador (4xx) nem falha
+            // inesperada (500).
+            AssignPositionOutcome.ApprovalUnavailable =>
                 Results.Problem(result.Message, statusCode: StatusCodes.Status501NotImplemented),
 
+            // 409: a governança recebeu e recusou — política em falta, ambígua,
+            // ou nenhum cargo dela com ocupante. É configuração por corrigir.
+            AssignPositionOutcome.ApprovalRefusedSubmission =>
+                Results.Conflict(new { erro = result.Message }),
+
             _ => Results.Problem("Resultado inesperado ao atribuir o cargo."),
+        };
+    }
+
+    private static async Task<IResult> ApplyApprovalOutcomeAsync(
+        Guid assignmentId,
+        ApplyPositionApprovalOutcome apply,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await apply.ExecuteAsync(assignmentId, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            ApplyApprovalOutcome.Applied =>
+                Results.Ok(new { estado = result.Status }),
+
+            // 200 e não erro: chamar duas vezes é suposto ser inofensivo, e é
+            // isso que permite chamá-la sem coordenação.
+            ApplyApprovalOutcome.AlreadyResolved =>
+                Results.Ok(new { estado = result.Status, detalhe = result.Message }),
+
+            // 202: nada mudou, e não é erro — o processo ainda não foi
+            // decidido. Promover por omissão seria a escalada que BR-20 fecha.
+            ApplyApprovalOutcome.StillPending =>
+                Results.Accepted(value: new { estado = result.Status, detalhe = result.Message }),
+
+            ApplyApprovalOutcome.NotFound =>
+                Results.NotFound(new { erro = result.Message }),
+
+            _ => Results.Problem("Resultado inesperado ao aplicar a decisão."),
         };
     }
 
