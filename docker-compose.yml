@@ -74,6 +74,12 @@ services:
       DocumentStorage__RootPath: /var/rivo/documents
 
       NotificationDelivery__PollIntervalSeconds: ${NOTIFICATION_POLL_INTERVAL_SECONDS:-10}
+
+      # Reconciliação de atribuições de cargo aprovadas (ADR-034). `approval`
+      # não pode empurrar a decisão, por isso `hr` pergunta em ciclo. Desligar
+      # obriga a aplicar cada decisão pelo endpoint, à mão.
+      PositionApprovalReconciliation__Enabled: ${POSITION_APPROVAL_RECONCILIATION_ENABLED:-true}
+      PositionApprovalReconciliation__PollIntervalSeconds: ${POSITION_APPROVAL_RECONCILIATION_INTERVAL_SECONDS:-60}
     volumes:
       # Anexos carregados. Sem este volume, um `docker compose down` leva os
       # ficheiros e deixa as linhas em `documents.document` a apontar para o

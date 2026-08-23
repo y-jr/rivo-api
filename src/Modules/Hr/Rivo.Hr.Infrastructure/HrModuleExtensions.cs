@@ -6,6 +6,7 @@ using Rivo.Hr.Application.Abstractions;
 using Rivo.Hr.Application.UseCases;
 using Rivo.Hr.Contracts;
 using Rivo.Hr.Infrastructure.Persistence;
+using Rivo.Hr.Infrastructure.Reconciliation;
 
 namespace Rivo.Hr.Infrastructure;
 
@@ -38,6 +39,18 @@ public static class HrModuleExtensions
         services.AddScoped<CreatePosition>();
         services.AddScoped<AssignPosition>();
         services.AddScoped<ApplyPositionApprovalOutcome>();
+        services.AddScoped<ReconcilePendingAssignments>();
+
+        // Worker que aplica, em ciclo, as decisões de aprovação a atribuições
+        // pendentes. Existe porque `approval` não pode empurrar a decisão — não
+        // lhe é permitido modificar dados de negócio do módulo de origem — e
+        // sem isto uma atribuição aprovada ficava pendente até alguém chamar o
+        // endpoint à mão.
+        services
+            .AddOptions<PositionApprovalReconciliationOptions>()
+            .Bind(configuration.GetSection(PositionApprovalReconciliationOptions.SectionName));
+
+        services.AddHostedService<PositionApprovalReconciliationWorker>();
         services.AddScoped<AttachDocumentToEmployee>();
         services.AddScoped<ListEmployeeDocuments>();
 

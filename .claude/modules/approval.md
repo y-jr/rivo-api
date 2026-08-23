@@ -187,11 +187,19 @@ acoplados, compilem ou não.
 `approval` nunca empurra a decisão — `hr` pergunta, por
 `POST /hr/position-assignments/{id}/approval-outcome`, que é idempotente.
 
+A aplicação da decisão é **automática desde 2026-08-23**:
+`PositionApprovalReconciliationWorker` varre as atribuições pendentes com
+processo associado e aplica as já decididas. Sondagem, como o worker de
+entrega de `notifications` e pela mesma razão — não há barramento de eventos, e
+a tabela já é a fila. A promoção automática fica na trilha com **actor nulo**,
+distinta de uma feita por uma pessoa.
+
+Configurável por `PositionApprovalReconciliation__Enabled` e
+`__PollIntervalSeconds` (omissão: ligado, 60&nbsp;s). Desligado, as decisões
+aplicam-se pelo endpoint — escolha legítima, mas que passa a ser uma escolha.
+
 ### Por fazer
 
-- **Automatizar a aplicação da decisão.** Hoje alguém tem de chamar o
-  endpoint. Um worker de reconciliação fecha isto quando o mecanismo de
-  eventos for decidido.
 - **BR-7 e BR-8** — anti-fraccionamento e verificação orçamental exigem
   `finance`. Uma política pode declarar `RequiresBudgetCheck`, e enquanto
   `finance` não existir isso **recusa a submissão** em vez de fingir que

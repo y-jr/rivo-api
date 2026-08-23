@@ -84,6 +84,16 @@ public sealed class HrDbContext(DbContextOptions<HrDbContext> options) : DbConte
             // As duas consultas que `approval` fará: o cargo de uma pessoa à
             // data, e quem ocupa um cargo à data.
             assignment.HasIndex(a => new { a.EmployeeId, a.EffectiveFrom });
+
+            // A consulta do worker de reconciliação, que corre em ciclo: quais
+            // as pendentes com processo de aprovação.
+            //
+            // Sem filtro no índice de propósito. Um índice filtrado seria mais
+            // selectivo, mas obriga `QUOTED_IDENTIFIER ON` em qualquer DML
+            // sobre a tabela — o erro 1934 que `notifications` já forçou os
+            // scripts a contornar com `-I`. Não vale a pena estender essa
+            // exigência a `position_assignment`.
+            assignment.HasIndex(a => new { a.Status, a.ApprovalRequestId });
             assignment.HasIndex(a => new { a.PositionId, a.EffectiveFrom });
 
             assignment.HasOne<Employee>()

@@ -111,6 +111,11 @@ terminar uma funcionalidade (passo 8 do fluxo em [CLAUDE.md](../CLAUDE.md)).
   aplica a decisão — idempotente, e é `hr` que pergunta, porque `approval` não
   pode modificar dados do módulo de origem. Sem política configurada, a
   submissão é recusada com `409` e nada fica gravado
+- **Worker de reconciliação** — 2026-08-23 — varre as atribuições pendentes com
+  processo associado e aplica as já decididas, sem ninguém carregar em nada. A
+  promoção automática fica na trilha com **actor nulo**, distinta de uma feita
+  por uma pessoa. Sondagem de 60&nbsp;s por omissão, desligável por
+  configuração
 
 ## documents
 

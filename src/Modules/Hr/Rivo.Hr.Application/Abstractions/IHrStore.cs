@@ -47,6 +47,20 @@ public interface IHrStore
     /// </summary>
     Task<PositionAssignment?> FindAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Atribuições pendentes que já têm processo de aprovação — as que o worker
+    /// de reconciliação vai perguntar a `approval` se já foram decididas.
+    ///
+    /// <para>
+    /// Uma pendente <strong>sem</strong> processo fica de fora de propósito:
+    /// não há a quem perguntar, e promovê-la seria conferir autoridade sem
+    /// ninguém a ter aprovado (BR-20).
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ListAssignmentsAwaitingDecisionAsync(
+        int batchSize,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<PositionAssignment>> ListAssignmentsForEmployeeAsync(Guid employeeId, CancellationToken cancellationToken);
 
     /// <summary>Atribuições de um cargo, para resolver quem o ocupa à data.</summary>

@@ -129,16 +129,20 @@ Test-Case "9. Contrato resolve o cargo actual (ADR-010)" {
     "EmployeeReference com cargo, estado e departamento"
 }
 
-Test-Case "10. Cargo COM autoridade sem politica configurada e recusado (BR-20)" {
-    # Sem politica de aprovacao, a governanca recusa receber o processo — e `hr`
-    # nao grava atribuicao nenhuma. A escalada continua fechada.
+Test-Case "10. Cargo COM autoridade nunca fica efectivo directamente (BR-20)" {
+    # A invariante e esta, e vale **independentemente de haver politica**: sem
+    # politica a submissao e recusada (409); com politica fica pendente (202).
+    # Efectiva de imediato, nunca.
+    #
+    # Escrito assim de proposito para a suite ser re-executavel: assertar "409"
+    # obrigaria a base de dados a nao ter politica nenhuma, e o caso 11 cria uma.
     $b = @{ positionId = $script:authorityPositionId } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/hr/employees/$($script:employeeId)/positions" -Method Post -Body $b -ContentType "application/json" -Headers $hrHeaders }
-    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    if ($code -notin @(200, 409)) { throw "esperado 202 ou 409, obtido $code" }
 
-    $count = Invoke-Sql "select count(*) from hr.position_assignment where position_id='$($script:authorityPositionId)'"
-    if ($count -ne "0") { throw "atribuicao gravada apesar da recusa" }
-    "HTTP 409 e nenhuma atribuicao gravada"
+    $efectivas = Invoke-Sql "select count(*) from hr.position_assignment where position_id='$($script:authorityPositionId)' and status='Effective'"
+    if ($efectivas -ne "0") { throw "cargo com autoridade ficou efectivo sem aprovacao" }
+    "HTTP $code e nenhuma atribuicao efectiva"
 }
 
 Test-Case "11. ⚠ Cargo COM autoridade fica PENDENTE e nao confere nada (BR-20)" {
@@ -148,8 +152,24 @@ Test-Case "11. ⚠ Cargo COM autoridade fica PENDENTE e nao confere nada (BR-20)
     Invoke-RestMethod "$base/hr/employees/$aprovador/positions" -Method Post -ContentType "application/json" -Headers $hrHeaders `
         -Body (@{ positionId = $script:plainPositionId } | ConvertTo-Json) | Out-Null
 
-    Invoke-RestMethod "$base/approval/policies" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-        -Body (@{ processType = "hr.position_assignment"; steps = @(@{ approverPositionId = $script:plainPositionId }) } | ConvertTo-Json -Depth 5) | Out-Null
+    # Politica so se ja nao existir: duas politicas igualmente especificas sao
+    # empate, e o empate recusa a submissao (ADR-034). Sem esta guarda, a suite
+    # so passava a primeira vez.
+    $existentes = Invoke-RestMethod "$base/approval/policies" -Headers $adminHeaders |
+        Where-Object { $_.processType -eq "hr.position_assignment" -and $_.isActive }
+
+    if (-not $existentes) {
+        Invoke-RestMethod "$base/approval/policies" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+            -Body (@{ processType = "hr.position_assignment"; steps = @(@{ approverPositionId = $script:plainPositionId }) } | ConvertTo-Json -Depth 5) | Out-Null
+    }
+    else {
+        # A politica ja existe de uma execucao anterior e aprova por outro
+        # cargo. O aprovador tem de ocupar *esse*, senao nao esta atribuido ao
+        # passo. Nao se mexe em $plainPositionId: os casos 8 e 9 dependem dele.
+        $cargoDaPolitica = $existentes[0].steps[0].approverPositionId
+        Invoke-RestMethod "$base/hr/employees/$aprovador/positions" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+            -Body (@{ positionId = $cargoDaPolitica } | ConvertTo-Json) | Out-Null
+    }
 
     $alvo = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $hrHeaders `
         -Body (@{ fullName = "Alvo Verify" } | ConvertTo-Json)).employeeId

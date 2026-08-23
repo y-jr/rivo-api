@@ -42,6 +42,21 @@ public sealed class HrStore(HrDbContext context) : IHrStore
         await context.PositionAssignments
             .FirstOrDefaultAsync(a => a.Id == assignmentId, cancellationToken);
 
+    public async Task<IReadOnlyList<Guid>> ListAssignmentsAwaitingDecisionAsync(
+        int batchSize,
+        CancellationToken cancellationToken) =>
+        // Só os identificadores: quem reconcilia carrega cada uma rastreada,
+        // uma a uma, para que uma falha não arraste o lote inteiro.
+        await context.PositionAssignments
+            .AsNoTracking()
+            .Where(a => a.Status == PositionAssignmentStatus.Pending && a.ApprovalRequestId != null)
+            // Mais antigas primeiro: uma atribuição à espera há mais tempo é a
+            // que mais provavelmente já tem decisão.
+            .OrderBy(a => a.EffectiveFrom)
+            .Take(batchSize)
+            .Select(a => a.Id)
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<PositionAssignment>> ListAssignmentsForEmployeeAsync(
         Guid employeeId,
         CancellationToken cancellationToken) =>
