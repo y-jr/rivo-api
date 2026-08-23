@@ -42,10 +42,10 @@ builder.Services.AddIdentityModule(builder.Configuration);
 // Apresenta `hr` a `approval`, sem que nenhum dos dois conheça o outro.
 //
 // É trabalho de composition root, e tem de ser feito aqui por desenho: `hr`
-// declara `IPositionApprovalSubmission` nas suas palavras, e referenciar
+// declara `IHrApprovalSubmission` nas suas palavras, e referenciar
 // `Rivo.Approval.Contracts` a partir de `hr` recriaria o ciclo `hr ↔ approval`
 // que o ADR-015 §R1 deixou por fechar. Ver Composition/PositionApprovalSubmission.
-builder.Services.AddScoped<IPositionApprovalSubmission, PositionApprovalSubmission>();
+builder.Services.AddScoped<IHrApprovalSubmission, HrApprovalSubmission>();
 
 var app = builder.Build();
 

@@ -111,6 +111,13 @@ terminar uma funcionalidade (passo 8 do fluxo em [CLAUDE.md](../CLAUDE.md)).
   aplica a decisão — idempotente, e é `hr` que pergunta, porque `approval` não
   pode modificar dados do módulo de origem. Sem política configurada, a
   submissão é recusada com `409` e nada fica gravado
+- **Férias** — 2026-08-23 — ADR-034. Segue o mesmo padrão de submissão da
+  atribuição de Cargo (`docs` §1(d)): o pedido é criado, submetido a governança
+  e **só é ausência depois de aprovado** — `CoversDate` só reconhece os
+  aprovados. Recusa ausências sobrepostas; sem motor de governança responde
+  `501`, sem política responde `409`. **Não verifica saldo**: as regras de
+  acumulação e carry-over não estão detalhadas em `docs`, e um contador
+  construído por suposição daria um número errado com ar de certo
 - **Worker de reconciliação** — 2026-08-23 — varre as atribuições pendentes com
   processo associado e aplica as já decididas, sem ninguém carregar em nada. A
   promoção automática fica na trilha com **actor nulo**, distinta de uma feita

@@ -150,6 +150,13 @@ excepção, abaixo.
   um processo com tarefas pendentes** — é a regra que separa uma lista de
   verificação de uma decoração, e é o que estes processos costumam falhar.
 
+**Férias** desde 2026-08-23: pedido, retirada e aplicação da decisão. Passa por
+`approval` como manda `modules/hr.md` — **sem passos de aprovação próprios**.
+Um pedido pendente não é ausência.
+
+⚠ **Sem saldo de férias.** Acumulação e carry-over continuam nas perguntas em
+aberto, e implementá-los seria inventar política de direito a férias.
+
 Verificado em `scripts/verify-hr.ps1` (13 casos) e em 115 testes de domínio.
 
 ### Fora do implementado

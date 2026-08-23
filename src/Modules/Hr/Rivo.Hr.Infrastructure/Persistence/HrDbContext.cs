@@ -17,6 +17,8 @@ public sealed class HrDbContext(DbContextOptions<HrDbContext> options) : DbConte
 
     public DbSet<EmployeeDocument> EmployeeDocuments => Set<EmployeeDocument>();
 
+    public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
+
     public DbSet<EmploymentContract> EmploymentContracts => Set<EmploymentContract>();
 
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
@@ -104,6 +106,29 @@ public sealed class HrDbContext(DbContextOptions<HrDbContext> options) : DbConte
             assignment.HasOne<Position>()
                 .WithMany()
                 .HasForeignKey(a => a.PositionId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<LeaveRequest>(leave =>
+        {
+            leave.ToTable("leave_request");
+            leave.HasKey(l => l.Id);
+            // Concorrência optimista (ADR-002, ADR-025).
+            leave.Property(l => l.Version).IsConcurrencyToken();
+            leave.Property(l => l.Type).HasConversion<string>().HasMaxLength(20);
+            leave.Property(l => l.Status).HasConversion<string>().HasMaxLength(20);
+            leave.Property(l => l.Reason).HasMaxLength(1000);
+
+            // A consulta corrente: os pedidos de uma pessoa, e a verificação de
+            // sobreposição antes de aceitar um novo.
+            leave.HasIndex(l => new { l.EmployeeId, l.StartsOn });
+
+            // A fila do worker de reconciliação.
+            leave.HasIndex(l => new { l.Status, l.ApprovalRequestId });
+
+            leave.HasOne<Employee>()
+                .WithMany()
+                .HasForeignKey(l => l.EmployeeId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

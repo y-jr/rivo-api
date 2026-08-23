@@ -95,6 +95,10 @@ public static class HrAuditActions
     public const string LifecycleStarted = "hr.lifecycle.started";
     public const string LifecycleTaskCompleted = "hr.lifecycle.task_completed";
     public const string LifecycleCompleted = "hr.lifecycle.completed";
+    public const string LeaveRequested = "hr.leave.requested";
+    public const string LeaveApproved = "hr.leave.approved";
+    public const string LeaveRefused = "hr.leave.refused";
+    public const string LeaveCancelled = "hr.leave.cancelled";
 }
 
 public static class HrAuditEntityTypes
@@ -109,5 +113,6 @@ public static class HrAuditEntityTypes
     public const string JobOpening = "hr.job_opening";
     public const string Candidate = "hr.candidate";
     public const string LifecycleProcess = "hr.lifecycle_process";
+    public const string LeaveRequest = "hr.leave_request";
 }
 

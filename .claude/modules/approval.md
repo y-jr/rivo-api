@@ -177,7 +177,7 @@ Uma atribuição de Cargo com autoridade deixa de ser recusada: cria-se
 mantém fechado o caminho de escalada.
 
 **A ligação `hr → approval` é feita por inversão, no composition root.** `hr`
-declara `IPositionApprovalSubmission` nas suas palavras e não sabe que
+declara `IHrApprovalSubmission` nas suas palavras e não sabe que
 `approval` existe; o adaptador vive em `Rivo.Api`. A alternativa que o ADR-015
 §R1 previa — assemblies de contratos dos dois lados — resolve a compilação mas
 deixa o ciclo no grafo de módulos, e o teste `Modules_HaveNoDependencyCycles`
@@ -186,6 +186,12 @@ acoplados, compilem ou não.
 
 `approval` nunca empurra a decisão — `hr` pergunta, por
 `POST /hr/position-assignments/{id}/approval-outcome`, que é idempotente.
+
+**Dois consumidores desde 2026-08-23:** atribuição de Cargo (BR-20) e pedidos
+de férias. O porto de `hr` foi generalizado — `IHrApprovalSubmission` com um
+enumerado de processo — em vez de duplicado, e a correspondência para o
+vocabulário de `approval` é feita no composition root, verificada pelo
+compilador dos dois lados.
 
 A aplicação da decisão é **automática desde 2026-08-23**:
 `PositionApprovalReconciliationWorker` varre as atribuições pendentes com

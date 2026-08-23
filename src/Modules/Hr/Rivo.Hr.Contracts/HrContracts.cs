@@ -99,6 +99,12 @@ public static class HrPermissions
     /// </summary>
     public const string AttendanceWrite = "hr.attendance.write";
 
+    /// <summary>Consultar pedidos de ferias, incluindo os de terceiros.</summary>
+    public const string LeaveRead = "hr.leave.read";
+
+    /// <summary>Submeter e retirar pedidos de ferias.</summary>
+    public const string LeaveWrite = "hr.leave.write";
+
     /// <summary>Catálogo de benefícios e adesões.</summary>
     public const string BenefitsRead = "hr.benefits.read";
 
@@ -120,6 +126,8 @@ public static class HrPermissions
         ContractsWrite,
         AttendanceRead,
         AttendanceWrite,
+        LeaveRead,
+        LeaveWrite,
         BenefitsRead,
         BenefitsWrite,
         RecruitmentRead,
@@ -152,6 +160,8 @@ public static class HrPermissions
         ContractsWrite,
         AttendanceRead,
         AttendanceWrite,
+        LeaveRead,
+        LeaveWrite,
         BenefitsRead,
         BenefitsWrite,
         RecruitmentRead,

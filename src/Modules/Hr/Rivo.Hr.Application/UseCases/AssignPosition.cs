@@ -17,7 +17,7 @@ namespace Rivo.Hr.Application.UseCases;
 public sealed class AssignPosition(
     IHrStore store,
     IAuditTrail audit,
-    IPositionApprovalSubmission approvals)
+    IHrApprovalSubmission approvals)
 {
     /// <summary>
     /// Caminho de um Cargo que confere autoridade de aprovação (BR-20,
@@ -56,7 +56,12 @@ public sealed class AssignPosition(
             employeeId, position.Id, effectiveFrom, effectiveTo);
 
         var submission = await approvals.SubmitAsync(
-            assignment.Id, employeeId, position.Id, position.Name, departmentId, cancellationToken);
+            HrApprovalProcess.PositionAssignment,
+            assignment.Id,
+            employeeId,
+            departmentId,
+            $"Atribuição do cargo '{position.Name}', que confere autoridade de aprovação.",
+            cancellationToken);
 
         if (!submission.Submitted)
         {

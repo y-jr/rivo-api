@@ -23,7 +23,7 @@ namespace Rivo.Hr.Application.UseCases;
 /// </summary>
 public sealed class ApplyPositionApprovalOutcome(
     IHrStore store,
-    IPositionApprovalSubmission approvals,
+    IHrApprovalSubmission approvals,
     IAuditTrail audit)
 {
     public async Task<ApplyApprovalResult> ExecuteAsync(
@@ -56,11 +56,11 @@ public sealed class ApplyPositionApprovalOutcome(
 
         switch (state)
         {
-            case PositionApprovalState.Approved:
+            case HrApprovalState.Approved:
                 assignment.MakeEffective();
                 break;
 
-            case PositionApprovalState.Refused:
+            case HrApprovalState.Refused:
                 assignment.RejectByApproval();
                 break;
 
@@ -74,7 +74,7 @@ public sealed class ApplyPositionApprovalOutcome(
 
         await audit.RecordAsync(
             new AuditRecord(
-                state == PositionApprovalState.Approved
+                state == HrApprovalState.Approved
                     ? HrAuditActions.PositionAssignmentApproved
                     : HrAuditActions.PositionAssignmentRefused,
                 HrAuditEntityTypes.Employee,
@@ -130,7 +130,7 @@ public enum ApplyApprovalOutcome
 public sealed class ReconcilePendingAssignments(
     IHrStore store,
     ApplyPositionApprovalOutcome apply,
-    IPositionApprovalSubmission approvals)
+    IHrApprovalSubmission approvals)
 {
     public async Task<ReconciliationOutcome> ExecuteAsync(int batchSize, CancellationToken cancellationToken)
     {

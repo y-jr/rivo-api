@@ -82,6 +82,20 @@ public static class HrModuleEndpoints
         group.MapPost("/attendance/absences", RecordAbsenceAsync)
             .RequireAuthorization(HrPermissions.AttendanceWrite);
 
+        // Férias e outras ausências planeadas. Passam por governança: um pedido
+        // pendente **não é ausência** (mesmo princípio de BR-20).
+        group.MapGet("/leave", ListLeaveAsync)
+            .RequireAuthorization(HrPermissions.LeaveRead);
+
+        group.MapPost("/leave", RequestLeaveAsync)
+            .RequireAuthorization(HrPermissions.LeaveWrite);
+
+        group.MapPost("/leave/{leaveId:guid}/cancellation", CancelLeaveAsync)
+            .RequireAuthorization(HrPermissions.LeaveWrite);
+
+        group.MapPost("/leave/{leaveId:guid}/approval-outcome", ApplyLeaveOutcomeAsync)
+            .RequireAuthorization(HrPermissions.LeaveWrite);
+
         // Benefícios: catálogo e adesões.
         group.MapGet("/benefits", ListBenefitsAsync)
             .RequireAuthorization(HrPermissions.BenefitsRead);
@@ -492,6 +506,92 @@ public static class HrModuleEndpoints
         };
     }
 
+    private static async Task<IResult> ListLeaveAsync(
+        ListLeave listLeave,
+        Guid? employeeId,
+        CancellationToken cancellationToken) =>
+        Results.Ok(await listLeave.ExecuteAsync(employeeId, cancellationToken));
+
+    private static async Task<IResult> RequestLeaveAsync(
+        RequestLeaveRequest request,
+        RequestLeave requestLeave,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await requestLeave.ExecuteAsync(
+            request.EmployeeId, request.Type, request.StartsOn, request.EndsOn,
+            request.Reason, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            // 202 e não 201: o pedido existe, mas **não é ausência ainda**. A
+            // distinção é o ponto — só a decisão o torna efectivo.
+            LeaveOutcome.Submitted =>
+                Results.Accepted(
+                    $"/hr/leave?employeeId={request.EmployeeId}",
+                    new { leaveId = result.LeaveId, estado = "PendenteAprovacao", detalhe = result.Message }),
+
+            LeaveOutcome.NotFound => Results.NotFound(new { erro = result.Message }),
+
+            // 409: já há ausência pedida ou aprovada nesse período.
+            LeaveOutcome.Overlaps => Results.Conflict(new { erro = result.Message }),
+
+            // 501: não há motor de governança ligado neste ambiente.
+            LeaveOutcome.ApprovalUnavailable =>
+                Results.Problem(result.Message, statusCode: StatusCodes.Status501NotImplemented),
+
+            // 409: a governança recusou receber — política em falta ou ambígua.
+            LeaveOutcome.ApprovalRefusedSubmission =>
+                Results.Conflict(new { erro = result.Message }),
+
+            LeaveOutcome.Rejected =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["ferias"] = [result.Message!] }),
+
+            _ => Results.Problem("Resultado inesperado ao pedir férias."),
+        };
+    }
+
+    private static async Task<IResult> CancelLeaveAsync(
+        Guid leaveId,
+        CancelLeave cancel,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await cancel.ExecuteAsync(leaveId, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            LeaveOutcome.Cancelled => Results.NoContent(),
+            LeaveOutcome.NotFound => Results.NotFound(new { erro = result.Message }),
+            LeaveOutcome.Rejected => Results.Conflict(new { erro = result.Message }),
+            _ => Results.Problem("Resultado inesperado ao retirar o pedido."),
+        };
+    }
+
+    private static async Task<IResult> ApplyLeaveOutcomeAsync(
+        Guid leaveId,
+        ApplyLeaveApprovalOutcome apply,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await apply.ExecuteAsync(leaveId, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            ApplyApprovalOutcome.Applied => Results.Ok(new { estado = result.Status }),
+
+            ApplyApprovalOutcome.AlreadyResolved =>
+                Results.Ok(new { estado = result.Status, detalhe = result.Message }),
+
+            ApplyApprovalOutcome.StillPending =>
+                Results.Accepted(value: new { estado = result.Status, detalhe = result.Message }),
+
+            ApplyApprovalOutcome.NotFound => Results.NotFound(new { erro = result.Message }),
+
+            _ => Results.Problem("Resultado inesperado ao aplicar a decisão."),
+        };
+    }
+
     private static async Task<IResult> ListBenefitsAsync(
         ListBenefits listBenefits,
         CancellationToken cancellationToken) =>
@@ -838,3 +938,12 @@ public sealed record StartLifecycleRequest(
     IReadOnlyList<LifecycleTaskRequest>? Tasks);
 
 public sealed record LifecycleTaskRequest(string Title, string Category, DateOnly? DueOn, string? Description);
+
+/// <param name="Type">Annual, Sick, Parental ou Unpaid.</param>
+/// <param name="EndsOn">Último dia de ausência, inclusive.</param>
+public sealed record RequestLeaveRequest(
+    Guid EmployeeId,
+    string Type,
+    DateOnly StartsOn,
+    DateOnly EndsOn,
+    string? Reason);

@@ -41,6 +41,13 @@ public static class HrModuleExtensions
         services.AddScoped<ApplyPositionApprovalOutcome>();
         services.AddScoped<ReconcilePendingAssignments>();
 
+        // Ferias: mesmo padrao de submissao a governanca (docs §1(d)).
+        services.AddScoped<ListLeave>();
+        services.AddScoped<RequestLeave>();
+        services.AddScoped<CancelLeave>();
+        services.AddScoped<ApplyLeaveApprovalOutcome>();
+        services.AddScoped<ReconcilePendingLeave>();
+
         // Worker que aplica, em ciclo, as decisões de aprovação a atribuições
         // pendentes. Existe porque `approval` não pode empurrar a decisão — não
         // lhe é permitido modificar dados de negócio do módulo de origem — e

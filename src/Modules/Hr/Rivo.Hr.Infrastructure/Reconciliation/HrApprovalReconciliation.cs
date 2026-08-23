@@ -40,7 +40,8 @@ public sealed class PositionApprovalReconciliationOptions
 }
 
 /// <summary>
-/// Aplica, em ciclo, as decisões de aprovação a atribuições de Cargo pendentes.
+/// Aplica, em ciclo, as decisões de governança aos processos de `hr` que
+/// esperam por elas — atribuições de Cargo e pedidos de férias.
 ///
 /// <para>
 /// <strong>Existe porque `approval` não pode empurrar.</strong>
@@ -69,15 +70,15 @@ public sealed class PositionApprovalReconciliationWorker(
         if (!_options.Enabled)
         {
             logger.LogInformation(
-                "Reconciliação de atribuições de cargo desligada. As decisões têm de ser " +
-                "aplicadas por POST /hr/position-assignments/{{id}}/approval-outcome.");
+                "Reconciliação de aprovações de `hr` desligada. As decisões têm de ser " +
+                "aplicadas pelos endpoints `approval-outcome` de cada processo.");
             return;
         }
 
         var interval = TimeSpan.FromSeconds(_options.PollIntervalSeconds);
 
         logger.LogInformation(
-            "Reconciliação de atribuições de cargo activa: intervalo {Interval}s, lote {BatchSize}.",
+            "Reconciliação de aprovações de `hr` activa: intervalo {Interval}s, lote {BatchSize}.",
             _options.PollIntervalSeconds, _options.BatchSize);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -88,16 +89,25 @@ public sealed class PositionApprovalReconciliationWorker(
                 // tempo todo do worker, que é singleton.
                 using var scope = scopeFactory.CreateScope();
 
-                var reconcile = scope.ServiceProvider.GetRequiredService<ReconcilePendingAssignments>();
-                var outcome = await reconcile.ExecuteAsync(_options.BatchSize, stoppingToken);
+                // As duas filas de `hr` que esperam por decisão. Correm no mesmo
+                // ciclo e no mesmo scope: sao a mesma pergunta a `approval`,
+                // sobre agregados diferentes.
+                var cargos = await scope.ServiceProvider
+                    .GetRequiredService<ReconcilePendingAssignments>()
+                    .ExecuteAsync(_options.BatchSize, stoppingToken);
+
+                var ferias = await scope.ServiceProvider
+                    .GetRequiredService<ReconcilePendingLeave>()
+                    .ExecuteAsync(_options.BatchSize, stoppingToken);
 
                 // Só se regista quando algo aconteceu. Um ciclo vazio a cada
                 // minuto encheria os logs e escondia o que interessa.
-                if (outcome.Applied > 0 || outcome.Failed > 0)
+                if (cargos.Applied > 0 || cargos.Failed > 0 || ferias.Applied > 0 || ferias.Failed > 0)
                 {
                     logger.LogInformation(
-                        "Reconciliação: {Applied} aplicada(s), {StillPending} por decidir, {Failed} falhada(s).",
-                        outcome.Applied, outcome.StillPending, outcome.Failed);
+                        "Reconciliação: cargos {CargosAplicados} aplicado(s)/{CargosFalhados} falhado(s); " +
+                        "férias {FeriasAplicadas} aplicada(s)/{FeriasFalhadas} falhada(s).",
+                        cargos.Applied, cargos.Failed, ferias.Applied, ferias.Failed);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -109,7 +119,7 @@ public sealed class PositionApprovalReconciliationWorker(
                 // O worker não pode morrer por um ciclo mau — se morresse,
                 // deixaria de haver reconciliação até ao próximo arranque, e
                 // atribuições aprovadas ficariam pendentes em silêncio.
-                logger.LogError(exception, "Ciclo de reconciliação de atribuições falhou.");
+                logger.LogError(exception, "Ciclo de reconciliação de aprovações de `hr` falhou.");
             }
 
             try

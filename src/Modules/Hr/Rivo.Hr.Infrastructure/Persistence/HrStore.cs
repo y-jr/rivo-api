@@ -57,6 +57,39 @@ public sealed class HrStore(HrDbContext context) : IHrStore
             .Select(a => a.Id)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<LeaveRequest>> ListLeaveAsync(
+        Guid? employeeId,
+        CancellationToken cancellationToken)
+    {
+        var query = context.LeaveRequests.AsNoTracking();
+
+        if (employeeId is not null)
+        {
+            query = query.Where(l => l.EmployeeId == employeeId);
+        }
+
+        return await query.OrderByDescending(l => l.StartsOn).ToListAsync(cancellationToken);
+    }
+
+    public async Task<LeaveRequest?> FindLeaveAsync(Guid leaveId, CancellationToken cancellationToken) =>
+        await context.LeaveRequests.FirstOrDefaultAsync(l => l.Id == leaveId, cancellationToken);
+
+    public async Task AddLeaveAsync(LeaveRequest leave, CancellationToken cancellationToken) =>
+        await context.LeaveRequests.AddAsync(leave, cancellationToken);
+
+    public async Task<IReadOnlyList<Guid>> ListLeaveAwaitingDecisionAsync(
+        int batchSize,
+        CancellationToken cancellationToken) =>
+        await context.LeaveRequests
+            .AsNoTracking()
+            .Where(l => l.Status == LeaveStatus.Pending && l.ApprovalRequestId != null)
+            // Mais próximos de começar primeiro: um pedido cujas férias comecem
+            // amanhã precisa de decisão mais depressa do que um de Dezembro.
+            .OrderBy(l => l.StartsOn)
+            .Take(batchSize)
+            .Select(l => l.Id)
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<PositionAssignment>> ListAssignmentsForEmployeeAsync(
         Guid employeeId,
         CancellationToken cancellationToken) =>

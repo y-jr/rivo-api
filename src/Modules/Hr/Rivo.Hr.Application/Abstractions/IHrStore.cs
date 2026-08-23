@@ -61,6 +61,20 @@ public interface IHrStore
         int batchSize,
         CancellationToken cancellationToken);
 
+    /// <summary>Pedidos de férias, de um colaborador ou de toda a empresa.</summary>
+    Task<IReadOnlyList<LeaveRequest>> ListLeaveAsync(
+        Guid? employeeId,
+        CancellationToken cancellationToken);
+
+    Task<LeaveRequest?> FindLeaveAsync(Guid leaveId, CancellationToken cancellationToken);
+
+    Task AddLeaveAsync(LeaveRequest leave, CancellationToken cancellationToken);
+
+    /// <summary>Pedidos de férias pendentes com processo associado — a fila do worker.</summary>
+    Task<IReadOnlyList<Guid>> ListLeaveAwaitingDecisionAsync(
+        int batchSize,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<PositionAssignment>> ListAssignmentsForEmployeeAsync(Guid employeeId, CancellationToken cancellationToken);
 
     /// <summary>Atribuições de um cargo, para resolver quem o ocupa à data.</summary>
