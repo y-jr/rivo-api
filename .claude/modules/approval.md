@@ -143,10 +143,37 @@ BR-2 e BR-4 lançam `SegregationOfDutiesException`, distinta de um erro de
 estado qualquer: uma tentativa de as violar é evento de segurança e vai para a
 trilha como tal, não como um 409 anónimo.
 
+### Alcançável desde 2026-08-23
+
+As cinco camadas existem, com schema `approval` e migração aplicada. Rotas:
+
+| Método | Rota | Permissão |
+|---|---|---|
+| GET | `/approval/policies` | `approval.policies.read` |
+| POST | `/approval/policies` | `approval.policies.write` |
+| GET | `/approval/requests?processType=&pendingFor=` | `approval.requests.read` |
+| GET | `/approval/requests/{id}` | `approval.requests.read` |
+| POST | `/approval/requests/{id}/decisions` | `approval.requests.decide` |
+| POST | `/approval/requests/{id}/cancellation` | `approval.requests.read` |
+
+**Não há endpoint de submissão, e é deliberado.** Submeter é acto do módulo de
+origem, por `IApprovalGateway` — expor uma rota HTTP deixaria criar processos
+sem transacção de negócio por trás, e `approval` não possui nem interpreta
+essas transacções.
+
+Uma violação de BR-2 ou BR-4 devolve **403**, e não 409: não é o estado do
+pedido que impede, é *esta pessoa*. A tentativa recusada vai para a trilha com
+acção própria — uma sequência delas contra o mesmo pedido é o padrão que
+interessa detectar.
+
+`Manager` e `Finance` deixam de ser perfis vazios: recebem
+`approval.requests.read` e `.decide`, **sem** gestão de políticas — quem
+configura as alçadas decidiria indirectamente o que pode aprovar sozinho.
+
 ### Por fazer
 
-- **Camadas Application, Infrastructure e Api.** O domínio não é alcançável
-  ainda; não há persistência nem endpoints.
+- **Nenhum módulo submete ainda.** O `501` de `hr` continua de pé: fechá-lo é
+  ligar `AssignPosition` ao `IApprovalGateway`, e é a próxima alteração.
 - **BR-7 e BR-8** — anti-fraccionamento e verificação orçamental exigem
   `finance`. Uma política pode declarar `RequiresBudgetCheck`, e enquanto
   `finance` não existir isso **recusa a submissão** em vez de fingir que

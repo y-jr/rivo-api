@@ -6,6 +6,8 @@ using Rivo.Audit.Api;
 using Rivo.Audit.Infrastructure;
 using Rivo.Documents.Api;
 using Rivo.Documents.Infrastructure;
+using Rivo.Approval.Api;
+using Rivo.Approval.Infrastructure;
 using Rivo.Hr.Api;
 using Rivo.Hr.Infrastructure;
 using Rivo.Identity.Api;
@@ -32,6 +34,7 @@ builder.Services.AddAuditModule(builder.Configuration);
 builder.Services.AddDocumentsModule(builder.Configuration);
 builder.Services.AddNotificationsModule(builder.Configuration);
 builder.Services.AddHrModule(builder.Configuration);
+builder.Services.AddApprovalModule(builder.Configuration);
 builder.Services.AddIdentityModule(builder.Configuration);
 
 var app = builder.Build();
@@ -75,6 +78,7 @@ if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
             await app.Services.MigrateDocumentsModuleAsync();
             await app.Services.MigrateNotificationsModuleAsync();
             await app.Services.MigrateHrModuleAsync();
+            await app.Services.MigrateApprovalModuleAsync();
             await app.Services.MigrateIdentityModuleAsync();
         });
 }
@@ -146,6 +150,7 @@ app.MapIdentityModule();
 app.MapAuditModule();
 app.MapDocumentsModule();
 app.MapHrModule();
+app.MapApprovalModule();
 app.MapNotificationsModule();
 
 // Verifica que a aplicação está viva e que alcança a base de dados.

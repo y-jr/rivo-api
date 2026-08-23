@@ -42,6 +42,19 @@ public class ConcurrencyTokenTests
 
         ["EmployeeDocument"] =
             "Linha de ligação: cria-se e elimina-se, nunca se altera.",
+
+        ["Decision"] =
+            "Imutável por BR-17 e pelo ADR-034: uma decisão de aprovação é facto histórico, " +
+            "e corrigi-la é decidir outra vez, não reescrever. Mesma razão de AuditEvent.",
+
+        ["PolicyStep"] =
+            "Criado com a política e nunca editado — alterar uma alçada é criar outra política, " +
+            "porque os pedidos em curso guardam a que lhes foi aplicada (BR-6).",
+
+        ["Assignment"] =
+            "Mutável (MarkDecided), mas só de dentro de ApprovalRequest, que tem o contador. " +
+            "Duas decisões simultâneas colidem na raiz do agregado antes de chegarem aqui — " +
+            "um contador próprio protegeria contra uma corrida que não existe.",
     };
 
     /// <summary>

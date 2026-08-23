@@ -1,4 +1,5 @@
-﻿using Rivo.Audit.Contracts;
+﻿using Rivo.Approval.Contracts;
+using Rivo.Audit.Contracts;
 using Rivo.Documents.Contracts;
 using Rivo.Hr.Contracts;
 
@@ -38,9 +39,21 @@ public static class AccessProfiles
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> Catalogue =
         new Dictionary<string, IReadOnlyList<string>>
         {
-            [Admin] = [.. Permissions.All, .. AuditPermissions.All, .. HrPermissions.All, .. DocumentPermissions.All],
-            [Manager] = [],
-            [Finance] = [],
+            [Admin] = [
+                .. Permissions.All,
+                .. AuditPermissions.All,
+                .. HrPermissions.All,
+                .. DocumentPermissions.All,
+                .. ApprovalPermissions.All],
+
+            // `Manager` deixa de estar vazio: decidir sobre pedidos de
+            // aprovação é a primeira competência que um perfil de chefia tem no
+            // sistema. **Sem gerir políticas** — quem configura as alçadas
+            // decidiria indirectamente o que pode aprovar sozinho, que é a
+            // mesma escalada que ADR-015 fecha em `hr`.
+            [Manager] = [ApprovalPermissions.RequestsRead, ApprovalPermissions.RequestsDecide],
+
+            [Finance] = [ApprovalPermissions.RequestsRead, ApprovalPermissions.RequestsDecide],
 
             // Note-se a ausência de `hr.positions.write`: RH atribui Cargos,
             // mas não decide quais existem nem quais conferem autoridade de

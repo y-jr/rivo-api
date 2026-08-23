@@ -38,7 +38,10 @@ public class ProjectReferenceTests
         ["Notifications"] = [],
         ["Documents"] = ["Audit"],
         ["Hr"] = ["Audit", "Documents"],
-        ["Identity"] = ["Audit", "Hr", "Documents", "Notifications"],
+        // `identity` compõe o catálogo de permissões a partir do que cada
+        // módulo declara — cada um diz que permissões existem, `identity`
+        // decide que perfis as recebem (ADR-005).
+        ["Identity"] = ["Audit", "Hr", "Documents", "Notifications", "Approval"],
 
         // `approval` resolve aprovadores por Cargo, que é de `hr` (ADR-034).
         //
@@ -50,7 +53,7 @@ public class ProjectReferenceTests
         //
         // O domínio de `approval` ainda não referencia `hr`: a resolução de
         // aprovadores é feita na camada Application, que não existe ainda.
-        ["Approval"] = ["Hr"],
+        ["Approval"] = ["Hr", "Audit"],
     };
 
     [Fact]

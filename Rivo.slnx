@@ -4,8 +4,11 @@
   </Folder>
   <Folder Name="/src/Modules/" />
   <Folder Name="/src/Modules/Approval/">
+    <Project Path="src/Modules/Approval/Rivo.Approval.Api/Rivo.Approval.Api.csproj" />
+    <Project Path="src/Modules/Approval/Rivo.Approval.Application/Rivo.Approval.Application.csproj" />
     <Project Path="src/Modules/Approval/Rivo.Approval.Contracts/Rivo.Approval.Contracts.csproj" />
     <Project Path="src/Modules/Approval/Rivo.Approval.Domain/Rivo.Approval.Domain.csproj" />
+    <Project Path="src/Modules/Approval/Rivo.Approval.Infrastructure/Rivo.Approval.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/src/Modules/Audit/">
     <Project Path="src/Modules/Audit/Rivo.Audit.Api/Rivo.Audit.Api.csproj" />
