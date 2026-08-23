@@ -48,6 +48,84 @@ public interface IHrStore
 
     // --- Documentos anexados (ADR-009: a ligação vive aqui, não em `documents`) ---
 
+    /// <summary>
+    /// Contratos de um colaborador, do mais recente para o mais antigo.
+    ///
+    /// <para>
+    /// Devolve o histórico completo, e não só o que está em vigor: é sobre ele
+    /// que se verifica a sobreposição de vigências antes de celebrar um novo.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<EmploymentContract>> ListContractsForEmployeeAsync(
+        Guid employeeId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<EmploymentContract>> ListContractsAsync(CancellationToken cancellationToken);
+
+    Task<EmploymentContract?> FindContractAsync(Guid contractId, CancellationToken cancellationToken);
+
+    Task AddContractAsync(EmploymentContract contract, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A marcação de um colaborador num dia, se existir. É o que impede abrir
+    /// o mesmo dia duas vezes.
+    /// </summary>
+    Task<AttendanceRecord?> FindAttendanceAsync(
+        Guid employeeId,
+        DateOnly day,
+        CancellationToken cancellationToken);
+
+    /// <summary>Marcações num intervalo de dias, para toda a empresa.</summary>
+    Task<IReadOnlyList<AttendanceRecord>> ListAttendanceAsync(
+        DateOnly from,
+        DateOnly to,
+        Guid? employeeId,
+        CancellationToken cancellationToken);
+
+    Task AddAttendanceAsync(AttendanceRecord record, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<Benefit>> ListBenefitsAsync(CancellationToken cancellationToken);
+
+    Task<Benefit?> FindBenefitAsync(Guid benefitId, CancellationToken cancellationToken);
+
+    Task AddBenefitAsync(Benefit benefit, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<BenefitEnrolment>> ListEnrolmentsAsync(
+        Guid? employeeId,
+        CancellationToken cancellationToken);
+
+    Task<BenefitEnrolment?> FindEnrolmentAsync(Guid enrolmentId, CancellationToken cancellationToken);
+
+    Task AddEnrolmentAsync(BenefitEnrolment enrolment, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<JobOpening>> ListJobOpeningsAsync(CancellationToken cancellationToken);
+
+    Task<JobOpening?> FindJobOpeningAsync(Guid openingId, CancellationToken cancellationToken);
+
+    Task AddJobOpeningAsync(JobOpening opening, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<Candidate>> ListCandidatesAsync(Guid? openingId, CancellationToken cancellationToken);
+
+    Task<Candidate?> FindCandidateAsync(Guid candidateId, CancellationToken cancellationToken);
+
+    Task AddCandidateAsync(Candidate candidate, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Processos de entrada e saída. <strong>Traz as tarefas.</strong> A regra
+    /// que impede concluir com tarefas pendentes precisa de as ver — carregar
+    /// o processo sem elas faria a verificação passar sempre.
+    /// </summary>
+    Task<IReadOnlyList<EmployeeLifecycleProcess>> ListLifecycleProcessesAsync(
+        LifecycleKind? kind,
+        Guid? employeeId,
+        CancellationToken cancellationToken);
+
+    Task<EmployeeLifecycleProcess?> FindLifecycleProcessAsync(
+        Guid processId,
+        CancellationToken cancellationToken);
+
+    Task AddLifecycleProcessAsync(EmployeeLifecycleProcess process, CancellationToken cancellationToken);
+
     Task AddEmployeeDocumentAsync(EmployeeDocument link, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<EmployeeDocument>> ListEmployeeDocumentsAsync(Guid employeeId, CancellationToken cancellationToken);

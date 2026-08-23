@@ -75,6 +75,23 @@ public static class HrAuditActions
     public const string PositionCreated = "hr.position.created";
     public const string PositionAssigned = "hr.position.assigned";
     public const string DocumentAttached = "hr.employee.document_attached";
+    public const string ContractDrawn = "hr.contract.drawn";
+    public const string ContractTerminated = "hr.contract.terminated";
+    public const string AttendanceCheckedIn = "hr.attendance.checked_in";
+    public const string AttendanceCheckedOut = "hr.attendance.checked_out";
+    public const string AbsenceRecorded = "hr.attendance.absence_recorded";
+    public const string AbsenceJustified = "hr.attendance.absence_justified";
+    public const string BenefitCreated = "hr.benefit.created";
+    public const string BenefitEnrolled = "hr.benefit.enrolled";
+    public const string BenefitCancelled = "hr.benefit.cancelled";
+    public const string JobOpeningOpened = "hr.job_opening.opened";
+    public const string JobOpeningClosed = "hr.job_opening.closed";
+    public const string CandidateApplied = "hr.candidate.applied";
+    public const string CandidateAdvanced = "hr.candidate.advanced";
+    public const string CandidateHired = "hr.candidate.hired";
+    public const string LifecycleStarted = "hr.lifecycle.started";
+    public const string LifecycleTaskCompleted = "hr.lifecycle.task_completed";
+    public const string LifecycleCompleted = "hr.lifecycle.completed";
 }
 
 public static class HrAuditEntityTypes
@@ -82,5 +99,12 @@ public static class HrAuditEntityTypes
     public const string Employee = "hr.employee";
     public const string Department = "hr.department";
     public const string Position = "hr.position";
+    public const string EmploymentContract = "hr.employment_contract";
+    public const string Attendance = "hr.attendance_record";
+    public const string Benefit = "hr.benefit";
+    public const string BenefitEnrolment = "hr.benefit_enrolment";
+    public const string JobOpening = "hr.job_opening";
+    public const string Candidate = "hr.candidate";
+    public const string LifecycleProcess = "hr.lifecycle_process";
 }
 

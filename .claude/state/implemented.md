@@ -76,6 +76,32 @@ terminar uma funcionalidade (passo 8 do fluxo em [CLAUDE.md](../CLAUDE.md)).
   ADR-015. É esta separação que fecha a escalada de privilégios
 - Anexação e listagem de documentos do colaborador, com FK entre schemas —
   2026-08-11 — ADR-009, ADR-010
+- **Contrato de Trabalho** — 2026-08-22 — tipo (sem termo / a termo /
+  prestação de serviços), vigência, remuneração base e moeda ISO 4217. O tipo
+  manda na vigência: sem termo recusa data de fim, a termo exige-a. Duas
+  relações laborais em vigor ao mesmo tempo são recusadas com `409`; um
+  contrato cessado não colide, para que a recontratação seja possível.
+  Permissões próprias `hr.contracts.read` / `.write`, separadas de
+  `hr.employees.read` porque a lista traz o salário
+- **Assiduidade** — 2026-08-22 — marcação de ponto numa rota só
+  (`POST /hr/attendance/clock`), que abre ou fecha o dia consoante o estado;
+  registo e justificação de faltas; consulta por intervalo com filtro de
+  anomalias, que é a vista da fila de RH. Um registo por colaborador e por dia,
+  imposto por índice único — a verificação no caso de uso não chega para um
+  relógio de ponto com rede instável
+- **Benefícios** — 2026-08-22 — catálogo e adesão separados: o benefício existe
+  independentemente de alguém o ter. Descontinuar um benefício impede adesões
+  novas **sem cancelar as existentes**. Não se adere duas vezes ao mesmo
+  benefício enquanto a primeira estiver activa
+- **Recrutamento** — 2026-08-22 — vaga e candidato, com o funil
+  `Applied → Screening → Interview → Offer → Hired`. **Avança um passo de cada
+  vez**, sem saltos nem recuos; rejeitar é o único desvio e vale de qualquer
+  fase. Contratar tem endpoint próprio, cria o Colaborador e liga-o à
+  candidatura — é a fronteira entre recrutamento e quadro de pessoal
+- **Onboarding e Offboarding** — 2026-08-22 — um agregado para os dois, com
+  checklist. A regra que lhe dá sentido: **um processo não se conclui com
+  tarefas pendentes**, e a recusa diz quantas faltam. Um processo sem tarefas
+  nenhumas também não fecha. O último dia de trabalho é obrigatório na saída
 
 **Recusa deliberada:** atribuir um Cargo que confira autoridade de aprovação
 devolve `501` e não grava nada. BR-20 exige decisão de `approval`, que não

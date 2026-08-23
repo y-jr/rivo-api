@@ -70,8 +70,62 @@ public static class HrPermissions
     /// <summary>Atribuir Cargos a colaboradores. Operação corrente de RH (ADR-015).</summary>
     public const string PositionsAssign = "hr.positions.assign";
 
+    /// <summary>
+    /// Ler contratos de trabalho, incluindo a remuneração acordada.
+    ///
+    /// <para>
+    /// <strong>Separada de <see cref="EmployeesRead"/> de propósito.</strong>
+    /// Ver quem trabalha na empresa e ver quanto cada um ganha não são a mesma
+    /// autorização — juntá-las daria o salário de toda a gente a quem só
+    /// precisa do organograma.
+    /// </para>
+    /// </summary>
+    public const string ContractsRead = "hr.contracts.read";
+
+    /// <summary>Celebrar e cessar contratos de trabalho.</summary>
+    public const string ContractsWrite = "hr.contracts.write";
+
+    /// <summary>Consultar assiduidade, incluindo a de terceiros.</summary>
+    public const string AttendanceRead = "hr.attendance.read";
+
+    /// <summary>
+    /// Marcar ponto, registar e justificar faltas.
+    ///
+    /// <para>
+    /// Distinta da leitura porque são audiências diferentes: marcar ponto é
+    /// operação de quem trabalha, consultar a assiduidade alheia é de quem
+    /// gere.
+    /// </para>
+    /// </summary>
+    public const string AttendanceWrite = "hr.attendance.write";
+
+    /// <summary>Catálogo de benefícios e adesões.</summary>
+    public const string BenefitsRead = "hr.benefits.read";
+
+    public const string BenefitsWrite = "hr.benefits.write";
+
+    /// <summary>Vagas e candidatos.</summary>
+    public const string RecruitmentRead = "hr.recruitment.read";
+
+    public const string RecruitmentWrite = "hr.recruitment.write";
+
+    /// <summary>Processos de entrada e de saída, e as respectivas checklists.</summary>
+    public const string LifecycleRead = "hr.lifecycle.read";
+
+    public const string LifecycleWrite = "hr.lifecycle.write";
+
     public static readonly IReadOnlyList<string> All =
     [
+        ContractsRead,
+        ContractsWrite,
+        AttendanceRead,
+        AttendanceWrite,
+        BenefitsRead,
+        BenefitsWrite,
+        RecruitmentRead,
+        RecruitmentWrite,
+        LifecycleRead,
+        LifecycleWrite,
         EmployeesRead,
         EmployeesWrite,
         DepartmentsRead,
@@ -94,5 +148,15 @@ public static class HrPermissions
         DepartmentsWrite,
         PositionsRead,
         PositionsAssign,
+        ContractsRead,
+        ContractsWrite,
+        AttendanceRead,
+        AttendanceWrite,
+        BenefitsRead,
+        BenefitsWrite,
+        RecruitmentRead,
+        RecruitmentWrite,
+        LifecycleRead,
+        LifecycleWrite,
     ];
 }

@@ -51,6 +51,83 @@ public static class HrModuleEndpoints
         group.MapGet("/employees/{employeeId:guid}/documents", ListEmployeeDocumentsAsync)
             .RequireAuthorization(HrPermissions.EmployeesRead);
 
+        // Contratos de trabalho. Permissão própria e não `employees.read`: a
+        // lista traz a remuneração acordada, que é a informação mais sensível
+        // do módulo.
+        group.MapGet("/contracts", ListContractsAsync)
+            .RequireAuthorization(HrPermissions.ContractsRead);
+
+        group.MapPost("/contracts", DrawContractAsync)
+            .RequireAuthorization(HrPermissions.ContractsWrite);
+
+        group.MapPost("/contracts/{contractId:guid}/termination", TerminateContractAsync)
+            .RequireAuthorization(HrPermissions.ContractsWrite);
+
+        // Assiduidade.
+        group.MapGet("/attendance", ListAttendanceAsync)
+            .RequireAuthorization(HrPermissions.AttendanceRead);
+
+        // Marcação de ponto: uma rota, porque é um botão só. Entrada ou saída,
+        // decide o servidor consoante o dia já esteja aberto.
+        group.MapPost("/attendance/clock", ClockAsync)
+            .RequireAuthorization(HrPermissions.AttendanceWrite);
+
+        group.MapPost("/attendance/absences", RecordAbsenceAsync)
+            .RequireAuthorization(HrPermissions.AttendanceWrite);
+
+        // Benefícios: catálogo e adesões.
+        group.MapGet("/benefits", ListBenefitsAsync)
+            .RequireAuthorization(HrPermissions.BenefitsRead);
+
+        group.MapPost("/benefits", CreateBenefitAsync)
+            .RequireAuthorization(HrPermissions.BenefitsWrite);
+
+        group.MapGet("/benefits/enrolments", ListEnrolmentsAsync)
+            .RequireAuthorization(HrPermissions.BenefitsRead);
+
+        group.MapPost("/benefits/enrolments", EnrolAsync)
+            .RequireAuthorization(HrPermissions.BenefitsWrite);
+
+        group.MapPost("/benefits/enrolments/{enrolmentId:guid}/cancellation", CancelEnrolmentAsync)
+            .RequireAuthorization(HrPermissions.BenefitsWrite);
+
+        // Recrutamento: vagas e funil de candidatos.
+        group.MapGet("/recruitment/openings", ListOpeningsAsync)
+            .RequireAuthorization(HrPermissions.RecruitmentRead);
+
+        group.MapPost("/recruitment/openings", OpenOpeningAsync)
+            .RequireAuthorization(HrPermissions.RecruitmentWrite);
+
+        group.MapPost("/recruitment/openings/{openingId:guid}/closure", CloseOpeningAsync)
+            .RequireAuthorization(HrPermissions.RecruitmentWrite);
+
+        group.MapGet("/recruitment/candidates", ListCandidatesAsync)
+            .RequireAuthorization(HrPermissions.RecruitmentRead);
+
+        group.MapPost("/recruitment/openings/{openingId:guid}/candidates", ApplyAsync)
+            .RequireAuthorization(HrPermissions.RecruitmentWrite);
+
+        group.MapPost("/recruitment/candidates/{candidateId:guid}/stage", AdvanceCandidateAsync)
+            .RequireAuthorization(HrPermissions.RecruitmentWrite);
+
+        // Contratar cria um Colaborador — por isso exige também escrita em
+        // colaboradores, e não só em recrutamento.
+        group.MapPost("/recruitment/candidates/{candidateId:guid}/hire", HireCandidateAsync)
+            .RequireAuthorization(HrPermissions.EmployeesWrite);
+
+        // Entrada e saída, conduzidas por checklist.
+        group.MapGet("/lifecycle", ListLifecycleAsync)
+            .RequireAuthorization(HrPermissions.LifecycleRead);
+
+        group.MapPost("/lifecycle", StartLifecycleAsync)
+            .RequireAuthorization(HrPermissions.LifecycleWrite);
+
+        group.MapPost("/lifecycle/{processId:guid}/tasks/{taskId:guid}/completion", CompleteTaskAsync)
+            .RequireAuthorization(HrPermissions.LifecycleWrite);
+
+        group.MapPost("/lifecycle/{processId:guid}/completion", CompleteLifecycleAsync)
+            .RequireAuthorization(HrPermissions.LifecycleWrite);
+
         return endpoints;
     }
 
@@ -198,6 +275,433 @@ public static class HrModuleEndpoints
             _ => Results.Problem("Resultado inesperado ao atribuir o cargo."),
         };
     }
+
+    private static async Task<IResult> ListContractsAsync(
+        ListEmploymentContracts listContracts,
+        Guid? employeeId,
+        CancellationToken cancellationToken) =>
+        Results.Ok(await listContracts.ExecuteAsync(employeeId, cancellationToken));
+
+    private static async Task<IResult> DrawContractAsync(
+        DrawContractRequest request,
+        DrawEmploymentContract drawContract,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await drawContract.ExecuteAsync(
+            request.EmployeeId,
+            request.Type,
+            request.StartsOn,
+            request.EndsOn,
+            request.MonthlySalary,
+            request.Currency ?? "AOA",
+            request.Notes,
+            BuildAuditContext(http),
+            cancellationToken);
+
+        return result.Outcome switch
+        {
+            DrawContractOutcome.Drawn =>
+                Results.Created($"/hr/contracts?employeeId={request.EmployeeId}", new { contractId = result.ContractId }),
+
+            DrawContractOutcome.EmployeeNotFound =>
+                Results.NotFound(new { erro = result.Error }),
+
+            // 409 e não 400: o pedido está bem formado, o que colide é o estado
+            // actual — já existe um contrato em vigor no período.
+            DrawContractOutcome.Overlaps =>
+                Results.Conflict(new { erro = result.Error }),
+
+            DrawContractOutcome.InvalidTerms =>
+                Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["contrato"] = [result.Error!],
+                }),
+
+            _ => Results.Problem("Resultado inesperado ao celebrar o contrato."),
+        };
+    }
+
+    private static async Task<IResult> TerminateContractAsync(
+        Guid contractId,
+        TerminateContractRequest request,
+        TerminateEmploymentContract terminate,
+        HttpContext http,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        var on = request.On ?? DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+
+        var result = await terminate.ExecuteAsync(contractId, on, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            TerminateContractOutcome.Terminated => Results.NoContent(),
+
+            TerminateContractOutcome.NotFound =>
+                Results.NotFound(new { erro = result.Error }),
+
+            TerminateContractOutcome.Rejected =>
+                Results.Conflict(new { erro = result.Error }),
+
+            _ => Results.Problem("Resultado inesperado ao cessar o contrato."),
+        };
+    }
+
+    private static async Task<IResult> ListAttendanceAsync(
+        ListAttendance listAttendance,
+        DateOnly? from,
+        DateOnly? to,
+        Guid? employeeId,
+        bool? anomaliesOnly,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        var hoje = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+
+        // Sem intervalo, os últimos 30 dias. Uma consulta sem limites sobre
+        // assiduidade cresce com o número de colaboradores vezes os dias, e o
+        // pedido mais provável é "o que aconteceu recentemente".
+        var inicio = from ?? hoje.AddDays(-30);
+        var fim = to ?? hoje;
+
+        if (fim < inicio)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["to"] = ["A data final não pode ser anterior à inicial."],
+            });
+        }
+
+        return Results.Ok(await listAttendance.ExecuteAsync(
+            inicio, fim, employeeId, anomaliesOnly ?? false, cancellationToken));
+    }
+
+    private static async Task<IResult> ClockAsync(
+        ClockRequest request,
+        ClockAttendance clockAttendance,
+        HttpContext http,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        var day = request.Day ?? DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+
+        var result = await clockAttendance.ExecuteAsync(
+            request.EmployeeId,
+            day,
+            request.Late ?? false,
+            BuildAuditContext(http),
+            cancellationToken);
+
+        return result.Outcome switch
+        {
+            ClockOutcome.CheckedIn =>
+                Results.Ok(new { recordId = result.RecordId, movimento = "entrada", at = result.At }),
+
+            ClockOutcome.CheckedOut =>
+                Results.Ok(new { recordId = result.RecordId, movimento = "saida", at = result.At }),
+
+            ClockOutcome.EmployeeNotFound =>
+                Results.NotFound(new { erro = result.Error }),
+
+            ClockOutcome.Rejected =>
+                Results.Conflict(new { erro = result.Error }),
+
+            _ => Results.Problem("Resultado inesperado ao marcar o ponto."),
+        };
+    }
+
+    private static async Task<IResult> RecordAbsenceAsync(
+        RecordAbsenceRequest request,
+        RecordAbsence recordAbsence,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await recordAbsence.ExecuteAsync(
+            request.EmployeeId,
+            request.Day,
+            request.Justification,
+            BuildAuditContext(http),
+            cancellationToken);
+
+        return result.Outcome switch
+        {
+            AbsenceOutcome.Recorded =>
+                Results.Created($"/hr/attendance?employeeId={request.EmployeeId}", new { recordId = result.RecordId }),
+
+            AbsenceOutcome.Justified =>
+                Results.Ok(new { recordId = result.RecordId }),
+
+            AbsenceOutcome.EmployeeNotFound =>
+                Results.NotFound(new { erro = result.Error }),
+
+            AbsenceOutcome.Rejected =>
+                Results.Conflict(new { erro = result.Error }),
+
+            _ => Results.Problem("Resultado inesperado ao registar a ausência."),
+        };
+    }
+
+    private static async Task<IResult> ListBenefitsAsync(
+        ListBenefits listBenefits,
+        CancellationToken cancellationToken) =>
+        Results.Ok(await listBenefits.ExecuteAsync(cancellationToken));
+
+    private static async Task<IResult> CreateBenefitAsync(
+        CreateBenefitRequest request,
+        CreateBenefit createBenefit,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await createBenefit.ExecuteAsync(
+            request.Name, request.Kind, request.MonthlyValue,
+            request.Currency ?? "AOA", request.Description,
+            BuildAuditContext(http), cancellationToken);
+
+        return result.Succeeded
+            ? Results.Created("/hr/benefits", new { benefitId = result.BenefitId })
+            : Results.ValidationProblem(new Dictionary<string, string[]> { ["beneficio"] = [result.Error!] });
+    }
+
+    private static async Task<IResult> ListEnrolmentsAsync(
+        ListBenefitEnrolments listEnrolments,
+        Guid? employeeId,
+        CancellationToken cancellationToken) =>
+        Results.Ok(await listEnrolments.ExecuteAsync(employeeId, cancellationToken));
+
+    private static async Task<IResult> EnrolAsync(
+        EnrolRequest request,
+        EnrolInBenefit enrol,
+        HttpContext http,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        var startsOn = request.StartsOn ?? DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+
+        var result = await enrol.ExecuteAsync(
+            request.EmployeeId, request.BenefitId, startsOn, BuildAuditContext(http), cancellationToken);
+
+        return FromEnrol(result, "/hr/benefits/enrolments");
+    }
+
+    private static async Task<IResult> CancelEnrolmentAsync(
+        Guid enrolmentId,
+        CancelEnrolmentRequest request,
+        CancelBenefitEnrolment cancel,
+        HttpContext http,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        var on = request.On ?? DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+
+        var result = await cancel.ExecuteAsync(enrolmentId, on, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            EnrolOutcome.Done => Results.NoContent(),
+            EnrolOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            EnrolOutcome.Rejected => Results.Conflict(new { erro = result.Error }),
+            _ => Results.Problem("Resultado inesperado ao cancelar a adesão."),
+        };
+    }
+
+    private static IResult FromEnrol(EnrolResult result, string location) =>
+        result.Outcome switch
+        {
+            EnrolOutcome.Done => Results.Created(location, new { enrolmentId = result.EnrolmentId }),
+            EnrolOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            EnrolOutcome.Rejected => Results.Conflict(new { erro = result.Error }),
+            _ => Results.Problem("Resultado inesperado na adesão ao benefício."),
+        };
+
+    private static async Task<IResult> ListOpeningsAsync(
+        ListJobOpenings listOpenings,
+        CancellationToken cancellationToken) =>
+        Results.Ok(await listOpenings.ExecuteAsync(cancellationToken));
+
+    private static async Task<IResult> OpenOpeningAsync(
+        OpenJobOpeningRequest request,
+        OpenJobOpening openOpening,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await openOpening.ExecuteAsync(
+            request.Title, request.DepartmentId, request.Vacancies ?? 1,
+            request.Description, request.Requirements,
+            BuildAuditContext(http), cancellationToken);
+
+        return FromRecruitment(result, "/hr/recruitment/openings", "openingId");
+    }
+
+    private static async Task<IResult> CloseOpeningAsync(
+        Guid openingId,
+        CloseJobOpening closeOpening,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await closeOpening.ExecuteAsync(openingId, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            RecruitmentOutcome.Done => Results.NoContent(),
+            RecruitmentOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            RecruitmentOutcome.Rejected => Results.Conflict(new { erro = result.Error }),
+            _ => Results.Problem("Resultado inesperado ao fechar a vaga."),
+        };
+    }
+
+    private static async Task<IResult> ListCandidatesAsync(
+        ListCandidates listCandidates,
+        Guid? openingId,
+        CancellationToken cancellationToken) =>
+        Results.Ok(await listCandidates.ExecuteAsync(openingId, cancellationToken));
+
+    private static async Task<IResult> ApplyAsync(
+        Guid openingId,
+        ApplyRequest request,
+        ApplyToJobOpening apply,
+        HttpContext http,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        var appliedOn = request.AppliedOn ?? DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+
+        var result = await apply.ExecuteAsync(
+            openingId, request.FullName, request.Email, request.Phone, appliedOn,
+            BuildAuditContext(http), cancellationToken);
+
+        return FromRecruitment(result, $"/hr/recruitment/candidates?openingId={openingId}", "candidateId");
+    }
+
+    private static async Task<IResult> AdvanceCandidateAsync(
+        Guid candidateId,
+        AdvanceCandidateRequest request,
+        AdvanceCandidate advance,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await advance.ExecuteAsync(
+            candidateId, request.Stage, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            RecruitmentOutcome.Done => Results.NoContent(),
+            RecruitmentOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+
+            // 409: a fase pedida não é possível a partir da actual. O pedido
+            // está bem formado — o que colide é o estado do funil.
+            RecruitmentOutcome.Rejected => Results.Conflict(new { erro = result.Error }),
+
+            _ => Results.Problem("Resultado inesperado ao avançar o candidato."),
+        };
+    }
+
+    private static async Task<IResult> HireCandidateAsync(
+        Guid candidateId,
+        HireCandidateRequest request,
+        HireCandidate hire,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await hire.ExecuteAsync(
+            candidateId, request.DepartmentId, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            RecruitmentOutcome.Done =>
+                Results.Created($"/hr/employees/{result.Id}", new { employeeId = result.Id }),
+
+            RecruitmentOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            RecruitmentOutcome.Rejected => Results.Conflict(new { erro = result.Error }),
+            _ => Results.Problem("Resultado inesperado ao contratar o candidato."),
+        };
+    }
+
+    private static IResult FromRecruitment(RecruitmentResult result, string location, string idName) =>
+        result.Outcome switch
+        {
+            RecruitmentOutcome.Done =>
+                Results.Created(location, new Dictionary<string, object?> { [idName] = result.Id }),
+
+            RecruitmentOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+
+            RecruitmentOutcome.Rejected =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["recrutamento"] = [result.Error!] }),
+
+            _ => Results.Problem("Resultado inesperado no recrutamento."),
+        };
+
+    private static async Task<IResult> ListLifecycleAsync(
+        ListLifecycleProcesses listProcesses,
+        string? kind,
+        Guid? employeeId,
+        CancellationToken cancellationToken) =>
+        Results.Ok(await listProcesses.ExecuteAsync(kind, employeeId, cancellationToken));
+
+    private static async Task<IResult> StartLifecycleAsync(
+        StartLifecycleRequest request,
+        StartLifecycleProcess start,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var tasks = (request.Tasks ?? [])
+            .Select(t => new NewLifecycleTask(t.Title, t.Category, t.DueOn, t.Description))
+            .ToList();
+
+        var result = await start.ExecuteAsync(
+            request.EmployeeId, request.Kind, request.LastWorkingDay, request.Reason,
+            tasks, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            LifecycleOutcome.Done =>
+                Results.Created($"/hr/lifecycle?employeeId={request.EmployeeId}", new { processId = result.ProcessId }),
+
+            LifecycleOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+
+            LifecycleOutcome.Rejected =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["processo"] = [result.Error!] }),
+
+            _ => Results.Problem("Resultado inesperado ao abrir o processo."),
+        };
+    }
+
+    private static async Task<IResult> CompleteTaskAsync(
+        Guid processId,
+        Guid taskId,
+        CompleteLifecycleTask completeTask,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await completeTask.ExecuteAsync(
+            processId, taskId, BuildAuditContext(http), cancellationToken);
+
+        return FromLifecycle(result);
+    }
+
+    private static async Task<IResult> CompleteLifecycleAsync(
+        Guid processId,
+        CompleteLifecycleProcess complete,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await complete.ExecuteAsync(processId, BuildAuditContext(http), cancellationToken);
+
+        return FromLifecycle(result);
+    }
+
+    private static IResult FromLifecycle(LifecycleResult result) =>
+        result.Outcome switch
+        {
+            LifecycleOutcome.Done => Results.NoContent(),
+            LifecycleOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+
+            // 409: faltam tarefas, ou o processo já está concluído. É o estado
+            // que recusa, não o pedido.
+            LifecycleOutcome.Rejected => Results.Conflict(new { erro = result.Error }),
+
+            _ => Results.Problem("Resultado inesperado no processo."),
+        };
 }
 
 // DTOs da fronteira HTTP. Entidades de domínio nunca são expostas.
@@ -211,3 +715,76 @@ public sealed record AssignPositionRequest(Guid PositionId, DateTimeOffset? Effe
 
 /// <param name="Category">Classificação em RH: "contrato", "declaracao", "cv".</param>
 public sealed record AttachDocumentRequest(Guid DocumentId, string Category);
+
+/// <param name="Type">Permanent, FixedTerm ou Freelance.</param>
+/// <param name="EndsOn">Obrigatório em FixedTerm e Freelance; proibido em Permanent.</param>
+/// <param name="Currency">Código ISO 4217. Omitido, assume-se AOA.</param>
+public sealed record DrawContractRequest(
+    Guid EmployeeId,
+    string Type,
+    DateOnly StartsOn,
+    DateOnly? EndsOn,
+    decimal MonthlySalary,
+    string? Currency,
+    string? Notes);
+
+/// <param name="On">Data da cessação. Omitida, assume-se hoje.</param>
+public sealed record TerminateContractRequest(DateOnly? On);
+
+/// <param name="Day">Dia da marcação. Omitido, assume-se hoje.</param>
+/// <param name="Late">
+/// Se a entrada foi depois da hora prevista. Vem de quem marca porque o horário
+/// do colaborador ainda não está modelado — ver Turnos e escalas.
+/// </param>
+public sealed record ClockRequest(Guid EmployeeId, DateOnly? Day, bool? Late);
+
+/// <param name="Justification">
+/// Omitida, regista uma falta por justificar. Preenchida sobre um dia já
+/// marcado, justifica-o.
+/// </param>
+public sealed record RecordAbsenceRequest(Guid EmployeeId, DateOnly Day, string? Justification);
+
+public sealed record CreateBenefitRequest(
+    string Name,
+    string Kind,
+    decimal MonthlyValue,
+    string? Currency,
+    string? Description);
+
+/// <param name="StartsOn">Início da adesão. Omitido, assume-se hoje.</param>
+public sealed record EnrolRequest(Guid EmployeeId, Guid BenefitId, DateOnly? StartsOn);
+
+public sealed record CancelEnrolmentRequest(DateOnly? On);
+
+/// <param name="Vacancies">Omitido, assume-se um lugar.</param>
+public sealed record OpenJobOpeningRequest(
+    string Title,
+    Guid? DepartmentId,
+    int? Vacancies,
+    string? Description,
+    string? Requirements);
+
+public sealed record ApplyRequest(string FullName, string? Email, string? Phone, DateOnly? AppliedOn);
+
+/// <param name="Stage">
+/// Fase seguinte: Screening, Interview, Offer ou Rejected. O funil avança um
+/// passo de cada vez; para contratar use o endpoint próprio.
+/// </param>
+public sealed record AdvanceCandidateRequest(string Stage);
+
+public sealed record HireCandidateRequest(Guid? DepartmentId);
+
+/// <param name="Kind">Onboarding ou Offboarding.</param>
+/// <param name="LastWorkingDay">Obrigatório em Offboarding.</param>
+/// <param name="Tasks">
+/// Tarefas iniciais da checklist. Um processo sem tarefas não pode ser
+/// concluído — abri-lo vazio produz a lista que não verifica nada.
+/// </param>
+public sealed record StartLifecycleRequest(
+    Guid EmployeeId,
+    string Kind,
+    DateOnly? LastWorkingDay,
+    string? Reason,
+    IReadOnlyList<LifecycleTaskRequest>? Tasks);
+
+public sealed record LifecycleTaskRequest(string Title, string Category, DateOnly? DueOn, string? Description);

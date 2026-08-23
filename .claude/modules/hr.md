@@ -118,7 +118,39 @@ Quem submete a atribuição não pode decidi-la (BR-2).
 **Núcleo implementado.** Colaborador, Departamento, Cargo e Atribuição de
 Cargo, com o contrato `EmployeeReference` publicado em `Rivo.Hr.Contracts`.
 
-Verificado em `scripts/verify-hr.ps1` (13 casos).
+**Contrato de Trabalho e Assiduidade** desde 2026-08-22. O primeiro regista o
+que foi **acordado** — tipo, vigência, remuneração base e moeda; o segundo
+regista o que **aconteceu** — entradas, saídas e faltas.
+
+**Nenhum dos dois calcula nada.** Converter assiduidade em horas pagas, ou
+salário base em líquido com IRT e INSS, é de `payroll`, que lê ambos como
+entrada de cálculo.
+
+Duas decisões de desenho que valem registo:
+
+- **`hr.contracts.read` é permissão própria, separada de
+  `hr.employees.read`.** Ver quem trabalha na empresa e ver quanto cada um
+  ganha não são a mesma autorização — juntá-las daria o salário de toda a gente
+  a quem só precisa do organograma.
+- **Um registo de assiduidade por colaborador e por dia, com índice único.** A
+  verificação no caso de uso apanha o uso normal; só a base de dados apanha
+  duas marcações simultâneas — que é o que um relógio de ponto com rede
+  instável produz.
+
+**Benefícios, Recrutamento, Onboarding e Offboarding** desde 2026-08-22,
+fechando a lista de conceitos que este módulo declara possuir — com uma
+excepção, abaixo.
+
+- **Benefícios:** catálogo e adesão separados. Descontinuar um benefício impede
+  adesões novas sem cancelar as existentes.
+- **Recrutamento:** funil que avança um passo de cada vez. Contratar cria o
+  Colaborador e liga-o à candidatura — é a fronteira entre candidato e quadro
+  de pessoal.
+- **Entrada e saída:** um agregado para os dois, com checklist. **Não se conclui
+  um processo com tarefas pendentes** — é a regra que separa uma lista de
+  verificação de uma decoração, e é o que estes processos costumam falhar.
+
+Verificado em `scripts/verify-hr.ps1` (13 casos) e em 115 testes de domínio.
 
 ### Fora do implementado
 

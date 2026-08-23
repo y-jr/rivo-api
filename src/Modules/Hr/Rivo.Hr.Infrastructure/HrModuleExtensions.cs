@@ -40,6 +40,36 @@ public static class HrModuleExtensions
         services.AddScoped<AttachDocumentToEmployee>();
         services.AddScoped<ListEmployeeDocuments>();
 
+        // Contrato de Trabalho e Assiduidade.
+        services.AddScoped<ListEmploymentContracts>();
+        services.AddScoped<DrawEmploymentContract>();
+        services.AddScoped<TerminateEmploymentContract>();
+        services.AddScoped<ListAttendance>();
+        services.AddScoped<ClockAttendance>();
+        services.AddScoped<RecordAbsence>();
+
+        // Benefícios.
+        services.AddScoped<ListBenefits>();
+        services.AddScoped<CreateBenefit>();
+        services.AddScoped<ListBenefitEnrolments>();
+        services.AddScoped<EnrolInBenefit>();
+        services.AddScoped<CancelBenefitEnrolment>();
+
+        // Recrutamento.
+        services.AddScoped<ListJobOpenings>();
+        services.AddScoped<OpenJobOpening>();
+        services.AddScoped<CloseJobOpening>();
+        services.AddScoped<ListCandidates>();
+        services.AddScoped<ApplyToJobOpening>();
+        services.AddScoped<AdvanceCandidate>();
+        services.AddScoped<HireCandidate>();
+
+        // Onboarding e offboarding.
+        services.AddScoped<ListLifecycleProcesses>();
+        services.AddScoped<StartLifecycleProcess>();
+        services.AddScoped<CompleteLifecycleTask>();
+        services.AddScoped<CompleteLifecycleProcess>();
+
         // Cada módulo regista as policies das suas permissões (ADR-014).
         services.AddAuthorization(options =>
         {
