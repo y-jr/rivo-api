@@ -98,16 +98,24 @@ dotnet test
 
 ## Estado da cobertura
 
+_Contagens de 2026-08-24. **315 testes** em 13 projectos._
+
 | Camada | Estado |
 |---|---|
-| Domain | **100 testes**, 5 módulos — `hr` 45, `notifications` 20, `documents` 16, `audit` 10, `identity` 9 |
-| Application | Nenhum |
-| Infrastructure | **4 testes** em `notifications`, SQL Server real (ADR-026, ADR-029). Restantes quatro módulos por cobrir |
-| API | Nenhum (as suites PowerShell tocam-lhe indirectamente) |
+| Domain | **273 testes**, 9 módulos — `hr` 129, `finance` 34, `commercial` 20, `notifications` 20, `fiscal` 18, `approval` 17, `documents` 16, `audit` 10, `identity` 9 |
+| Application | **8 testes** em `identity`. Os restantes oito módulos por cobrir |
+| Infrastructure | **4 testes** em `notifications`, SQL Server real (ADR-026, ADR-029). Restantes oito módulos por cobrir |
+| API do host | **9 testes** em `tests/Rivo.Api.Tests` — tradução de excepções em códigos HTTP (ADR-035). Nasceu porque isto não é testável em nenhuma das outras camadas: as de domínio não conhecem HTTP, as de arquitectura verificam forma e não comportamento |
+| API de módulo | Nenhum (as suites PowerShell tocam-lhe indirectamente) |
 | Arquitectura | **21 testes** (ADR-024, ADR-025) |
 
-As seis suites PowerShell (66 casos) continuam a valer como smoke end-to-end.
-Não substituem teste de domínio, nem o inverso.
+As nove suites PowerShell (**113 casos**) continuam a valer como smoke
+end-to-end. Não substituem teste de domínio, nem o inverso.
+
+**O desequilíbrio é o de sempre, e cresceu:** o domínio tem 273 testes e a
+Application tem 8. Cada módulo novo acrescenta domínio coberto e Application
+descoberta — o que lá existe é exercitado indirectamente pelas suites
+caixa-preta, que testam o sistema montado e não as unidades.
 
 ## Integração
 

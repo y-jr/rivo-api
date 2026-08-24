@@ -51,6 +51,18 @@ public class ConcurrencyTokenTests
             "Criado com a política e nunca editado — alterar uma alçada é criar outra política, " +
             "porque os pedidos em curso guardam a que lhes foi aplicada (BR-6).",
 
+        ["SalesInvoiceLine"] =
+            "Imutável: criada com a factura e nunca alterada. A factura emite-se inteira e a partir " +
+            "daí só o cancelamento altera estado — e esse é na raiz, que tem o contador.",
+
+        ["DocumentNumber"] =
+            "Objecto de valor imutável. As colunas vivem na tabela da factura, que tem o contador. " +
+            "A corrida que interessa é na atribuição, e essa colide em `DocumentSeries`.",
+
+        ["InvoicedParty"] =
+            "Retrato do cliente no momento da emissão, não entidade. Nunca muda depois de gravado — " +
+            "é isso que faz a factura ser facto histórico e não uma vista sobre `commercial`.",
+
         ["TaxRateVersion"] =
             "Imutável depois de introduzida: é facto histórico, e alterá-la mudaria retroactivamente " +
             "o imposto de documentos já emitidos. Corrigir é fechar esta e introduzir outra (ADR-011). " +

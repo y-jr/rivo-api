@@ -2,6 +2,7 @@
 using Rivo.Commercial.Contracts;
 using Rivo.Audit.Contracts;
 using Rivo.Documents.Contracts;
+using Rivo.Finance.Contracts;
 using Rivo.Fiscal.Contracts;
 using Rivo.Hr.Contracts;
 
@@ -48,6 +49,7 @@ public static class AccessProfiles
                 .. DocumentPermissions.All,
                 .. ApprovalPermissions.All,
                 .. FiscalPermissions.All,
+                .. FinancePermissions.All,
                 .. CommercialPermissions.All],
 
             // `Manager` deixa de estar vazio: decidir sobre pedidos de
@@ -57,7 +59,14 @@ public static class AccessProfiles
             // mesma escalada que ADR-015 fecha em `hr`.
             [Manager] = [ApprovalPermissions.RequestsRead, ApprovalPermissions.RequestsDecide],
 
-            [Finance] = [ApprovalPermissions.RequestsRead, ApprovalPermissions.RequestsDecide],
+            // `Finance` acrescenta a supervisão da facturação: consulta tudo e
+            // é quem anula. **Sem emitir** — quem anula não emite, e é a mesma
+            // segregação de BR-3 aplicada ao documento em vez de ao pagamento.
+            [Finance] = [
+                ApprovalPermissions.RequestsRead,
+                ApprovalPermissions.RequestsDecide,
+                FinancePermissions.InvoicesRead,
+                FinancePermissions.InvoicesCancel],
 
             // Note-se a ausência de `hr.positions.write`: RH atribui Cargos,
             // mas não decide quais existem nem quais conferem autoridade de
@@ -65,11 +74,18 @@ public static class AccessProfiles
             // privilégios de ADR-015.
             [HumanResources] = [.. HrPermissions.ForHumanResources, .. DocumentPermissions.All],
 
-            // `Sales` deixa de estar vazio: registar e manter clientes é a
-            // primeira competência comercial que existe no sistema (ADR-036).
-            // **Sem `fiscal`** — quem vende não fixa a taxa que a sua própria
-            // venda vai liquidar.
-            [Sales] = [CommercialPermissions.CustomersRead, CommercialPermissions.CustomersWrite],
+            // `Sales` deixa de estar vazio: clientes e emissão de facturas
+            // (ADR-036).
+            //
+            // Duas ausências deliberadas. **Sem `fiscal`** — quem vende não fixa
+            // a taxa que a sua própria venda vai liquidar. E **sem anular nem
+            // abrir séries** — desfazer não é a mesma autorização que fazer, e
+            // uma série paralela é a forma óbvia de emitir fora da sequência
+            // auditável.
+            [Sales] = [
+                CommercialPermissions.CustomersRead,
+                CommercialPermissions.CustomersWrite,
+                .. FinancePermissions.ForBilling],
 
             [AssetManager] = [],
             [ProjectManager] = [],

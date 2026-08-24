@@ -1,6 +1,6 @@
 # Decisões Pendentes
 
-_Última actualização: 2026-08-15._
+_Última actualização: 2026-08-24._
 
 Decisões por tomar antes de o trabalho relacionado poder avançar com
 confiança. Uma vez decididas, registar como ADR em
@@ -35,6 +35,11 @@ re-litigação:
 | Tooling de testes de arquitectura | ADR-024 — reflexão e leitura de `.csproj`, sem biblioteca; 21 testes |
 | Frameworks de teste de integração | ADR-026 — Testcontainers com SQL Server real, um container por assembly |
 | Alojamento, CD e migrações em produção | ADR-031 (VPS por SSH e `docker compose`) + ADR-030 (migração no arranque, por interruptor) |
+| Autenticação federada | ADR-032 — ID token da Google validado contra o JWKS. **Não cria contas**, e não traz MFA |
+| CORS para clientes de browser | ADR-033 — lista por configuração, **sem credenciais** (o token viaja em `Authorization`, não em cookie) |
+| Desenho do `approval` | ADR-034 — Política, Passo, Pedido, Atribuição, Decisão. `AnyApprover` por omissão. Sem endpoint de submissão |
+| Conflito de concorrência → HTTP | ADR-035 — `409` traduzido no composition root, **sem repetição automática**. Fecha o K15 |
+| Emitir sem certificação | ADR-036 — forma do documento fiscal sem conformidade legal. Reordena as Fases 3, 4 e 5 |
 
 ## Stack tecnológica
 
@@ -198,11 +203,19 @@ re-litigação:
 
 ## Approval Engine
 
-- [ ] Modelo de dados definitivo — `docs` remete para fase de desenho
-      detalhado.
-- [ ] Semântica de SLA e de escalonamento.
+- [x] ~~Modelo de dados definitivo — `docs` remete para fase de desenho
+      detalhado.~~ **Fechado por ADR-034** (2026-08-23), que é essa fase.
+- [ ] **Semântica de SLA e de escalonamento.** O passo guarda o prazo; nada o
+      faz cumprir. Por decidir: o que acontece quando o prazo passa —
+      notificar, escalar para o nível acima, aprovar por omissão (quase de
+      certeza não), ou nada.
+- [ ] **Delegação.** Modelada em `docs`, sem código. Delegante, delegado,
+      período, e o efeito sobre BR-2 e BR-4 — se o delegado herda os
+      impedimentos do delegante, o que é a resposta provável mas não está
+      decidido.
 - [ ] Regras de segregação além do mínimo já fixado ("quem submete não
-      decide").
+      decide"). **Metade de BR-3** — "quem aprova não paga" — depende de
+      `finance` ter execução de pagamento, que não existe.
 
 ## Emissão sem certificação (ADR-036)
 

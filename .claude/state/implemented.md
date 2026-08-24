@@ -1,16 +1,21 @@
 # Implementado
 
-_Última actualização: 2026-08-15._
+_Última actualização: 2026-08-24._
 
 Funcionalidade concluída e a funcionar, por módulo. Actualizar como parte de
 terminar uma funcionalidade (passo 8 do fluxo em [CLAUDE.md](../CLAUDE.md)).
 
-**Cinco dos catorze módulos estão implementados:** `identity`, `audit`, `hr`,
-`documents`, `notifications`. Os restantes nove estão definidos em
-[modules/](../modules/) e não têm código.
+**Nove dos catorze módulos têm código:** `identity`, `audit`, `hr`,
+`documents`, `notifications`, `approval`, `fiscal`, `commercial`, `finance`.
+Os restantes cinco — `procurement`, `payroll`, `projects`, `inventory`,
+`fleet` — estão definidos em [modules/](../modules/) e não têm código.
 
-> As datas vêm do carimbo das migrações EF Core, que é a evidência mais fiável
-> disponível — o repositório não está sob controlo de versões.
+⚠ **Três estão reduzidos ao mínimo pelo ADR-036**, e não implementados por
+inteiro: `fiscal` (só taxa com vigência e determinação), `commercial` (só
+Cliente), `finance` (só a factura de venda). Ver a ressalva em cada secção.
+
+> As datas até 2026-08-16 vêm do carimbo das migrações EF Core — o repositório
+> só passou a estar sob git nesse dia. A partir daí vêm do histórico.
 
 ## Formato
 
@@ -44,11 +49,13 @@ terminar uma funcionalidade (passo 8 do fluxo em [CLAUDE.md](../CLAUDE.md)).
   para perfis decisórios **não está satisfeito**.
 - Sem refresh token e sem MFA. **O login com Google não traz MFA** — a 2FA da
   conta Google não é exigível nem verificável pelo Rivo (ADR-032).
-- Das sete entradas do catálogo, só `Admin` e `HR` têm permissões atribuídas.
-  As outras cinco estão vazias porque dependem de módulos de negócio que não
-  existem — inventá-las agora seria adivinhar.
-- O IP registado na sessão é o do proxy, não o do cliente — ver K8 em
-  [known-issues.md](known-issues.md).
+- Das sete entradas do catálogo, **cinco têm permissões**: `Admin`, `HR`,
+  `Manager`, `Finance` e `Sales`. `AssetManager` e `ProjectManager` continuam
+  vazias porque dependem de módulos que não existem — inventá-las seria
+  adivinhar.
+- ~~O IP registado na sessão é o do proxy, não o do cliente.~~ **K8 fechado em
+  2026-08-16** — cabeçalhos reencaminhados, com a confiança a vir de o
+  container não publicar porto no host (ADR-031).
 
 ## audit
 
@@ -152,9 +159,9 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
 
 ## Plataforma
 
-- Solução `Rivo.slnx` com 25 projectos: cinco módulos em camadas
+- Solução `Rivo.slnx`: módulos em camadas
   API / Application / Domain / Infrastructure, mais o host `Rivo.Api` —
-  2026-08-10
+  2026-08-10. **A 2026-08-24 são 45 projectos em `src/` e nove módulos**
 - Assembly `Rivo.X.Contracts` em `audit`, `documents`, `hr` e `notifications` —
   2026-08-11 — ADR-017. `identity` não tem, por não ter consumidor; criá-lo
   seria construir superfície pública para ninguém
@@ -170,14 +177,26 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
   revisto em 2026-08-20
 - `GET /health`, que verifica também o alcance da base de dados — 2026-08-10
 - OpenAPI e Swagger UI expostos **só em `Development`** — 2026-08-10
-- Workflow de CI em GitHub Actions, dois jobs — 2026-08-16 — ADR-023.
-  **Escrito e validado localmente, mas nunca executado:** o repositório ainda
-  não está sob git nem tem remoto
+- Workflow de CI em GitHub Actions, dois jobs — 2026-08-16 — ADR-023. A
+  ressalva de então ("nunca executado, o repositório não está sob git") caducou
+  no mesmo dia: está em `y-jr/rivo-api` e ambos os jobs correm
+- Deployment na VPS — 2026-08-23 — ADR-031. `.github/workflows/main.yml`: SSH,
+  `git pull`, `compose up --build`, sonda de `/health`. Ambiente publicado em
+  `http://187.77.178.242`, atrás de Caddy na rede `proxy`. **Sem TLS** enquanto
+  não houver domínio — K16
+- `Rivo.Fiscal`, `Rivo.Commercial` e `Rivo.Finance` acrescentados à solução e
+  ao host — 2026-08-24 — ADR-036
 
 ## Verificação
 
-Seis suites PowerShell caixa-preta contra a stack em Docker, **66 casos**,
-confirmado por execução completa em 2026-08-16.
+**Nove suites** PowerShell caixa-preta contra a stack em Docker, **113 casos**
+(2026-08-24), todas re-executáveis.
+
+Eram seis suites e 66 casos em 2026-08-16. `verify-hr` cresceu 13 → 16 com as
+funcionalidades novas de `hr`; `verify-authorization` 8 → 9 ao distinguir os
+dois 404 de atribuição de perfil; e `verify-fiscal` (13), `verify-commercial`
+(12) e `verify-finance` (18) nasceram em 2026-08-24, fechando a lacuna que os
+três módulos do ADR-036 tinham deixado.
 
 > **O runner reportava 71 até 2026-08-16.** `Select-String` é case-insensitive
 > por omissão, e cinco das seis suites terminam com "Todos os testes
@@ -189,11 +208,34 @@ confirmado por execução completa em 2026-08-16.
 | Suite | Casos |
 |---|---|
 | `verify-bootstrap` | 9 |
-| `verify-authorization` | 8 |
+| `verify-authorization` | 9 |
 | `verify-audit` | 10 |
-| `verify-hr` | 13 |
+| `verify-hr` | 16 |
 | `verify-documents` | 13 |
 | `verify-notifications` | 13 |
+| `verify-fiscal` | 13 |
+| `verify-commercial` | 12 |
+| `verify-finance` | 18 |
+
+`verify-finance` corre por último e **monta os seus pré-requisitos pelas rotas
+de `fiscal` e `commercial`** — taxa, vigências e cliente. Não há atalho por SQL
+de propósito: se a montagem falhar, é porque o caminho real de emissão está
+partido, e é isso que interessa saber.
+
+**`verify-all.ps1` demora cerca de 25 minutos**, e quase tudo é espera: seis das
+nove suites reiniciam a stack para verificar persistência, e o SQL Server leva
+perto de um minuto a voltar a ficar saudável de cada vez. Não é lentidão a
+corrigir — é o preço de verificar que os dados sobrevivem ao processo.
+
+⚠ **Filtrar respostas JSON do lado do PowerShell não é de confiar aqui.**
+`Invoke-RestMethod` devolve arrays de forma inconsistente: desembrulha-os quando
+têm um só elemento, e noutros casos entrega-os ao pipeline como **um só item**.
+Nesse caso `$_.campo -eq $valor` compara uma lista com um escalar e devolve o
+subconjunto correspondente, que sendo não-vazio é *verdadeiro* — o
+`Where-Object` deixa passar tudo e o `[0]` apanha o registo errado.
+
+Custou um falso `409` em `verify-hr` que parecia defeito de `approval`. Onde é
+preciso escolher um registo específico, **usa-se `Invoke-Sql`**.
 
 A partir de `docker compose down -v`:
 
@@ -233,7 +275,101 @@ alteração foi revertida.
 
 ### Fora do implementado
 
-Application, Infrastructure e API continuam sem testes próprios. **Não existem
-testes de arquitectura**, logo as fronteiras de módulo continuam a depender de
-revisão humana — é o risco 1 em [project-state.md](project-state.md), ainda
-por mitigar.
+_Actualizado a 2026-08-24 — o parágrafo anterior dizia que não existiam testes
+de arquitectura, o que deixou de ser verdade em 2026-08-16._
+
+**Existem 21 testes de arquitectura** (ADR-024, ADR-025): fronteiras de módulo,
+camadas, ciclos, autorização declarada em todo o endpoint e contadores de
+concorrência. As fronteiras deixaram de depender de revisão humana.
+
+Continua por cobrir, e é o desequilíbrio que cresce a cada módulo: **Application
+tem 8 testes** (só `identity`) contra 273 no domínio, e a **Infrastructure tem
+4** (só `notifications`). A camada API do host ganhou 9 em 2026-08-24
+(`tests/Rivo.Api.Tests`, ADR-035); as APIs de módulo continuam sem testes
+próprios.
+
+---
+
+## approval
+
+_2026-08-23 — ADR-034._
+
+- Cinco camadas, schema `approval`, 17 testes de domínio
+- `ApprovalPolicy` com passos por Cargo e modo `AnyApprover`/`AllApprovers`;
+  `ApprovalRequest` com atribuições e decisões
+- **BR-2** (quem submete não decide) e **BR-4** (uma pessoa decide uma vez por
+  pedido) lançam `SegregationOfDutiesException` e devolvem **403** — não 409:
+  não é o estado que impede, é *esta pessoa*
+- **BR-6** — aprovadores e contexto congelados na submissão; a política fica
+  como rasto, não como chave estrangeira viva
+- Decisões imutáveis: corrigir é decidir outra vez
+- **Sem endpoint de submissão, e é deliberado.** Submeter é acto do módulo de
+  origem, por `IApprovalGateway`
+- Dois consumidores: atribuição de Cargo (BR-20) e pedidos de férias, ambos de
+  `hr`, ligados por inversão de dependência no composition root
+- `PositionApprovalReconciliationWorker` aplica decisões por sondagem (60 s por
+  omissão); a promoção automática fica na trilha com **actor nulo**
+- `Manager` e `Finance` deixaram de ser perfis vazios
+
+**Por satisfazer:** SLA e escalonamento (o passo guarda o prazo, nada o faz
+cumprir), Delegação (modelada em `docs`, sem código), BR-7 e BR-8 e metade de
+BR-3 — todos dependem de `finance` ter Planeamento e Tesouraria.
+
+## fiscal
+
+_2026-08-24 — **fatia mínima**, ADR-036._
+
+- Cinco camadas, schema `fiscal`, 18 testes de domínio
+- `TaxRateSchedule` — série de versões da mesma taxa, com **não sobreposição de
+  vigências** imposta. É o que torna a determinação determinística
+- Determinação **à data do facto gerador** (ADR-011 §3), que é parâmetro
+  obrigatório e não `UtcNow`
+- Instrumento legal obrigatório em cada versão (ADR-011 §4)
+- `ITaxDetermination` publicado; `commercial` e `finance` consomem-no
+
+⚠ **Não é o motor fiscal.** Fora: certificação AGT, exportação SAF-T,
+declarações periódicas, IRT e INSS, e o catálogo de códigos de isenção — sem
+ele, emitir com `ISE`/`NS` devolve **501**. `TaxCodes` só fixa `ISE` e `NS`,
+que são os únicos verificados em fonte documentada.
+
+## commercial
+
+_2026-08-24 — **reduzido ao Cliente**, ADR-036._
+
+- Cinco camadas, schema `commercial`, 20 testes de domínio
+- `Customer` com nome, NIF e morada de facturação obrigatórios — o conjunto que
+  o SAF-T exige do elemento `Customer`
+- Desactivar, nunca eliminar (BR-14). **Não há `DELETE`**
+- `ICustomerDirectory` publicado
+- `Sales` deixou de ser perfil vazio
+
+⚠ **Sem validação de formato do NIF**, porque as regras não estão verificadas
+em fonte primária. **Sem consumidor final**: o NIF é obrigatório, logo não se
+factura a quem não o forneça. **Sem funil comercial** — Lead, Oportunidade,
+Proposta, Contrato Comercial e Acção de Cobrança não existem.
+
+## finance
+
+_2026-08-24 — **só Contas a Receber**, ADR-036._
+
+- Cinco camadas, schema `finance`, 34 testes de domínio
+- `DocumentSeries` como agregado próprio, para impor numeração sequencial sem
+  duplicados. Duas emissões simultâneas colidem no contador de concorrência da
+  série e uma sai com **409**, em vez de saírem duas facturas com o mesmo número
+- `SalesInvoice` **emitida inteira num acto só** — não há rascunho nem forma de
+  acrescentar linha depois. A imutabilidade é imposta pela forma do agregado
+- Cliente **congelado** na factura (nome, NIF, morada). Não contraria BR-18: uma
+  factura é facto histórico, e resolver o cliente ao vivo reescreveria
+  retroactivamente o passado
+- Anular, nunca eliminar (BR-14), com motivo obrigatório. Anular duas vezes é
+  recusado com 409
+- Arredondamento por linha a duas casas; o total é a soma dos arredondados
+- Quatro permissões separadas: `Sales` emite, `Finance` anula sem emitir,
+  `Admin` abre séries
+
+⚠ **As facturas não são documentos fiscais válidos em Angola** — têm a forma,
+falta a certificação da AGT e a cadeia `Hash`/`HashControl` (ADR-036).
+
+**Fora:** Contas a Pagar, Tesouraria, Contabilidade & Fecho, Planeamento,
+recebimentos, nota de crédito. Com eles ficam por fazer BR-1, BR-3, BR-5 e o
+disponível orçamental que BR-8 exige de `approval`.

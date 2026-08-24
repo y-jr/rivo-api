@@ -29,11 +29,11 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | # | Fase | Estado |
 |---|---|---|
 | 0 | Fundação de verificação e CI | ✅ **Fechada** em 2026-08-16 |
-| 1 | Aterrar em produção — VPS | **Em curso** — reorientada de Azure para VPS em 2026-08-20 (ADR-031) |
+| 1 | Aterrar em produção — VPS | **Quase fechada** — publicado em 2026-08-23; 59 de 66 verificações passam. K16 (sem TLS) aberto |
 | 2 | `approval` — governança de decisões | **Critério de saída cumprido** em 2026-08-24 |
-| 3 | `fiscal` — o que não está bloqueado | Por iniciar |
-| 4 | `finance` — o núcleo | Por iniciar |
-| 5 | `procurement` e `commercial` | Por iniciar |
+| 3 | `fiscal` — o que não está bloqueado | **Reduzida a fatia mínima** em 2026-08-24 (ADR-036) |
+| 4 | `finance` — o núcleo | **AR feito** em 2026-08-24 (ADR-036); AP, Tesouraria, Contabilidade e Planeamento por iniciar |
+| 5 | `procurement` e `commercial` | `commercial` reduzido ao Cliente e feito; `procurement` por iniciar |
 | 6 | `payroll` | Por iniciar |
 | 7 | `projects`, `inventory`, `fleet` | Por iniciar |
 | 8 | Camadas de composição e portais | Por iniciar |
@@ -52,7 +52,7 @@ módulo acrescentado antes desta fase multiplica o custo de a fazer.
 |---|---|
 | `Directory.Build.props` para testes | ✅ 2026-08-15 |
 | `Directory.Packages.props` para `src/` | ✅ 2026-08-16 — 14 pacotes centralizados |
-| Testes de domínio xUnit | ✅ 100 testes (ADR-022) |
+| Testes de domínio xUnit | ✅ 100 testes à data (ADR-022). São **273** a 2026-08-24 |
 | `Rivo.Architecture.Tests` | ✅ 21 testes (ADR-024, ADR-025) |
 | Testes de integração com Testcontainers | ✅ 2026-08-16 — ADR-026, 4 testes em `notifications` |
 | GitHub Actions em PR e `main` | ✅ ADR-023, dois jobs |
@@ -165,8 +165,21 @@ O que se manteve sem alteração:
 | As 66 verificações caixa-preta | ✅ passam contra a stack local em SQL Server |
 | 125 testes .NET | ✅ passam, incluindo os 4 de integração contra SQL Server real |
 
-**Por fechar:** o critério de saída continua a ser as suites contra o ambiente
-publicado — agora a VPS, não staging em Azure. Depende do primeiro deployment.
+**Execução de 2026-08-23 — o deployment aconteceu.**
+
+`http://187.77.178.242` está de pé: `docker compose` na VPS atrás de Caddy na
+rede `proxy`, contra o SQL Server externo. O CD correu ao fim de onze tentativas
+— segredos, caminho, repositório, chave de deploy, grupo `docker`, dono do
+directório e rede em falta, por essa ordem.
+
+**Critério de saída: cumprido a 89%.** As suites contra o ambiente publicado dão
+**59 de 66**. As 7 que faltam exigem `RIVO_RESTART_COMMAND`, deliberadamente não
+configurado para não reiniciar produção sete vezes — não são falhas da
+aplicação, são casos que não chegam a correr.
+
+**Fica aberto o K16:** sem domínio não há certificado, portanto o ambiente serve
+em HTTP simples e o token viaja em claro. Aceitável só enquanto for ambiente de
+teste sem dados reais.
 
 ---
 
@@ -319,13 +332,21 @@ por contrato publicado.
 
 ## Faixas paralelas
 
-### Conformidade e jurídico — arranca já, prazo externo
+### Conformidade e jurídico
+
+> **Despriorizada em 2026-08-24 pelo ADR-036.** O objectivo do produto deixou de
+> ser emissão legalmente válida. A urgência que esta faixa tinha — "arrancar
+> hoje, não na Fase 3" — **caducou por decisão de produto, não por o trabalho
+> ter sido feito.** Volta a ser caminho crítico no dia em que as facturas
+> tiverem de sair para clientes.
 
 - **Certificação junto da AGT.** O `SoftwareValidationNumber` é campo
-  obrigatório do SAF-T; sem ele não há emissão legal. **Item de prazo mais
-  longo do projecto — arrancar hoje, não na Fase 3.**
+  obrigatório do SAF-T; sem ele não há emissão legal. Continua a ser o item de
+  prazo mais longo, se e quando voltar ao âmbito.
+- **Lista oficial de códigos de isenção.** É a única desta faixa que bloqueia
+  algo **hoje**: sem ela, emitir com `ISE` ou `NS` devolve `501`.
 - Obter a DS.120 v1.4 oficial.
-- Parecer de fiscalista sobre a parcela fixa do IRT.
+- Parecer de fiscalista sobre a parcela fixa do IRT — bloqueia `payroll`.
 - Confirmar se existe API oficial da AGT.
 - Confirmar RPO ≤24h / RTO ≤8h e o alvo de disponibilidade.
 
@@ -333,14 +354,26 @@ por contrato publicado.
 
 - **Expiração por inactividade** — só existe absoluta; os 15 minutos para
   perfis decisórios não estão satisfeitos.
-- **MFA** — entra na Fase 1. Com o Azure fora de cena (ADR-031), o Entra ID deixou de estar em cima da mesa: o mecanismo fica por decidir.
+- **MFA** — o Entra ID saiu de cena com o Azure (ADR-031); o mecanismo fica por
+  decidir. A entrada por Google **não** o resolve: a 2FA da conta Google não é
+  exigível nem verificável pelo Rivo (ADR-032).
 - Refresh token, se a duração fixa se revelar incómoda.
-- Permissões dos restantes cinco perfis.
+- ~~Permissões dos restantes cinco perfis.~~ **Cinco dos sete perfis já têm
+  permissões** — faltam `AssetManager` e `ProjectManager`, que dependem de
+  módulos sem código.
+- **K16 — sem TLS no ambiente publicado.** É o item mais urgente desta faixa:
+  password e token viajam em claro. Depende de haver domínio.
+- **Utilizador aplicacional restrito na base de dados.** A aplicação liga-se
+  como `sa`.
 
-### Frontend — arranca na Fase 3
+### Frontend
 
-React + Tailwind, servido pelo mesmo reverse proxy da VPS. Antes da Fase 3 a superfície da API muda
-demasiado. Começar por `identity`, `hr` e `approval`.
+**Desbloqueado desde 2026-08-24.** A condição era a superfície da API estabilizar
+com a Fase 3, e o ADR-036 fechou-a: `identity`, `hr`, `approval`, `fiscal`,
+`commercial` e `finance` respondem, com 71 endpoints.
+
+React + Tailwind, servido pelo mesmo reverse proxy da VPS. Começar por
+`identity`, `hr` e `approval`. O trabalho corre noutra sessão, em `front/`.
 
 ---
 
@@ -374,3 +407,37 @@ diz quando é que isso deixa de servir.
 | 2026-08-16 | 1 | Em curso | Infraestrutura provisionada em `rg-rivo-staging`. K8, K9 e K11 fechados. O CD está escrito e nunca correu — o critério de saída depende disso |
 | 2026-08-23 | 1 | Quase fechada | Deployment na VPS a correr atrás de Caddy. As suites contra o ambiente publicado: **59 de 66 passam**; as 7 restantes exigem `RIVO_RESTART_COMMAND`, deliberadamente não configurado para não reiniciar produção. K16 aberto — sem TLS até haver domínio |
 | 2026-08-24 | 2 | **Critério de saída cumprido** | `approval` com as cinco camadas, o `501` de `hr` fechado, dois consumidores (BR-20 e férias), worker de reconciliação, e o K15 fechado por ADR-035. Ficam SLA, Delegação e o bootstrap do primeiro Cargo com autoridade — nenhum bloqueia a Fase 3 |
+| 2026-08-24 | 3, 4, 5 | Reordenadas | ADR-036 — emitir sem certificação. `fiscal` reduzido a taxa com vigência, `commercial` ao Cliente, `finance`/AR à factura de venda. Verificado contra a API: `FT S001/1` saiu com 5% por o facto gerador cair em Março, e `FT S001/2` com 7% em Setembro |
+
+---
+
+## Reordenação de 2026-08-24 — ADR-036
+
+O objectivo do produto passou a ser **emitir**, não emitir com validade legal.
+Isso reordena as Fases 3, 4 e 5, e o `roadmap-execucao.md` acima descreve o
+plano anterior — fica como registo.
+
+**Fatia entregue, verificada contra a API a correr:**
+
+```
+fiscal (mínimo)      Taxa com vigência + determinação à data do facto gerador
+commercial (mínimo)  Cliente
+finance (mínimo, AR) Factura de venda com numeração FT S001/1
+```
+
+Uma factura sai com o cliente congelado, a taxa que vigorava à data do facto
+gerador, e um número sequencial. **Não é documento fiscal válido em Angola** —
+falta a certificação da AGT e a cadeia `Hash`/`HashControl`.
+
+**Adiado, e o que custa:**
+
+| Adiado | Custo de o fazer depois |
+|---|---|
+| Certificação AGT, exportação SAF-T, declarações | Nenhum sobre o que está feito — acrescenta-se |
+| Cadeia `Hash`/`HashControl` (K7) | **Baixo**, e é o ponto: numeração, ordem e imutabilidade já existem, portanto a assinatura enxerta-se sem reescrever a emissão |
+| Códigos de isenção | Emitir com `ISE`/`NS` devolve `501` até haver a lista oficial |
+| Motor de IRT e INSS | `payroll` (Fase 6) continua bloqueado, como já estava |
+
+**O que a Fase 4 ainda deve por inteiro:** Contas a Pagar, Tesouraria,
+Contabilidade & Fecho, Planeamento, e com eles BR-1, BR-3, BR-5 e o disponível
+orçamental de BR-8.

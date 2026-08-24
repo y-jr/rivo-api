@@ -157,23 +157,33 @@ Um pedido pendente não é ausência.
 ⚠ **Sem saldo de férias.** Acumulação e carry-over continuam nas perguntas em
 aberto, e implementá-los seria inventar política de direito a férias.
 
-Verificado em `scripts/verify-hr.ps1` (13 casos) e em 115 testes de domínio.
+Verificado em `scripts/verify-hr.ps1` (16 casos) e em 129 testes de domínio.
 
-### Fora do implementado
+### ✅ O `501` está fechado desde 2026-08-23
 
-Contrato de Trabalho, Férias, Assiduidade, Benefícios, Recrutamento,
-Onboarding e Offboarding. Todos dependem de Colaborador existir — entram sem
-retrabalho do núcleo.
+**Atribuir um Cargo com `confere_autoridade_aprovacao = true` deixou de ser
+recusado.** Cria-se **pendente** e submete-se a `approval` (ADR-034).
 
-### ⚠ Bloqueio activo
+Pendente não confere Cargo nenhum — `currentPosition` continua nulo até haver
+decisão — e é isso que mantém fechado o caminho de escalada que o ADR-015
+descreve. A resposta é `202`, não `201`: passou por governança e ainda não
+produziu efeito.
 
-**Atribuir um Cargo com `confere_autoridade_aprovacao = true` devolve
-`501 Not Implemented`** e não grava nada.
+A ligação é feita por **inversão de dependência**: `hr` declara
+`IHrApprovalSubmission` nas suas palavras e não sabe que `approval` existe; o
+adaptador vive no composition root. A alternativa que o ADR-015 §R1 previa —
+assemblies de contratos dos dois lados — resolve a compilação mas deixa o ciclo
+no grafo de módulos, e `Modules_HaveNoDependencyCycles` continuaria a vê-lo.
 
-BR-20 exige decisão de `approval`, e esse módulo não existe. Recusar é
-deliberado: criar a atribuição em estado permanentemente pendente seria
-confuso, e torná-la efectiva abriria a escalada de privilégios que ADR-015
-fecha.
+A decisão aplica-se sozinha em menos de 60 s por
+`PositionApprovalReconciliationWorker`; para não esperar, há
+`POST /hr/position-assignments/{id}/approval-outcome`, que é idempotente.
 
-O modelo de dados já contempla o estado `Pending` — só falta o caminho de
-decisão.
+**Nenhum endpoint de `hr` devolve `501`.**
+
+### Por fazer
+
+- **Saldo de férias** — acumulação e carry-over continuam nas perguntas em
+  aberto. Implementá-los seria inventar política de direito a férias.
+- **Cálculo** — converter assiduidade em horas pagas, ou salário base em
+  líquido, é de `payroll`, que lê ambos como entrada.

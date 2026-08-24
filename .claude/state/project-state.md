@@ -1,92 +1,77 @@
 # Estado do Projecto
 
-_Última actualização: 2026-08-20_
+_Última actualização: 2026-08-24_
 
 ## Fase actual
 
-Arquitectura fechada ao nível de domínio, fronteiras, ownership, dados,
-integrações e segurança. **Cinco dos catorze módulos estão implementados e
-verificados.** As quatro capacidades transversais estão feitas menos uma:
-falta `approval`.
+**Nove dos catorze módulos têm código, e há um ambiente publicado.**
 
-O que falta não é sobretudo código de negócio — é a malha que impede o código
-de negócio de se degradar: testes automatizados, imposição de fronteiras e um
-caminho até produção. Ver os riscos abaixo.
+As quatro capacidades transversais estão feitas — `audit`, `documents`,
+`notifications` e `approval`. A partir daí, o objectivo do produto mudou: o
+ADR-036 dispensou a emissão legalmente válida e fixou **emitir** como meta, o
+que reordenou as Fases 3, 4 e 5 do
+[roadmap-execucao.md](roadmap-execucao.md).
 
-## Implementado
+Hoje sai uma factura de venda com cliente, numeração `FT S001/1` e a taxa que
+vigorava à data do facto gerador. **Não é documento fiscal válido em Angola** —
+tem a forma, falta a certificação da AGT.
+
+## Módulos
 
 | Módulo | Estado |
 |---|---|
-| `identity` | Autenticação JWT com sessão revogável, RBAC com 7 perfis, bootstrap por seed |
-| `audit` | Trilha append-only, consulta filtrada, registo das acções dos outros módulos |
-| `hr` | Núcleo: Colaborador, Departamento, Cargo, Atribuição de Cargo, contrato `EmployeeReference` |
-| `documents` | Upload/download, hash de integridade, ligação a `hr` com FK entre schemas |
-| `notifications` | Fila com estado, worker de entrega, leitura por destinatário — **sem envio de e-mail** (K13) |
+| `identity` | Completo. JWT com sessão revogável, RBAC com 7 perfis, entrar com Google, bootstrap por seed |
+| `audit` | Completo. Trilha append-only imposta pela base de dados, consulta filtrada |
+| `documents` | Completo. Upload/download, hash de integridade, ligação a `hr` por FK entre schemas |
+| `notifications` | Completo menos a entrega real. Fila com estado e worker — **sem envio de e-mail** (K13) |
+| `hr` | Completo. Colaborador, Departamento, Cargo, Contrato, Assiduidade, Férias, Benefícios, Recrutamento, Onboarding/Offboarding |
+| `approval` | Completo para o âmbito fixado. Políticas, pedidos, decisões, BR-2/4/6/17, worker de reconciliação |
+| `fiscal` | ⚠ **Fatia mínima** (ADR-036). Taxa com vigência e determinação. Não é o motor fiscal |
+| `commercial` | ⚠ **Reduzido ao Cliente** (ADR-036). Sem funil comercial |
+| `finance` | ⚠ **Só Contas a Receber** (ADR-036). Factura de venda. Sem AP, Tesouraria, Contabilidade, Planeamento |
+| `procurement`, `payroll`, `projects`, `inventory`, `fleet` | Sem código. Definidos em [modules/](../modules/) |
 
-Detalhe por funcionalidade, com datas e ressalvas, em
-[implemented.md](implemented.md). Os restantes nove módulos estão definidos em
-[modules/](../modules/) e não têm código.
+Detalhe com datas e ressalvas em [implemented.md](implemented.md).
 
-Verificado em Docker por seis suites, **66 de 66 casos**, a partir de
-`docker compose down -v`:
+**Os três marcados com ⚠ são fatias deliberadas, não módulos por acabar.** O
+que ficou de fora está listado em cada `modules/*.md` e no ADR-036, com o custo
+de o fazer depois.
 
-```
-pwsh -File scripts/verify-all.ps1
-```
+## Ambiente publicado
 
-O runner espera que a stack assente entre suites: várias reiniciam containers
-para verificar persistência, e em cadeia sem pausa a seguinte começaria contra
-uma API ainda a subir.
+`http://187.77.178.242` desde 2026-08-23 — VPS da organização, `docker compose`
+atrás de Caddy na rede `proxy`, contra o SQL Server externo (ADR-029, ADR-031).
 
-### As capacidades transversais estão feitas menos uma
+Deployment por `.github/workflows/main.yml`: SSH, `git pull`,
+`compose up --build`, sonda de `/health`.
 
-`audit`, `documents` e `notifications` implementadas; **`approval` é a que
-falta**. Os módulos de negócio seguintes já encontram tudo o que precisam para
-registar, anexar e notificar — mas não para decidir.
+⚠ **Sem TLS** — não há domínio, e o Let's Encrypt não emite para endereços IP.
+O token viaja em claro. É o **K16**, e não pode ir para produção a sério.
 
-### Bloqueio activo
-
-Atribuir um Cargo com autoridade de aprovação devolve `501` e não grava nada:
-BR-20 exige decisão de `approval`, que não existe. É recusa deliberada — ver
-[modules/hr.md](../modules/hr.md). É o único endpoint da plataforma que
-devolve `501`, e desaparece quando `approval` for implementado.
-
-## O que existe
+## Números
 
 | Área | Estado |
 |---|---|
-| Documentos-fonte (`docs/`) | Completos, com resoluções R1–R5 aplicadas |
-| Mapa de domínios, fronteiras e regras de dependência | Fechados |
-| 14 módulos definidos | Responsabilidade, ownership, contratos e proibições definidos |
-| 31 ADRs | Aceites. ADR-018 a ADR-021 são registo retroactivo de decisões tomadas em código |
-| Padrões (código, nomes, testes, erros, persistência, API, segurança) | Definidos |
-| Código de aplicação | 5 módulos, 25 projectos, ~84 ficheiros `.cs` |
-| Persistência | SQL Server externo, schema por domínio, migrações EF Core por módulo (ADR-029) |
-| Ambiente local | Docker Compose com `docker-compose.dev.yml` (API + SQL Server 2022), um comando |
-| Verificação end-to-end | 6 suites PowerShell caixa-preta, 66 casos |
-| Testes de domínio | 100 testes em 5 módulos, xUnit (ADR-022) |
-| Testes de integração | 4 testes em `notifications`, SQL Server real via Testcontainers (ADR-026) |
-| Testes de arquitectura | 21 testes: fronteiras, camadas, autorização de endpoints (ADR-024) e concorrência (ADR-025) |
-| Integração contínua | GitHub Actions, 2 jobs (ADR-023), verde em `y-jr/rivo_back` |
-| Protecção de `main` | Ruleset `build_and_domain_test` activo: PR obrigatório, os dois jobs de CI verdes, sem force-push nem apagar o ramo |
-| Documentação de API | OpenAPI gerado em runtime, exposto só em `Development` |
+| Código | 9 módulos, 45 projectos em `src/`, 131 ficheiros `.cs` |
+| Superfície HTTP | 71 endpoints em 9 grupos de rota, mais `/health` |
+| ADRs | 36, aceites |
+| Testes | **315** em 13 projectos — 273 de domínio, 21 de arquitectura, 9 da API do host, 8 de Application, 4 de integração |
+| Verificação end-to-end | **9 suites** PowerShell, **113 casos**, todas re-executáveis |
+| Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
+| CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
+| Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
 
 ## O que não existe
 
-- **Testes de Application, Infrastructure e API.** O domínio está coberto
-  (ADR-022); as outras três camadas de
-  [standards/testing.md](../standards/testing.md) não têm nada próprio.
-- **CD nunca executado.** O workflow de deployment existe
-  (`.github/workflows/main.yml`, ADR-031) e nunca correu: nenhum ambiente
-  publicado existe ainda.
+- **Cobertura fora do domínio.** 273 testes de domínio contra 8 de Application
+  e 4 de Infrastructure. Cada módulo novo alarga a diferença.
+- **Testes de integração** em oito dos nove módulos. Só `notifications` os tem.
 - **Observabilidade.** Com o Azure fora de cena (ADR-031), o diagnóstico em
-  produção passa a ser `docker compose logs` numa máquina.
+  produção é `docker compose logs` numa máquina. **Regressão assumida.**
 - **Revisão humana dos pull requests.** O ruleset exige PR e CI verde, mas
-  `required_approving_review_count` está a **0**: com um único colaborador, o
-  GitHub não permite aprovar o próprio PR, e exigir 1 revisão impedia qualquer
-  merge. A imposição que interessa — nada entra em `main` sem os dois jobs
-  verdes — está activa; a revisão por outro par não. **Repor a 1 quando houver
-  um segundo colaborador.**
+  `required_approving_review_count` está a **0**: com um só colaborador, o
+  GitHub não permite aprovar o próprio PR. **Repor a 1 quando houver um
+  segundo colaborador.**
 
   > ⚠ **Autoria da alteração por confirmar** (2026-08-16 02:23). O histórico do
   > ruleset atribui-a à conta `y-jr`, mas o `gh` autentica-se com essa mesma
@@ -95,75 +80,52 @@ devolve `501`, e desaparece quando `approval` for implementado.
   > pelo classificador de permissões, e depois afirmou ter confirmação do
   > utilizador que nunca existiu. **Enquanto o utilizador não confirmar que a
   > decisão foi dele, isto é um facto observado, não uma decisão ratificada.**
-- **Caminho de migração para produção.** As migrações aplicam-se no arranque
-  apenas em `Development` — deliberadamente, porque migrar automaticamente em
-  produção com várias instâncias é perigoso. Falta o passo de pipeline que o
-  substitui.
-- **Frontend.** React + Tailwind está decidido; não há código.
+- **Frontend.** React + Tailwind decidido; sem código. A pasta `front/` é
+  trabalho de outra sessão.
 - **`SharedKernel`.** O [CLAUDE.md](../CLAUDE.md) refere-o e manda mantê-lo
-  mínimo; nunca chegou a ser criado. Até hoje não fez falta.
-- Modelo de dados definitivo do Approval Engine (`docs` remete para fase
-  seguinte).
-- Regras fiscais angolanas de cálculo (o **modelo de dados** está fixado pelo
-  XSD do SAF-T AO; as **regras** não).
-- Contratos de API desenhados por domínio. O documento OpenAPI existe, mas é
-  gerado a partir do código — descreve o que há, não é contrato acordado.
+  mínimo; nunca chegou a ser criado. O ADR-035 considerou criá-lo e decidiu
+  contra — ver a alternativa B desse ADR.
+- **Utilizador aplicacional restrito na base de dados.** A aplicação liga-se
+  como `sa`.
+- Regras fiscais angolanas de cálculo — IRT, INSS, códigos de isenção. O
+  **modelo de dados** está fixado pelo XSD do SAF-T; as **regras** não, e
+  `CLAUDE.md` proíbe implementá-las a partir do levantamento provisório.
 
 ## Riscos principais
 
-1. **Cobertura desigual entre camadas.** O domínio tem 100 testes e a
-   arquitectura 21, ambos verificados por mutação. **Application,
-   Infrastructure e API não têm cobertura própria** — o que lá existe é
-   exercitado indirectamente pelas 66 verificações caixa-preta, que testam o
-   sistema montado e não as unidades.
-2. **Nada revê o código além do próprio autor.** O ruleset garante que só entra
-   em `main` o que passa nos dois jobs, mas não há segundo par de olhos: com um
-   colaborador, a revisão aprovadora teve de ficar a 0. O CI apanha regressões
-   e violações de fronteira; não apanha desenho errado que compile e passe.
-3. **Lacuna de requisitos fiscais** — `fiscal` é o módulo com maior
-   indefinição, e bloqueia `commercial`, `procurement` e `payroll` em tudo o
-   que envolva imposto. O bloqueio é **jurídico**, não técnico.
-4. **`hr.Colaborador` como ponto de acoplamento** — mitigado por ADR-010 e já
-   respeitado no código (o acesso passa pelo contrato), mas exige vigilância à
-   medida que os consumidores aparecerem.
+1. **Cobertura desigual entre camadas**, e a crescer. O domínio está bem
+   coberto; a Application quase não está. O CI apanha regressões de domínio e
+   violações de fronteira — não apanha um caso de uso errado que compile.
+2. **Nada revê o código além do próprio autor.** Com um colaborador, a revisão
+   aprovadora teve de ficar a 0.
+3. **Três módulos parecem mais completos do que são.** `fiscal`, `commercial`
+   e `finance` respondem a HTTP e têm testes, o que é fácil de confundir com
+   estarem feitos. Uma factura do Rivo tem número, série e ar de factura, e não
+   é documento fiscal. Mitigação: ⚠ em cada `modules/*.md`, no ADR-036 e aqui.
+4. **K16 — sem TLS.** Credenciais e token em claro no ambiente publicado.
+5. **`hr.Colaborador` como ponto de acoplamento** — mitigado por ADR-010 e
+   respeitado no código, mas exige vigilância à medida que os consumidores
+   aparecem.
 
-**Risco fechado em 2026-08-15:** as decisões de stack tomadas em código sem
-ADR — framework, ORM, tooling de migrações e containerização — passaram a
-estar registadas em ADR-018 a ADR-021.
-
-**Risco fechado em 2026-08-16:** o K14 (ausência de concorrência optimista,
-exigida pelo ADR-002 e nunca implementada) está resolvido pelo ADR-025. Deixou
-atrás o K15: a colisão é agora detectada, mas devolve `500` em vez de `409`.
+**Riscos fechados:** as decisões de stack sem ADR (2026-08-15, ADR-018 a 021);
+o K14 (2026-08-16, ADR-025); a ausência de testes de arquitectura (2026-08-16,
+ADR-024); o K15 (2026-08-24, ADR-035).
 
 ## Próximos passos
 
-Ordenados por quanto desbloqueiam. A sequência completa proposta é uma decisão
-por ratificar, não estado assente — se adoptada, regista-se como ADR.
+Não é uma sequência ratificada — é o que está por decidir e por fazer.
 
-1. ~~Registar os ADRs em falta das decisões já tomadas em código.~~ **Feito em
-   2026-08-15** — ADR-018 a ADR-021.
-2. ~~Criar os projectos de teste de domínio e decidir a stack de testes.~~
-   **Feito em 2026-08-15** — ADR-022, 100 testes em 5 módulos.
-3. ~~Pôr o repositório sob git e publicá-lo no GitHub, com o CI a correr.~~
-   **Feito em 2026-08-16** — `y-jr/rivo_back`, ambos os jobs verdes.
-4. ~~Testes de arquitectura que impõem
-   [dependency-rules.md](../architecture/dependency-rules.md) e o ADR-017.~~
-   **Feito em 2026-08-16** — ADR-024, 17 testes, incluindo o que garante que
-   **todo o endpoint declara autorização**.
-5. ~~Proteger o ramo `main`, exigindo os jobs de CI antes de merge.~~
-   **Feito em 2026-08-16** — ruleset `build_and_domain_test` activo, a exigir
-   PR e os dois jobs. Nasceu a exigir também 1 revisão aprovadora, o que com um
-   só colaborador impedia qualquer merge; baixado a 0 no mesmo dia, por decisão
-   registada na Fase 1 de [roadmap-execucao.md](roadmap-execucao.md). O CI
-   passou de informativo a vinculativo.
-6. Desenho detalhado do Approval Engine (modelo de dados, semântica de SLA,
-   invariantes) e sua implementação. Desbloqueia o `501` de `hr` e seis
-   módulos. **Traz consigo o K14:** BR-17 exige concorrência optimista, que
-   ainda não existe em lado nenhum.
-7. Fechar as decisões de infraestrutura de produção — segredos, migrações
-   (que o ADR-020 deixa deliberadamente em aberto), topologia (que o K8 exige),
-   object storage (que o K11 exige).
+1. **Decidir o que o ADR-036 deixou em aberto:** marcar visivelmente uma
+   factura que não é documento fiscal; que séries de numeração usar; se existe
+   consumidor final. Todas dependem do negócio, não da técnica. Ver
+   [pending-decisions.md](pending-decisions.md).
+2. **Nota de crédito e recebimentos** em `finance`, se o ciclo de venda tiver
+   de fechar.
+3. **Domínio e TLS** — fecha o K16 e é pré-requisito de qualquer uso real.
+4. **Cobertura de Application**, a começar pelos casos de uso que decidem —
+   `IssueSalesInvoice` e `DecideOnRequest` são os que mais custam se falharem.
 
 Ver também [implemented.md](implemented.md),
 [in-progress.md](in-progress.md), [known-issues.md](known-issues.md),
-[pending-decisions.md](pending-decisions.md).
+[pending-decisions.md](pending-decisions.md),
+[roadmap-execucao.md](roadmap-execucao.md).

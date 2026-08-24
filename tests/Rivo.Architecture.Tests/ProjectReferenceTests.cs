@@ -55,12 +55,21 @@ public class ProjectReferenceTests
         // — `hr`, `fiscal`, `approval`, `documents`, `finance` — pertencem ao
         // funil comercial e à facturação, que não estão feitos.
         ["Commercial"] = ["Audit"],
+        // `finance`/AR é o encontro dos três: `commercial` dá o cliente,
+        // `fiscal` dá a taxa à data do facto gerador, e `finance` possui o
+        // documento (ADR-036). Nenhum lê as tabelas do outro.
+        //
+        // As direcções que `modules/finance.md` lista e que faltam —
+        // `procurement`, `hr`, `approval` — pertencem a Contas a Pagar,
+        // Tesouraria e à execução de pagamento, que não estão feitas.
+        ["Finance"] = ["Audit", "Fiscal", "Commercial"],
+
         ["Documents"] = ["Audit"],
         ["Hr"] = ["Audit", "Documents"],
         // `identity` compõe o catálogo de permissões a partir do que cada
         // módulo declara — cada um diz que permissões existem, `identity`
         // decide que perfis as recebem (ADR-005).
-        ["Identity"] = ["Audit", "Hr", "Documents", "Notifications", "Approval", "Fiscal", "Commercial"],
+        ["Identity"] = ["Audit", "Hr", "Documents", "Notifications", "Approval", "Fiscal", "Commercial", "Finance"],
 
         // `approval` resolve aprovadores por Cargo, que é de `hr` (ADR-034).
         //

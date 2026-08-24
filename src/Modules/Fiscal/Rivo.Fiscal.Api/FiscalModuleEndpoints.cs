@@ -84,8 +84,13 @@ public static class FiscalModuleEndpoints
             // 409 e não 400: a sobreposição não é um campo mal preenchido, é
             // conflito com o que já lá está. Quem chama corrige fechando a
             // versão anterior, não reescrevendo o pedido.
-            IntroduceRateOutcome.Rejected =>
+            IntroduceRateOutcome.Overlaps =>
                 Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
+
+            // 400: instrumento legal em branco, taxa fora de 0–100, vigência
+            // invertida. Aqui o pedido é que está mal, e corrige-se no pedido.
+            IntroduceRateOutcome.Rejected =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["taxa"] = [result.Error!] }),
 
             _ => Results.Problem("Resultado inesperado ao introduzir a taxa."),
         };

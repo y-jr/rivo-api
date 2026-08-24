@@ -12,13 +12,19 @@
 $ErrorActionPreference = "Continue"
 $base = "http://localhost:5080"
 
+# A ordem segue as dependências: `verify-finance` monta os seus pré-requisitos
+# pelas rotas de `fiscal` e `commercial`, e corre depois delas para que uma
+# falha apareça na suite do módulo que a causou, e não na de quem o consome.
 $suites = @(
     "verify-bootstrap",
     "verify-authorization",
     "verify-audit",
     "verify-hr",
     "verify-documents",
-    "verify-notifications"
+    "verify-notifications",
+    "verify-fiscal",
+    "verify-commercial",
+    "verify-finance"
 )
 
 function Wait-ForApi {

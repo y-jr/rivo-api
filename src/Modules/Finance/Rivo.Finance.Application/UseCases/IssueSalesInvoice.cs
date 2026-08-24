@@ -1,0 +1,206 @@
+using Rivo.Audit.Contracts;
+using Rivo.Commercial.Contracts;
+using Rivo.Finance.Application.Abstractions;
+using Rivo.Finance.Domain;
+using Rivo.Fiscal.Contracts;
+
+namespace Rivo.Finance.Application.UseCases;
+
+/// <summary>
+/// Emite uma factura de venda.
+///
+/// <para>
+/// É onde os três módulos se encontram: `commercial` dá o cliente, `fiscal` dá
+/// a taxa à data do facto gerador, e `finance` possui o documento. Nenhum lê as
+/// tabelas do outro — tudo passa por <see cref="ICustomerDirectory"/> e
+/// <see cref="ITaxDetermination"/>.
+/// </para>
+/// </summary>
+public sealed class IssueSalesInvoice(
+    ISalesInvoiceStore store,
+    ICustomerDirectory customers,
+    ITaxDetermination taxes,
+    IAuditTrail audit)
+{
+    public async Task<IssueInvoiceResult> ExecuteAsync(
+        Guid customerId,
+        string seriesCode,
+        DateOnly issuedOn,
+        DateOnly? taxPointDate,
+        string currency,
+        IReadOnlyList<InvoiceLineInput> lines,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        if (lines is null || lines.Count == 0)
+        {
+            return IssueInvoiceResult.Rejected("Uma factura tem pelo menos uma linha.");
+        }
+
+        // O facto gerador é o que determina a taxa. Por omissão coincide com a
+        // data do documento, que é o caso corrente.
+        var facto = taxPointDate ?? issuedOn;
+
+        var cliente = await customers.FindAsync(customerId, cancellationToken);
+
+        if (cliente is null)
+        {
+            return IssueInvoiceResult.CustomerNotFound();
+        }
+
+        // Facturar um cliente desactivado é quase sempre engano — e o cliente
+        // foi desactivado justamente para deixar de aparecer nestes fluxos.
+        if (cliente.Status is CustomerStatus.Inactive)
+        {
+            return IssueInvoiceResult.Rejected(
+                $"O cliente '{cliente.Name}' está desactivado. Reactive-o antes de facturar.");
+        }
+
+        // As taxas resolvem-se todas antes de se tocar na série: se alguma
+        // faltar, a factura não chega a nascer e nenhum número é queimado.
+        var resolvidas = new List<NewInvoiceLine>(lines.Count);
+
+        foreach (var linha in lines)
+        {
+            var determinacao = await taxes.DetermineAsync(
+                new TaxDeterminationRequest(TaxKind.ValueAdded, linha.TaxCode, facto),
+                cancellationToken);
+
+            switch (determinacao.Outcome)
+            {
+                case TaxDeterminationOutcome.Determined:
+                    resolvidas.Add(new NewInvoiceLine(
+                        linha.Description,
+                        linha.Quantity,
+                        linha.UnitPrice,
+                        determinacao.Determination!.TaxCode,
+                        determinacao.Determination.Percentage));
+                    break;
+
+                case TaxDeterminationOutcome.NoRateInForce:
+                    return IssueInvoiceResult.Rejected(
+                        $"Não há taxa em vigor para o código '{linha.TaxCode}' a {facto:yyyy-MM-dd}. " +
+                        "Configure a taxa em /fiscal/tax-rates antes de emitir.");
+
+                case TaxDeterminationOutcome.ExemptionCodeUnavailable:
+                    return IssueInvoiceResult.ExemptionUnavailable();
+
+                default:
+                    return IssueInvoiceResult.Rejected("Resultado inesperado na determinação fiscal.");
+            }
+        }
+
+        var serie = await store.FindSeriesForAllocationAsync(
+            DocumentType.FT, (seriesCode ?? string.Empty).Trim().ToUpperInvariant(), cancellationToken);
+
+        if (serie is null)
+        {
+            return IssueInvoiceResult.SeriesNotFound();
+        }
+
+        SalesInvoice factura;
+
+        try
+        {
+            // Atribuir o número é o primeiro acto irreversível. Tudo o que podia
+            // falhar já falhou acima.
+            var numero = serie.Allocate();
+
+            factura = SalesInvoice.Issue(
+                numero,
+                issuedOn,
+                facto,
+                cliente.CustomerId,
+                new InvoicedParty(
+                    cliente.Name,
+                    cliente.TaxId,
+                    cliente.BillingAddress.Detail,
+                    cliente.BillingAddress.City,
+                    cliente.BillingAddress.Country),
+                currency,
+                resolvidas);
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        {
+            return IssueInvoiceResult.Rejected(error.Message);
+        }
+
+        await store.AddAsync(factura, cancellationToken);
+
+        // Uma só gravação: o avanço da série e a factura entram na mesma
+        // transacção. Se a série colidir com outra emissão simultânea, nada é
+        // gravado — e a colisão sai como 409 (ADR-035), não como número
+        // duplicado.
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                FinanceAuditActions.InvoiceIssued,
+                FinanceAuditEntityTypes.SalesInvoice,
+                factura.Id.ToString(),
+                context,
+                NewValue: $$"""
+                    {"number":"{{factura.Number.Formatted}}","customerTaxId":"{{factura.Customer.TaxId}}","grossTotal":{{factura.GrossTotal}},"currency":"{{factura.Currency}}"}
+                    """),
+            cancellationToken);
+
+        return IssueInvoiceResult.Success(factura.Id, factura.Number.Formatted);
+    }
+}
+
+public sealed record InvoiceLineInput(
+    string Description,
+    decimal Quantity,
+    decimal UnitPrice,
+    string TaxCode);
+
+public sealed record IssueInvoiceResult(
+    IssueInvoiceOutcome Outcome,
+    Guid? InvoiceId,
+    string? Number,
+    string? Error)
+{
+    public static IssueInvoiceResult Success(Guid invoiceId, string number) =>
+        new(IssueInvoiceOutcome.Issued, invoiceId, number, null);
+
+    public static IssueInvoiceResult Rejected(string error) =>
+        new(IssueInvoiceOutcome.Rejected, null, null, error);
+
+    public static IssueInvoiceResult CustomerNotFound() =>
+        new(IssueInvoiceOutcome.CustomerNotFound, null, null, null);
+
+    public static IssueInvoiceResult SeriesNotFound() =>
+        new(IssueInvoiceOutcome.SeriesNotFound, null, null, null);
+
+    public static IssueInvoiceResult ExemptionUnavailable() =>
+        new(IssueInvoiceOutcome.ExemptionUnavailable, null, null, null);
+}
+
+public enum IssueInvoiceOutcome
+{
+    Issued,
+    Rejected,
+    CustomerNotFound,
+    SeriesNotFound,
+
+    /// <summary>
+    /// Uma linha invoca isenção, e o catálogo de códigos de isenção não existe
+    /// (ADR-036). Emitir assim produziria um documento inválido — não se
+    /// inventa código.
+    /// </summary>
+    ExemptionUnavailable,
+}
+
+/// <summary>Acções de `finance` na trilha de auditoria.</summary>
+public static class FinanceAuditActions
+{
+    public const string InvoiceIssued = "finance.sales_invoice.issued";
+    public const string InvoiceCancelled = "finance.sales_invoice.cancelled";
+    public const string SeriesOpened = "finance.document_series.opened";
+}
+
+public static class FinanceAuditEntityTypes
+{
+    public const string SalesInvoice = "finance.sales_invoice";
+    public const string DocumentSeries = "finance.document_series";
+}

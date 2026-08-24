@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rivo.Finance.Domain\Rivo.Finance.Domain.csproj" />
+    <ProjectReference Include="..\Rivo.Finance.Contracts\Rivo.Finance.Contracts.csproj" />
+    <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
+    <ProjectReference Include="..\..\Fiscal\Rivo.Fiscal.Contracts\Rivo.Fiscal.Contracts.csproj" />
+    <ProjectReference Include="..\..\Commercial\Rivo.Commercial.Contracts\Rivo.Commercial.Contracts.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

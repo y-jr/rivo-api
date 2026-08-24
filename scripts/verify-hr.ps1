@@ -155,10 +155,20 @@ Test-Case "11. ⚠ Cargo COM autoridade fica PENDENTE e nao confere nada (BR-20)
     # Politica so se ja nao existir: duas politicas igualmente especificas sao
     # empate, e o empate recusa a submissao (ADR-034). Sem esta guarda, a suite
     # so passava a primeira vez.
-    $existentes = Invoke-RestMethod "$base/approval/policies" -Headers $adminHeaders |
-        Where-Object { $_.processType -eq "hr.position_assignment" -and $_.isActive }
+    # Pela base de dados e nao pela rota, de proposito. `Invoke-RestMethod`
+    # entrega um array JSON de forma inconsistente — desembrulha-o quando tem um
+    # so elemento, e nos outros casos passa-o ao pipeline como **um so item**,
+    # onde `$_.campo -eq $valor` compara uma lista com um escalar e devolve o
+    # subconjunto correspondente, que sendo nao-vazio e verdadeiro. O
+    # `Where-Object` deixaria passar todas as politicas.
+    $cargoDaPolitica = Invoke-Sql @"
+select top 1 cast(s.approver_position_id as varchar(36))
+from approval.policy p join approval.policy_step s on s.policy_id = p.id
+where p.process_type = 'hr.position_assignment' and p.is_active = 1
+order by s.[order]
+"@
 
-    if (-not $existentes) {
+    if (-not $cargoDaPolitica) {
         Invoke-RestMethod "$base/approval/policies" -Method Post -ContentType "application/json" -Headers $adminHeaders `
             -Body (@{ processType = "hr.position_assignment"; steps = @(@{ approverPositionId = $script:plainPositionId }) } | ConvertTo-Json -Depth 5) | Out-Null
     }
@@ -166,7 +176,6 @@ Test-Case "11. ⚠ Cargo COM autoridade fica PENDENTE e nao confere nada (BR-20)
         # A politica ja existe de uma execucao anterior e aprova por outro
         # cargo. O aprovador tem de ocupar *esse*, senao nao esta atribuido ao
         # passo. Nao se mexe em $plainPositionId: os casos 8 e 9 dependem dele.
-        $cargoDaPolitica = $existentes[0].steps[0].approverPositionId
         Invoke-RestMethod "$base/hr/employees/$aprovador/positions" -Method Post -ContentType "application/json" -Headers $hrHeaders `
             -Body (@{ positionId = $cargoDaPolitica } | ConvertTo-Json) | Out-Null
     }
@@ -191,10 +200,12 @@ Test-Case "11. ⚠ Cargo COM autoridade fica PENDENTE e nao confere nada (BR-20)
 }
 
 Test-Case "12. Aprovado, o cargo passa a ser conferido" {
-    $pedido = (Invoke-RestMethod "$base/approval/requests?processType=hr.position_assignment" -Headers $adminHeaders |
-        Where-Object { $_.sourceReference -eq $script:pendingAssignmentId })[0]
+    # Pela base de dados: filtrar do lado do PowerShell nao e de confiar sobre
+    # o que `Invoke-RestMethod` devolve — ver a nota no caso 11.
+    $requestId = Invoke-Sql "select cast(id as varchar(36)) from approval.request where source_reference='$($script:pendingAssignmentId)'"
+    if (-not $requestId) { throw "pedido de aprovacao nao encontrado para a atribuicao pendente" }
 
-    Invoke-RestMethod "$base/approval/requests/$($pedido.requestId)/decisions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+    Invoke-RestMethod "$base/approval/requests/$requestId/decisions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
         -Body (@{ decidedByEmployeeId = $script:pendingApprover; action = "Approved" } | ConvertTo-Json) | Out-Null
 
     Invoke-RestMethod "$base/hr/position-assignments/$($script:pendingAssignmentId)/approval-outcome" -Method Post -Headers $hrHeaders | Out-Null
@@ -215,13 +226,13 @@ Test-Case "13. BR-2: quem submete nao decide sobre o proprio pedido" {
     $resposta = Invoke-RestMethod "$base/hr/employees/$alvo/positions" -Method Post -ContentType "application/json" -Headers $hrHeaders `
         -Body (@{ positionId = $script:authorityPositionId } | ConvertTo-Json)
 
-    $pedido = (Invoke-RestMethod "$base/approval/requests?processType=hr.position_assignment" -Headers $adminHeaders |
-        Where-Object { $_.sourceReference -eq $resposta.assignmentId })[0]
+    $requestId = Invoke-Sql "select cast(id as varchar(36)) from approval.request where source_reference='$($resposta.assignmentId)'"
+    if (-not $requestId) { throw "pedido de aprovacao nao encontrado para a atribuicao" }
 
     # O requisitante e o proprio alvo. Decidir sobre si mesmo e 403, nao 409:
     # nao e o estado que impede, e a pessoa.
     $code = Get-StatusCode {
-        Invoke-RestMethod "$base/approval/requests/$($pedido.requestId)/decisions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+        Invoke-RestMethod "$base/approval/requests/$requestId/decisions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
             -Body (@{ decidedByEmployeeId = $alvo; action = "Approved" } | ConvertTo-Json)
     }
     if ($code -ne 403) { throw "esperado 403, obtido $code" }

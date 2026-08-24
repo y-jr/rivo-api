@@ -90,16 +90,28 @@ where r.name = 'HR' and c.claim_value = 'hr.positions.write'
 
     # Perfis ainda sem modulos de negocio que os justifiquem.
     #
-    # `Manager` e `Finance` sairam desta lista em 2026-08-23 (ADR-034): decidir
-    # sobre pedidos de aprovacao e a primeira competencia que um perfil de
-    # chefia tem no sistema. Os outros tres continuam vazios, e inventar-lhes
-    # permissoes seria adivinhar.
+    # A lista encolheu duas vezes, e cada saida foi um modulo a nascer:
+    # `Manager` e `Finance` em 2026-08-23 (ADR-034), quando decidir sobre
+    # pedidos passou a existir; `Sales` em 2026-08-24 (ADR-036), com clientes
+    # e emissao de facturas.
+    #
+    # Os dois que restam continuam vazios porque `inventory`/`fleet` e
+    # `projects` nao tem codigo — inventar-lhes permissoes seria adivinhar.
     $shouldBeEmpty = Invoke-Sql @"
 select count(*) from [identity].app_role_claim c
 join [identity].app_role r on r.id = c.role_id
-where r.name in ('Sales','AssetManager','ProjectManager')
+where r.name in ('AssetManager','ProjectManager')
 "@
     if ($shouldBeEmpty -ne "0") { throw "perfis sem modulo atribuido tem $shouldBeEmpty permissoes" }
+
+    # `Sales` vende e emite, mas **nao fixa a taxa** que a sua propria venda
+    # vai liquidar, e **nao anula** o que emitiu (ADR-036).
+    $salesFiscal = Invoke-Sql @"
+select count(*) from [identity].app_role_claim c
+join [identity].app_role r on r.id = c.role_id
+where r.name = 'Sales' and (c.claim_value like 'fiscal.%' or c.claim_value = 'finance.invoices.cancel')
+"@
+    if ($salesFiscal -ne "0") { throw "Sales fixa taxas ou anula facturas" }
 
     # `Manager` e `Finance` decidem, mas **nao configuram as alcadas**: quem
     # configura decidiria indirectamente o que pode aprovar sozinho, que e a

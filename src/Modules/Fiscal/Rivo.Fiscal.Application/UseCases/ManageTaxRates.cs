@@ -159,10 +159,18 @@ public sealed class IntroduceTaxRate(ITaxRateStore store, IAuditTrail audit)
         {
             versionId = serie.Introduce(percentage, effectiveFrom, effectiveTo, legalInstrument).Id;
         }
-        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        catch (InvalidOperationException error)
         {
-            // Sobreposição de vigências e taxa fora de intervalo são violações
-            // de regra que o chamador pode corrigir, não falhas técnicas.
+            // Sobreposição de vigências: o pedido está bem formado e colide com
+            // o que já lá está. Corrige-se fechando a versão anterior, não
+            // reescrevendo o pedido — logo é conflito, não erro de campo.
+            return IntroduceRateResult.Overlaps(error.Message);
+        }
+        catch (ArgumentException error)
+        {
+            // Instrumento legal em branco, taxa fora de 0–100, vigência que
+            // termina antes de começar: campos mal preenchidos, e o chamador
+            // corrige-os no próprio pedido.
             return IntroduceRateResult.Rejected(error.Message);
         }
 
@@ -192,13 +200,24 @@ public sealed record IntroduceRateResult(IntroduceRateOutcome Outcome, Guid? Ver
 
     public static IntroduceRateResult Rejected(string error) =>
         new(IntroduceRateOutcome.Rejected, null, error);
+
+    public static IntroduceRateResult Overlaps(string error) =>
+        new(IntroduceRateOutcome.Overlaps, null, error);
 }
 
 public enum IntroduceRateOutcome
 {
     Introduced,
     ScheduleNotFound,
+
+    /// <summary>Campo mal preenchido. O chamador corrige o pedido — 400.</summary>
     Rejected,
+
+    /// <summary>
+    /// Colide com uma vigência existente. O pedido está bem formado; o que
+    /// está errado é o estado — 409.
+    /// </summary>
+    Overlaps,
 }
 
 /// <summary>Traduções entre o vocabulário do domínio e o publicado.</summary>
