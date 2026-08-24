@@ -151,8 +151,19 @@ Test-Case "7. Atribuicao de perfil exige permissao" {
 Test-Case "8. Perfil inexistente e recusado" {
     $body = @{ profile = "NaoExiste" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/identity/users/$adminId/roles" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
-    if ($code -ne 404) { throw "esperado 404, obtido $code" }
-    "HTTP 404"
+
+    # 400 e nao 404: o perfil vem do corpo, e o utilizador do URI existe. Um
+    # 404 aqui manda procurar o defeito no userId, que e o sitio errado.
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "HTTP 400"
+}
+
+Test-Case "9. Utilizador inexistente distingue-se de perfil invalido" {
+    $body = @{ profile = "Finance" } | ConvertTo-Json
+    $inexistente = "11111111-1111-1111-1111-111111111111"
+    $code = Get-StatusCode { Invoke-RestMethod "$base/identity/users/$inexistente/roles" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 404) { throw "esperado 404 para utilizador inexistente, obtido $code" }
+    "404 para o URI, 400 para o corpo"
 }
 
 Write-Host ""

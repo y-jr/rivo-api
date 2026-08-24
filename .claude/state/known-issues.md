@@ -1,14 +1,16 @@
 # Problemas Conhecidos
 
-_Última actualização: 2026-08-20._
+_Última actualização: 2026-08-24._
 
 Este ficheiro regista duas coisas distintas, e a distinção importa:
 
 - **Lacunas de arquitectura (K1–K7)** — pontos assinalados em `docs/` e não
   resolvidos. Não são decisões em aberto; são buracos conhecidos no desenho.
-- **Defeitos activos (K8–K15)** — comportamento real do código implementado
-  que não satisfaz um requisito. Cinco módulos estão em produção de
-  desenvolvimento, logo há defeitos de código a registar.
+- **Defeitos (K8–K16)** — comportamento real do código implementado que não
+  satisfaz um requisito. Seis módulos estão em produção de desenvolvimento,
+  logo há defeitos de código a registar.
+
+  Fechados: K8, K9, K14, K15. Abertos: K10, K11, K12, K13, K16.
 
 Os anti-padrões do protótipo ficam listados à parte, porque a tentação de os
 repetir é real.
@@ -192,20 +194,29 @@ atravessou a troca para SQL Server sem uma linha de alteração (ADR-029).
 
 Deixou atrás de si o K15, que é a metade que faltava.
 
-### K15 — Colisão de concorrência devolve `500`, não `409`
+### ~~K15 — Colisão de concorrência devolve `500`, não `409`~~ ✅ Fechado em 2026-08-24
 
 - **Módulo:** todos os que têm agregados com `version`
 - **Impacto:** o ADR-025 fez com que uma escrita concorrente passe a lançar
   `DbUpdateConcurrencyException` em vez de sobrepor em silêncio. Mas **nenhum
-  handler a trata**: a excepção sobe e o cliente recebe `500 Internal Server
-  Error`. Semanticamente errado — não é falha do servidor, é conflito de
+  handler a tratava**: a excepção subia e o cliente recebia `500 Internal
+  Server Error`. Semanticamente errado — não é falha do servidor, é conflito de
   estado, e o cliente devia poder reler e repetir.
-- **Contorno:** nenhum. O comportamento erra do lado seguro — falha ruidosa em
-  vez de perda silenciosa de escrita, que era o defeito anterior.
-- **Seguimento:** mapear para `409 Conflict` na camada API, e decidir a
-  semântica de retry. **A fase de `approval` tem de o resolver**: é lá que a
-  colisão deixa de ser anomalia e passa a caso de uso normal (BR-17, duas
-  pessoas a decidir o mesmo pedido).
+- **Fechado por:** ADR-035. `ConcurrencyConflictHandler`, um `IExceptionHandler`
+  registado no composition root, traduz a excepção em `409 Conflict` com
+  `ProblemDetails`.
+
+  Ficou no host e não em cada módulo porque **nenhuma camada Application
+  referencia o EF Core** — não há onde apanhar a excepção dentro do módulo sem
+  lhe arrastar a infraestrutura. Registado uma vez, vale para os seis módulos, e
+  um módulo novo herda-o sem fazer nada.
+
+  Sem repetição automática, de propósito: repetir sozinho uma decisão de
+  aprovação aplicá-la-ia sobre um estado que o autor não viu, que é o que BR-17
+  existe para impedir.
+
+  Verificado por 5 testes em `tests/Rivo.Api.Tests` — o primeiro projecto de
+  teste da camada API do host.
 
 ## Formato para defeitos futuros
 
@@ -216,3 +227,27 @@ Deixou atrás de si o K15, que é a metade que faltava.
 - Contorno: <se houver>
 - Seguimento: <o que tem de acontecer>
 ```
+
+### K16 — Sem TLS no acesso à API publicada
+
+**Detectado em 2026-08-23**, na configuração do reverse proxy da VPS.
+
+A VPS ainda não tem domínio, e o Let's Encrypt exige um nome — não emite
+certificados para endereços IP. O reverse proxy (Caddy, em
+`/opt/projects/proxy/`) serve por IP em HTTP simples.
+
+**Consequência:** o token JWT viaja em claro. Quem observe a rede entre o
+cliente e a VPS lê-o, e com ele passa a poder agir como o utilizador até a
+sessão expirar — sessenta minutos (ADR-013). O mesmo vale para as credenciais
+enviadas a `POST /identity/login`.
+
+**Isto não pode ir para produção.** É aceitável apenas enquanto o ambiente for
+de teste e sem dados reais.
+
+**Correcção:** obter um domínio, apontar o DNS ao IP da VPS, e trocar o bloco
+`:80` do `Caddyfile` pelo nome. O Caddy obtém e renova o certificado sozinho —
+o volume `caddy-data` já está no compose precisamente para os guardar.
+
+**Nota:** o proxy vive fora do repositório do Rivo de propósito. É partilhado
+com os outros sistemas da organização (ADR-031), e uma aplicação não deve ser
+dona de infraestrutura partilhada.

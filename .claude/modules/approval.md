@@ -204,6 +204,22 @@ Configurável por `PositionApprovalReconciliation__Enabled` e
 `__PollIntervalSeconds` (omissão: ligado, 60&nbsp;s). Desligado, as decisões
 aplicam-se pelo endpoint — escolha legítima, mas que passa a ser uma escolha.
 
+### O K15 está fechado (2026-08-24)
+
+Uma colisão de concorrência devolve **`409`**, não `500` — ADR-035. É aqui que o
+defeito deixava de ser teórico: duas pessoas a decidir o mesmo pedido é o
+comportamento esperado de uma caixa de entrada de aprovações, não um acidente,
+e BR-17 só produz valor se o cliente conseguir distinguir "releia e repita" de
+"o servidor avariou".
+
+A tradução vive no composition root e não em `approval`: nenhuma camada
+Application referencia o EF Core, logo não há onde apanhar a excepção dentro do
+módulo sem lhe arrastar a infraestrutura.
+
+**Sem repetição automática, de propósito.** Repetir sozinho uma decisão
+aplicá-la-ia sobre um estado que o autor não chegou a ver — que é exactamente o
+que BR-17 existe para impedir.
+
 ### Por fazer
 
 - **BR-7 e BR-8** — anti-fraccionamento e verificação orçamental exigem

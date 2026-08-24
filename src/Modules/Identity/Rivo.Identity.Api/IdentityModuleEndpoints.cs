@@ -62,8 +62,25 @@ public static class IdentityModuleEndpoints
         return outcome switch
         {
             AssignProfileOutcome.Assigned => Results.NoContent(),
+
+            // 404 porque o utilizador é o recurso que o URI identifica.
             AssignProfileOutcome.UserNotFound => Results.NotFound(new { erro = "Utilizador não encontrado." }),
-            AssignProfileOutcome.ProfileNotFound => Results.NotFound(new { erro = "Perfil de Acesso não encontrado." }),
+
+            // 400 e não 404: o perfil vem do corpo, e o recurso que o URI
+            // identifica — o utilizador — existe. Um 404 aqui manda procurar o
+            // defeito no `userId`, que é o sítio errado. Os perfis válidos
+            // seguem na resposta para que o erro se corrija sem consultar
+            // outra rota, como já acontece no registo.
+            AssignProfileOutcome.ProfileNotFound => Results.ValidationProblem(
+                new Dictionary<string, string[]>
+                {
+                    ["profile"] =
+                    [
+                        $"'{request.Profile}' não é um Perfil de Acesso. " +
+                        $"Válidos: {string.Join(", ", AccessProfiles.Catalogue.Keys)}.",
+                    ],
+                }),
+
             _ => Results.Problem("Resultado inesperado ao atribuir o perfil."),
         };
     }

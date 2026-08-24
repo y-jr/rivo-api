@@ -160,4 +160,44 @@ Detalhe e estado de confiança em `docs/rivo-fiscal-regras-angola-v1.md` §5.
 
 ## Estado
 
-Não iniciado. Modelo de dados fixado pelo XSD; motor de cálculo por levantar.
+**Fatia mínima iniciada em 2026-08-24 — ADR-036.**
+
+O objectivo do produto passou a ser **emitir**, não emitir com validade legal.
+`fiscal` deixa de ser um bloco de fase e passa a ser o que a emissão precisa:
+uma taxa com vigência e um contrato de determinação.
+
+### O que existe
+
+`Rivo.Fiscal.Contracts` e `Rivo.Fiscal.Domain`, com 18 testes de domínio.
+
+| Peça | O que impõe |
+|---|---|
+| `TaxRateSchedule` | Série de versões da mesma taxa. A raiz é a série e não a versão, porque a invariante é sobre o conjunto |
+| Não sobreposição de vigências | Sem ela, "que taxa vigorava em Março" pode ter duas respostas e a determinação deixa de ser determinística |
+| `InForceOn(data)` | Puramente temporal. Devolver nulo é a resposta certa — recair na versão mais próxima inventaria o valor |
+| Instrumento legal obrigatório | ADR-011 §4. Sem ele, "porquê este valor" fica sem resposta na auditoria |
+| Isenção com taxa ≠ 0 recusada | Ou o código isenta, ou há imposto a liquidar |
+| `ITaxDetermination` | Determinação **à data do facto gerador**, que é parâmetro obrigatório em vez de `UtcNow` lá dentro |
+
+`TaxKind` só tem `ValueAdded`. O IRT e o INSS precisam de regras que as fontes
+secundárias contradizem, e que `CLAUDE.md` proíbe implementar sem verificação
+profissional — acrescentar aqui um valor que ninguém sabe calcular seria pior
+do que a ausência.
+
+### Códigos: só ISE e NS
+
+`TaxCodes` fixa dois, citados da DS.120 v1.4 em `modules/commercial.md`, porque
+são os que obrigam a `TaxExemptionCode`. Os restantes são texto que quem
+introduz os dados fornece — o domínio não finge conhecer uma tabela que não
+está verificada em fonte primária.
+
+Consequência prática: **emitir com isenção fica bloqueado** enquanto não houver
+a lista oficial de códigos. Não se inventa código.
+
+### Adiado por ADR-036
+
+Certificação AGT (`SoftwareValidationNumber`), exportação SAF-T, declarações
+periódicas, motor de IRT e INSS, e a cadeia `Hash`/`HashControl` (K7).
+
+⚠ **As facturas emitidas não são documentos fiscais válidos em Angola.** É
+assunção de produto registada no ADR-036, não conclusão técnica.

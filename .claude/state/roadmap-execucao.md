@@ -30,7 +30,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 |---|---|---|
 | 0 | Fundação de verificação e CI | ✅ **Fechada** em 2026-08-16 |
 | 1 | Aterrar em produção — VPS | **Em curso** — reorientada de Azure para VPS em 2026-08-20 (ADR-031) |
-| 2 | `approval` — governança de decisões | Por iniciar |
+| 2 | `approval` — governança de decisões | **Critério de saída cumprido** em 2026-08-24 |
 | 3 | `fiscal` — o que não está bloqueado | Por iniciar |
 | 4 | `finance` — o núcleo | Por iniciar |
 | 5 | `procurement` e `commercial` | Por iniciar |
@@ -197,6 +197,26 @@ retrofitar governança — o anti-padrão A1/A3 do protótipo.
 **Critério de saída:** nenhum endpoint devolve `501`; os cenários de
 segregação de `standards/testing.md` cobertos por testes de domínio.
 
+**Execução de 2026-08-23/24 — critério de saída cumprido.**
+
+| Item | Estado |
+|---|---|
+| Modelo de dados fechado por ADR | ✅ ADR-034 — Política, Passo, Pedido, Atribuição, Decisão |
+| Primeiro teste real do ADR-017 | ⚠ **Resolvido por outro caminho.** Contratos dos dois lados compilam mas deixam o ciclo no grafo, e `Modules_HaveNoDependencyCycles` vê-o. Fez-se inversão de dependência com o adaptador no composition root (ADR-015 §R1 fica superado) |
+| Invariantes no domínio, com testes | ✅ BR-2, BR-4, BR-6, BR-17 — 17 testes de domínio. BR-3 só metade: "quem aprova não paga" precisa de `finance` |
+| Adiar BR-7 e BR-8 | ✅ Porta modelada. `RequiresBudgetCheck` **recusa a submissão** enquanto `finance` não existir, em vez de fingir que verificou |
+| Desbloquear o `501` de `hr` | ✅ Atribuição de Cargo com autoridade cria-se pendente e submete-se. Dois consumidores: BR-20 e férias |
+| Estender o bootstrap ao primeiro Cargo com autoridade | ⏳ **Por fazer.** ADR-016 §R1 continua aberto — o seed só atribui Perfis de Acesso |
+| Fechar o K15 | ✅ ADR-035 — `409` em vez de `500`, traduzido no composition root |
+
+**Cumprido:** nenhum endpoint devolve `501` (o de `hr` fechou; o de
+`/identity/login/google` é ausência de configuração, não funcionalidade por
+implementar), e os cenários de segregação estão cobertos.
+
+**Fica por fazer, e não bloqueia a Fase 3:** SLA e escalonamento (o passo
+guarda o prazo, nada o faz cumprir), Delegação (modelada em `docs`, sem
+código), e o bootstrap do primeiro Cargo com autoridade.
+
 ---
 
 ## Fase 3 — `fiscal`, o que não está bloqueado
@@ -352,3 +372,5 @@ diz quando é que isso deixa de servir.
 |---|---|---|---|
 | 2026-08-16 | 0 | **Fechada** | Todos os itens feitos: ADR-024 e ADR-025 em `main`, gestão central de pacotes, Testcontainers (ADR-026). Critério de saída cumprido — um PR que viole uma fronteira falha o build, e o ruleset impõe-o. Ficam por cobrir os testes de integração dos outros quatro módulos, registado no ADR-026 |
 | 2026-08-16 | 1 | Em curso | Infraestrutura provisionada em `rg-rivo-staging`. K8, K9 e K11 fechados. O CD está escrito e nunca correu — o critério de saída depende disso |
+| 2026-08-23 | 1 | Quase fechada | Deployment na VPS a correr atrás de Caddy. As suites contra o ambiente publicado: **59 de 66 passam**; as 7 restantes exigem `RIVO_RESTART_COMMAND`, deliberadamente não configurado para não reiniciar produção. K16 aberto — sem TLS até haver domínio |
+| 2026-08-24 | 2 | **Critério de saída cumprido** | `approval` com as cinco camadas, o `501` de `hr` fechado, dois consumidores (BR-20 e férias), worker de reconciliação, e o K15 fechado por ADR-035. Ficam SLA, Delegação e o bootstrap do primeiro Cargo com autoridade — nenhum bloqueia a Fase 3 |

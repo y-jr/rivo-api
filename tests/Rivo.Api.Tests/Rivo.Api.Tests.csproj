@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testes da camada API do host.
+
+    O primeiro projecto de teste do host. Existe porque há comportamento que
+    só vive aqui e não em módulo nenhum: a tradução de excepções em códigos
+    HTTP (ADR-035). Não é testável pelos testes de domínio, que não conhecem
+    HTTP, nem pelos de arquitectura, que verificam forma e não comportamento.
+
+    Distinto de `Rivo.Architecture.Tests`, que também referencia o host mas
+    para o inspeccionar por reflexão. Este exercita-o.
+  -->
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rivo.Api\Rivo.Api.csproj" />
+  </ItemGroup>
+
+</Project>

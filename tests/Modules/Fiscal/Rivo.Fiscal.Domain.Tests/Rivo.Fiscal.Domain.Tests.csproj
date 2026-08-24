@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Fiscal\Rivo.Fiscal.Domain\Rivo.Fiscal.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

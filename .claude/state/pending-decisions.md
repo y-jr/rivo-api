@@ -203,3 +203,20 @@ re-litigação:
 - [ ] Semântica de SLA e de escalonamento.
 - [ ] Regras de segregação além do mínimo já fixado ("quem submete não
       decide").
+
+## Emissão sem certificação (ADR-036)
+
+- [ ] **Marcar visivelmente uma factura que não é documento fiscal?** O ADR-036
+      dispensou a certificação da AGT, e o risco central que ele regista é de
+      negócio: uma factura do Rivo tem número, série e ar de factura, e não é
+      documento fiscal válido em Angola. Quem olha para o ecrã não vê a
+      diferença.
+
+      Opções: marca de água ou menção no documento enquanto não houver
+      `SoftwareValidationNumber`; ou nada, se a emissão nunca sair da empresa.
+      **Depende de a factura ser ou não entregue a clientes** — que é a
+      assunção de que todo o ADR-036 depende.
+
+- [ ] **Que série de numeração usar, e quem a abre?** A numeração
+      `[Tipo] [Série]/[Sequencial]` é âmbito do ADR-036, mas nada fixa se há
+      uma série por ano, por ponto de emissão, ou uma só.

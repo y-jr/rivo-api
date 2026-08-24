@@ -36,6 +36,15 @@ public class ProjectReferenceTests
     {
         ["Audit"] = [],
         ["Notifications"] = [],
+
+        // `fiscal` não depende de nenhum módulo, e é isso que o torna a raiz da
+        // ordem de execução do ADR-036. A direcção que existe é a inversa:
+        // `commercial` e `finance` perguntam-lhe o imposto.
+        //
+        // Virá a **ler** desses módulos para relato e exportação SAF-T
+        // (`modules/fiscal.md`, "duas direcções, duas capacidades"), mas isso
+        // está adiado pelo ADR-036 e a linha muda quando lá se chegar.
+        ["Fiscal"] = [],
         ["Documents"] = ["Audit"],
         ["Hr"] = ["Audit", "Documents"],
         // `identity` compõe o catálogo de permissões a partir do que cada

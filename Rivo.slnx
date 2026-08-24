@@ -24,6 +24,10 @@
     <Project Path="src/Modules/Documents/Rivo.Documents.Domain/Rivo.Documents.Domain.csproj" />
     <Project Path="src/Modules/Documents/Rivo.Documents.Infrastructure/Rivo.Documents.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Fiscal/">
+    <Project Path="src/Modules/Fiscal/Rivo.Fiscal.Contracts/Rivo.Fiscal.Contracts.csproj" />
+    <Project Path="src/Modules/Fiscal/Rivo.Fiscal.Domain/Rivo.Fiscal.Domain.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/Hr/">
     <Project Path="src/Modules/Hr/Rivo.Hr.Api/Rivo.Hr.Api.csproj" />
     <Project Path="src/Modules/Hr/Rivo.Hr.Application/Rivo.Hr.Application.csproj" />
@@ -45,6 +49,7 @@
     <Project Path="src/Modules/Notifications/Rivo.Notifications.Infrastructure/Rivo.Notifications.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Rivo.Api.Tests/Rivo.Api.Tests.csproj" />
     <Project Path="tests/Rivo.Architecture.Tests/Rivo.Architecture.Tests.csproj" />
     <Project Path="tests/Rivo.TestSupport/Rivo.TestSupport.csproj" />
   </Folder>
@@ -53,6 +58,9 @@
   </Folder>
   <Folder Name="/tests/Documents/">
     <Project Path="tests/Modules/Documents/Rivo.Documents.Domain.Tests/Rivo.Documents.Domain.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Fiscal/">
+    <Project Path="tests/Modules/Fiscal/Rivo.Fiscal.Domain.Tests/Rivo.Fiscal.Domain.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/Hr/">
     <Project Path="tests/Modules/Hr/Rivo.Hr.Domain.Tests/Rivo.Hr.Domain.Tests.csproj" />

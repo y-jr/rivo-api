@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Api.Composition;
 using Rivo.Api.Cors;
+using Rivo.Api.Errors;
 using Rivo.Api.OpenApi;
 using Rivo.Audit.Api;
 using Rivo.Audit.Infrastructure;
@@ -29,6 +30,14 @@ builder.Services.AddOpenApi(options =>
 // Origens de browser autorizadas (ADR-033). Concern do host e não de módulo:
 // é o processo inteiro que é chamado de fora, não cada módulo por si.
 builder.Services.AddBrowserClientCors(builder.Configuration);
+
+// Colisão de concorrência optimista traduzida em 409 (ADR-035, fecha o K15).
+//
+// Aqui e não em cada módulo: nenhuma camada Application referencia o EF Core,
+// logo não há onde apanhar a excepção dentro do módulo sem lhe arrastar a
+// infraestrutura. Ver Errors/ConcurrencyConflictHandler.
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<ConcurrencyConflictHandler>();
 
 // Cada módulo regista os seus próprios serviços e policies. A ordem segue as
 // dependências de contrato: `identity` consome os contratos de `audit` e `hr`.
@@ -111,6 +120,10 @@ if (app.Configuration.GetValue("Bootstrap:SeedOnStartup", !app.Environment.IsPro
 {
     await app.Services.SeedIdentityModuleAsync();
 }
+
+// Primeiro middleware do pipeline, para envolver tudo o que vem a seguir —
+// incluindo a autenticação, que também escreve na base de dados (a sessão).
+app.UseExceptionHandler();
 
 // Cabeçalhos reencaminhados — fecha o K8.
 //
