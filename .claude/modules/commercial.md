@@ -91,4 +91,68 @@ invoque — **não inventar código**.
 
 ## Estado
 
-Não iniciado.
+**Reduzido ao Cliente e iniciado em 2026-08-24 — ADR-036.**
+
+**As cinco camadas existem desde 2026-08-24**, com schema `commercial`,
+migração aplicada e rotas alcançáveis.
+
+O objectivo passou a ser emitir. Emitir precisa de cliente; não precisa do
+funil comercial. Lead, Oportunidade, Proposta, Contrato Comercial e Acção de
+Cobrança continuam por fazer.
+
+`Rivo.Commercial.Contracts` e `Rivo.Commercial.Domain`, com 20 testes de
+domínio.
+
+### O que já está imposto
+
+| Regra | Forma concreta |
+|---|---|
+| Nome, NIF e morada de facturação obrigatórios | São o que o SAF-T exige do elemento `Customer`. O que não for capturado na transacção não se reconstrói depois |
+| Morada é objecto de valor com detalhe, cidade e país | Substitui-se inteira. Uma morada parcial passaria na aplicação e falharia na exportação |
+| País em ISO 3166-1 alpha-2 | `AO`. Duas letras, ou recusa |
+| NIF normalizado sem espaços, em maiúsculas | Evita duplicados que só diferem no espaçamento |
+| Desactivar, nunca eliminar | BR-14. Um cliente referenciado por facturas emitidas é parte desses documentos |
+| `Version` em `Customer` | ADR-025 |
+
+### Duas ausências deliberadas
+
+**Sem validação de formato do NIF.** As regras de composição do NIF angolano
+não estão verificadas em fonte primária neste repositório, e `CLAUDE.md` proíbe
+implementar regras fiscais a partir de levantamento provisório. Um validador
+inventado recusaria clientes legítimos — falha pior do que a ausência, porque
+parece correcta.
+
+**A unicidade do NIF não está no domínio.** É invariante sobre o conjunto de
+clientes, e o agregado não vê o conjunto. Pertence a um índice único em
+`commercial.customer` mais a verificação na camada Application. Ainda por
+fazer — está registado aqui para não passar por esquecimento.
+
+### Consequência: não há consumidor final
+
+O NIF é obrigatório, portanto **não se factura a quem não o forneça**. Se o
+negócio vender a particulares não identificados, falta o conceito — e a
+convenção angolana para esse caso não está levantada. Registado em
+[pending-decisions](../state/pending-decisions.md).
+
+### Rotas
+
+| Método | Rota | Permissão |
+|---|---|---|
+| GET | `/commercial/customers?includeInactive=` | `commercial.customers.read` |
+| GET | `/commercial/customers/{customerId}` | `commercial.customers.read` |
+| POST | `/commercial/customers` | `commercial.customers.write` |
+| POST | `/commercial/customers/{customerId}/details` | `commercial.customers.write` |
+| POST | `/commercial/customers/{customerId}/status` | `commercial.customers.write` |
+
+**Não há `DELETE`**, e é BR-14 a aparecer na forma da API: desactiva-se pelo
+endpoint de estado.
+
+NIF repetido devolve **`409`** com o identificador do cliente que já existe —
+quem tentou registar quase de certeza quer trabalhar com esse, e sem o
+identificador teria de o procurar às cegas.
+
+Morada indicada em parte devolve **`400`**: é objecto de valor, vai inteira ou
+não vai.
+
+`Sales` deixa de ser perfil vazio — recebe `commercial.customers.read` e
+`.write`.

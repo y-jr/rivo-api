@@ -5,9 +5,13 @@ using Rivo.Api.Cors;
 using Rivo.Api.Errors;
 using Rivo.Api.OpenApi;
 using Rivo.Audit.Api;
+using Rivo.Commercial.Api;
+using Rivo.Commercial.Infrastructure;
 using Rivo.Audit.Infrastructure;
 using Rivo.Documents.Api;
 using Rivo.Documents.Infrastructure;
+using Rivo.Fiscal.Api;
+using Rivo.Fiscal.Infrastructure;
 using Rivo.Approval.Api;
 using Rivo.Approval.Infrastructure;
 using Rivo.Hr.Api;
@@ -39,11 +43,18 @@ builder.Services.AddBrowserClientCors(builder.Configuration);
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ConcurrencyConflictHandler>();
 
+// Repõe o 400 que o middleware acima passou a esconder: registar
+// `UseExceptionHandler` põe-se à frente do Kestrel, que era quem reconhecia a
+// `BadHttpRequestException` e respondia com o código dela. Ver BadRequestHandler.
+builder.Services.AddExceptionHandler<BadRequestHandler>();
+
 // Cada módulo regista os seus próprios serviços e policies. A ordem segue as
 // dependências de contrato: `identity` consome os contratos de `audit` e `hr`.
 builder.Services.AddAuditModule(builder.Configuration);
 builder.Services.AddDocumentsModule(builder.Configuration);
 builder.Services.AddNotificationsModule(builder.Configuration);
+builder.Services.AddFiscalModule(builder.Configuration);
+builder.Services.AddCommercialModule(builder.Configuration);
 builder.Services.AddHrModule(builder.Configuration);
 builder.Services.AddApprovalModule(builder.Configuration);
 builder.Services.AddIdentityModule(builder.Configuration);
@@ -96,6 +107,8 @@ if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
             await app.Services.MigrateAuditModuleAsync();
             await app.Services.MigrateDocumentsModuleAsync();
             await app.Services.MigrateNotificationsModuleAsync();
+            await app.Services.MigrateFiscalModuleAsync();
+            await app.Services.MigrateCommercialModuleAsync();
             await app.Services.MigrateHrModuleAsync();
             await app.Services.MigrateApprovalModuleAsync();
             await app.Services.MigrateIdentityModuleAsync();
@@ -172,6 +185,8 @@ app.UseAuthorization();
 app.MapIdentityModule();
 app.MapAuditModule();
 app.MapDocumentsModule();
+app.MapFiscalModule();
+app.MapCommercialModule();
 app.MapHrModule();
 app.MapApprovalModule();
 app.MapNotificationsModule();

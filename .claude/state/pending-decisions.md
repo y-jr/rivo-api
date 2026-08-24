@@ -220,3 +220,16 @@ re-litigação:
 - [ ] **Que série de numeração usar, e quem a abre?** A numeração
       `[Tipo] [Série]/[Sequencial]` é âmbito do ADR-036, mas nada fixa se há
       uma série por ano, por ponto de emissão, ou uma só.
+
+- [ ] **Existe "consumidor final"?** O NIF é obrigatório em `Customer`
+      (`modules/commercial.md`), logo não se factura a quem não o forneça. Se o
+      negócio vender a particulares não identificados, falta o conceito — e a
+      convenção angolana para o caso (código convencional? cliente genérico?)
+      não está levantada em fonte primária.
+
+      **Depende do negócio, não da técnica:** se as vendas são todas a empresas
+      com NIF, não há decisão a tomar.
+
+- [ ] **Unicidade do NIF:** índice único em `commercial.customer` mais
+      verificação na camada Application. Por fazer — não é invariante que o
+      agregado possa garantir, porque não vê o conjunto.

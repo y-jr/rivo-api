@@ -162,6 +162,9 @@ Detalhe e estado de confiança em `docs/rivo-fiscal-regras-angola-v1.md` §5.
 
 **Fatia mínima iniciada em 2026-08-24 — ADR-036.**
 
+**As cinco camadas existem desde 2026-08-24**, com schema `fiscal`, migração
+aplicada e rotas alcançáveis.
+
 O objectivo do produto passou a ser **emitir**, não emitir com validade legal.
 `fiscal` deixa de ser um bloco de fase e passa a ser o que a emissão precisa:
 uma taxa com vigência e um contrato de determinação.
@@ -201,3 +204,25 @@ periódicas, motor de IRT e INSS, e a cadeia `Hash`/`HashControl` (K7).
 
 ⚠ **As facturas emitidas não são documentos fiscais válidos em Angola.** É
 assunção de produto registada no ADR-036, não conclusão técnica.
+
+### Rotas
+
+| Método | Rota | Permissão |
+|---|---|---|
+| GET | `/fiscal/tax-rates` | `fiscal.rates.read` |
+| POST | `/fiscal/tax-rates` | `fiscal.rates.write` |
+| POST | `/fiscal/tax-rates/{scheduleId}/versions` | `fiscal.rates.write` |
+| GET | `/fiscal/tax-rates/determination?taxCode=&taxPointDate=` | `fiscal.rates.read` |
+
+Três códigos com significado, verificados contra a API a correr:
+
+- **`409`** ao introduzir uma versão que se sobrepõe. Não é campo mal
+  preenchido — é conflito com o que já lá está, e corrige-se fechando a versão
+  anterior.
+- **`404`** na determinação sem taxa em vigor à data. Recusar é a resposta
+  certa; recair na versão mais próxima inventaria o valor.
+- **`501`** na determinação com `ISE` ou `NS`. A capacidade não existe neste
+  sistema — falta o catálogo de códigos de isenção — e não é defeito do pedido.
+
+**Só o `Admin` escreve taxas.** `Sales` recebe `commercial`, não `fiscal`: quem
+vende não fixa a taxa que a sua própria venda vai liquidar.

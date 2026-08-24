@@ -25,6 +25,10 @@
     <ProjectReference Include="..\Modules\Approval\Rivo.Approval.Infrastructure\Rivo.Approval.Infrastructure.csproj" />
     <ProjectReference Include="..\Modules\Hr\Rivo.Hr.Api\Rivo.Hr.Api.csproj" />
     <ProjectReference Include="..\Modules\Hr\Rivo.Hr.Infrastructure\Rivo.Hr.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Fiscal\Rivo.Fiscal.Api\Rivo.Fiscal.Api.csproj" />
+    <ProjectReference Include="..\Modules\Fiscal\Rivo.Fiscal.Infrastructure\Rivo.Fiscal.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Commercial\Rivo.Commercial.Api\Rivo.Commercial.Api.csproj" />
+    <ProjectReference Include="..\Modules\Commercial\Rivo.Commercial.Infrastructure\Rivo.Commercial.Infrastructure.csproj" />
     <ProjectReference Include="..\Modules\Documents\Rivo.Documents.Api\Rivo.Documents.Api.csproj" />
     <ProjectReference Include="..\Modules\Documents\Rivo.Documents.Infrastructure\Rivo.Documents.Infrastructure.csproj" />
     <ProjectReference Include="..\Modules\Notifications\Rivo.Notifications.Api\Rivo.Notifications.Api.csproj" />

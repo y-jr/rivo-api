@@ -51,6 +51,15 @@ public class ConcurrencyTokenTests
             "Criado com a política e nunca editado — alterar uma alçada é criar outra política, " +
             "porque os pedidos em curso guardam a que lhes foi aplicada (BR-6).",
 
+        ["TaxRateVersion"] =
+            "Imutável depois de introduzida: é facto histórico, e alterá-la mudaria retroactivamente " +
+            "o imposto de documentos já emitidos. Corrigir é fechar esta e introduzir outra (ADR-011). " +
+            "A série que a contém tem o contador, e é lá que a sobreposição colide.",
+
+        ["BillingAddress"] =
+            "Objecto de valor, não agregado: substitui-se inteira e não tem identidade nem ciclo de " +
+            "vida próprio. As colunas vivem na tabela de `Customer`, que tem o contador.",
+
         ["Assignment"] =
             "Mutável (MarkDecided), mas só de dentro de ApprovalRequest, que tem o contador. " +
             "Duas decisões simultâneas colidem na raiz do agregado antes de chegarem aqui — " +

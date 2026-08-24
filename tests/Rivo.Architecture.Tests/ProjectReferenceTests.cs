@@ -37,20 +37,30 @@ public class ProjectReferenceTests
         ["Audit"] = [],
         ["Notifications"] = [],
 
-        // `fiscal` não depende de nenhum módulo, e é isso que o torna a raiz da
-        // ordem de execução do ADR-036. A direcção que existe é a inversa:
-        // `commercial` e `finance` perguntam-lhe o imposto.
+        // Só `audit`: introduzir uma versão de taxa é operação de dados
+        // auditada (ADR-011 §5).
+        //
+        // De resto `fiscal` não depende de módulo nenhum, e é isso que o torna
+        // a raiz da ordem de execução do ADR-036 — a direcção que existe é a
+        // inversa: `commercial` e `finance` perguntam-lhe o imposto.
         //
         // Virá a **ler** desses módulos para relato e exportação SAF-T
         // (`modules/fiscal.md`, "duas direcções, duas capacidades"), mas isso
         // está adiado pelo ADR-036 e a linha muda quando lá se chegar.
-        ["Fiscal"] = [],
+        ["Fiscal"] = ["Audit"],
+
+        // `commercial` está reduzido ao Cliente pelo ADR-036, e o Cliente só
+        // depende de `audit` — registar um cliente altera a base de um
+        // documento fiscal. As dependências que `modules/commercial.md` lista
+        // — `hr`, `fiscal`, `approval`, `documents`, `finance` — pertencem ao
+        // funil comercial e à facturação, que não estão feitos.
+        ["Commercial"] = ["Audit"],
         ["Documents"] = ["Audit"],
         ["Hr"] = ["Audit", "Documents"],
         // `identity` compõe o catálogo de permissões a partir do que cada
         // módulo declara — cada um diz que permissões existem, `identity`
         // decide que perfis as recebem (ADR-005).
-        ["Identity"] = ["Audit", "Hr", "Documents", "Notifications", "Approval"],
+        ["Identity"] = ["Audit", "Hr", "Documents", "Notifications", "Approval", "Fiscal", "Commercial"],
 
         // `approval` resolve aprovadores por Cargo, que é de `hr` (ADR-034).
         //

@@ -140,3 +140,20 @@ comportamento.
   onde a colisão é tratada. Mitigado pelo comentário no ponto de registo e por
   este ADR; se um dia houver mais do que uma tradução deste género, passa a
   valer a pena um ficheiro só de mapeamentos.
+
+## Adenda (2026-08-24) — o custo de apanhar tudo
+
+Registar `UseExceptionHandler` teve uma consequência que este ADR não previu:
+**um corpo JSON malformado passou a devolver `500` em vez de `400`.**
+
+Antes, a `BadHttpRequestException` chegava ao Kestrel, que a reconhece e
+responde com o `StatusCode` que ela transporta. O middleware pôs-se à frente
+disso — apanha tudo, e o que nenhum handler trata sai como `500`.
+
+Descoberto a exercitar os endpoints de `fiscal`, e **confirmado por
+comparação**: com a linha comentada dá `400`, com ela dá `500`.
+
+Fechado por `Errors/BadRequestHandler`, que devolve à excepção o código dela
+própria. Fica como nota de desenho: quem acrescentar um `IExceptionHandler`
+tem de se lembrar de que o middleware intercepta **tudo**, incluindo o que o
+servidor já tratava sozinho.

@@ -1,6 +1,8 @@
 ﻿using Rivo.Approval.Contracts;
+using Rivo.Commercial.Contracts;
 using Rivo.Audit.Contracts;
 using Rivo.Documents.Contracts;
+using Rivo.Fiscal.Contracts;
 using Rivo.Hr.Contracts;
 
 namespace Rivo.Identity.Application.Authorization;
@@ -44,7 +46,9 @@ public static class AccessProfiles
                 .. AuditPermissions.All,
                 .. HrPermissions.All,
                 .. DocumentPermissions.All,
-                .. ApprovalPermissions.All],
+                .. ApprovalPermissions.All,
+                .. FiscalPermissions.All,
+                .. CommercialPermissions.All],
 
             // `Manager` deixa de estar vazio: decidir sobre pedidos de
             // aprovação é a primeira competência que um perfil de chefia tem no
@@ -61,7 +65,12 @@ public static class AccessProfiles
             // privilégios de ADR-015.
             [HumanResources] = [.. HrPermissions.ForHumanResources, .. DocumentPermissions.All],
 
-            [Sales] = [],
+            // `Sales` deixa de estar vazio: registar e manter clientes é a
+            // primeira competência comercial que existe no sistema (ADR-036).
+            // **Sem `fiscal`** — quem vende não fixa a taxa que a sua própria
+            // venda vai liquidar.
+            [Sales] = [CommercialPermissions.CustomersRead, CommercialPermissions.CustomersWrite],
+
             [AssetManager] = [],
             [ProjectManager] = [],
         };

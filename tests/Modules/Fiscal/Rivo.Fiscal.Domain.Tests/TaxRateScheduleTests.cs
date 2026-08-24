@@ -13,13 +13,13 @@ public class TaxRateScheduleTests
     private static readonly DateOnly Jul2026 = new(2026, 7, 1);
 
     private static TaxRateSchedule Normal() =>
-        TaxRateSchedule.Open(Guid.NewGuid(), TaxKind.ValueAdded, "NOR", "IVA — taxa normal");
+        TaxRateSchedule.Open(TaxKind.ValueAdded, "NOR", "IVA — taxa normal");
 
     [Fact]
     public void VersaoIntroduzida_VigoraNoSeuPeriodo()
     {
         var serie = Normal();
-        serie.Introduce(Guid.NewGuid(), 14m, Jan2026, null, "Lei n.º 14/23");
+        serie.Introduce(14m, Jan2026, null, "Lei n.º 14/23");
 
         Assert.Equal(14m, serie.InForceOn(new DateOnly(2026, 3, 15))!.Percentage);
     }
@@ -28,7 +28,7 @@ public class TaxRateScheduleTests
     public void AntesDoInicioDaVigencia_NaoHaTaxa()
     {
         var serie = Normal();
-        serie.Introduce(Guid.NewGuid(), 14m, Jan2026, null, "Lei n.º 14/23");
+        serie.Introduce(14m, Jan2026, null, "Lei n.º 14/23");
 
         // Recusar é a resposta certa: recair na versão mais próxima inventaria
         // o valor de um documento que não está coberto.
@@ -43,10 +43,10 @@ public class TaxRateScheduleTests
     public void VigenciasSobrepostas_SaoRecusadas()
     {
         var serie = Normal();
-        serie.Introduce(Guid.NewGuid(), 14m, Jan2026, null, "Lei n.º 14/23");
+        serie.Introduce(14m, Jan2026, null, "Lei n.º 14/23");
 
         var erro = Assert.Throws<InvalidOperationException>(() =>
-            serie.Introduce(Guid.NewGuid(), 17m, Jul2026, null, "Lei n.º 20/26"));
+            serie.Introduce(17m, Jul2026, null, "Lei n.º 20/26"));
 
         Assert.Contains("sobrepõe", erro.Message);
     }
@@ -55,8 +55,8 @@ public class TaxRateScheduleTests
     public void VersaoAnteriorFechada_DeixaEntrarASeguinte()
     {
         var serie = Normal();
-        serie.Introduce(Guid.NewGuid(), 14m, Jan2026, Jun2026, "Lei n.º 14/23");
-        serie.Introduce(Guid.NewGuid(), 17m, Jul2026, null, "Lei n.º 20/26");
+        serie.Introduce(14m, Jan2026, Jun2026, "Lei n.º 14/23");
+        serie.Introduce(17m, Jul2026, null, "Lei n.º 20/26");
 
         Assert.Equal(14m, serie.InForceOn(new DateOnly(2026, 3, 1))!.Percentage);
         Assert.Equal(17m, serie.InForceOn(new DateOnly(2026, 9, 1))!.Percentage);
@@ -71,8 +71,8 @@ public class TaxRateScheduleTests
     public void DeterminacaoSegueADataDoFactoGerador_NaoADoCalculo()
     {
         var serie = Normal();
-        serie.Introduce(Guid.NewGuid(), 14m, Jan2026, Jun2026, "Lei n.º 14/23");
-        serie.Introduce(Guid.NewGuid(), 17m, Jul2026, null, "Lei n.º 20/26");
+        serie.Introduce(14m, Jan2026, Jun2026, "Lei n.º 14/23");
+        serie.Introduce(17m, Jul2026, null, "Lei n.º 20/26");
 
         var facto = new DateOnly(2026, 2, 10);
 
@@ -83,7 +83,7 @@ public class TaxRateScheduleTests
     public void VersaoFechada_ContinuaAVigorarParaAsDatasQueCobriu()
     {
         var serie = Normal();
-        serie.Introduce(Guid.NewGuid(), 14m, Jan2026, Jun2026, "Lei n.º 14/23");
+        serie.Introduce(14m, Jan2026, Jun2026, "Lei n.º 14/23");
 
         // O fim é inclusivo, e fechar não apaga o passado.
         Assert.NotNull(serie.InForceOn(Jun2026));
@@ -95,7 +95,7 @@ public class TaxRateScheduleTests
         var serie = Normal();
 
         Assert.Throws<ArgumentException>(() =>
-            serie.Introduce(Guid.NewGuid(), 14m, Jan2026, null, "   "));
+            serie.Introduce(14m, Jan2026, null, "   "));
     }
 
     [Theory]
@@ -106,7 +106,7 @@ public class TaxRateScheduleTests
         var serie = Normal();
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            serie.Introduce(Guid.NewGuid(), percentagem, Jan2026, null, "Lei n.º 14/23"));
+            serie.Introduce(percentagem, Jan2026, null, "Lei n.º 14/23"));
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public class TaxRateScheduleTests
         var serie = Normal();
 
         Assert.Throws<ArgumentException>(() =>
-            serie.Introduce(Guid.NewGuid(), 14m, Jul2026, Jan2026, "Lei n.º 14/23"));
+            serie.Introduce(14m, Jul2026, Jan2026, "Lei n.º 14/23"));
     }
 
     [Theory]
@@ -124,7 +124,7 @@ public class TaxRateScheduleTests
     [InlineData("ise")]
     public void CodigoDeIsencao_ExigeCodigoDeIsencao(string codigo)
     {
-        var serie = TaxRateSchedule.Open(Guid.NewGuid(), TaxKind.ValueAdded, codigo, "Isento");
+        var serie = TaxRateSchedule.Open(TaxKind.ValueAdded, codigo, "Isento");
 
         Assert.True(serie.RequiresExemptionCode);
     }
@@ -136,17 +136,17 @@ public class TaxRateScheduleTests
     [Fact]
     public void IsencaoComTaxaDiferenteDeZero_ERecusada()
     {
-        var serie = TaxRateSchedule.Open(Guid.NewGuid(), TaxKind.ValueAdded, TaxCodes.Exempt, "Isento");
+        var serie = TaxRateSchedule.Open(TaxKind.ValueAdded, TaxCodes.Exempt, "Isento");
 
         Assert.Throws<ArgumentException>(() =>
-            serie.Introduce(Guid.NewGuid(), 14m, Jan2026, null, "Lei n.º 14/23"));
+            serie.Introduce(14m, Jan2026, null, "Lei n.º 14/23"));
     }
 
     [Fact]
     public void IsencaoComTaxaZero_EAceite()
     {
-        var serie = TaxRateSchedule.Open(Guid.NewGuid(), TaxKind.ValueAdded, TaxCodes.Exempt, "Isento");
-        serie.Introduce(Guid.NewGuid(), 0m, Jan2026, null, "Lei n.º 14/23");
+        var serie = TaxRateSchedule.Open(TaxKind.ValueAdded, TaxCodes.Exempt, "Isento");
+        serie.Introduce(0m, Jan2026, null, "Lei n.º 14/23");
 
         Assert.Equal(0m, serie.InForceOn(Jan2026)!.Percentage);
     }
@@ -160,19 +160,20 @@ public class TaxRateScheduleTests
     [Fact]
     public void CodigoEGuardadoEmMaiusculas()
     {
-        var serie = TaxRateSchedule.Open(Guid.NewGuid(), TaxKind.ValueAdded, " nor ", "IVA");
+        var serie = TaxRateSchedule.Open(TaxKind.ValueAdded, " nor ", "IVA");
 
         Assert.Equal("NOR", serie.Code);
     }
 
     [Fact]
-    public void CadaVersaoIntroduzida_IncrementaOContadorDeConcorrencia()
+    public void ODominioNaoMexeNoContadorDeConcorrencia()
     {
         var serie = Normal();
+        serie.Introduce(14m, Jan2026, Jun2026, "Lei n.º 14/23");
+
+        // Zero, e é o correcto: o incremento é do SaveChangesAsync do
+        // DbContext. Se algum dia isto falhar, alguém repôs `Version++` no
+        // domínio e o contador passa a subir duas vezes por escrita.
         Assert.Equal(0, serie.Version);
-
-        serie.Introduce(Guid.NewGuid(), 14m, Jan2026, Jun2026, "Lei n.º 14/23");
-
-        Assert.Equal(1, serie.Version);
     }
 }

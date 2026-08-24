@@ -49,7 +49,16 @@ public sealed class TaxRateSchedule
 
     public string Description { get; private set; }
 
-    /// <summary>Concorrência optimista (ADR-025).</summary>
+    /// <summary>
+    /// Concorrência optimista (ADR-025).
+    ///
+    /// <para>
+    /// <strong>O domínio nunca lhe toca.</strong> Quem o incrementa é o
+    /// `SaveChangesAsync` do DbContext, para todas as entidades alteradas de
+    /// uma vez. Obrigar cada método que altera estado a lembrar-se disto seria
+    /// uma regra que se esquece uma vez e falha em silêncio para sempre.
+    /// </para>
+    /// </summary>
     public int Version { get; private set; }
 
     public IReadOnlyList<TaxRateVersion> Versions => _versions;
@@ -60,13 +69,8 @@ public sealed class TaxRateSchedule
     /// </summary>
     public bool RequiresExemptionCode => TaxCodes.RequiresExemptionCode(Code);
 
-    public static TaxRateSchedule Open(Guid id, TaxKind kind, string code, string description)
+    public static TaxRateSchedule Open(TaxKind kind, string code, string description)
     {
-        if (id == Guid.Empty)
-        {
-            throw new ArgumentException("Uma série de taxa precisa de identificador.", nameof(id));
-        }
-
         if (string.IsNullOrWhiteSpace(code))
         {
             throw new ArgumentException(
@@ -81,7 +85,7 @@ public sealed class TaxRateSchedule
                 nameof(description));
         }
 
-        return new TaxRateSchedule(id, kind, code.Trim().ToUpperInvariant(), description.Trim());
+        return new TaxRateSchedule(Guid.CreateVersion7(), kind, code.Trim().ToUpperInvariant(), description.Trim());
     }
 
     /// <summary>
@@ -95,7 +99,6 @@ public sealed class TaxRateSchedule
     /// </summary>
     /// <param name="effectiveTo">Nulo para a versão corrente, sem fim previsto.</param>
     public TaxRateVersion Introduce(
-        Guid versionId,
         decimal percentage,
         DateOnly effectiveFrom,
         DateOnly? effectiveTo,
@@ -132,7 +135,7 @@ public sealed class TaxRateSchedule
                 nameof(percentage));
         }
 
-        var candidata = new TaxRateVersion(versionId, percentage, effectiveFrom, effectiveTo, legalInstrument.Trim());
+        var candidata = new TaxRateVersion(Guid.CreateVersion7(), percentage, effectiveFrom, effectiveTo, legalInstrument.Trim());
 
         var sobreposta = _versions.FirstOrDefault(existente => existente.OverlapsWith(candidata));
 
@@ -144,7 +147,6 @@ public sealed class TaxRateSchedule
         }
 
         _versions.Add(candidata);
-        Version++;
 
         return candidata;
     }
