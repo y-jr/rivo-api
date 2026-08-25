@@ -145,7 +145,7 @@ Test-Case "9. Filtro por entidade" {
 Test-Case "10. Trilha sobrevive ao reinicio da stack" {
     $before = Invoke-Sql "select count(*) from audit.audit_event"
     Restart-RivoStack
-    $deadline = (Get-Date).AddSeconds(180)
+    $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do {
         Start-Sleep -Seconds 3
         $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false }

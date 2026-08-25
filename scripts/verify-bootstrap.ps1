@@ -166,9 +166,9 @@ where u.email = '$deciderEmail'
 
 Test-Case "6. Segunda execucao nao duplica" {
     $before = Invoke-Sql "select count(*) from [identity].app_user"
-    Restart-RivoStack -ApiOnly
+    Restart-RivoStack
 
-    $deadline = (Get-Date).AddSeconds(180)
+    $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do {
         Start-Sleep -Seconds 3
         $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false }

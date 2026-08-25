@@ -330,8 +330,10 @@ Test-Case "17. Autorizacao: sem token 401, sem a permissao 403" {
 Test-Case "18. Serie por omissao existe sem ninguem a criar" {
     # O seed abre-a no arranque (ADR-036). Sem isto, um ambiente novo devolvia
     # 404 na primeira factura e o passo esquecido so aparecia ao facturar.
-    $existe = Invoke-Sql "select count(*) from finance.document_series where code='S001'"
-    if ($existe -ne "1") { throw "serie por omissao S001 nao foi semeada" }
+    # Filtrar pelo tipo: `S001` existe em FT, NC e RG, porque a chave da serie e
+    # (tipo, codigo) e cada uma tem o seu contador.
+    $existe = Invoke-Sql "select count(*) from finance.document_series where code='S001' and [type]='FT'"
+    if ($existe -ne "1") { throw "serie FT S001 nao foi semeada (obtido $existe)" }
 
     # E emite-se sem indicar serie nenhuma.
     $body = @{
@@ -378,9 +380,143 @@ Test-Case "20. Mencao de nao-validade fiscal fica congelada na factura" {
     "gravada na base e intacta depois de anulada"
 }
 
-Test-Case "21. Dados sobrevivem ao reinicio da stack" {
+Test-Case "21. Series NC e RG existem sem ninguem as criar" {
+    foreach ($t in @("NC", "RG")) {
+        $n = Invoke-Sql "select count(*) from finance.document_series where code='S001' and [type]='$t'"
+        if ($n -ne "1") { throw "serie $t S001 nao foi semeada (obtido $n)" }
+    }
+    "uma serie por tipo de documento: FT, NC e RG"
+}
+
+Test-Case "22. Ciclo de venda: facturar, creditar, receber, liquidar" {
+    # Factura propria deste caso, para nao depender do estado das anteriores.
+    #
+    # `taxPointDate` fixado em Marco/2026 de proposito: e a janela dos 5%, e e o
+    # que torna os numeros deste caso legiveis e estaveis. Sem isso a taxa seria
+    # a de hoje — 7% — e o teste passaria a depender da data em que corre.
+    $body = @{
+        customerId = $customerId; series = $serie
+        taxPointDate = "2026-03-15"
+        lines = @(@{ description = "Ciclo"; quantity = 1; unitPrice = 100000; taxCode = $codigoTaxa })
+    } | ConvertTo-Json
+    $f = Invoke-RestMethod "$base/finance/sales-invoices" -Method Post -Body $body -ContentType "application/json" -Headers $salesHeaders
+    $script:cicloId = $f.invoiceId
+
+    $saldo = Invoke-RestMethod "$base/finance/sales-invoices/$($f.invoiceId)/balance" -Headers $adminHeaders
+    if ($saldo.outstanding -ne 105000) { throw "em aberto $($saldo.outstanding), esperado 105000" }
+
+    # Creditar 20.000 + 5% = 21.000
+    $body = @{
+        salesInvoiceId = $f.invoiceId; reason = "Desconto acordado"
+        lines = @(@{ description = "Desconto"; quantity = 1; unitPrice = 20000; taxCode = $codigoTaxa })
+    } | ConvertTo-Json
+    $nc = Invoke-RestMethod "$base/finance/credit-notes" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders
+    if ($nc.number -notlike "NC S*") { throw "nota numerada em serie errada: $($nc.number)" }
+    $script:notaId = $nc.creditNoteId
+
+    $saldo = Invoke-RestMethod "$base/finance/sales-invoices/$($f.invoiceId)/balance" -Headers $adminHeaders
+    if ($saldo.credited -ne 21000) { throw "creditado $($saldo.credited), esperado 21000" }
+    if ($saldo.outstanding -ne 84000) { throw "em aberto $($saldo.outstanding), esperado 84000" }
+
+    # Receber o resto de uma vez
+    $body = @{ method = "MB"; settlements = @(@{ salesInvoiceId = $f.invoiceId; amount = 84000 }) } | ConvertTo-Json
+    $rg = Invoke-RestMethod "$base/finance/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders
+    if ($rg.number -notlike "RG S*") { throw "recibo numerado em serie errada: $($rg.number)" }
+    $script:reciboId = $rg.receiptId
+
+    $saldo = Invoke-RestMethod "$base/finance/sales-invoices/$($f.invoiceId)/balance" -Headers $adminHeaders
+    if ($saldo.outstanding -ne 0) { throw "em aberto $($saldo.outstanding), esperado 0" }
+    if (-not $saldo.settled) { throw "factura nao marcada como liquidada" }
+
+    "114000 -> credita 21000 -> recebe 84000 -> liquidada"
+}
+
+Test-Case "23. Nota de credito herda o facto gerador da factura corrigida" {
+    # O imposto que se devolve e o que foi liquidado, nao o de hoje (ADR-011).
+    $nota = Invoke-RestMethod "$base/finance/credit-notes/$($script:notaId)" -Headers $adminHeaders
+    $factura = Invoke-RestMethod "$base/finance/sales-invoices/$($script:cicloId)" -Headers $adminHeaders
+
+    if ($nota.taxPointDate -ne $factura.taxPointDate) {
+        throw "facto gerador $($nota.taxPointDate) != $($factura.taxPointDate) da factura"
+    }
+    if ($nota.correctedInvoiceNumber -ne $factura.number) { throw "referencia textual errada" }
+    if ($nota.customerTaxId -ne $factura.customerTaxId) { throw "cliente diferente do da factura" }
+    "facto gerador, referencia e cliente vindos da factura"
+}
+
+Test-Case "24. Nao se credita nem recebe mais do que esta em aberto" {
+    $body = @{
+        salesInvoiceId = $script:cicloId; reason = "Demasiado"
+        lines = @(@{ description = "X"; quantity = 1; unitPrice = 90000; taxCode = $codigoTaxa })
+    } | ConvertTo-Json
+    $c1 = Get-StatusCode { Invoke-RestMethod "$base/finance/credit-notes" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
+    if ($c1 -ne 409) { throw "creditar a mais: esperado 409, obtido $c1" }
+
+    $body = @{ method = "NU"; settlements = @(@{ salesInvoiceId = $script:cicloId; amount = 1 }) } | ConvertTo-Json
+    $c2 = Get-StatusCode { Invoke-RestMethod "$base/finance/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
+    if ($c2 -ne 409) { throw "receber sobre factura liquidada: esperado 409, obtido $c2" }
+
+    "409 nos dois: conflito com o estado, nao pedido mal formado"
+}
+
+Test-Case "25. Estornar um recebimento faz a divida voltar" {
+    $body = @{ reason = "Cheque devolvido" } | ConvertTo-Json
+    Invoke-RestMethod "$base/finance/receipts/$($script:reciboId)/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders | Out-Null
+
+    $saldo = Invoke-RestMethod "$base/finance/sales-invoices/$($script:cicloId)/balance" -Headers $adminHeaders
+    if ($saldo.outstanding -ne 84000) { throw "em aberto $($saldo.outstanding), esperado 84000" }
+    if ($saldo.settled) { throw "factura ainda marcada como liquidada" }
+
+    # BR-14: estornar nao apaga.
+    $recibo = Invoke-RestMethod "$base/finance/receipts/$($script:reciboId)" -Headers $adminHeaders
+    if ($recibo.status -ne "Cancelled") { throw "estado $($recibo.status)" }
+    if ($recibo.settlements.Count -ne 1) { throw "liquidacoes perdidas" }
+    if ($recibo.total -ne 84000) { throw "total alterado: $($recibo.total)" }
+
+    $c = Get-StatusCode { Invoke-RestMethod "$base/finance/receipts/$($script:reciboId)/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
+    if ($c -ne 409) { throw "estornar duas vezes: esperado 409, obtido $c" }
+
+    "divida de volta em 84000; recibo mantem linhas e total"
+}
+
+Test-Case "26. Anular a nota de credito devolve o valor a divida" {
+    $body = @{ reason = "Desconto revogado" } | ConvertTo-Json
+    Invoke-RestMethod "$base/finance/credit-notes/$($script:notaId)/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders | Out-Null
+
+    $saldo = Invoke-RestMethod "$base/finance/sales-invoices/$($script:cicloId)/balance" -Headers $adminHeaders
+    if ($saldo.credited -ne 0) { throw "creditado $($saldo.credited), esperado 0" }
+    if ($saldo.outstanding -ne 105000) { throw "em aberto $($saldo.outstanding), esperado 105000" }
+    "credito anulado deixa de contar; divida volta a 105000"
+}
+
+Test-Case "27. Meio de pagamento fora do SAF-T e recusado" {
+    $body = @{ method = "PIX"; settlements = @(@{ salesInvoiceId = $script:cicloId; amount = 100 }) } | ConvertTo-Json
+    $c = Get-StatusCode { Invoke-RestMethod "$base/finance/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
+    if ($c -ne 400) { throw "esperado 400, obtido $c" }
+    "so NU, TB, CH, CC, CD, MB, PR, CS, DE, OU"
+}
+
+Test-Case "28. Quem emite nao credita, quem recebe nao emite" {
+    # Sales emite facturas mas nao credita nem estorna.
+    $body = @{
+        salesInvoiceId = $script:cicloId; reason = "Tentativa"
+        lines = @(@{ description = "X"; quantity = 1; unitPrice = 10; taxCode = $codigoTaxa })
+    } | ConvertTo-Json
+    $c1 = Get-StatusCode { Invoke-RestMethod "$base/finance/credit-notes" -Method Post -Body $body -ContentType "application/json" -Headers $salesHeaders }
+    if ($c1 -ne 403) { throw "Sales creditou: esperado 403, obtido $c1" }
+
+    # Sales tambem nao regista recebimentos: quem pode declarar dinheiro
+    # recebido sem cobrar nada pode fazer uma divida desaparecer.
+    $body = @{ method = "NU"; settlements = @(@{ salesInvoiceId = $script:cicloId; amount = 100 }) } | ConvertTo-Json
+    $c2 = Get-StatusCode { Invoke-RestMethod "$base/finance/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $salesHeaders }
+    if ($c2 -ne 403) { throw "Sales registou recebimento: esperado 403, obtido $c2" }
+
+    "403 nas duas direccoes"
+}
+
+Test-Case "29. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
-    $deadline = (Get-Date).AddSeconds(180)
+    $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
     if (-not $up) { throw "API nao voltou" }
 

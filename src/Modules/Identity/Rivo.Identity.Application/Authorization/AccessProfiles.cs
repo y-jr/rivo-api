@@ -52,20 +52,26 @@ public static class AccessProfiles
                 .. FinancePermissions.All,
                 .. CommercialPermissions.All],
 
-            // `Manager` deixa de estar vazio: decidir sobre pedidos de
-            // aprovação é a primeira competência que um perfil de chefia tem no
-            // sistema. **Sem gerir políticas** — quem configura as alçadas
-            // decidiria indirectamente o que pode aprovar sozinho, que é a
-            // mesma escalada que ADR-015 fecha em `hr`.
-            [Manager] = [ApprovalPermissions.RequestsRead, ApprovalPermissions.RequestsDecide],
+            // `Manager` decide sobre pedidos de aprovação — incluindo pedidos de
+            // pagamento — e regista facturas de compra e pede que sejam pagas.
+            //
+            // **Sem gerir políticas** (quem configura as alçadas decidiria
+            // indirectamente o que pode aprovar sozinho) e **sem executar
+            // pagamentos**: quem aprova não paga, e BR-3 começa aqui, no
+            // catálogo, antes de o domínio a impor.
+            [Manager] = [
+                ApprovalPermissions.RequestsRead,
+                ApprovalPermissions.RequestsDecide,
+                .. FinancePermissions.ForPayables],
 
-            // `Finance` acrescenta a supervisão da facturação: consulta tudo e
-            // é quem anula. **Sem emitir** — quem anula não emite, e é a mesma
-            // segregação de BR-3 aplicada ao documento em vez de ao pagamento.
+            // `Finance` é a tesouraria e a supervisão: regista o dinheiro que
+            // entra, credita, anula e estorna. **Sem emitir facturas** — quem
+            // desfaz não faz, e é a segregação de BR-3 aplicada ao documento em
+            // vez de ao pagamento.
             [Finance] = [
                 ApprovalPermissions.RequestsRead,
                 ApprovalPermissions.RequestsDecide,
-                FinancePermissions.InvoicesRead,
+                .. FinancePermissions.ForTreasury,
                 FinancePermissions.InvoicesCancel],
 
             // Note-se a ausência de `hr.positions.write`: RH atribui Cargos,

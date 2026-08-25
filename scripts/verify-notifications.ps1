@@ -194,7 +194,7 @@ where ur.user_id = '$alvoId' and r.name = 'Finance'
 Test-Case "13. Notificacoes sobrevivem ao reinicio da stack" {
     $before = Invoke-Sql "select count(*) from notifications.notification"
     Restart-RivoStack
-    $deadline = (Get-Date).AddSeconds(180)
+    $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
     if (-not $up) { throw "API nao voltou" }
     $after = Invoke-Sql "select count(*) from notifications.notification"

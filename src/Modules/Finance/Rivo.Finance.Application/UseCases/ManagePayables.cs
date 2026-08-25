@@ -1,0 +1,512 @@
+using Rivo.Audit.Contracts;
+using Rivo.Finance.Application.Abstractions;
+using Rivo.Finance.Domain;
+
+namespace Rivo.Finance.Application.UseCases;
+
+// ---------- Tesouraria ----------
+
+public sealed class OpenBankAccount(IPayablesStore store, IAuditTrail audit)
+{
+    public async Task<OpenAccountResult> ExecuteAsync(
+        string name,
+        string bank,
+        string? iban,
+        string currency,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        BankAccount conta;
+
+        try
+        {
+            conta = BankAccount.Open(name, bank, iban, currency);
+        }
+        catch (ArgumentException error)
+        {
+            return OpenAccountResult.Rejected(error.Message);
+        }
+
+        await store.AddAccountAsync(conta, cancellationToken);
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                FinanceAuditActions.AccountOpened,
+                FinanceAuditEntityTypes.BankAccount,
+                conta.Id.ToString(),
+                context,
+                NewValue: $$"""{"name":"{{conta.Name}}","bank":"{{conta.Bank}}","currency":"{{conta.Currency}}"}"""),
+            cancellationToken);
+
+        return OpenAccountResult.Success(conta.Id);
+    }
+}
+
+public sealed record OpenAccountResult(bool Succeeded, Guid? AccountId, string? Error)
+{
+    public static OpenAccountResult Success(Guid id) => new(true, id, null);
+
+    public static OpenAccountResult Rejected(string error) => new(false, null, error);
+}
+
+/// <summary>
+/// Entrada de fundos numa conta.
+///
+/// <para>
+/// <strong>Não é o recebimento de uma factura</strong> — é o carregamento da
+/// conta. Ligar os dois é Contabilidade & Fecho, que não existe; misturá-los
+/// aqui faria o saldo bater por acidente e depois deixar de bater.
+/// </para>
+/// </summary>
+public sealed class DepositToAccount(IPayablesStore store, IAuditTrail audit)
+{
+    public async Task<AccountMovementOutcome> ExecuteAsync(
+        Guid accountId,
+        decimal amount,
+        string? reference,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        var conta = await store.FindAccountForUpdateAsync(accountId, cancellationToken);
+
+        if (conta is null)
+        {
+            return AccountMovementOutcome.NotFound;
+        }
+
+        try
+        {
+            conta.Deposit(amount);
+        }
+        catch (Exception error) when (error is ArgumentException or ArgumentOutOfRangeException or InvalidOperationException)
+        {
+            return AccountMovementOutcome.Rejected;
+        }
+
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                FinanceAuditActions.AccountDeposited,
+                FinanceAuditEntityTypes.BankAccount,
+                conta.Id.ToString(),
+                context,
+                NewValue: $$"""{"amount":{{amount}},"balance":{{conta.Balance}},"reference":"{{reference}}"}"""),
+            cancellationToken);
+
+        return AccountMovementOutcome.Done;
+    }
+}
+
+public enum AccountMovementOutcome
+{
+    Done,
+    NotFound,
+    Rejected,
+}
+
+public sealed class ListBankAccounts(IPayablesStore store)
+{
+    public async Task<IReadOnlyList<BankAccountView>> ExecuteAsync(
+        bool includeClosed,
+        CancellationToken cancellationToken)
+    {
+        var contas = await store.ListAccountsAsync(includeClosed, cancellationToken);
+
+        return [.. contas.Select(c => new BankAccountView(
+            c.Id, c.Name, c.Bank, c.Iban, c.Currency, c.Balance, c.IsActive))];
+    }
+}
+
+public sealed record BankAccountView(
+    Guid AccountId,
+    string Name,
+    string Bank,
+    string? Iban,
+    string Currency,
+    decimal Balance,
+    bool IsActive);
+
+// ---------- Contas a Pagar ----------
+
+public sealed class RegisterPurchaseInvoice(IPayablesStore store, IAuditTrail audit)
+{
+    public async Task<RegisterPurchaseInvoiceResult> ExecuteAsync(
+        string supplierInvoiceNumber,
+        string supplierName,
+        string supplierTaxId,
+        DateOnly issuedOn,
+        DateOnly dueOn,
+        string currency,
+        decimal netTotal,
+        decimal taxTotal,
+        string? description,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        PurchaseInvoice compra;
+
+        try
+        {
+            compra = PurchaseInvoice.Register(
+                supplierInvoiceNumber,
+                // Nulo enquanto `procurement` não existir. Quando existir, é
+                // este identificador que passa a apontar ao fornecedor.
+                supplierId: null,
+                new PayeeParty(supplierName, supplierTaxId),
+                issuedOn, dueOn, currency, netTotal, taxTotal, description);
+        }
+        catch (Exception error) when (error is ArgumentException or ArgumentOutOfRangeException)
+        {
+            return RegisterPurchaseInvoiceResult.Rejected(error.Message);
+        }
+
+        // Registar a mesma factura duas vezes é a forma mais comum de pagar a
+        // dobrar. O agregado não vê o conjunto; esta camada vê.
+        if (await store.PurchaseInvoiceExistsAsync(
+                compra.SupplierTaxId, compra.SupplierInvoiceNumber, cancellationToken))
+        {
+            return RegisterPurchaseInvoiceResult.Duplicate();
+        }
+
+        await store.AddPurchaseInvoiceAsync(compra, cancellationToken);
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                FinanceAuditActions.PurchaseInvoiceRegistered,
+                FinanceAuditEntityTypes.PurchaseInvoice,
+                compra.Id.ToString(),
+                context,
+                NewValue: $$"""{"number":"{{compra.SupplierInvoiceNumber}}","supplierTaxId":"{{compra.SupplierTaxId}}","grossTotal":{{compra.GrossTotal}}}"""),
+            cancellationToken);
+
+        return RegisterPurchaseInvoiceResult.Success(compra.Id);
+    }
+}
+
+public sealed record RegisterPurchaseInvoiceResult(
+    RegisterPurchaseInvoiceOutcome Outcome,
+    Guid? PurchaseInvoiceId,
+    string? Error)
+{
+    public static RegisterPurchaseInvoiceResult Success(Guid id) =>
+        new(RegisterPurchaseInvoiceOutcome.Registered, id, null);
+
+    public static RegisterPurchaseInvoiceResult Duplicate() =>
+        new(RegisterPurchaseInvoiceOutcome.Duplicate, null, null);
+
+    public static RegisterPurchaseInvoiceResult Rejected(string error) =>
+        new(RegisterPurchaseInvoiceOutcome.Rejected, null, error);
+}
+
+public enum RegisterPurchaseInvoiceOutcome
+{
+    Registered,
+    Duplicate,
+    Rejected,
+}
+
+public sealed class ListPurchaseInvoices(IPayablesStore store)
+{
+    public async Task<IReadOnlyList<PurchaseInvoiceView>> ExecuteAsync(
+        DateOnly? dueBefore,
+        CancellationToken cancellationToken)
+    {
+        var compras = await store.ListPurchaseInvoicesAsync(dueBefore, cancellationToken);
+
+        return [.. compras.Select(ToView)];
+    }
+
+    internal static PurchaseInvoiceView ToView(PurchaseInvoice compra) =>
+        new(
+            compra.Id,
+            compra.SupplierInvoiceNumber,
+            compra.SupplierName,
+            compra.SupplierTaxId,
+            compra.IssuedOn,
+            compra.DueOn,
+            compra.Currency,
+            compra.NetTotal,
+            compra.TaxTotal,
+            compra.GrossTotal,
+            compra.Status.ToString(),
+            compra.Description,
+            compra.CancelledAt,
+            compra.CancellationReason);
+}
+
+public sealed record PurchaseInvoiceView(
+    Guid PurchaseInvoiceId,
+    string SupplierInvoiceNumber,
+    string SupplierName,
+    string SupplierTaxId,
+    DateOnly IssuedOn,
+    DateOnly DueOn,
+    string Currency,
+    decimal NetTotal,
+    decimal TaxTotal,
+    decimal GrossTotal,
+    string Status,
+    string? Description,
+    DateTimeOffset? CancelledAt,
+    string? CancellationReason);
+
+public sealed class GetPurchaseInvoice(IPayablesStore store)
+{
+    public async Task<PurchaseInvoiceView?> ExecuteAsync(Guid invoiceId, CancellationToken cancellationToken)
+    {
+        var compra = await store.FindPurchaseInvoiceAsync(invoiceId, cancellationToken);
+
+        return compra is null ? null : ListPurchaseInvoices.ToView(compra);
+    }
+}
+
+// ---------- Pedidos de pagamento ----------
+
+/// <summary>
+/// Cria um pedido de pagamento **e submete-o a governança no mesmo acto**.
+///
+/// <para>
+/// Os dois passos são um só de propósito: BR-1 não admite pagamento sem decisão
+/// registada, e criar primeiro para submeter depois deixaria uma janela em que
+/// existe um pedido pagável sem processo.
+/// </para>
+/// </summary>
+public sealed class CreatePaymentRequest(
+    IPayablesStore store,
+    IPaymentApproval approval,
+    IAuditTrail audit)
+{
+    public async Task<CreatePaymentRequestResult> ExecuteAsync(
+        Guid purchaseInvoiceId,
+        decimal amount,
+        Guid requestedByEmployeeId,
+        DateOnly requestedOn,
+        string? notes,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        // Sem governança não se cria. Um pedido que nunca pudesse ser aprovado
+        // seria dívida a fingir que está a caminho.
+        if (!approval.IsAvailable)
+        {
+            return CreatePaymentRequestResult.ApprovalUnavailable();
+        }
+
+        var compra = await store.FindPurchaseInvoiceAsync(purchaseInvoiceId, cancellationToken);
+
+        if (compra is null)
+        {
+            return CreatePaymentRequestResult.InvoiceNotFound();
+        }
+
+        // Três pedidos de metade cada passariam um a um. Juntos pagam uma vez e
+        // meia — é a invariante sobre o conjunto que o agregado não vê.
+        var comprometido = await store.CommittedAsync(purchaseInvoiceId, cancellationToken);
+        var disponivel = compra.GrossTotal - comprometido;
+
+        if (amount > disponivel)
+        {
+            return CreatePaymentRequestResult.ExceedsInvoice(
+                $"A factura {compra.SupplierInvoiceNumber} é de {compra.GrossTotal:N2}, já tem " +
+                $"{comprometido:N2} em pedidos, e este é de {amount:N2}.");
+        }
+
+        var submissao = await approval.SubmitAsync(
+            // O identificador do pedido ainda não existe — gera-se depois de a
+            // submissão correr bem. Usa-se o da factura como referência de
+            // origem, que é o que `approval` guarda e devolve sem interpretar.
+            purchaseInvoiceId,
+            requestedByEmployeeId,
+            amount,
+            compra.Currency,
+            departmentId: null,
+            $"Pagamento de {amount:N2} {compra.Currency} a {compra.SupplierName}, " +
+            $"factura {compra.SupplierInvoiceNumber}",
+            cancellationToken);
+
+        if (!submissao.Submitted)
+        {
+            return CreatePaymentRequestResult.ApprovalRefused(submissao.Reason!);
+        }
+
+        PaymentRequest pedido;
+
+        try
+        {
+            pedido = PaymentRequest.Create(
+                compra, amount, requestedByEmployeeId, submissao.RequestId!.Value, requestedOn, notes);
+        }
+        catch (Exception error) when (error is ArgumentException or ArgumentOutOfRangeException or InvalidOperationException)
+        {
+            return CreatePaymentRequestResult.Rejected(error.Message);
+        }
+
+        await store.AddPaymentRequestAsync(pedido, cancellationToken);
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                FinanceAuditActions.PaymentRequested,
+                FinanceAuditEntityTypes.PaymentRequest,
+                pedido.Id.ToString(),
+                context,
+                NewValue: $$"""{"amount":{{pedido.Amount}},"currency":"{{pedido.Currency}}","invoice":"{{pedido.SupplierInvoiceNumber}}","approvalRequest":"{{pedido.ApprovalRequestId}}"}"""),
+            cancellationToken);
+
+        return CreatePaymentRequestResult.Success(pedido.Id, pedido.ApprovalRequestId);
+    }
+}
+
+public sealed record CreatePaymentRequestResult(
+    CreatePaymentRequestOutcome Outcome,
+    Guid? PaymentRequestId,
+    Guid? ApprovalRequestId,
+    string? Error)
+{
+    public static CreatePaymentRequestResult Success(Guid id, Guid approvalId) =>
+        new(CreatePaymentRequestOutcome.Created, id, approvalId, null);
+
+    public static CreatePaymentRequestResult InvoiceNotFound() =>
+        new(CreatePaymentRequestOutcome.InvoiceNotFound, null, null, null);
+
+    public static CreatePaymentRequestResult ApprovalUnavailable() =>
+        new(CreatePaymentRequestOutcome.ApprovalUnavailable, null, null, null);
+
+    public static CreatePaymentRequestResult ApprovalRefused(string error) =>
+        new(CreatePaymentRequestOutcome.ApprovalRefused, null, null, error);
+
+    public static CreatePaymentRequestResult ExceedsInvoice(string error) =>
+        new(CreatePaymentRequestOutcome.ExceedsInvoice, null, null, error);
+
+    public static CreatePaymentRequestResult Rejected(string error) =>
+        new(CreatePaymentRequestOutcome.Rejected, null, null, error);
+}
+
+public enum CreatePaymentRequestOutcome
+{
+    Created,
+    InvoiceNotFound,
+
+    /// <summary>Sem motor de governança. 501 — a capacidade não existe.</summary>
+    ApprovalUnavailable,
+
+    /// <summary>Sem política aplicável, empate, ou sem aprovadores. 409.</summary>
+    ApprovalRefused,
+
+    /// <summary>Já há pedidos que cobrem a factura. 409.</summary>
+    ExceedsInvoice,
+
+    Rejected,
+}
+
+public sealed class ListPaymentRequests(IPayablesStore store)
+{
+    public async Task<IReadOnlyList<PaymentRequestView>> ExecuteAsync(
+        Guid? purchaseInvoiceId,
+        CancellationToken cancellationToken)
+    {
+        var pedidos = await store.ListPaymentRequestsAsync(purchaseInvoiceId, cancellationToken);
+
+        return [.. pedidos.Select(ToView)];
+    }
+
+    internal static PaymentRequestView ToView(PaymentRequest p) =>
+        new(
+            p.Id,
+            p.PurchaseInvoiceId,
+            p.SupplierInvoiceNumber,
+            p.Payee.Name,
+            p.Payee.TaxId,
+            p.Amount,
+            p.Currency,
+            p.Status.ToString(),
+            p.RequestedByEmployeeId,
+            p.RequestedOn,
+            p.ApprovalRequestId,
+            p.ExecutedFromAccountId,
+            p.ExecutedByEmployeeId,
+            p.ExecutedAt,
+            p.ExecutedMethod?.ToString(),
+            p.ExecutionReference,
+            p.Notes,
+            p.CancelledAt,
+            p.CancellationReason);
+}
+
+/// <param name="ApprovalRequestId">
+/// O processo em `approval`. **O estado dele não vem aqui** — consulta-se em
+/// `/approval/requests/{id}`, porque copiá-lo seria guardar uma verdade que é
+/// de outro módulo e que fica obsoleta em silêncio.
+/// </param>
+public sealed record PaymentRequestView(
+    Guid PaymentRequestId,
+    Guid PurchaseInvoiceId,
+    string SupplierInvoiceNumber,
+    string PayeeName,
+    string PayeeTaxId,
+    decimal Amount,
+    string Currency,
+    string Status,
+    Guid RequestedByEmployeeId,
+    DateOnly RequestedOn,
+    Guid ApprovalRequestId,
+    Guid? ExecutedFromAccountId,
+    Guid? ExecutedByEmployeeId,
+    DateTimeOffset? ExecutedAt,
+    string? ExecutedMethod,
+    string? ExecutionReference,
+    string? Notes,
+    DateTimeOffset? CancelledAt,
+    string? CancellationReason);
+
+public sealed class GetPaymentRequest(IPayablesStore store)
+{
+    public async Task<PaymentRequestView?> ExecuteAsync(Guid requestId, CancellationToken cancellationToken)
+    {
+        var pedido = await store.FindPaymentRequestAsync(requestId, cancellationToken);
+
+        return pedido is null ? null : ListPaymentRequests.ToView(pedido);
+    }
+}
+
+public sealed class CancelPaymentRequest(IPayablesStore store, IAuditTrail audit, TimeProvider clock)
+{
+    public async Task<CancelInvoiceResult> ExecuteAsync(
+        Guid requestId,
+        string reason,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        var pedido = await store.FindPaymentRequestForUpdateAsync(requestId, cancellationToken);
+
+        if (pedido is null)
+        {
+            return CancelInvoiceResult.NotFound();
+        }
+
+        try
+        {
+            pedido.Cancel(reason, clock.GetUtcNow());
+        }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        {
+            return CancelInvoiceResult.Rejected(error.Message);
+        }
+
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                FinanceAuditActions.PaymentRequestCancelled,
+                FinanceAuditEntityTypes.PaymentRequest,
+                pedido.Id.ToString(),
+                context,
+                NewValue: $$"""{"reason":"{{pedido.CancellationReason}}"}"""),
+            cancellationToken);
+
+        return CancelInvoiceResult.Success();
+    }
+}

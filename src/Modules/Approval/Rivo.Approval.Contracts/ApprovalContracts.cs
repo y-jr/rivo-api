@@ -144,7 +144,19 @@ public static class ApprovalProcessTypes
     /// <summary>Pedido de férias (BR do módulo `hr`).</summary>
     public const string LeaveRequest = "hr.leave_request";
 
-    public static readonly IReadOnlyList<string> All = [PositionAssignment, LeaveRequest];
+    /// <summary>
+    /// Pedido de pagamento a fornecedor (BR-1).
+    ///
+    /// <para>
+    /// É o processo que a governança existe para servir: nenhum pagamento se
+    /// executa sem decisão registada aqui, e a decisão é **revalidada no
+    /// momento da execução** (BR-5). O valor selecciona a faixa da política.
+    /// </para>
+    /// </summary>
+    public const string PaymentRequest = "finance.payment_request";
+
+    public static readonly IReadOnlyList<string> All =
+        [PositionAssignment, LeaveRequest, PaymentRequest];
 }
 
 /// <summary>Catálogo de permissões de `approval`, declarado pelo próprio módulo.</summary>

@@ -55,6 +55,16 @@ services:
       # Intervalo curto em desenvolvimento, para que a entrega seja observável
       # sem esperar.
       NotificationDelivery__PollIntervalSeconds: "2"
+
+      # Mais generoso do que os 180 s de produção, e por uma razão medida: um
+      # `docker compose restart` **não respeita `depends_on`**, por isso a API
+      # sobe enquanto o SQL Server ainda recupera a base — e num container de
+      # desenvolvimento, com o volume cheio de dados de dez suites, essa
+      # recuperação passou dos três minutos a 2026-08-25.
+      #
+      # Em produção a base é externa e já está de pé quando o container arranca;
+      # aqui reinicia-se com ele.
+      Database__StartupTimeoutSeconds: "420"
     ports:
       # Em produção a API não publica porto nenhum — chega-se lá pelo proxy.
       # Localmente não há proxy, e as suites de verificação falam com

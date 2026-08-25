@@ -1,0 +1,356 @@
+# Verificação de Contas a Pagar e Tesouraria.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#   pwsh -File scripts/verify-payables.ps1
+#
+# É onde BR-1, BR-3, BR-5 e BR-17 se encontram — o ponto de consistência forte
+# do sistema, e a razão pela qual o ADR-001 escolheu monólito modular.
+#
+# Monta o cenário pelas rotas reais de `hr`, `approval` e `finance`. Sem atalho
+# por SQL de propósito: se a montagem falhar, é porque o caminho real de
+# pagamento está partido.
+#
+# Re-executável: cada corrida cria os seus colaboradores, cargo, contas e
+# facturas.
+
+$ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "_ambiente.ps1")
+$base = Get-RivoBaseUrl
+$failures = 0
+
+function Test-Case {
+    param([string]$Name, [scriptblock]$Body)
+    try {
+        $detail = & $Body
+        Write-Host ("  PASSA  " + $Name + $(if ($detail) { "  -- $detail" } else { "" })) -ForegroundColor Green
+    }
+    catch {
+        Write-Host ("  FALHA  " + $Name + "  -- " + $_.Exception.Message) -ForegroundColor Red
+        $script:failures++
+    }
+}
+
+function Get-StatusCode {
+    param([scriptblock]$Request)
+    try { & $Request | Out-Null; return 200 }
+    catch {
+        if ($_.Exception.Response) { return [int]$_.Exception.Response.StatusCode }
+        if ($_.Exception.Message -match "401|Unauthorized") { return 401 }
+        throw
+    }
+}
+
+function Invoke-Sql { param([string]$q) return (Invoke-RivoSql $q) }
+
+$dotenv = Get-RivoCredentials
+
+function Get-Token {
+    param([string]$Email, [string]$Password)
+    $body = @{ email = $Email; password = $Password } | ConvertTo-Json
+    return (Invoke-RestMethod "$base/identity/login" -Method Post -Body $body -ContentType "application/json").accessToken
+}
+
+$pass = "Rivo!Password2026"
+$stamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+$curto = "$stamp".Substring("$stamp".Length - 6)
+
+$adminHeaders = @{ Authorization = "Bearer " + (Get-Token $dotenv["BOOTSTRAP_ADMIN_EMAIL"] $dotenv["BOOTSTRAP_ADMIN_PASSWORD"]) }
+
+function New-PerfilHeaders {
+    param([string]$Perfil, [string]$Sufixo)
+    $email = "$Sufixo@rivo.ao"
+    $body = @{ email = $email; password = $script:pass } | ConvertTo-Json
+    $id = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $body -ContentType "application/json").userId
+    $body = @{ profile = $Perfil } | ConvertTo-Json
+    Invoke-RestMethod "$base/identity/users/$id/roles" -Method Post -Body $body -ContentType "application/json" -Headers $script:adminHeaders | Out-Null
+    return @{ Authorization = "Bearer " + (Get-Token $email $script:pass) }
+}
+
+# `Manager` pede e regista facturas; `Finance` executa. Nenhum faz os dois.
+$managerHeaders = New-PerfilHeaders "Manager" "chefe-p-$stamp"
+$financeHeaders = New-PerfilHeaders "Finance" "tesouraria-p-$stamp"
+
+# --- Cenário, montado pelas rotas reais.
+$requisitante = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+    -Body (@{ fullName = "Requisitante $curto" } | ConvertTo-Json)).employeeId
+
+$aprovador = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+    -Body (@{ fullName = "Aprovador $curto" } | ConvertTo-Json)).employeeId
+
+$tesoureiro = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+    -Body (@{ fullName = "Tesoureiro $curto" } | ConvertTo-Json)).employeeId
+
+# Cargo sem autoridade de aprovação: o que confere autoridade passaria ele
+# próprio por governança (BR-20), e não é isso que se testa aqui.
+$cargo = (Invoke-RestMethod "$base/hr/positions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+    -Body (@{ name = "Chefe Financeiro $curto"; hierarchyLevel = 2; grantsApprovalAuthority = $false } | ConvertTo-Json)).positionId
+
+Invoke-RestMethod "$base/hr/employees/$aprovador/positions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+    -Body (@{ positionId = $cargo } | ConvertTo-Json) | Out-Null
+
+# Política só se ainda não existir: duas igualmente específicas são empate, e o
+# empate recusa a submissão (ADR-034). Sem esta guarda a suite só passava à
+# primeira.
+$cargoDaPolitica = Invoke-Sql @"
+select top 1 cast(s.approver_position_id as varchar(36))
+from approval.policy p join approval.policy_step s on s.policy_id = p.id
+where p.process_type = 'finance.payment_request' and p.is_active = 1
+order by s.[order]
+"@
+
+if (-not $cargoDaPolitica) {
+    Invoke-RestMethod "$base/approval/policies" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+        -Body (@{ processType = "finance.payment_request"; steps = @(@{ approverPositionId = $cargo }) } | ConvertTo-Json -Depth 5) | Out-Null
+}
+else {
+    # A política já existe e aprova por outro cargo. O aprovador tem de ocupar
+    # *esse*, senão não fica atribuído ao passo.
+    Invoke-RestMethod "$base/hr/employees/$aprovador/positions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+        -Body (@{ positionId = $cargoDaPolitica } | ConvertTo-Json) | Out-Null
+}
+
+Write-Host "`n=== Contas a Pagar e Tesouraria ===`n"
+
+Test-Case "1. Tres funcoes, tres pessoas (BR-3 no catalogo)" {
+    # Quem pede não executa.
+    $pede = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='Manager' and c.claim_value='finance.payments.request'"
+    $paga = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='Manager' and c.claim_value='finance.payments.execute'"
+    if ($pede -ne "1") { throw "Manager nao pede pagamentos" }
+    if ($paga -ne "0") { throw "Manager pode executar pagamentos" }
+
+    # Quem executa não pede.
+    $fPede = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='Finance' and c.claim_value='finance.payments.request'"
+    $fPaga = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='Finance' and c.claim_value='finance.payments.execute'"
+    if ($fPede -ne "0") { throw "Finance pode pedir pagamentos" }
+    if ($fPaga -ne "1") { throw "Finance nao executa pagamentos" }
+
+    "Manager pede sem pagar; Finance paga sem pedir"
+}
+
+Test-Case "2. Abrir conta e carregar fundos" {
+    $body = @{ name = "Operacional $curto"; bank = "BAI"; currency = "AOA" } | ConvertTo-Json
+    $c = Invoke-RestMethod "$base/finance/accounts" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+    $script:contaId = $c.accountId
+
+    $body = @{ amount = 200000; reference = "Carregamento inicial" } | ConvertTo-Json
+    Invoke-RestMethod "$base/finance/accounts/$($script:contaId)/deposits" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders | Out-Null
+
+    $saldo = Invoke-Sql "select balance from finance.bank_account where id='$($script:contaId)'"
+    if ([decimal]$saldo -ne 200000) { throw "saldo $saldo, esperado 200000" }
+    "conta em AOA com 200000"
+}
+
+Test-Case "3. Registar factura de compra com o numero do fornecedor" {
+    $body = @{
+        supplierInvoiceNumber = "FT $curto"; supplierName = "Sonangol"; supplierTaxId = "5401$curto"
+        netTotal = 100000; taxTotal = 14000; dueOn = "2026-12-31"
+    } | ConvertTo-Json
+    $f = Invoke-RestMethod "$base/finance/purchase-invoices" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+    $script:compraId = $f.purchaseInvoiceId
+
+    $compra = Invoke-RestMethod "$base/finance/purchase-invoices/$($script:compraId)" -Headers $managerHeaders
+    if ($compra.supplierInvoiceNumber -ne "FT $curto") { throw "numero do fornecedor perdido" }
+    if ($compra.grossTotal -ne 114000) { throw "total $($compra.grossTotal), esperado 114000" }
+    "FT $curto de 114000; o Rivo nao numera facturas de compra"
+}
+
+Test-Case "4. A mesma factura do mesmo fornecedor duas vezes e recusada" {
+    $body = @{
+        supplierInvoiceNumber = "FT $curto"; supplierName = "Sonangol"; supplierTaxId = "5401$curto"
+        netTotal = 1; taxTotal = 0; dueOn = "2026-12-31"
+    } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/purchase-invoices" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+
+    $ux = Invoke-Sql "select count(*) from sys.indexes where object_id=object_id('finance.purchase_invoice') and name='ux_purchase_invoice_supplier_number' and is_unique=1"
+    if ($ux -ne "1") { throw "indice unico em falta na base de dados" }
+    "409 no caso de uso, e indice unico como segunda linha"
+}
+
+Test-Case "5. Pedido de pagamento devolve 202, nao 201" {
+    $body = @{
+        purchaseInvoiceId = $script:compraId; amount = 114000; requestedByEmployeeId = $requisitante
+    } | ConvertTo-Json
+    $p = Invoke-RestMethod "$base/finance/payment-requests" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+    $script:pedidoId = $p.paymentRequestId
+    $script:processoId = $p.approvalRequestId
+
+    if ($p.estado -ne "PendenteAprovacao") { throw "estado '$($p.estado)'" }
+    if (-not $script:processoId) { throw "pedido sem processo de aprovacao (BR-1)" }
+
+    $estado = Invoke-Sql "select status from finance.payment_request where id='$($script:pedidoId)'"
+    if ($estado -ne "Eligible") { throw "estado '$estado', esperado Eligible" }
+    "202: existe e ainda nao e pagavel"
+}
+
+Test-Case "6. O pedido nao guarda estado de aprovacao (anti-padrao do prototipo)" {
+    # `payment_requests` do prototipo tinha o workflow na propria tabela. Aqui
+    # os estados sao dois, e o do processo vive em `approval`.
+    $colunas = Invoke-Sql @"
+select count(*) from information_schema.columns
+where table_schema='finance' and table_name='payment_request'
+  and (column_name like '%approv%status%' or column_name like '%step%' or column_name like '%approver%')
+"@
+    if ($colunas -ne "0") { throw "$colunas colunas de workflow no pedido de pagamento" }
+
+    $ref = Invoke-Sql "select count(*) from finance.payment_request where id='$($script:pedidoId)' and approval_request_id is not null"
+    if ($ref -ne "1") { throw "pedido sem ponteiro para o processo" }
+    "so um ponteiro para `approval`, sem copia do estado"
+}
+
+Test-Case "7. BR-1: sem decisao aprovada nao se paga" {
+    $body = @{ bankAccountId = $script:contaId; executedByEmployeeId = $tesoureiro; method = "TB" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+
+    $saldo = Invoke-Sql "select balance from finance.bank_account where id='$($script:contaId)'"
+    if ([decimal]$saldo -ne 200000) { throw "o saldo mexeu: $saldo" }
+    "409 e o dinheiro nao saiu"
+}
+
+Test-Case "8. BR-3: quem aprova nao paga" {
+    $body = @{ decidedByEmployeeId = $aprovador; action = "Approved" } | ConvertTo-Json
+    Invoke-RestMethod "$base/approval/requests/$($script:processoId)/decisions" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    $body = @{ bankAccountId = $script:contaId; executedByEmployeeId = $aprovador; method = "TB" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
+
+    # **403 e nao 409:** nao e o estado que impede, e *esta pessoa*.
+    if ($code -ne 403) { throw "esperado 403, obtido $code" }
+
+    $saldo = Invoke-Sql "select balance from finance.bank_account where id='$($script:contaId)'"
+    if ([decimal]$saldo -ne 200000) { throw "o saldo mexeu: $saldo" }
+
+    # A tentativa fica na trilha como evento proprio.
+    $trilha = Invoke-Sql "select count(*) from audit.audit_event where action='finance.payment_request.segregation_refused' and entity_id='$($script:pedidoId)'"
+    if ([int]$trilha -lt 1) { throw "tentativa nao registada na trilha" }
+
+    "403, dinheiro intacto, e a tentativa na trilha"
+}
+
+Test-Case "9. BR-5 (saldo): conta sem fundos recusa" {
+    $body = @{ name = "Sem fundos $curto"; bank = "BFA"; currency = "AOA" } | ConvertTo-Json
+    $pobre = (Invoke-RestMethod "$base/finance/accounts" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders).accountId
+
+    $body = @{ amount = 1000 } | ConvertTo-Json
+    Invoke-RestMethod "$base/finance/accounts/$pobre/deposits" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders | Out-Null
+
+    $body = @{ bankAccountId = $pobre; executedByEmployeeId = $tesoureiro; method = "TB" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+
+    $saldo = Invoke-Sql "select balance from finance.bank_account where id='$pobre'"
+    if ([decimal]$saldo -ne 1000) { throw "o saldo da conta pobre mexeu: $saldo" }
+    "409 com a decisao aprovada mas sem dinheiro"
+}
+
+Test-Case "10. Moeda do pedido e da conta tem de coincidir" {
+    $body = @{ name = "Dolares $curto"; bank = "BFA"; currency = "USD" } | ConvertTo-Json
+    $usd = (Invoke-RestMethod "$base/finance/accounts" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders).accountId
+
+    $body = @{ amount = 900000 } | ConvertTo-Json
+    Invoke-RestMethod "$base/finance/accounts/$usd/deposits" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders | Out-Null
+
+    $body = @{ bankAccountId = $usd; executedByEmployeeId = $tesoureiro; method = "TB" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "sem conversao automatica: o cambio e uma decisao"
+}
+
+Test-Case "11. Executar: dinheiro sai e o pedido fica executado" {
+    $body = @{
+        bankAccountId = $script:contaId; executedByEmployeeId = $tesoureiro
+        method = "TB"; reference = "TRF-$curto"
+    } | ConvertTo-Json
+    $r = Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders
+
+    if ($r.saldoRestante -ne 86000) { throw "saldo restante $($r.saldoRestante), esperado 86000" }
+
+    $pedido = Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)" -Headers $managerHeaders
+    if ($pedido.status -ne "Executed") { throw "estado $($pedido.status)" }
+    if ($pedido.executedByEmployeeId -ne $tesoureiro) { throw "quem pagou nao ficou registado" }
+    if ($pedido.executionReference -ne "TRF-$curto") { throw "referencia perdida" }
+
+    "200000 - 114000 = 86000; quem pagou fica registado"
+}
+
+Test-Case "12. Pagar duas vezes recusa com a razao certa" {
+    $body = @{ bankAccountId = $script:contaId; executedByEmployeeId = $tesoureiro; method = "TB" } | ConvertTo-Json
+    try {
+        Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders | Out-Null
+        throw "esperado 409, o pedido passou"
+    }
+    catch {
+        if (-not $_.Exception.Response) { throw }
+        if ([int]$_.Exception.Response.StatusCode -ne 409) { throw "esperado 409, obtido $([int]$_.Exception.Response.StatusCode)" }
+
+        # A razao importa: sem verificar o estado antes do saldo, isto dizia
+        # "falta de dinheiro" e mandava procurar o problema no sitio errado.
+        $corpo = $_.ErrorDetails.Message
+        if ($corpo -notmatch "dobrar|executado") { throw "razao errada: $corpo" }
+    }
+
+    $saldo = Invoke-Sql "select balance from finance.bank_account where id='$($script:contaId)'"
+    if ([decimal]$saldo -ne 86000) { throw "o saldo mexeu outra vez: $saldo" }
+    "409 por 'ja executado', nao por saldo; dinheiro intacto"
+}
+
+Test-Case "13. Um pedido executado nao se cancela" {
+    $body = @{ reason = "Arrependimento" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    "o dinheiro saiu; desfazer e outro movimento"
+}
+
+Test-Case "14. Pedidos nao ultrapassam o total da factura" {
+    # A factura de 114000 ja tem um pedido de 114000. Mais um nao cabe.
+    $body = @{ purchaseInvoiceId = $script:compraId; amount = 1; requestedByEmployeeId = $requisitante } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    "tres pedidos de metade cada passariam um a um; juntos pagavam a mais"
+}
+
+Test-Case "15. Autorizacao: 401 sem token, 403 na funcao errada" {
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/accounts" }
+    if ($code -ne 401) { throw "sem token: esperado 401, obtido $code" }
+
+    # Finance nao pede pagamentos.
+    $body = @{ purchaseInvoiceId = $script:compraId; amount = 1; requestedByEmployeeId = $requisitante } | ConvertTo-Json
+    $c1 = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
+    if ($c1 -ne 403) { throw "Finance pediu pagamento: esperado 403, obtido $c1" }
+
+    # Manager nao executa.
+    $body = @{ bankAccountId = $script:contaId; executedByEmployeeId = $tesoureiro; method = "TB" } | ConvertTo-Json
+    $c2 = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($c2 -ne 403) { throw "Manager executou pagamento: esperado 403, obtido $c2" }
+
+    "401 e 403 nas duas direccoes da segregacao"
+}
+
+Test-Case "16. Execucao e auditada, com quem pagou e o processo" {
+    $n = Invoke-Sql "select count(*) from audit.audit_event where action='finance.payment_request.executed' and entity_id='$($script:pedidoId)'"
+    if ($n -ne "1") { throw "esperado 1 registo, obtido $n" }
+
+    $comProcesso = Invoke-Sql "select count(*) from audit.audit_event where action='finance.payment_request.executed' and entity_id='$($script:pedidoId)' and new_value like '%approvalRequest%'"
+    if ($comProcesso -ne "1") { throw "a trilha nao liga o pagamento ao processo de aprovacao" }
+    "1 registo, com quem pagou e o processo que o autorizou"
+}
+
+Test-Case "17. Dados sobrevivem ao reinicio da stack" {
+    Restart-RivoStack
+    $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
+    do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
+    if (-not $up) { throw "API nao voltou" }
+
+    $pedido = Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)" -Headers $managerHeaders
+    if ($pedido.status -ne "Executed") { throw "estado perdido: $($pedido.status)" }
+
+    $saldo = Invoke-Sql "select balance from finance.bank_account where id='$($script:contaId)'"
+    if ([decimal]$saldo -ne 86000) { throw "saldo perdido: $saldo" }
+    "pagamento e saldo intactos apos restart"
+}
+
+Write-Host ""
+if ($failures -gt 0) { Write-Host "$failures teste(s) falharam." -ForegroundColor Red; exit 1 }
+Write-Host "Todos os testes passaram." -ForegroundColor Green
+exit 0

@@ -51,6 +51,18 @@ public class ConcurrencyTokenTests
             "Criado com a política e nunca editado — alterar uma alçada é criar outra política, " +
             "porque os pedidos em curso guardam a que lhes foi aplicada (BR-6).",
 
+        ["PayeeParty"] =
+            "Retrato de a quem se paga, congelado. Objecto de valor sem identidade nem ciclo de " +
+            "vida próprio — vive nas colunas de quem o guarda, e é essa entidade que tem o contador.",
+
+        ["CreditNoteLine"] =
+            "Imutável, como a linha de factura: criada com a nota e nunca alterada. " +
+            "O cancelamento é na raiz, que tem o contador.",
+
+        ["ReceiptLine"] =
+            "Uma liquidação é facto: que quantia foi para que factura. Não se corrige — " +
+            "estorna-se o recibo inteiro e regista-se outro.",
+
         ["SalesInvoiceLine"] =
             "Imutável: criada com a factura e nunca alterada. A factura emite-se inteira e a partir " +
             "daí só o cancelamento altera estado — e esse é na raiz, que tem o contador.",

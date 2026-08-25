@@ -239,10 +239,47 @@ public static class FinanceAuditActions
     public const string InvoiceIssued = "finance.sales_invoice.issued";
     public const string InvoiceCancelled = "finance.sales_invoice.cancelled";
     public const string SeriesOpened = "finance.document_series.opened";
+
+    public const string CreditNoteIssued = "finance.credit_note.issued";
+    public const string CreditNoteCancelled = "finance.credit_note.cancelled";
+
+    public const string ReceiptRegistered = "finance.receipt.registered";
+
+    /// <summary>
+    /// O estorno de um recebimento. Acção própria e não um cancelamento
+    /// qualquer: a dívida volta a existir, e isso é facto com consequência.
+    /// </summary>
+    public const string ReceiptCancelled = "finance.receipt.cancelled";
+
+    public const string AccountOpened = "finance.bank_account.opened";
+    public const string AccountDeposited = "finance.bank_account.deposited";
+
+    public const string PurchaseInvoiceRegistered = "finance.purchase_invoice.registered";
+
+    public const string PaymentRequested = "finance.payment_request.created";
+    public const string PaymentRequestCancelled = "finance.payment_request.cancelled";
+
+    /// <summary>Dinheiro que saiu. É o registo mais sensível do módulo.</summary>
+    public const string PaymentExecuted = "finance.payment_request.executed";
+
+    /// <summary>
+    /// Tentativa de pagar um pedido que a própria pessoa aprovou (BR-3).
+    ///
+    /// <para>
+    /// Acção própria e não um erro qualquer: é evento de segurança, e uma
+    /// sequência delas contra o mesmo pedido é o padrão que interessa detectar.
+    /// </para>
+    /// </summary>
+    public const string PaymentSegregationRefused = "finance.payment_request.segregation_refused";
 }
 
 public static class FinanceAuditEntityTypes
 {
     public const string SalesInvoice = "finance.sales_invoice";
     public const string DocumentSeries = "finance.document_series";
+    public const string CreditNote = "finance.credit_note";
+    public const string Receipt = "finance.receipt";
+    public const string BankAccount = "finance.bank_account";
+    public const string PurchaseInvoice = "finance.purchase_invoice";
+    public const string PaymentRequest = "finance.payment_request";
 }

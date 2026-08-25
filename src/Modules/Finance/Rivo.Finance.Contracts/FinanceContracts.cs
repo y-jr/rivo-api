@@ -38,12 +38,91 @@ public static class FinancePermissions
     /// </summary>
     public const string SeriesWrite = "finance.series.write";
 
-    public static readonly IReadOnlyList<string> All =
-        [InvoicesRead, InvoicesWrite, InvoicesCancel, SeriesWrite];
+    /// <summary>Consultar recibos e o que ficou por receber.</summary>
+    public const string ReceiptsRead = "finance.receipts.read";
 
     /// <summary>
-    /// O que um perfil de facturação recebe: emitir e consultar, sem anular e
-    /// sem abrir séries.
+    /// Registar dinheiro recebido.
+    ///
+    /// <para>
+    /// <strong>Separada de <see cref="InvoicesWrite"/>.</strong> Emitir uma
+    /// factura é dizer o que é devido; registar um recibo é dizer que entrou
+    /// dinheiro. Quem pode declarar recebimentos sem cobrar nada pode fazer uma
+    /// dívida desaparecer — é a razão de a cobrança e a tesouraria serem
+    /// funções distintas.
+    /// </para>
+    ///
+    /// <para>
+    /// <strong>Estornar não vem com esta:</strong> exige
+    /// <see cref="InvoicesCancel"/>, porque desfazer um recebimento faz a dívida
+    /// voltar a existir.
+    /// </para>
     /// </summary>
-    public static readonly IReadOnlyList<string> ForBilling = [InvoicesRead, InvoicesWrite];
+    public const string ReceiptsWrite = "finance.receipts.write";
+
+    /// <summary>Consultar contas bancárias, facturas de compra e pedidos de pagamento.</summary>
+    public const string PayablesRead = "finance.payables.read";
+
+    /// <summary>
+    /// Registar facturas de compra, abrir contas e carregar fundos.
+    /// </summary>
+    public const string PayablesWrite = "finance.payables.write";
+
+    /// <summary>
+    /// Pedir um pagamento. Não o executa — submete-o a governança.
+    ///
+    /// <para>
+    /// Separada de <see cref="PaymentsExecute"/> porque são funções distintas:
+    /// quem pede não deve poder pagar sozinho o que pediu.
+    /// </para>
+    /// </summary>
+    public const string PaymentsRequest = "finance.payments.request";
+
+    /// <summary>
+    /// Executar um pagamento — tirar dinheiro da conta.
+    ///
+    /// <para>
+    /// <strong>A permissão abre a porta; as regras é que decidem.</strong> BR-1
+    /// exige decisão aprovada, BR-5 revalida-a no momento e verifica o saldo, e
+    /// BR-3 recusa se quem paga foi quem aprovou. Ter esta permissão não
+    /// dispensa nenhuma das três.
+    /// </para>
+    /// </summary>
+    public const string PaymentsExecute = "finance.payments.execute";
+
+    public static readonly IReadOnlyList<string> All =
+    [
+        InvoicesRead, InvoicesWrite, InvoicesCancel, SeriesWrite,
+        ReceiptsRead, ReceiptsWrite,
+        PayablesRead, PayablesWrite, PaymentsRequest, PaymentsExecute,
+    ];
+
+    /// <summary>
+    /// O que um perfil de facturação recebe: emitir e consultar — incluindo os
+    /// recibos, para saber o que está pago — **sem** registar recebimentos,
+    /// sem creditar e sem anular.
+    /// </summary>
+    public static readonly IReadOnlyList<string> ForBilling =
+        [InvoicesRead, InvoicesWrite, ReceiptsRead];
+
+    /// <summary>
+    /// O que um perfil de tesouraria recebe: ver o que é devido, registar o que
+    /// entrou, e **executar** o que já foi aprovado.
+    ///
+    /// <para>
+    /// <strong>Sem `PaymentsRequest`, e é BR-3 na forma do catálogo.</strong>
+    /// Quem executa não pede: se pedisse e pagasse, faltava só aprovar — e a
+    /// aprovação está em `approval`, que recusa quem submeteu (BR-2). As três
+    /// funções são de três pessoas.
+    /// </para>
+    /// </summary>
+    public static readonly IReadOnlyList<string> ForTreasury =
+        [InvoicesRead, ReceiptsRead, ReceiptsWrite, PayablesRead, PaymentsExecute];
+
+    /// <summary>
+    /// O que um perfil que compra recebe: registar facturas de fornecedor e
+    /// pedir que sejam pagas. **Não paga.**
+    /// </summary>
+    public static readonly IReadOnlyList<string> ForPayables =
+        [PayablesRead, PayablesWrite, PaymentsRequest];
 }

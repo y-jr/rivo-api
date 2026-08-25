@@ -107,8 +107,8 @@ Test-Case "4. Seed nao cria perfis fora do catalogo" {
 
 Test-Case "5. Seed repetido nao duplica" {
     # O seed corre a cada arranque; reiniciar a API executa-o segunda vez.
-    Restart-RivoStack -ApiOnly
-    $deadline = (Get-Date).AddSeconds(180)
+    Restart-RivoStack
+    $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do {
         Start-Sleep -Seconds 3
         $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5; $true } catch { $false }
@@ -127,7 +127,7 @@ Test-Case "5. Seed repetido nao duplica" {
 
 Test-Case "6. Permissoes sobrevivem ao reinicio da stack" {
     Restart-RivoStack
-    $deadline = (Get-Date).AddSeconds(180)
+    $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do {
         Start-Sleep -Seconds 3
         $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5; $true } catch { $false }

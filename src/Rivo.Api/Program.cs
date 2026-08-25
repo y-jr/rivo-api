@@ -17,6 +17,7 @@ using Rivo.Fiscal.Infrastructure;
 using Rivo.Approval.Api;
 using Rivo.Approval.Infrastructure;
 using Rivo.Hr.Api;
+using Rivo.Finance.Application.Abstractions;
 using Rivo.Hr.Application.Abstractions;
 using Rivo.Hr.Infrastructure;
 using Rivo.Identity.Api;
@@ -70,6 +71,11 @@ builder.Services.AddIdentityModule(builder.Configuration);
 // que o ADR-015 §R1 deixou por fechar. Ver Composition/PositionApprovalSubmission.
 builder.Services.AddScoped<IHrApprovalSubmission, HrApprovalSubmission>();
 
+// E `finance` a `approval`, pela mesma inversão. Aqui não é só higiene: BR-8
+// fará `approval` ler `finance`, e uma referência directa traria de volta o
+// ciclo que o ADR-034 fechou. Ver Composition/FinancePaymentApproval.
+builder.Services.AddScoped<IPaymentApproval, FinancePaymentApproval>();
+
 var app = builder.Build();
 
 // Documentação e interface só em desenvolvimento: expor a superfície da API
@@ -102,9 +108,35 @@ if (app.Environment.IsDevelopment())
 // último, porque o seu seed depende dos schemas dos outros.
 if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
 {
+    var limite = TimeSpan.FromSeconds(app.Configuration.GetValue("Database:StartupTimeoutSeconds", 180));
+
+    // **Esperar por uma ligação real antes de migrar.** Sem isto há uma corrida
+    // que só aparece em reinícios: `docker compose restart` não respeita
+    // `depends_on`, a API sobe enquanto o SQL Server ainda recupera a base, e o
+    // EF Core conclui que ela **não existe** — porque `Exists()` é "consegui
+    // abrir ligação?" — e tenta criá-la. O `CREATE DATABASE` falha com o erro
+    // 1801, que se repete tantas vezes quantas o prazo permitir sem nunca
+    // resolver, e o arranque morre com a base perfeitamente saudável ao lado.
+    //
+    // Observado a 2026-08-25 numa corrida de `verify-payables`: 28 tentativas
+    // seguidas de "Database 'rivo' already exists".
+    await AteABaseEstarProntaAsync(app, limite, async () =>
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<RivoIdentityDbContext>();
+
+        if (!await db.Database.CanConnectAsync())
+        {
+            // Excepção e não `return`: é a repetição que faz a espera, e um
+            // regresso silencioso deixaria a migração arrancar cega.
+            throw new InvalidOperationException(
+                "A base de dados ainda não aceita ligações.");
+        }
+    });
+
     await AteABaseEstarProntaAsync(
         app,
-        TimeSpan.FromSeconds(app.Configuration.GetValue("Database:StartupTimeoutSeconds", 180)),
+        limite,
         async () =>
         {
             await app.Services.MigrateAuditModuleAsync();
@@ -196,6 +228,7 @@ app.MapDocumentsModule();
 app.MapFiscalModule();
 app.MapCommercialModule();
 app.MapFinanceModule();
+app.MapPayables();
 app.MapHrModule();
 app.MapApprovalModule();
 app.MapNotificationsModule();
@@ -311,9 +344,23 @@ static bool VaiPassarSozinho(Exception excepcao)
         //    encontra-a lá e rebenta com o erro 1801, que a estratégia já não
         //    considera transitório.
         //
-        //    Repetir a migração inteira resolve: a base agora existe, e a
-        //    tentativa seguinte segue para as tabelas.
+        //    ⚠ **Repetir nem sempre resolve**, e foi por isso que a sonda de
+        //    ligação passou a correr antes da migração. Se o servidor atende
+        //    mas ainda está a recuperar a base, o EF volta a concluir que ela
+        //    não existe a cada tentativa, e a repetição esgota o prazo sem
+        //    progresso. Isto fica como rede de segurança para o caso que
+        //    descreve — duas criações no primeiro arranque — e não como a
+        //    defesa principal.
         if (actual is Microsoft.Data.SqlClient.SqlException { Number: 1801 })
+        {
+            return true;
+        }
+
+        // 3. O servidor atende mas a base ainda não aceita ligações. É o que a
+        //    sonda de arranque lança, e é exactamente a condição que se espera
+        //    que passe sozinha.
+        if (actual is InvalidOperationException
+            && actual.Message.Contains("ainda não aceita ligações", StringComparison.Ordinal))
         {
             return true;
         }

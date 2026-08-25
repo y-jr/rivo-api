@@ -202,3 +202,170 @@ bloqueia a venda a consumidor final.
 anual, criada pelo **seed** no arranque. Sem isso, um ambiente novo devolve
 `404` na primeira factura, e o passo esquecido só aparece quando alguém tenta
 facturar. Idempotente: se já existir, não lhe toca nem lhe recua o contador.
+
+### O ciclo de venda está fechado (2026-08-25)
+
+Factura → nota de crédito → recibo → saldo. As três peças que faltavam.
+
+| Peça | O que impõe |
+|---|---|
+| `CreditNote` | Corrige uma factura sem lhe tocar. Série **NC** própria, referência textual congelada, e o **facto gerador da factura corrigida** — o imposto que se devolve é o que foi liquidado, não o de hoje (ADR-011 §3) |
+| `Receipt` | Dinheiro recebido. Série **RG**, meio de pagamento do SAF-T, e **uma linha por factura liquidada** — sem isso não há como saber o que ficou por receber |
+| Saldo | `GET /finance/sales-invoices/{id}/balance` — facturado, creditado, recebido, em aberto, liquidado |
+
+**Anular e creditar não são a mesma coisa.** Anular tira a factura inteira do
+mapa de dívida; creditar reduz o que ela pede e deixa rasto do quanto e do
+porquê. Uma factura anulada não se credita — já não há o que corrigir.
+
+### O saldo é calculado, não guardado
+
+`OutstandingAsync` faz **três consultas**, não um `join`. Um `join` entre notas
+e recibos multiplicaria as linhas quando houvesse mais do que uma de cada, e o
+total sairia inflacionado — o erro clássico de somar sobre um produto
+cartesiano, que não dá sinal, só um número errado.
+
+Um saldo em coluna seria um ponto de contenção a cada recebimento, e ficaria
+errado em silêncio no dia em que alguém estornasse um recibo sem o recalcular.
+
+**É a invariante que nenhum agregado impõe sozinho** — nem a factura vê as suas
+notas, nem o recibo vê os outros recibos. Vive no store pela mesma razão que a
+unicidade do NIF vive no de `commercial`.
+
+### Segregação em três funções
+
+| Perfil | Emite | Credita / anula | Recebe |
+|---|---|---|---|
+| `Sales` | ✅ | — | — |
+| `Finance` | — | ✅ | ✅ |
+| `Admin` | ✅ | ✅ | ✅ |
+
+**`finance.receipts.write` é permissão própria**, separada de emitir: quem pode
+declarar dinheiro recebido sem cobrar nada pode fazer uma dívida desaparecer. É
+a razão de cobrança e tesouraria serem funções distintas.
+
+**Estornar não vem com ela** — exige `finance.invoices.cancel`, porque desfazer
+um recebimento faz a dívida voltar a existir.
+
+### Rotas acrescentadas
+
+| Método | Rota | Permissão |
+|---|---|---|
+| GET | `/finance/sales-invoices/{id}/balance` | `finance.invoices.read` |
+| GET | `/finance/credit-notes?salesInvoiceId=` | `finance.invoices.read` |
+| GET | `/finance/credit-notes/{id}` | `finance.invoices.read` |
+| POST | `/finance/credit-notes` | `finance.invoices.cancel` |
+| POST | `/finance/credit-notes/{id}/cancellation` | `finance.invoices.cancel` |
+| GET | `/finance/receipts?customerId=&from=&to=` | `finance.receipts.read` |
+| GET | `/finance/receipts/{id}` | `finance.receipts.read` |
+| POST | `/finance/receipts` | `finance.receipts.write` |
+| POST | `/finance/receipts/{id}/cancellation` | `finance.invoices.cancel` |
+
+**Continua sem `DELETE`** em qualquer delas (BR-14).
+
+### Por fazer
+
+- **Nota de débito (ND)** — corrige para cima. O `DocumentType` declara FT, NC e
+  RG; a ND fica de fora porque não apareceu caso de uso.
+- **Nota de crédito sobre várias facturas.** O SAF-T permite; aqui uma nota
+  referencia **uma** factura.
+- **Adiantamentos.** Receber mais do que se deve é recusado com `409` — um
+  adiantamento é outro documento, e não existe.
+- **Contas a Pagar, Tesouraria, Contabilidade & Fecho, Planeamento**, e com eles
+  BR-1, BR-3, BR-5 e o disponível orçamental de BR-8.
+
+### Contas a Pagar e Tesouraria (2026-08-25)
+
+O que restava do módulo, e é onde **BR-1, BR-3, BR-5 e BR-17** se encontram.
+
+| Peça | O que impõe |
+|---|---|
+| `BankAccount` | Disponibilidade de tesouraria. O saldo é **o ponto de contenção do sistema** — duas execuções simultâneas competem por ele, e o contador de concorrência faz uma perder com `409`. É o caso concreto que BR-17 nomeia |
+| `PurchaseInvoice` | O que se deve. **O número é do fornecedor, não nosso** — ao contrário da factura de venda, esta chega já numerada |
+| `PaymentRequest` | Pedido de pagamento. **Sem passos de aprovação**, e é o ponto todo |
+| `ExecutePayment` | Onde a dupla barreira de BR-5 se monta |
+
+### O anti-padrão do protótipo está fechado
+
+`modules/finance.md` proíbe embutir workflow no Pedido de Pagamento — corrige
+`payment_requests` do protótipo, que tinha o workflow na própria tabela.
+
+Por isso os estados são **dois**: `Eligible` e `Executed` (mais `Cancelled`, que
+é BR-14). **Não há "pendente de aprovação"** — isso é estado do processo, não do
+pedido, e copiá-lo para cá seria guardar em `finance` uma verdade que é de
+`approval` e que fica obsoleta em silêncio. O que fica é um ponteiro:
+`ApprovalRequestId`.
+
+A suite verifica isto por SQL: nenhuma coluna de workflow em
+`finance.payment_request`.
+
+### A dupla barreira de BR-5
+
+Monta-se na camada Application porque **nenhuma das metades cabe num agregado**:
+o estado da decisão vive em `approval`, o saldo vive na conta, e o pedido não vê
+nem um nem outro.
+
+1. **A decisão, revalidada no momento.** Não lida de um campo — entre a
+   aprovação e a execução podem passar dias, e nesse intervalo o processo pode
+   ter sido cancelado. `Unknown` conta como recusa: a ausência de decisão não é
+   aprovação.
+2. **O saldo.** Sai antes de marcar o pedido, para que um saldo insuficiente não
+   deixe o pedido executado sem dinheiro ter saído.
+
+E **BR-3 é imposta pelo agregado**, com a lista de decisores vinda de
+`approval`: quem decidiu não pode executar. Devolve **403 e não 409** — não é o
+estado que impede, é *esta pessoa* — e a tentativa vai para a trilha com acção
+própria, porque é evento de segurança.
+
+**Uma só gravação:** saldo e pedido na mesma transacção. É por este ponto que o
+ADR-001 escolheu monólito modular.
+
+### A ligação a `approval` é por inversão, e aqui é obrigatória
+
+`finance` declara `IPaymentApproval` nas suas palavras; o adaptador vive no
+composition root.
+
+Em `hr` a inversão era higiene. **Aqui é necessária:** `modules/approval.md` diz
+que `approval` lê `finance` para o disponível orçamental de BR-8. Uma referência
+directa traria de volta o ciclo que o ADR-034 fechou, no dia em que BR-8 for
+implementada.
+
+### Três funções, três pessoas
+
+| Perfil | Regista e pede | Aprova | Executa |
+|---|---|---|---|
+| `Manager` | ✅ | ✅ | — |
+| `Finance` | — | ✅ | ✅ |
+
+`finance.payments.execute` é separada de `finance.payments.request`: quem pede
+não paga. E `Finance` não pede — se pedisse e pagasse, faltava só aprovar, e
+`approval` recusa quem submeteu (BR-2). **BR-3 começa no catálogo de
+permissões, antes de o domínio a impor.**
+
+### Rotas
+
+| Método | Rota | Permissão |
+|---|---|---|
+| GET/POST | `/finance/accounts` | `finance.payables.read` / `.write` |
+| POST | `/finance/accounts/{id}/deposits` | `finance.payables.write` |
+| GET/POST | `/finance/purchase-invoices` | `finance.payables.read` / `.write` |
+| GET | `/finance/purchase-invoices/{id}` | `finance.payables.read` |
+| GET | `/finance/payment-requests?purchaseInvoiceId=` | `finance.payables.read` |
+| GET | `/finance/payment-requests/{id}` | `finance.payables.read` |
+| POST | `/finance/payment-requests` | `finance.payments.request` |
+| POST | `/finance/payment-requests/{id}/cancellation` | `finance.payments.request` |
+| POST | `/finance/payment-requests/{id}/execution` | `finance.payments.execute` |
+
+Criar um pedido devolve **`202`**, não `201`: existe e ainda não é pagável.
+
+### Por fazer
+
+- **Contabilidade & Fecho** e **Planeamento** — os dois contextos que restam. Com
+  Planeamento vem o **disponível orçamental** que BR-8 exige de `approval`;
+  enquanto não existir, uma política com `RequiresBudgetCheck` recusa a
+  submissão.
+- **Adiantamentos.** Um pedido não excede a factura, e não há documento para
+  pagar antes de dever.
+- **Movimentos de conta como entidade.** O saldo é um número na conta; não há
+  extracto. Reconciliação bancária depende disso.
+- **Câmbio.** Pagar em moeda diferente da conta é recusado — não há conversão
+  automática, porque o câmbio é uma decisão e ninguém a tomou.

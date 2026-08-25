@@ -42,6 +42,30 @@ public static class FinanceModuleExtensions
         services.AddScoped<ListDocumentSeries>();
         services.AddScoped<OpenDocumentSeries>();
 
+        services.AddScoped<IssueCreditNote>();
+        services.AddScoped<CancelCreditNote>();
+        services.AddScoped<ListCreditNotes>();
+        services.AddScoped<GetCreditNote>();
+        services.AddScoped<RegisterReceipt>();
+        services.AddScoped<CancelReceipt>();
+        services.AddScoped<ListReceipts>();
+        services.AddScoped<GetReceipt>();
+        services.AddScoped<GetInvoiceBalance>();
+
+        // Contas a Pagar e Tesouraria.
+        services.AddScoped<IPayablesStore, PayablesStore>();
+        services.AddScoped<OpenBankAccount>();
+        services.AddScoped<DepositToAccount>();
+        services.AddScoped<ListBankAccounts>();
+        services.AddScoped<RegisterPurchaseInvoice>();
+        services.AddScoped<ListPurchaseInvoices>();
+        services.AddScoped<GetPurchaseInvoice>();
+        services.AddScoped<CreatePaymentRequest>();
+        services.AddScoped<ListPaymentRequests>();
+        services.AddScoped<GetPaymentRequest>();
+        services.AddScoped<CancelPaymentRequest>();
+        services.AddScoped<ExecutePayment>();
+
         // Cada módulo regista as policies das suas permissões (ADR-014).
         services.AddAuthorization(options =>
         {
@@ -111,19 +135,23 @@ public static class FinanceModuleExtensions
 
         var context = scope.ServiceProvider.GetRequiredService<FinanceDbContext>();
         var codigo = options.DefaultSeries.Trim().ToUpperInvariant();
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Rivo.Finance");
 
-        if (await context.Series.AnyAsync(
-                s => s.Type == DocumentType.FT && s.Code == codigo, cancellationToken))
+        // Uma serie por tipo de documento. Partilham o codigo porque a chave e
+        // (tipo, codigo): `FT S001`, `NC S001` e `RG S001` sao tres series
+        // distintas, cada uma com o seu contador.
+        foreach (var tipo in new[] { DocumentType.FT, DocumentType.NC, DocumentType.RG })
         {
-            return;
+            if (await context.Series.AnyAsync(
+                    s => s.Type == tipo && s.Code == codigo, cancellationToken))
+            {
+                continue;
+            }
+
+            await context.Series.AddAsync(DocumentSeries.Open(tipo, codigo), cancellationToken);
+            logger.LogInformation("Série de numeração {Tipo} {Codigo} criada pelo seed.", tipo, codigo);
         }
 
-        await context.Series.AddAsync(DocumentSeries.Open(DocumentType.FT, codigo), cancellationToken);
         await context.SaveChangesAsync(cancellationToken);
-
-        scope.ServiceProvider
-            .GetRequiredService<ILoggerFactory>()
-            .CreateLogger("Rivo.Finance")
-            .LogInformation("Série de numeração {Codigo} criada pelo seed.", codigo);
     }
 }

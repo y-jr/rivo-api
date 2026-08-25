@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Rivo.Finance.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using Rivo.Finance.Infrastructure.Persistence;
 namespace Rivo.Finance.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(FinanceDbContext))]
-    partial class FinanceDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260825065759_NotaDeCreditoERecibo")]
+    partial class NotaDeCreditoERecibo
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -22,60 +25,6 @@ namespace Rivo.Finance.Infrastructure.Persistence.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
-
-            modelBuilder.Entity("Rivo.Finance.Domain.BankAccount", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("id");
-
-                    b.Property<decimal>("Balance")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)")
-                        .HasColumnName("balance");
-
-                    b.Property<string>("Bank")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("nvarchar(120)")
-                        .HasColumnName("bank");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("nvarchar(3)")
-                        .HasColumnName("currency");
-
-                    b.Property<string>("Iban")
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)")
-                        .HasColumnName("iban");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit")
-                        .HasColumnName("is_active");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("nvarchar(120)")
-                        .HasColumnName("name");
-
-                    b.Property<int>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("int")
-                        .HasColumnName("version");
-
-                    b.HasKey("Id")
-                        .HasName("pk_bank_account");
-
-                    b.HasIndex("Iban")
-                        .IsUnique()
-                        .HasDatabaseName("ix_bank_account_iban")
-                        .HasFilter("[iban] IS NOT NULL");
-
-                    b.ToTable("bank_account", "finance");
-                });
 
             modelBuilder.Entity("Rivo.Finance.Domain.CreditNote", b =>
                 {
@@ -266,202 +215,6 @@ namespace Rivo.Finance.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_document_series_type_code");
 
                     b.ToTable("document_series", "finance");
-                });
-
-            modelBuilder.Entity("Rivo.Finance.Domain.PaymentRequest", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("id");
-
-                    b.Property<decimal>("Amount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)")
-                        .HasColumnName("amount");
-
-                    b.Property<Guid>("ApprovalRequestId")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("approval_request_id");
-
-                    b.Property<string>("CancellationReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)")
-                        .HasColumnName("cancellation_reason");
-
-                    b.Property<DateTimeOffset?>("CancelledAt")
-                        .HasColumnType("datetimeoffset")
-                        .HasColumnName("cancelled_at");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("nvarchar(3)")
-                        .HasColumnName("currency");
-
-                    b.Property<DateTimeOffset?>("ExecutedAt")
-                        .HasColumnType("datetimeoffset")
-                        .HasColumnName("executed_at");
-
-                    b.Property<Guid?>("ExecutedByEmployeeId")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("executed_by_employee_id");
-
-                    b.Property<Guid?>("ExecutedFromAccountId")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("executed_from_account_id");
-
-                    b.Property<string>("ExecutedMethod")
-                        .HasMaxLength(5)
-                        .HasColumnType("nvarchar(5)")
-                        .HasColumnName("executed_method");
-
-                    b.Property<string>("ExecutionReference")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)")
-                        .HasColumnName("execution_reference");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)")
-                        .HasColumnName("notes");
-
-                    b.Property<Guid>("PurchaseInvoiceId")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("purchase_invoice_id");
-
-                    b.Property<Guid>("RequestedByEmployeeId")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("requested_by_employee_id");
-
-                    b.Property<DateOnly>("RequestedOn")
-                        .HasColumnType("date")
-                        .HasColumnName("requested_on");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)")
-                        .HasColumnName("status");
-
-                    b.Property<string>("SupplierInvoiceNumber")
-                        .IsRequired()
-                        .HasMaxLength(60)
-                        .HasColumnType("nvarchar(60)")
-                        .HasColumnName("supplier_invoice_number");
-
-                    b.Property<int>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("int")
-                        .HasColumnName("version");
-
-                    b.HasKey("Id")
-                        .HasName("pk_payment_request");
-
-                    b.HasIndex("ApprovalRequestId")
-                        .HasDatabaseName("ix_payment_request_approval_request_id");
-
-                    b.HasIndex("ExecutedByEmployeeId")
-                        .HasDatabaseName("ix_payment_request_executed_by_employee_id");
-
-                    b.HasIndex("PurchaseInvoiceId", "Status")
-                        .HasDatabaseName("ix_payment_request_purchase_invoice_id_status");
-
-                    b.ToTable("payment_request", "finance");
-                });
-
-            modelBuilder.Entity("Rivo.Finance.Domain.PurchaseInvoice", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("id");
-
-                    b.Property<string>("CancellationReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)")
-                        .HasColumnName("cancellation_reason");
-
-                    b.Property<DateTimeOffset?>("CancelledAt")
-                        .HasColumnType("datetimeoffset")
-                        .HasColumnName("cancelled_at");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("nvarchar(3)")
-                        .HasColumnName("currency");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)")
-                        .HasColumnName("description");
-
-                    b.Property<DateOnly>("DueOn")
-                        .HasColumnType("date")
-                        .HasColumnName("due_on");
-
-                    b.Property<decimal>("GrossTotal")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)")
-                        .HasColumnName("gross_total");
-
-                    b.Property<DateOnly>("IssuedOn")
-                        .HasColumnType("date")
-                        .HasColumnName("issued_on");
-
-                    b.Property<decimal>("NetTotal")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)")
-                        .HasColumnName("net_total");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)")
-                        .HasColumnName("status");
-
-                    b.Property<Guid?>("SupplierId")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("supplier_id");
-
-                    b.Property<string>("SupplierInvoiceNumber")
-                        .IsRequired()
-                        .HasMaxLength(60)
-                        .HasColumnType("nvarchar(60)")
-                        .HasColumnName("supplier_invoice_number");
-
-                    b.Property<string>("SupplierName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)")
-                        .HasColumnName("supplier_name");
-
-                    b.Property<string>("SupplierTaxId")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
-                        .HasColumnName("supplier_tax_id");
-
-                    b.Property<decimal>("TaxTotal")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)")
-                        .HasColumnName("tax_total");
-
-                    b.Property<int>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("int")
-                        .HasColumnName("version");
-
-                    b.HasKey("Id")
-                        .HasName("pk_purchase_invoice");
-
-                    b.HasIndex("DueOn")
-                        .HasDatabaseName("ix_purchase_invoice_due_on");
-
-                    b.HasIndex("SupplierTaxId", "SupplierInvoiceNumber")
-                        .IsUnique()
-                        .HasDatabaseName("ux_purchase_invoice_supplier_number");
-
-                    b.ToTable("purchase_invoice", "finance");
                 });
 
             modelBuilder.Entity("Rivo.Finance.Domain.Receipt", b =>
@@ -817,39 +570,6 @@ namespace Rivo.Finance.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_credit_note_line_credit_notes_credit_note_id");
-                });
-
-            modelBuilder.Entity("Rivo.Finance.Domain.PaymentRequest", b =>
-                {
-                    b.OwnsOne("Rivo.Finance.Domain.PayeeParty", "Payee", b1 =>
-                        {
-                            b1.Property<Guid>("PaymentRequestId")
-                                .HasColumnType("uniqueidentifier")
-                                .HasColumnName("id");
-
-                            b1.Property<string>("Name")
-                                .IsRequired()
-                                .HasMaxLength(200)
-                                .HasColumnType("nvarchar(200)")
-                                .HasColumnName("payee_name");
-
-                            b1.Property<string>("TaxId")
-                                .IsRequired()
-                                .HasMaxLength(30)
-                                .HasColumnType("nvarchar(30)")
-                                .HasColumnName("payee_tax_id");
-
-                            b1.HasKey("PaymentRequestId");
-
-                            b1.ToTable("payment_request", "finance");
-
-                            b1.WithOwner()
-                                .HasForeignKey("PaymentRequestId")
-                                .HasConstraintName("fk_payment_request_payment_request_id");
-                        });
-
-                    b.Navigation("Payee")
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("Rivo.Finance.Domain.Receipt", b =>

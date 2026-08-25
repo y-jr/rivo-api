@@ -269,7 +269,7 @@ Test-Case "15. Sem autenticacao -> 401; sem permissao -> 403" {
 
 Test-Case "16. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
-    $deadline = (Get-Date).AddSeconds(180)
+    $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
     if (-not $up) { throw "API nao voltou" }
     $emp = Invoke-Sql "select count(*) from hr.employee"

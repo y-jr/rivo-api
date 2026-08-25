@@ -12,6 +12,16 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
 
     public DbSet<SalesInvoice> Invoices => Set<SalesInvoice>();
 
+    public DbSet<CreditNote> CreditNotes => Set<CreditNote>();
+
+    public DbSet<Receipt> Receipts => Set<Receipt>();
+
+    public DbSet<BankAccount> Accounts => Set<BankAccount>();
+
+    public DbSet<PurchaseInvoice> PurchaseInvoices => Set<PurchaseInvoice>();
+
+    public DbSet<PaymentRequest> PaymentRequests => Set<PaymentRequest>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -117,6 +127,216 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
             line.Property(l => l.TaxAmount).HasPrecision(18, 2);
 
             line.HasIndex(l => new { l.SalesInvoiceId, l.LineNumber }).IsUnique();
+        });
+
+        builder.Entity<CreditNote>(note =>
+        {
+            note.ToTable("credit_note");
+            note.HasKey(n => n.Id);
+            note.Property(n => n.Version).IsConcurrencyToken();
+
+            note.Property(n => n.Status).HasConversion<string>().HasMaxLength(20);
+            note.Property(n => n.Currency).HasMaxLength(3).IsRequired();
+            note.Property(n => n.Reason).HasMaxLength(500).IsRequired();
+            note.Property(n => n.CorrectedInvoiceNumber).HasMaxLength(40).IsRequired();
+            note.Property(n => n.CancellationReason).HasMaxLength(500);
+            note.Property(n => n.FiscalNotice).HasMaxLength(300);
+
+            note.Property(n => n.NetTotal).HasPrecision(18, 2);
+            note.Property(n => n.TaxTotal).HasPrecision(18, 2);
+            note.Property(n => n.GrossTotal).HasPrecision(18, 2);
+
+            note.OwnsOne(n => n.Number, number =>
+            {
+                number.Property(x => x.Type).HasColumnName("number_type").HasConversion<string>().HasMaxLength(5);
+                number.Property(x => x.Series).HasColumnName("number_series").HasMaxLength(20).IsRequired();
+                number.Property(x => x.Sequence).HasColumnName("number_sequence").IsRequired();
+                number.Ignore(x => x.Formatted);
+                number.HasIndex(x => new { x.Type, x.Series, x.Sequence }).IsUnique();
+            });
+
+            note.OwnsOne(n => n.Customer, party =>
+            {
+                party.Property(p => p.Name).HasColumnName("customer_name").HasMaxLength(200).IsRequired();
+                party.Property(p => p.TaxId).HasColumnName("customer_tax_id").HasMaxLength(30).IsRequired();
+                party.Property(p => p.AddressDetail).HasColumnName("customer_address_detail").HasMaxLength(300).IsRequired();
+                party.Property(p => p.City).HasColumnName("customer_city").HasMaxLength(100).IsRequired();
+                party.Property(p => p.Country).HasColumnName("customer_country").HasMaxLength(2).IsRequired();
+                party.Property(p => p.IsFinalConsumer).HasColumnName("customer_is_final_consumer");
+            });
+
+            // A consulta do saldo: as notas de uma factura.
+            note.HasIndex(n => n.SalesInvoiceId);
+
+            note.HasMany(n => n.Lines)
+                .WithOne()
+                .HasForeignKey(l => l.CreditNoteId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            note.Navigation(n => n.Lines)
+                .HasField("_lines")
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        builder.Entity<CreditNoteLine>(line =>
+        {
+            line.ToTable("credit_note_line");
+            line.HasKey(l => l.Id);
+
+            line.Property(l => l.Description).HasMaxLength(300).IsRequired();
+            line.Property(l => l.TaxCode).HasMaxLength(10).IsRequired();
+            line.Property(l => l.Quantity).HasPrecision(18, 4);
+            line.Property(l => l.UnitPrice).HasPrecision(18, 4);
+            line.Property(l => l.TaxPercentage).HasPrecision(5, 2);
+            line.Property(l => l.NetAmount).HasPrecision(18, 2);
+            line.Property(l => l.TaxAmount).HasPrecision(18, 2);
+
+            line.HasIndex(l => new { l.CreditNoteId, l.LineNumber }).IsUnique();
+        });
+
+        builder.Entity<Receipt>(receipt =>
+        {
+            receipt.ToTable("receipt");
+            receipt.HasKey(r => r.Id);
+            receipt.Property(r => r.Version).IsConcurrencyToken();
+
+            receipt.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+            receipt.Property(r => r.Currency).HasMaxLength(3).IsRequired();
+            receipt.Property(r => r.Method).HasConversion<string>().HasMaxLength(5);
+            receipt.Property(r => r.Notes).HasMaxLength(500);
+            receipt.Property(r => r.CancellationReason).HasMaxLength(500);
+            receipt.Property(r => r.FiscalNotice).HasMaxLength(300);
+            receipt.Property(r => r.Total).HasPrecision(18, 2);
+
+            receipt.OwnsOne(r => r.Number, number =>
+            {
+                number.Property(x => x.Type).HasColumnName("number_type").HasConversion<string>().HasMaxLength(5);
+                number.Property(x => x.Series).HasColumnName("number_series").HasMaxLength(20).IsRequired();
+                number.Property(x => x.Sequence).HasColumnName("number_sequence").IsRequired();
+                number.Ignore(x => x.Formatted);
+                number.HasIndex(x => new { x.Type, x.Series, x.Sequence }).IsUnique();
+            });
+
+            receipt.OwnsOne(r => r.Customer, party =>
+            {
+                party.Property(p => p.Name).HasColumnName("customer_name").HasMaxLength(200).IsRequired();
+                party.Property(p => p.TaxId).HasColumnName("customer_tax_id").HasMaxLength(30).IsRequired();
+                party.Property(p => p.AddressDetail).HasColumnName("customer_address_detail").HasMaxLength(300).IsRequired();
+                party.Property(p => p.City).HasColumnName("customer_city").HasMaxLength(100).IsRequired();
+                party.Property(p => p.Country).HasColumnName("customer_country").HasMaxLength(2).IsRequired();
+                party.Property(p => p.IsFinalConsumer).HasColumnName("customer_is_final_consumer");
+            });
+
+            receipt.HasIndex(r => r.CustomerId);
+            receipt.HasIndex(r => r.ReceivedOn);
+
+            receipt.HasMany(r => r.Lines)
+                .WithOne()
+                .HasForeignKey(l => l.ReceiptId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            receipt.Navigation(r => r.Lines)
+                .HasField("_lines")
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        builder.Entity<ReceiptLine>(line =>
+        {
+            line.ToTable("receipt_line");
+            line.HasKey(l => l.Id);
+
+            line.Property(l => l.InvoiceNumber).HasMaxLength(40).IsRequired();
+            line.Property(l => l.Amount).HasPrecision(18, 2);
+
+            // A consulta do saldo: quanto foi recebido por factura.
+            line.HasIndex(l => l.SalesInvoiceId);
+            line.HasIndex(l => new { l.ReceiptId, l.LineNumber }).IsUnique();
+        });
+
+        builder.Entity<BankAccount>(account =>
+        {
+            account.ToTable("bank_account");
+            account.HasKey(a => a.Id);
+
+            // **Aqui é a regra, não formalidade** (BR-17): é o que faz dois
+            // pagamentos simultâneos sobre a mesma conta colidirem em vez de
+            // passarem os dois com o mesmo saldo lido.
+            account.Property(a => a.Version).IsConcurrencyToken();
+
+            account.Property(a => a.Name).HasMaxLength(120).IsRequired();
+            account.Property(a => a.Bank).HasMaxLength(120).IsRequired();
+            account.Property(a => a.Iban).HasMaxLength(40);
+            account.Property(a => a.Currency).HasMaxLength(3).IsRequired();
+            account.Property(a => a.Balance).HasPrecision(18, 2);
+
+            account.HasIndex(a => a.Iban).IsUnique().HasFilter("[iban] IS NOT NULL");
+        });
+
+        builder.Entity<PurchaseInvoice>(invoice =>
+        {
+            invoice.ToTable("purchase_invoice");
+            invoice.HasKey(i => i.Id);
+            invoice.Property(i => i.Version).IsConcurrencyToken();
+
+            invoice.Property(i => i.SupplierInvoiceNumber).HasMaxLength(60).IsRequired();
+            invoice.Property(i => i.Currency).HasMaxLength(3).IsRequired();
+            invoice.Property(i => i.Status).HasConversion<string>().HasMaxLength(20);
+            invoice.Property(i => i.Description).HasMaxLength(500);
+            invoice.Property(i => i.CancellationReason).HasMaxLength(500);
+
+            invoice.Property(i => i.NetTotal).HasPrecision(18, 2);
+            invoice.Property(i => i.TaxTotal).HasPrecision(18, 2);
+            invoice.Property(i => i.GrossTotal).HasPrecision(18, 2);
+
+            invoice.Property(i => i.SupplierName).HasMaxLength(200).IsRequired();
+            invoice.Property(i => i.SupplierTaxId).HasMaxLength(30).IsRequired();
+
+            // `Supplier` compõe as duas colunas acima — é retrato, não coluna.
+            invoice.Ignore(i => i.Supplier);
+
+            // **Único**, e é a segunda linha contra pagar a dobrar: registar a
+            // mesma factura do mesmo fornecedor duas vezes. A verificação em
+            // `RegisterPurchaseInvoice` é a primeira; esta é a que resiste a
+            // duas chamadas simultâneas.
+            invoice.HasIndex(i => new { i.SupplierTaxId, i.SupplierInvoiceNumber })
+                .IsUnique()
+                .HasDatabaseName("ux_purchase_invoice_supplier_number");
+
+            // A fila de pagamentos ordena-se por vencimento.
+            invoice.HasIndex(i => i.DueOn);
+        });
+
+        builder.Entity<PaymentRequest>(request =>
+        {
+            request.ToTable("payment_request");
+            request.HasKey(r => r.Id);
+            request.Property(r => r.Version).IsConcurrencyToken();
+
+            request.Property(r => r.SupplierInvoiceNumber).HasMaxLength(60).IsRequired();
+            request.Property(r => r.Currency).HasMaxLength(3).IsRequired();
+            request.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+            request.Property(r => r.Amount).HasPrecision(18, 2);
+            request.Property(r => r.Notes).HasMaxLength(500);
+            request.Property(r => r.CancellationReason).HasMaxLength(500);
+            request.Property(r => r.ExecutedMethod).HasConversion<string>().HasMaxLength(5);
+            request.Property(r => r.ExecutionReference).HasMaxLength(100);
+
+            request.OwnsOne(r => r.Payee, payee =>
+            {
+                payee.Property(p => p.Name).HasColumnName("payee_name").HasMaxLength(200).IsRequired();
+                payee.Property(p => p.TaxId).HasColumnName("payee_tax_id").HasMaxLength(30).IsRequired();
+            });
+
+            // Sem chave estrangeira para `approval.request`: são schemas de
+            // módulos distintos, e `finance` referencia o processo por
+            // identificador (ADR-010). O estado dele **não** é copiado para cá.
+            request.HasIndex(r => r.ApprovalRequestId);
+
+            // Quanto está comprometido sobre uma factura.
+            request.HasIndex(r => new { r.PurchaseInvoiceId, r.Status });
+
+            // Quem pagou o quê — a consulta de quem confere BR-3 depois.
+            request.HasIndex(r => r.ExecutedByEmployeeId);
         });
 
         // As chaves são geradas pelo domínio (Guid.CreateVersion7), nunca pela

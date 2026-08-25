@@ -38,5 +38,47 @@ public interface ISalesInvoiceStore
 
     Task AddAsync(SalesInvoice invoice, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Quanto falta receber de uma factura: o total, menos o que já foi
+    /// creditado, menos o que já foi recebido — contando só os documentos
+    /// **não anulados**.
+    ///
+    /// <para>
+    /// <strong>É a invariante que nenhum agregado impõe sozinho.</strong> Nem a
+    /// factura vê as suas notas de crédito, nem o recibo vê os outros recibos.
+    /// Vive aqui pela mesma razão que a unicidade do NIF vive no store de
+    /// `commercial`: é uma regra sobre o conjunto.
+    /// </para>
+    ///
+    /// <para>
+    /// Calculado, não guardado. Um saldo em coluna seria um ponto de contenção a
+    /// cada recebimento, e ficaria errado em silêncio no dia em que alguém
+    /// estornasse um recibo sem o recalcular.
+    /// </para>
+    /// </summary>
+    Task<decimal> OutstandingAsync(Guid invoiceId, CancellationToken cancellationToken);
+
+    Task<CreditNote?> FindCreditNoteAsync(Guid creditNoteId, CancellationToken cancellationToken);
+
+    Task<CreditNote?> FindCreditNoteForUpdateAsync(Guid creditNoteId, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<CreditNote>> ListCreditNotesAsync(
+        Guid? salesInvoiceId,
+        CancellationToken cancellationToken);
+
+    Task AddCreditNoteAsync(CreditNote note, CancellationToken cancellationToken);
+
+    Task<Receipt?> FindReceiptAsync(Guid receiptId, CancellationToken cancellationToken);
+
+    Task<Receipt?> FindReceiptForUpdateAsync(Guid receiptId, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<Receipt>> ListReceiptsAsync(
+        Guid? customerId,
+        DateOnly? from,
+        DateOnly? to,
+        CancellationToken cancellationToken);
+
+    Task AddReceiptAsync(Receipt receipt, CancellationToken cancellationToken);
+
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

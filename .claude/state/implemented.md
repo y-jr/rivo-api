@@ -189,7 +189,7 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
 
 ## Verificação
 
-**Nove suites** PowerShell caixa-preta contra a stack em Docker, **116 casos**
+**Dez suites** PowerShell caixa-preta contra a stack em Docker, **141 casos**
 (2026-08-24), todas re-executáveis.
 
 Eram seis suites e 66 casos em 2026-08-16. `verify-hr` cresceu 13 → 16 com as
@@ -215,7 +215,8 @@ três módulos do ADR-036 tinham deixado.
 | `verify-notifications` | 13 |
 | `verify-fiscal` | 13 |
 | `verify-commercial` | 12 |
-| `verify-finance` | 21 |
+| `verify-finance` | 29 |
+| `verify-payables` | 17 |
 
 `verify-finance` corre por último e **monta os seus pré-requisitos pelas rotas
 de `fiscal` e `commercial`** — taxa, vigências e cliente. Não há atalho por SQL

@@ -12,9 +12,17 @@ ADR-036 dispensou a emissão legalmente válida e fixou **emitir** como meta, o
 que reordenou as Fases 3, 4 e 5 do
 [roadmap-execucao.md](roadmap-execucao.md).
 
-Hoje sai uma factura de venda com cliente, numeração `FT S001/1` e a taxa que
-vigorava à data do facto gerador. **Não é documento fiscal válido em Angola** —
-tem a forma, falta a certificação da AGT.
+Hoje o **ciclo de venda fecha** — emitir, corrigir por nota de crédito, receber
+por recibo, e o saldo diz o que falta — e o **ciclo de compra também**: registar
+a factura do fornecedor, pedir o pagamento, aprová-lo e executá-lo contra uma
+conta bancária.
+
+É no pagamento que **BR-1, BR-3 e BR-5** se encontram: sem decisão aprovada não
+se paga, a decisão é revalidada no momento, o saldo é verificado, e quem aprovou
+não pode executar.
+
+⚠ **As facturas não são documentos fiscais válidos em Angola** — têm a forma,
+falta a certificação da AGT, e trazem menção disso congelada na emissão.
 
 ## Módulos
 
@@ -28,7 +36,7 @@ tem a forma, falta a certificação da AGT.
 | `approval` | Completo para o âmbito fixado. Políticas, pedidos, decisões, BR-2/4/6/17, worker de reconciliação |
 | `fiscal` | ⚠ **Fatia mínima** (ADR-036). Taxa com vigência e determinação. Não é o motor fiscal |
 | `commercial` | ⚠ **Reduzido ao Cliente** (ADR-036). Sem funil comercial |
-| `finance` | ⚠ **Só Contas a Receber** (ADR-036). Factura de venda. Sem AP, Tesouraria, Contabilidade, Planeamento |
+| `finance` | **AR e AP feitos.** Ciclo de venda fechado (factura, nota de crédito, recibo, saldo) e Contas a Pagar com Tesouraria — BR-1, BR-3, BR-5 impostas. Falta Contabilidade & Fecho e Planeamento |
 | `procurement`, `payroll`, `projects`, `inventory`, `fleet` | Sem código. Definidos em [modules/](../modules/) |
 
 Detalhe com datas e ressalvas em [implemented.md](implemented.md).
@@ -53,17 +61,17 @@ O token viaja em claro. É o **K16**, e não pode ir para produção a sério.
 | Área | Estado |
 |---|---|
 | Código | 9 módulos, 45 projectos em `src/`, 131 ficheiros `.cs` |
-| Superfície HTTP | 71 endpoints em 9 grupos de rota, mais `/health` |
+| Superfície HTTP | 93 endpoints em 9 grupos de rota, mais `/health` |
 | ADRs | 36, aceites |
-| Testes | **326** em 13 projectos — 284 de domínio, 21 de arquitectura, 9 da API do host, 8 de Application, 4 de integração |
-| Verificação end-to-end | **9 suites** PowerShell, **116 casos**, todas re-executáveis |
+| Testes | **383** em 13 projectos — 341 de domínio, 21 de arquitectura, 9 da API do host, 8 de Application, 4 de integração |
+| Verificação end-to-end | **10 suites** PowerShell, **141 casos**, todas re-executáveis |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
 
 ## O que não existe
 
-- **Cobertura fora do domínio.** 284 testes de domínio contra 8 de Application
+- **Cobertura fora do domínio.** 341 testes de domínio contra 8 de Application
   e 4 de Infrastructure. Cada módulo novo alarga a diferença.
 - **Testes de integração** em oito dos nove módulos. Só `notifications` os tem.
 - **Observabilidade.** Com o Azure fora de cena (ADR-031), o diagnóstico em
@@ -115,15 +123,18 @@ ADR-024); o K15 (2026-08-24, ADR-035).
 
 Não é uma sequência ratificada — é o que está por decidir e por fazer.
 
-1. **Decidir o que o ADR-036 deixou em aberto:** marcar visivelmente uma
-   factura que não é documento fiscal; que séries de numeração usar; se existe
-   consumidor final. Todas dependem do negócio, não da técnica. Ver
-   [pending-decisions.md](pending-decisions.md).
-2. **Nota de crédito e recebimentos** em `finance`, se o ciclo de venda tiver
-   de fechar.
-3. **Domínio e TLS** — fecha o K16 e é pré-requisito de qualquer uso real.
-4. **Cobertura de Application**, a começar pelos casos de uso que decidem —
-   `IssueSalesInvoice` e `DecideOnRequest` são os que mais custam se falharem.
+1. **Contabilidade & Fecho e Planeamento** em `finance` — os dois contextos que
+   restam. Com Planeamento vem o **disponível orçamental** que BR-8 exige de
+   `approval`; enquanto não existir, uma política com `RequiresBudgetCheck`
+   recusa a submissão. AR e AP fecharam a 2026-08-25, com BR-1, BR-3 e BR-5
+   impostas e verificadas.
+2. **Domínio e TLS** — fecha o K16 e é pré-requisito de qualquer uso real.
+3. **Cobertura de Application**, a começar pelos casos de uso que decidem —
+   `IssueSalesInvoice`, `RegisterReceipt` e `DecideOnRequest` são os que mais
+   custam se falharem. `RegisterReceipt` em particular: a regra do saldo vive
+   toda lá, e não há um único teste unitário sobre ela.
+4. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
+   vendas a balcão saem com um marcador visível. Precisa de fonte primária.
 
 Ver também [implemented.md](implemented.md),
 [in-progress.md](in-progress.md), [known-issues.md](known-issues.md),

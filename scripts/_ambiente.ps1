@@ -156,11 +156,24 @@ function Invoke-RivoSql {
     processo.
 #>
 function Restart-RivoStack {
-    param([switch]$ApiOnly)
+    # `-IncludeDatabase` reinicia tambem o SQL Server. **Nao e o comportamento
+    # por omissao, e a razao e de desenho, nao de conveniencia.**
+    #
+    # Em producao a base de dados e externa e nunca reinicia com a aplicacao
+    # (ADR-029) — reinicia-la aqui verifica uma situacao que la nao acontece. E
+    # traz um problema real: `docker compose restart` nao respeita `depends_on`,
+    # por isso a API sobe enquanto o SQL Server ainda recupera a base, e o
+    # arranque fica refem do tempo de recuperacao. A 2026-08-25 isso passou dos
+    # tres minutos e tornou as suites intermitentes.
+    #
+    # O que interessa verificar e que **a aplicacao nao guarda estado em
+    # memoria** — e isso prova-se reiniciando so a aplicacao, que e exactamente
+    # o que acontece num deployment.
+    param([switch]$IncludeDatabase)
 
     if (Test-RivoLocal) {
-        if ($ApiOnly) { docker compose @script:ComposeFiles restart api | Out-Null }
-        else { docker compose @script:ComposeFiles restart | Out-Null }
+        if ($IncludeDatabase) { docker compose @script:ComposeFiles restart | Out-Null }
+        else { docker compose @script:ComposeFiles restart api | Out-Null }
     }
     else {
         if (-not $script:RestartCommand) {
@@ -183,7 +196,16 @@ function Restart-RivoStack {
     Espera que a API responda em /health.
 #>
 function Wait-RivoApi {
-    param([int]$TimeoutSeconds = 180)
+    # 420 s e nao 180: **a paciencia do script nao pode ser menor que a da
+    # aplicacao.** A API espera ate `Database__StartupTimeoutSeconds` pela base
+    # de dados, e em desenvolvimento isso sao 420 s porque um
+    # `docker compose restart` nao respeita `depends_on` e o SQL Server reinicia
+    # com ela.
+    #
+    # Com 180 s aqui, o script desistia enquanto a aplicacao ainda estava
+    # legitimamente a arrancar, e reportava "a API nao voltou" quando a API
+    # estava a fazer exactamente o que devia. Observado a 2026-08-25.
+    param([int]$TimeoutSeconds = 420)
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {

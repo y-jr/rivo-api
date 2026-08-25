@@ -78,6 +78,114 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
     public async Task AddAsync(SalesInvoice invoice, CancellationToken cancellationToken) =>
         await context.Invoices.AddAsync(invoice, cancellationToken);
 
+    /// <summary>
+    /// Total − creditado − recebido, contando só documentos **não anulados**.
+    ///
+    /// <para>
+    /// Três consultas em vez de um `join`, de propósito: um `join` entre notas e
+    /// recibos multiplicaria as linhas quando houvesse mais do que uma de cada,
+    /// e o total sairia inflacionado. É o erro clássico de somar sobre um
+    /// produto cartesiano, e não dá sinal — só um número errado.
+    /// </para>
+    /// </summary>
+    public async Task<decimal> OutstandingAsync(Guid invoiceId, CancellationToken cancellationToken)
+    {
+        var factura = await context.Invoices
+            .AsNoTracking()
+            .Where(i => i.Id == invoiceId)
+            .Select(i => new { i.GrossTotal, i.Status })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (factura is null || factura.Status is InvoiceStatus.Cancelled)
+        {
+            // Uma factura anulada não deve nada. Devolver o total dela poria-a a
+            // aceitar recebimentos.
+            return 0m;
+        }
+
+        var creditado = await context.CreditNotes
+            .AsNoTracking()
+            .Where(n => n.SalesInvoiceId == invoiceId && n.Status == InvoiceStatus.Normal)
+            .SumAsync(n => (decimal?)n.GrossTotal, cancellationToken) ?? 0m;
+
+        var recebido = await context.Receipts
+            .AsNoTracking()
+            .Where(r => r.Status == InvoiceStatus.Normal)
+            .SelectMany(r => r.Lines)
+            .Where(l => l.SalesInvoiceId == invoiceId)
+            .SumAsync(l => (decimal?)l.Amount, cancellationToken) ?? 0m;
+
+        return factura.GrossTotal - creditado - recebido;
+    }
+
+    public async Task<CreditNote?> FindCreditNoteAsync(Guid creditNoteId, CancellationToken cancellationToken) =>
+        await context.CreditNotes
+            .AsNoTracking()
+            .Include(n => n.Lines)
+            .FirstOrDefaultAsync(n => n.Id == creditNoteId, cancellationToken);
+
+    public async Task<CreditNote?> FindCreditNoteForUpdateAsync(Guid creditNoteId, CancellationToken cancellationToken) =>
+        await context.CreditNotes
+            .Include(n => n.Lines)
+            .FirstOrDefaultAsync(n => n.Id == creditNoteId, cancellationToken);
+
+    public async Task<IReadOnlyList<CreditNote>> ListCreditNotesAsync(
+        Guid? salesInvoiceId,
+        CancellationToken cancellationToken)
+    {
+        var query = context.CreditNotes.AsNoTracking().Include(n => n.Lines).AsQueryable();
+
+        if (salesInvoiceId is { } factura)
+        {
+            query = query.Where(n => n.SalesInvoiceId == factura);
+        }
+
+        return await query.OrderByDescending(n => n.IssuedOn).ToListAsync(cancellationToken);
+    }
+
+    public async Task AddCreditNoteAsync(CreditNote note, CancellationToken cancellationToken) =>
+        await context.CreditNotes.AddAsync(note, cancellationToken);
+
+    public async Task<Receipt?> FindReceiptAsync(Guid receiptId, CancellationToken cancellationToken) =>
+        await context.Receipts
+            .AsNoTracking()
+            .Include(r => r.Lines)
+            .FirstOrDefaultAsync(r => r.Id == receiptId, cancellationToken);
+
+    public async Task<Receipt?> FindReceiptForUpdateAsync(Guid receiptId, CancellationToken cancellationToken) =>
+        await context.Receipts
+            .Include(r => r.Lines)
+            .FirstOrDefaultAsync(r => r.Id == receiptId, cancellationToken);
+
+    public async Task<IReadOnlyList<Receipt>> ListReceiptsAsync(
+        Guid? customerId,
+        DateOnly? from,
+        DateOnly? to,
+        CancellationToken cancellationToken)
+    {
+        var query = context.Receipts.AsNoTracking().Include(r => r.Lines).AsQueryable();
+
+        if (customerId is { } cliente)
+        {
+            query = query.Where(r => r.CustomerId == cliente);
+        }
+
+        if (from is { } inicio)
+        {
+            query = query.Where(r => r.ReceivedOn >= inicio);
+        }
+
+        if (to is { } fim)
+        {
+            query = query.Where(r => r.ReceivedOn <= fim);
+        }
+
+        return await query.OrderByDescending(r => r.ReceivedOn).ToListAsync(cancellationToken);
+    }
+
+    public async Task AddReceiptAsync(Receipt receipt, CancellationToken cancellationToken) =>
+        await context.Receipts.AddAsync(receipt, cancellationToken);
+
     public Task SaveChangesAsync(CancellationToken cancellationToken) =>
         context.SaveChangesAsync(cancellationToken);
 }

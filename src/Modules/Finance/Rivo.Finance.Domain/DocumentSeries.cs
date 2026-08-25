@@ -123,6 +123,67 @@ public enum DocumentType
 {
     /// <summary>Factura.</summary>
     FT,
+
+    /// <summary>
+    /// Nota de crédito. Corrige uma factura já emitida.
+    ///
+    /// <para>
+    /// Existe porque uma factura emitida é imutável: a forma de a corrigir não
+    /// é reescrevê-la, é emitir um documento que a referencia e a reduz.
+    /// </para>
+    /// </summary>
+    NC,
+
+    /// <summary>
+    /// Recibo. Regista dinheiro efectivamente recebido contra facturas.
+    ///
+    /// <para>
+    /// Distinto da factura: uma factura diz o que é devido, um recibo diz o que
+    /// foi pago. Confundi-los é o erro que faz um mapa de dívida mentir.
+    /// </para>
+    /// </summary>
+    RG,
+}
+
+/// <summary>
+/// Meios de pagamento do SAF-T AO, tal como `modules/fiscal.md` os lista.
+///
+/// <para>
+/// <strong>Esta lista é documentada, não inventada.</strong> `MB` é Multicaixa,
+/// que é o meio corrente em Angola e a razão de a lista não ser a portuguesa.
+/// </para>
+/// </summary>
+public enum PaymentMethod
+{
+    /// <summary>Numerário.</summary>
+    NU,
+
+    /// <summary>Transferência bancária.</summary>
+    TB,
+
+    /// <summary>Cheque.</summary>
+    CH,
+
+    /// <summary>Cartão de crédito.</summary>
+    CC,
+
+    /// <summary>Cartão de débito.</summary>
+    CD,
+
+    /// <summary>Multicaixa.</summary>
+    MB,
+
+    /// <summary>Permuta de bens.</summary>
+    PR,
+
+    /// <summary>Compensação de saldos em conta corrente.</summary>
+    CS,
+
+    /// <summary>Desconto.</summary>
+    DE,
+
+    /// <summary>Outro.</summary>
+    OU,
 }
 
 /// <summary>
