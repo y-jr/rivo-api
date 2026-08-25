@@ -95,6 +95,7 @@ $cargoDaPolitica = Invoke-Sql @"
 select top 1 cast(s.approver_position_id as varchar(36))
 from approval.policy p join approval.policy_step s on s.policy_id = p.id
 where p.process_type = 'finance.payment_request' and p.is_active = 1
+  and p.department_id is null and p.requires_budget_check = 0
 order by s.[order]
 "@
 
