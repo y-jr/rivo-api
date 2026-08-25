@@ -21,8 +21,11 @@ public class PayablesTests
             "FT 661054", null, new PayeeParty("Sonangol Distribuidora", "5401234567"),
             Hoje.AddDays(-5), Hoje.AddDays(25), "AOA", liquido, imposto, "Combustível");
 
-    private static CreatePaymentRequest Pedir(FakePayablesStore store, FakePaymentApproval approval) =>
-        new(store, approval, new FakeAuditTrail());
+    private static CreatePaymentRequest Pedir(
+        FakePayablesStore store,
+        FakePaymentApproval approval,
+        FakePlanningStore? planning = null) =>
+        new(store, planning ?? new FakePlanningStore(), approval, new FakeAuditTrail());
 
     // ---- BR-1 na criação: sem governança não há pedido ----
 
@@ -38,7 +41,7 @@ public class PayablesTests
         var store = new FakePayablesStore().With(compra);
 
         var resultado = await Pedir(store, new FakePaymentApproval(available: false)).ExecuteAsync(
-            compra.Id, 114_000m, Guid.CreateVersion7(), Hoje, null,
+            compra.Id, 114_000m, Guid.CreateVersion7(), Hoje, costCentreId: null, null,
             Contexto, CancellationToken.None);
 
         Assert.Equal(CreatePaymentRequestOutcome.ApprovalUnavailable, resultado.Outcome);
@@ -59,7 +62,7 @@ public class PayablesTests
             submission: PaymentApprovalSubmissionResult.Failed("Sem política aplicável."));
 
         var resultado = await Pedir(store, approval).ExecuteAsync(
-            compra.Id, 114_000m, Guid.CreateVersion7(), Hoje, null,
+            compra.Id, 114_000m, Guid.CreateVersion7(), Hoje, costCentreId: null, null,
             Contexto, CancellationToken.None);
 
         Assert.Equal(CreatePaymentRequestOutcome.ApprovalRefused, resultado.Outcome);
@@ -79,15 +82,15 @@ public class PayablesTests
         var caso = Pedir(store, new FakePaymentApproval());
 
         var primeiro = await caso.ExecuteAsync(
-            compra.Id, 60_000m, Guid.CreateVersion7(), Hoje, null,
+            compra.Id, 60_000m, Guid.CreateVersion7(), Hoje, costCentreId: null, null,
             Contexto, CancellationToken.None);
 
         var segundo = await caso.ExecuteAsync(
-            compra.Id, 54_000m, Guid.CreateVersion7(), Hoje, null,
+            compra.Id, 54_000m, Guid.CreateVersion7(), Hoje, costCentreId: null, null,
             Contexto, CancellationToken.None);
 
         var terceiro = await caso.ExecuteAsync(
-            compra.Id, 1m, Guid.CreateVersion7(), Hoje, null,
+            compra.Id, 1m, Guid.CreateVersion7(), Hoje, costCentreId: null, null,
             Contexto, CancellationToken.None);
 
         Assert.Equal(CreatePaymentRequestOutcome.Created, primeiro.Outcome);
@@ -107,7 +110,7 @@ public class PayablesTests
         var caso = Pedir(store, new FakePaymentApproval());
 
         var primeiro = await caso.ExecuteAsync(
-            compra.Id, 114_000m, Guid.CreateVersion7(), Hoje, null,
+            compra.Id, 114_000m, Guid.CreateVersion7(), Hoje, costCentreId: null, null,
             Contexto, CancellationToken.None);
 
         var pedido = await store.FindPaymentRequestAsync(
@@ -116,7 +119,7 @@ public class PayablesTests
         pedido!.Cancel("Factura em duplicado", Agora);
 
         var segundo = await caso.ExecuteAsync(
-            compra.Id, 114_000m, Guid.CreateVersion7(), Hoje, null,
+            compra.Id, 114_000m, Guid.CreateVersion7(), Hoje, costCentreId: null, null,
             Contexto, CancellationToken.None);
 
         Assert.Equal(CreatePaymentRequestOutcome.Created, segundo.Outcome);
@@ -128,7 +131,7 @@ public class PayablesTests
         var store = new FakePayablesStore();
 
         var resultado = await Pedir(store, new FakePaymentApproval()).ExecuteAsync(
-            Guid.CreateVersion7(), 1_000m, Guid.CreateVersion7(), Hoje, null,
+            Guid.CreateVersion7(), 1_000m, Guid.CreateVersion7(), Hoje, costCentreId: null, null,
             Contexto, CancellationToken.None);
 
         Assert.Equal(CreatePaymentRequestOutcome.InvoiceNotFound, resultado.Outcome);

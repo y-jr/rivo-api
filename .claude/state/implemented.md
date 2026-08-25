@@ -12,8 +12,9 @@ Os restantes cinco — `procurement`, `payroll`, `projects`, `inventory`,
 
 ⚠ **Dois estão reduzidos ao mínimo pelo ADR-036**, e não implementados por
 inteiro: `fiscal` (só taxa com vigência e determinação) e `commercial` (só
-Cliente). `finance` tem AR, AP e Tesouraria feitos, e faltam-lhe Contabilidade &
-Fecho e Planeamento. Ver a ressalva em cada secção.
+Cliente). `finance` tem os cinco contextos internos desde 2026-08-25, mas a
+contabilidade está de pé e **vazia** — o plano de contas carrega-se, e os
+documentos ainda não geram lançamentos. Ver a ressalva em cada secção.
 
 > As datas até 2026-08-16 vêm do carimbo das migrações EF Core — o repositório
 > só passou a estar sob git nesse dia. A partir daí vêm do histórico.
@@ -190,7 +191,7 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
 
 ## Verificação
 
-**Dez suites** PowerShell caixa-preta contra a stack em Docker, **146 casos**
+**Onze suites** PowerShell caixa-preta contra a stack em Docker, **175 casos**
 (2026-08-24), todas re-executáveis.
 
 Eram seis suites e 66 casos em 2026-08-16. `verify-hr` cresceu 13 → 16 com as
@@ -218,6 +219,7 @@ três módulos do ADR-036 tinham deixado.
 | `verify-commercial` | 12 |
 | `verify-finance` | 29 |
 | `verify-payables` | 22 |
+| `verify-ledger` | 29 |
 
 `verify-finance` corre por último e **monta os seus pré-requisitos pelas rotas
 de `fiscal` e `commercial`** — taxa, vigências e cliente. Não há atalho por SQL
@@ -431,7 +433,65 @@ falta a certificação da AGT e a cadeia `Hash`/`HashControl` (ADR-036).
   `INSTEAD OF UPDATE, DELETE` mais sentinela contra `TRUNCATE`
 - As contas que já existiam receberam **um movimento de abertura** na migração
 
-**Fora:** Contabilidade & Fecho e Planeamento — e com Planeamento o disponível
-orçamental que BR-8 exige de `approval`. Também adiantamentos, nota de débito,
-câmbio, e a reconciliação bancária propriamente dita (importar o extracto do
-banco e emparelhar movimentos).
+### Contabilidade & Fecho — 2026-08-25
+
+- `LedgerAccount`, `Journal`, `JournalEntry` (+ linhas), `AccountingPeriod`
+- **O plano de contas carrega-se, não vem semeado.** O XSD do SAF-T fixa a
+  forma; o PGC angolano **não está em fonte primária** neste projecto, e
+  inventá-lo seria pior do que não o ter — pareceria certo, e a divergência só
+  apareceria no primeiro ficheiro entregue à AGT. Mesma posição de ADR-011 para
+  as taxas
+- **A partida dobrada é imposta no agregado.** Um lançamento nasce inteiro ou
+  não nasce: sem rascunho, porque um lançamento a meio não equilibra
+- Só contas de movimento (`GM`/`AM`) recebem lançamentos — lançar numa
+  agregadora faria o total dela deixar de ser a soma das filhas
+- `TransactionID` do SAF-T único, imposto por índice: é composto por três coisas
+  que quem lança escolhe, e o ficheiro só seria recusado meses depois
+- **Fechar um período pára a escrita**, e é isso que faz de um balancete já
+  entregue um facto. Reabrir exige motivo, é de `Admin`, e fica na trilha com
+  **acção própria**
+- Balancete com abertura, movimento e fecho por conta — o que o
+  `GeneralLedgerAccounts` do SAF-T precisa. A abertura de um período é o fecho
+  do anterior, calculada e não guardada
+
+⚠ **Período 1–16 e não 1–12.** A tabela em `docs/rivo-fiscal-saft-ao-v1.md` diz
+1–12; o XSD em `docs/schemas/` restringe a 1..16. Segue-se o XSD — é contra ele
+que o ficheiro valida.
+
+### Planeamento — 2026-08-25
+
+- `CostCentre`, `Budget` (+ linhas mensais), `DepartmentCostForecast`
+- **Centro de Custo não é Departamento** (D4): o mapeamento é opcional e não é
+  1:1, e o responsável pode não ser o gestor do departamento
+- **Previsão de Custos não é Orçamento** (D3): uma é do departamento e alimenta
+  o carregamento de caixa, a outra é do centro de custo e é tecto de controlo.
+  Coexistem sobre o mesmo período e nunca se fundem — verificado por SQL, que
+  confirma que nenhuma das tabelas tem a coluna da outra
+- Um orçamento por centro de custo e ano: dois tectos tornariam BR-8 ambígua
+
+### BR-8 fechada — 2026-08-25
+
+- `IBudgetAvailability`: **uma pergunta e uma resposta**. É um dos dois pontos
+  onde o `docs` avisa que o God Module pode nascer, e a estreiteza é a mitigação
+- A verificação corre **antes da decisão e antes de resolver aprovadores** — o
+  ponto de RN-017 é que ninguém decide sobre uma despesa que já se sabe não
+  caber
+- **Dos cinco resultados, um só deixa passar.** "Não consegui verificar" recusa
+  como "não cabe"
+- A rubrica **atravessa `approval` sem ser interpretada**, como o
+  `SourceReference` — sem ela, `finance` teria de adivinhar a partir do
+  departamento, e o mapeamento não é 1:1
+- **`finance.planning.write` e `finance.budgets.approve` não se sobrepõem.** Se
+  fossem a mesma pessoa, bastava subir o tecto para o pedido passar a caber
+- Direcção `approval → Rivo.Finance.Contracts`, **sem ciclo**: `finance` usa a
+  sua própria porta `IPaymentApproval`, e o composition root é que os liga
+
+⚠ **Consumo = compromissos, não realizações.** Despesa que chegue aos livros sem
+passar por um pedido de pagamento não consome orçamento — este número é um
+limite inferior do consumo real. E a verificação é **à data de hoje**, não à do
+pedido.
+
+**Fora:** postagem automática nos livros (a factura, o recibo e o pagamento não
+geram lançamentos — regista-se à mão), activos fixos e depreciação (bloqueados
+por **K1**), adiantamentos, nota de débito, câmbio, e a reconciliação bancária
+propriamente dita.

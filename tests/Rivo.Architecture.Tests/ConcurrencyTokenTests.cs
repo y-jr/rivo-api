@@ -84,6 +84,17 @@ public class ConcurrencyTokenTests
             "Objecto de valor, não agregado: substitui-se inteira e não tem identidade nem ciclo de " +
             "vida próprio. As colunas vivem na tabela de `Customer`, que tem o contador.",
 
+        ["JournalEntryLine"] =
+            "Imutável: criada com o lançamento e nunca alterada. Um lançamento lança-se inteiro " +
+            "ou não equilibra, e corrigir faz-se com outro lançamento — de regularização ou de " +
+            "ajustamento, que o SAF-T distingue precisamente para isso. A anulação é na raiz, " +
+            "que tem o contador.",
+
+        ["BudgetLine"] =
+            "O tecto de um mês, alterável **só de dentro de Budget** e só enquanto ele for " +
+            "rascunho. Duas revisões simultâneas colidem na raiz antes de chegarem aqui — mesma " +
+            "razão de Assignment.",
+
         ["BankMovement"] =
             "Linha de extracto, append-only e imposta como tal pela base de dados: nunca é " +
             "alterada depois de escrita, e corrigir faz-se com outro movimento em sentido " +

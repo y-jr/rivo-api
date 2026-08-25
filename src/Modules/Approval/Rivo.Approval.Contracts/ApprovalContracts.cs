@@ -48,6 +48,24 @@ public interface IApprovalGateway
 /// processos sem valor, como uma atribuição de cargo.
 /// </param>
 /// <param name="DepartmentId">Departamento do processo, para escolher a política.</param>
+/// <param name="BudgetReference">
+/// Contra que rubrica se verifica o orçamento (BR-8), <strong>opaco para
+/// `approval`</strong> — guarda-o e devolve-o a quem sabe lê-lo, exactamente
+/// como faz com <see cref="SourceReference"/>.
+///
+/// <para>
+/// Existe porque a alternativa era pior: sem ele, `approval` teria de mandar o
+/// departamento e deixar `finance` adivinhar a rubrica. E o mapeamento
+/// departamento → centro de custo <strong>não é 1:1</strong> (D4) — com dois
+/// centros no mesmo departamento, adivinhar significaria verificar contra um
+/// tecto ao acaso.
+/// </para>
+///
+/// <para>
+/// Nulo faz a verificação recuar para o departamento, que é o que um módulo sem
+/// noção de rubrica consegue dar.
+/// </para>
+/// </param>
 public sealed record ApprovalSubmission(
     string ProcessType,
     string SourceModule,
@@ -56,7 +74,8 @@ public sealed record ApprovalSubmission(
     decimal? Amount,
     string? Currency,
     Guid? DepartmentId,
-    string? Summary = null);
+    string? Summary = null,
+    string? BudgetReference = null);
 
 /// <param name="Outcome">
 /// <see cref="SubmissionOutcome.BudgetCheckUnavailable"/> não é falha técnica:
@@ -79,6 +98,9 @@ public sealed record SubmissionResult(SubmissionOutcome Outcome, Guid? RequestId
 
     public static SubmissionResult BudgetCheckUnavailable(string reason) =>
         new(SubmissionOutcome.BudgetCheckUnavailable, null, reason);
+
+    public static SubmissionResult BudgetExceeded(string reason) =>
+        new(SubmissionOutcome.BudgetExceeded, null, reason);
 }
 
 public enum SubmissionOutcome
@@ -101,10 +123,31 @@ public enum SubmissionOutcome
     NoApproversResolved,
 
     /// <summary>
-    /// A política exige verificação orçamental (BR-8) e `finance` não existe.
-    /// Traduz-se em 501 na fronteira HTTP.
+    /// A política exige verificação orçamental (BR-8) e <strong>não foi
+    /// possível verificar</strong> — sem fonte de orçamento ligada, sem rubrica
+    /// nem departamento, sem orçamento aprovado para o período, ou com moeda
+    /// diferente da do orçamento.
+    ///
+    /// <para>
+    /// <strong>Não confundir com <see cref="BudgetExceeded"/>.</strong> Este
+    /// diz "não sei"; o outro diz "sei, e não cabe". Os dois recusam — mas quem
+    /// os recebe faz coisas diferentes: um corrige a configuração, o outro pede
+    /// menos ou reforça o orçamento.
+    /// </para>
+    ///
+    /// <para>Traduz-se em 501 na fronteira HTTP.</para>
     /// </summary>
     BudgetCheckUnavailable,
+
+    /// <summary>
+    /// Há orçamento, e o valor não cabe no que resta do mês (BR-8, RN-017).
+    ///
+    /// <para>
+    /// <strong>409, não 501:</strong> a capacidade existe e funcionou. É o
+    /// estado do orçamento que impede.
+    /// </para>
+    /// </summary>
+    BudgetExceeded,
 }
 
 /// <param name="PendingApprovers">

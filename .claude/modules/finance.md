@@ -355,8 +355,27 @@ permissões, antes de o domínio a impor.**
 | POST | `/finance/payment-requests` | `finance.payments.request` |
 | POST | `/finance/payment-requests/{id}/cancellation` | `finance.payments.request` |
 | POST | `/finance/payment-requests/{id}/execution` | `finance.payments.execute` |
+| GET/POST | `/finance/ledger/accounts` | `finance.ledger.read` / `.write` |
+| POST | `/finance/ledger/accounts/{id}/deactivation` | `finance.ledger.write` |
+| GET/POST | `/finance/ledger/journals` | `finance.ledger.read` / `.write` |
+| GET/POST | `/finance/ledger/entries` | `finance.ledger.read` / `.write` |
+| GET | `/finance/ledger/entries/{id}` | `finance.ledger.read` |
+| POST | `/finance/ledger/entries/{id}/void` | `finance.ledger.write` |
+| GET/POST | `/finance/ledger/periods` | `finance.ledger.read` / `.write` |
+| POST | `/finance/ledger/periods/{ano}/{n}/closure` | `finance.ledger.close` |
+| POST | `/finance/ledger/periods/{ano}/{n}/reopening` | `finance.ledger.close` |
+| GET | `/finance/ledger/trial-balance?fiscalYear=&period=` | `finance.ledger.read` |
+| GET/POST | `/finance/planning/cost-centres` | `finance.planning.read` / `.write` |
+| GET/POST | `/finance/planning/budgets` | `finance.planning.read` / `.write` |
+| POST | `/finance/planning/budgets/{id}/revision` | `finance.planning.write` |
+| POST | `/finance/planning/budgets/{id}/approval` | `finance.budgets.approve` |
+| GET/POST | `/finance/planning/cost-forecasts` | `finance.planning.read` / `.write` |
 
 Criar um pedido devolve **`202`**, não `201`: existe e ainda não é pagável.
+
+**`finance.ledger.close` é de `Admin`**, e não de quem lança: reabrir um período
+faz números já reportados voltarem a mexer-se, e isso é do mesmo calibre que
+abrir uma série de documento.
 
 ### Por fazer
 
@@ -409,3 +428,170 @@ extracto que fechasse a zero contra um saldo que não é zero pareceria defeito,
 quando é apenas o facto de os movimentos anteriores nunca terem sido
 registados. Uma linha explícita a dizê-lo é mais honesta do que uma divergência
 por explicar.
+
+### Contabilidade & Fecho (2026-08-25)
+
+**O Rivo fixa a estrutura, não o conteúdo.** O XSD do SAF-T AO — que é fonte de
+verdade — fixa o formato do código de conta, as seis categorias e a regra da
+conta agregadora. **Não fixa o plano de contas angolano**, e esse não está em
+fonte primária neste projecto: o levantamento fiscal é provisório e o
+`CLAUDE.md` proíbe implementar a partir dele.
+
+Por isso **o plano carrega-se, não vem semeado**. É a mesma posição de ADR-011
+para as taxas: o sistema sabe a forma de uma taxa e recusa-se a inventar a
+percentagem. Um plano de contas inventado seria pior do que nenhum — pareceria
+certo, e a divergência só apareceria no primeiro ficheiro entregue à AGT.
+
+| Peça | O que impõe |
+|---|---|
+| `LedgerAccount` | As seis categorias `GR/GA/GM/AR/AA/AM`, a agregadora obrigatória fora do 1.º grau, e que **só contas de movimento recebem lançamentos** |
+| `Journal` | `JournalID` único, sem espaços — entra no `TransactionID` |
+| `JournalEntry` | **A partida dobrada**, e a chave `TransactionID` do SAF-T |
+| `AccountingPeriod` | O fecho, que é o que faz de um balancete um facto |
+
+**A partida dobrada é imposta no agregado**, não numa verificação que alguém
+pode esquecer de chamar: `Post` recebe as linhas todas, soma os dois lados, e
+recusa se não baterem. Um lançamento **nasce inteiro ou não nasce** — não há
+rascunho, porque um lançamento a meio não equilibra e um estado "por equilibrar"
+seria dizer que a invariante é opcional.
+
+Corrigir faz-se com outro lançamento, de regularização (`R`) ou de ajustamento
+(`J`) — que o SAF-T distingue precisamente para isso.
+
+#### Três coisas que o agregado não vê
+
+Vivem na camada Application porque dependem do resto dos livros:
+
+1. **O período aceita escrita?** Um período fechado recusa, e é essa recusa que
+   faz de um balancete já entregue um facto em vez de uma vista sobre dados que
+   ainda se mexem. **409, não 400:** o lançamento está bem formado e noutro
+   período entrava sem objecção.
+2. **A conta recebe lançamentos?** Lançar numa agregadora faria o total dela
+   deixar de ser a soma das filhas — o erro clássico que um plano hierárquico
+   existe para impedir.
+3. **A chave do SAF-T já foi usada?** `TransactionID` compõe data, diário e
+   número de arquivo — três coisas que quem lança escolhe. Nada impede
+   repeti-las por engano, e o ficheiro só seria recusado meses depois.
+
+#### O período vai de 1 a 16, não de 1 a 12
+
+⚠ **Há uma divergência dentro de `docs/`.** A tabela de restrições em
+`rivo-fiscal-saft-ao-v1.md` diz "Período | 1–12"; o XSD em `docs/schemas/`
+restringe `SAFAOAccountingPeriod` a **1..16**.
+
+Segue-se o XSD: é o artefacto contra o qual o ficheiro valida, e um ficheiro com
+período 13 passa. Os períodos acima de doze são os de fecho e regularização, e
+existem justamente para que o apuramento de resultados não se misture com
+Dezembro — o que torna 1..16 também a leitura que faz sentido.
+
+#### Balancete
+
+`GET /finance/ledger/trial-balance` devolve, por conta de movimento, abertura,
+movimento do período e fecho — que é exactamente o que o `GeneralLedgerAccounts`
+do SAF-T precisa. **A abertura de um período é o fecho do anterior**, calculada
+e não guardada à parte, e por isso não pode divergir.
+
+Traz `isBalanced`. Com a partida dobrada imposta no agregado isso é sempre
+verdade — **e é por isso que vale a pena mostrar**: no dia em que for falso,
+alguma coisa entrou por fora.
+
+O **relatório formatado** (balancete, demonstração de resultados, balanço) é de
+`fiscal`, não de `finance` — é ele que lê estes números para relatar.
+
+### Planeamento (2026-08-25)
+
+Três entidades, e **duas distinções vinculativas do `docs`**:
+
+| Entidade | Distinção |
+|---|---|
+| `CostCentre` | **Não é Departamento** (D4). O mapeamento é opcional e **não é 1:1** — nulo é estado normal, não dado em falta. `hr` possui o Departamento; aqui há um ponteiro sem chave estrangeira |
+| `Budget` + `BudgetLine` | Tecto de controlo anual, com uma linha por mês |
+| `DepartmentCostForecast` | **Não é Orçamento** (D3). O orçamento diz quanto se *pode* gastar e é do centro de custo; a previsão diz quanto se *espera* gastar e é do departamento. Coexistem sobre o mesmo período e **nunca se fundem** |
+
+O responsável do centro de custo **pode não ser o gestor do departamento** — é
+precisamente essa divergência que o `docs` manda preservar, e que o protótipo
+apagava.
+
+### BR-8 — a verificação orçamental
+
+Até 2026-08-25 uma política com `RequiresBudgetCheck` **recusava a submissão**,
+porque não havia orçamento nenhum contra que verificar (ADR-034). Agora
+verifica.
+
+```
+pedido de pagamento (imputado a um centro de custo)
+  → approval escolhe a política
+  → política exige verificação orçamental
+  → finance responde: cabe / não cabe / não consegui verificar
+  → só "cabe" deixa criar o processo
+```
+
+**A verificação corre antes da decisão, e antes de resolver aprovadores.** O
+ponto de RN-017 é que ninguém decide sobre uma despesa que já se sabe não caber;
+e falhar cedo é o que faz um processo recusado não chegar a existir.
+
+#### O contrato é deliberadamente estreito
+
+`IBudgetAvailability` é uma pergunta e uma resposta. `approval` não vê
+orçamentos, nem centros de custo, nem lançamentos — é um dos dois pontos onde o
+`docs` avisa que o God Module pode nascer, e a estreiteza é a mitigação.
+
+**A rubrica atravessa `approval` sem ser interpretada**, como já acontece com
+`SourceReference`. A alternativa era pior: sem ela, `finance` teria de adivinhar
+a rubrica a partir do departamento — e com dois centros de custo no mesmo
+departamento (que D4 permite) adivinhar significaria verificar contra um tecto
+ao acaso. Sem rubrica, a verificação recua para o departamento e **recusa se a
+tradução for ambígua**.
+
+#### Quatro dos cinco resultados são recusa
+
+| Resultado | Significa |
+|---|---|
+| `Within` | Cabe. **O único que deixa avançar** |
+| `Exceeded` | Há orçamento e não cabe — 409 |
+| `NoBudget` | Não há orçamento aprovado para o mês. Um rascunho não controla nada |
+| `NoCostCentre` | Sem rubrica nem departamento, ou tradução ambígua |
+| `CurrencyMismatch` | Moedas diferentes. **Não se converte** — o câmbio é uma decisão |
+
+**"Não consegui verificar" não é "pode avançar".** Uma política que exige
+verificação orçamental está a dizer que não se decide sem saber, e aprovar por
+omissão é o modo de falha que BR-8 existe para impedir.
+
+#### A segregação que dá sentido à regra
+
+`finance.planning.write` e `finance.budgets.approve` **não se sobrepõem**:
+`Manager` elabora o orçamento, `Finance` aprova-o. Se fossem a mesma pessoa,
+bastaria subir o tecto para o próprio pedido passar a caber — e a verificação
+deixaria de verificar o que quer que fosse. É a mesma forma de BR-3, aplicada ao
+orçamento em vez de ao pagamento.
+
+Um orçamento **aprovado não se altera**, pela mesma razão.
+
+#### Consumo: compromissos, não realizações
+
+O que conta contra o tecto são os **pedidos de pagamento não cancelados**
+imputados àquele centro de custo naquele mês. Um pedido em curso já promete o
+dinheiro, e esperar pelo lançamento contabilístico deixaria passar tudo até ao
+fecho. É a mesma leitura que `CommittedAsync` faz sobre uma factura de compra.
+
+⚠ **Duas limitações assumidas:**
+
+- **Despesa que chegue aos livros sem passar por um pedido de pagamento** — um
+  lançamento directo, um acréscimo de salários — não consome orçamento. Enquanto
+  nem tudo o que gasta passar por aqui, este número é um **limite inferior** do
+  consumo real.
+- **A verificação é à data de hoje**, não à data do pedido: a submissão não
+  carrega data, e `approval` usa o relógio. Um pedido retroactivo é verificado
+  contra o mês corrente.
+
+### Por fazer, depois de Contabilidade e Planeamento
+
+- **Activos fixos e depreciação** — bloqueado por **K1**: a sobreposição com
+  `inventory` não está resolvida, e nenhum dos módulos pode assumir ownership.
+- **Reconciliação bancária propriamente dita** — importar o extracto do banco e
+  emparelhar movimentos. Depende do formato, que é decisão do banco.
+- **Câmbio multi-moeda** — candidato BNA, sem fonte fixada.
+- **Postagem automática nos livros.** Hoje a factura de venda, o recibo e a
+  execução de pagamento **não geram lançamentos** — a contabilidade regista-se à
+  mão. Ligá-los é o passo que fecha o ciclo, e traz consigo o mapeamento
+  documento → contas, que depende do plano carregado.

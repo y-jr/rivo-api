@@ -81,7 +81,15 @@ public class ProjectReferenceTests
         //
         // O domínio de `approval` ainda não referencia `hr`: a resolução de
         // aprovadores é feita na camada Application, que não existe ainda.
-        ["Approval"] = ["Hr", "Audit"],
+        // `approval` resolve aprovadores por Cargo (`hr`) e verifica o
+        // disponível orçamental (`finance`) antes de deixar decidir — BR-8.
+        //
+        // **`finance` não aparece do outro lado, e é o que impede o ciclo.**
+        // `finance` declara `IPaymentApproval` nas suas próprias palavras e o
+        // composition root é que o liga ao motor de `approval`. A direcção
+        // `approval → finance` é uma só, e `Modules_HaveNoDependencyCycles`
+        // continua a valer — é ele que garante que assim fica.
+        ["Approval"] = ["Hr", "Audit", "Finance"],
     };
 
     [Fact]

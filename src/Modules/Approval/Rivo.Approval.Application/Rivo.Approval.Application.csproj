@@ -4,6 +4,15 @@
     <ProjectReference Include="..\Rivo.Approval.Domain\Rivo.Approval.Domain.csproj" />
     <ProjectReference Include="..\Rivo.Approval.Contracts\Rivo.Approval.Contracts.csproj" />
     <ProjectReference Include="..\..\Hr\Rivo.Hr.Contracts\Rivo.Hr.Contracts.csproj" />
+
+    <!--
+      BR-8: `approval` lê o disponível orçamental de `finance`.
+
+      **Não forma ciclo**, e a razão é de desenho: `finance` não referencia
+      `Rivo.Approval.*` — declara `IPaymentApproval` nas suas próprias palavras
+      e o composition root é que os liga. A direcção é uma só.
+    -->
+    <ProjectReference Include="..\..\Finance\Rivo.Finance.Contracts\Rivo.Finance.Contracts.csproj" />
     <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
   </ItemGroup>
 

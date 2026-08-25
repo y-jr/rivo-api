@@ -30,6 +30,7 @@ public sealed class PaymentRequest
         Guid requestedByEmployeeId,
         Guid approvalRequestId,
         DateOnly requestedOn,
+        Guid? costCentreId,
         string? notes)
     {
         Id = id;
@@ -41,6 +42,7 @@ public sealed class PaymentRequest
         RequestedByEmployeeId = requestedByEmployeeId;
         ApprovalRequestId = approvalRequestId;
         RequestedOn = requestedOn;
+        CostCentreId = costCentreId;
         Notes = notes;
         Status = PaymentRequestStatus.Eligible;
     }
@@ -110,6 +112,19 @@ public sealed class PaymentRequest
 
     public string? CancellationReason { get; private set; }
 
+    /// <summary>
+    /// A que centro de custo a despesa é imputada.
+    ///
+    /// <para>
+    /// <strong>É por aqui que o pedido consome orçamento</strong> — sem
+    /// imputação, o valor não conta para tecto nenhum, e BR-8 não tem nada
+    /// contra que verificar. Anulável porque nem toda a despesa é imputável, e
+    /// forçar uma imputação faria aparecer um centro de custo "diversos" que
+    /// não significa nada.
+    /// </para>
+    /// </summary>
+    public Guid? CostCentreId { get; private set; }
+
     /// <summary>Concorrência optimista (ADR-025, BR-17).</summary>
     public int Version { get; private set; }
 
@@ -124,6 +139,7 @@ public sealed class PaymentRequest
         Guid requestedByEmployeeId,
         Guid approvalRequestId,
         DateOnly requestedOn,
+        Guid? costCentreId = null,
         string? notes = null)
     {
         ArgumentNullException.ThrowIfNull(invoice);
@@ -172,6 +188,7 @@ public sealed class PaymentRequest
             requestedByEmployeeId,
             approvalRequestId,
             requestedOn,
+            costCentreId,
             string.IsNullOrWhiteSpace(notes) ? null : notes.Trim());
     }
 

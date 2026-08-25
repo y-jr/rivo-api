@@ -31,6 +31,7 @@ public sealed class FinancePaymentApproval(IApprovalGateway gateway) : IPaymentA
         decimal amount,
         string currency,
         Guid? departmentId,
+        string? budgetReference,
         string summary,
         CancellationToken cancellationToken)
     {
@@ -45,7 +46,11 @@ public sealed class FinancePaymentApproval(IApprovalGateway gateway) : IPaymentA
                 amount,
                 currency,
                 departmentId,
-                summary),
+                summary,
+
+                // A rubrica de BR-8. `approval` transporta-a sem a
+                // interpretar e devolve-a a `finance` na verificação.
+                budgetReference),
             cancellationToken);
 
         return resultado.Outcome switch

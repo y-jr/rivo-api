@@ -229,6 +229,7 @@ app.MapFiscalModule();
 app.MapCommercialModule();
 app.MapFinanceModule();
 app.MapPayables();
+app.MapLedger();
 app.MapHrModule();
 app.MapApprovalModule();
 app.MapNotificationsModule();

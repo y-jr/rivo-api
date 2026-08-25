@@ -62,7 +62,11 @@ public static class AccessProfiles
             [Manager] = [
                 ApprovalPermissions.RequestsRead,
                 ApprovalPermissions.RequestsDecide,
-                .. FinancePermissions.ForPayables],
+                .. FinancePermissions.ForPayables,
+
+                // Elabora o orçamento do seu centro de custo. **Não o aprova**
+                // — quem sobe o tecto não pode ser quem precisa que ele suba.
+                .. FinancePermissions.ForBudgetOwners],
 
             // `Finance` é a tesouraria e a supervisão: regista o dinheiro que
             // entra, credita, anula e estorna. **Sem emitir facturas** — quem
@@ -72,7 +76,17 @@ public static class AccessProfiles
                 ApprovalPermissions.RequestsRead,
                 ApprovalPermissions.RequestsDecide,
                 .. FinancePermissions.ForTreasury,
-                FinancePermissions.InvoicesCancel],
+                FinancePermissions.InvoicesCancel,
+
+                // Contabilidade é o outro lado da tesouraria: quem regista o
+                // dinheiro também o lança nos livros. **Sem `LedgerClose`** —
+                // fechar e reabrir períodos é de `Admin`, pela mesma razão que
+                // abrir séries de documento é.
+                .. FinancePermissions.ForAccounting,
+
+                // Aprova orçamentos, e não os escreve. É a outra metade da
+                // segregação que dá sentido a BR-8.
+                .. FinancePermissions.ForBudgetApprovers],
 
             // Note-se a ausência de `hr.positions.write`: RH atribui Cargos,
             // mas não decide quais existem nem quais conferem autoridade de

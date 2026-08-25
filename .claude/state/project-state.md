@@ -15,11 +15,16 @@ que reordenou as Fases 3, 4 e 5 do
 Hoje o **ciclo de venda fecha** — emitir, corrigir por nota de crédito, receber
 por recibo, e o saldo diz o que falta — e o **ciclo de compra também**: registar
 a factura do fornecedor, pedir o pagamento, aprová-lo e executá-lo contra uma
-conta bancária.
+conta bancária, com extracto que reconcilia.
 
-É no pagamento que **BR-1, BR-3 e BR-5** se encontram: sem decisão aprovada não
-se paga, a decisão é revalidada no momento, o saldo é verificado, e quem aprovou
-não pode executar.
+É no pagamento que **BR-1, BR-3, BR-5 e BR-8** se encontram: verifica-se o
+orçamento antes de deixar decidir, sem decisão aprovada não se paga, a decisão é
+revalidada no momento, o saldo é verificado, e quem aprovou não pode executar.
+
+`finance` tem os **cinco contextos internos** desde 2026-08-25 — Contabilidade &
+Fecho e Planeamento foram os últimos. ⚠ Mas **a contabilidade está de pé e
+vazia**: o plano de contas carrega-se (o Rivo recusa-se a inventar o PGC
+angolano) e os documentos ainda **não geram lançamentos automáticos**.
 
 ⚠ **As facturas não são documentos fiscais válidos em Angola** — têm a forma,
 falta a certificação da AGT, e trazem menção disso congelada na emissão.
@@ -36,7 +41,7 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `approval` | Completo para o âmbito fixado. Políticas, pedidos, decisões, BR-2/4/6/17, worker de reconciliação |
 | `fiscal` | ⚠ **Fatia mínima** (ADR-036). Taxa com vigência e determinação. Não é o motor fiscal |
 | `commercial` | ⚠ **Reduzido ao Cliente** (ADR-036). Sem funil comercial |
-| `finance` | **AR e AP feitos.** Ciclo de venda fechado (factura, nota de crédito, recibo, saldo), Contas a Pagar com Tesouraria — BR-1, BR-3, BR-5 impostas — e extracto de conta append-only. Falta Contabilidade & Fecho e Planeamento |
+| `finance` | **Os cinco contextos existem.** Venda (factura, nota de crédito, recibo, saldo), Contas a Pagar, Tesouraria com extracto append-only, Contabilidade & Fecho, Planeamento. **BR-1, BR-3, BR-5 e BR-8 impostas.** Falta a postagem automática nos livros, e os activos fixos continuam bloqueados por K1 |
 | `procurement`, `payroll`, `projects`, `inventory`, `fleet` | Sem código. Definidos em [modules/](../modules/) |
 
 Detalhe com datas e ressalvas em [implemented.md](implemented.md).
@@ -60,19 +65,19 @@ O token viaja em claro. É o **K16**, e não pode ir para produção a sério.
 
 | Área | Estado |
 |---|---|
-| Código | 9 módulos, 45 projectos em `src/`, 131 ficheiros `.cs` |
-| Superfície HTTP | 94 endpoints em 9 grupos de rota, mais `/health` |
-| ADRs | 36, aceites |
-| Testes | **433** em 14 projectos — 348 de domínio, 51 de Application, 21 de arquitectura, 9 da API do host, 4 de integração |
-| Verificação end-to-end | **10 suites** PowerShell, **146 casos**, todas re-executáveis |
+| Código | 9 módulos, 45 projectos em `src/`, 208 ficheiros `.cs` |
+| Superfície HTTP | 115 endpoints em 9 grupos de rota, mais `/health` |
+| ADRs | 37, aceites |
+| Testes | **535** em 14 projectos — 384 de domínio, 88 de Application, 21 de arquitectura, 9 da API do host, 4 de integração |
+| Verificação end-to-end | **11 suites** PowerShell, **175 casos**, todas re-executáveis |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
 
 ## O que não existe
 
-- **Cobertura de Application em sete dos nove módulos.** `finance` (43) e
-  `identity` (8) têm-na; os outros não. 348 testes de domínio contra 51 de
+- **Cobertura de Application em sete dos nove módulos.** `finance` (80) e
+  `identity` (8) têm-na; os outros não. 384 testes de domínio contra 88 de
   Application e 4 de Infrastructure.
 - **Testes de integração** em oito dos nove módulos. Só `notifications` os tem.
 - **Observabilidade.** Com o Azure fora de cena (ADR-031), o diagnóstico em
@@ -128,17 +133,23 @@ ADR-024); o K15 (2026-08-24, ADR-035).
 
 Não é uma sequência ratificada — é o que está por decidir e por fazer.
 
-1. **Contabilidade & Fecho e Planeamento** em `finance` — os dois contextos que
-   restam. Com Planeamento vem o **disponível orçamental** que BR-8 exige de
-   `approval`; enquanto não existir, uma política com `RequiresBudgetCheck`
-   recusa a submissão. AR e AP fecharam a 2026-08-25, com BR-1, BR-3 e BR-5
-   impostas e verificadas.
+1. **Postagem automática nos livros.** A contabilidade existe, mas hoje a
+   factura de venda, o recibo e a execução de pagamento **não geram
+   lançamentos** — regista-se à mão. Ligá-los fecha o ciclo, e traz consigo o
+   mapeamento documento → contas, que depende do plano carregado.
 2. **Domínio e TLS** — fecha o K16 e é pré-requisito de qualquer uso real.
-3. **Cobertura de Application nos outros módulos** — `finance` fechou a
-   2026-08-25 com 43 testes. O próximo que mais custa é `DecideOnRequest` em
-   `approval`: BR-2, BR-4 e BR-6 vivem lá e só têm cobertura caixa-preta.
-4. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
+3. **Carregar um plano de contas real.** O Rivo fixa a estrutura do SAF-T e
+   recusa-se a inventar o PGC angolano; sem um plano carregado, a contabilidade
+   está de pé mas vazia. **Precisa do contabilista**, não de código.
+4. **Cobertura de Application nos outros módulos** — `finance` tem 80 testes. O
+   próximo que mais custa é `DecideOnRequest` em `approval`: BR-2, BR-4 e BR-6
+   vivem lá e só têm cobertura caixa-preta.
+5. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
    vendas a balcão saem com um marcador visível. Precisa de fonte primária.
+
+**Fechado a 2026-08-25:** Contabilidade & Fecho e Planeamento, e com eles
+**BR-8** — uma política com `RequiresBudgetCheck` deixou de recusar sempre e
+passou a verificar.
 
 Ver também [implemented.md](implemented.md),
 [in-progress.md](in-progress.md), [known-issues.md](known-issues.md),

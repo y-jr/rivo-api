@@ -27,6 +27,14 @@ requisitos do SGAP.
 na interface. RLS é defesa em profundidade, nunca a sede da regra
 (ADR-008).
 
+**Estado a 2026-08-25:** BR-1, BR-2, BR-3, BR-4, BR-5, BR-6, BR-8, BR-17 e
+BR-20 estão implementadas e verificadas. **BR-7 continua por desenhar** (K5).
+
+BR-8 fechou com Planeamento (ADR-037): `approval` pergunta a `finance` se o
+valor cabe, antes de escolher aprovadores. ⚠ Duas ressalvas assumidas — o
+consumo conta **compromissos e não realizações**, e a verificação é à **data de
+hoje** e não à do pedido.
+
 ## Auditoria
 
 | # | Regra | Vinculados |

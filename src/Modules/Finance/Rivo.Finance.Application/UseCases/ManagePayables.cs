@@ -383,14 +383,21 @@ public sealed class GetPurchaseInvoice(IPayablesStore store)
 /// </summary>
 public sealed class CreatePaymentRequest(
     IPayablesStore store,
+    IPlanningStore planning,
     IPaymentApproval approval,
     IAuditTrail audit)
 {
+    /// <param name="costCentreId">
+    /// A que centro de custo a despesa é imputada. <strong>É o que faz o pedido
+    /// consumir orçamento</strong> — sem imputação, BR-8 não tem contra que
+    /// verificar, e uma política que a exija recusa a submissão.
+    /// </param>
     public async Task<CreatePaymentRequestResult> ExecuteAsync(
         Guid purchaseInvoiceId,
         decimal amount,
         Guid requestedByEmployeeId,
         DateOnly requestedOn,
+        Guid? costCentreId,
         string? notes,
         AuditContext context,
         CancellationToken cancellationToken)
@@ -421,6 +428,18 @@ public sealed class CreatePaymentRequest(
                 $"{comprometido:N2} em pedidos, e este é de {amount:N2}.");
         }
 
+        CostCentre? centro = null;
+
+        if (costCentreId is { } rubrica)
+        {
+            centro = await planning.FindCostCentreAsync(rubrica, cancellationToken);
+
+            if (centro is null || !centro.IsActive)
+            {
+                return CreatePaymentRequestResult.CostCentreNotFound();
+            }
+        }
+
         var submissao = await approval.SubmitAsync(
             // O identificador do pedido ainda não existe — gera-se depois de a
             // submissão correr bem. Usa-se o da factura como referência de
@@ -429,7 +448,15 @@ public sealed class CreatePaymentRequest(
             requestedByEmployeeId,
             amount,
             compra.Currency,
-            departmentId: null,
+
+            // O departamento do centro de custo, para escolher a política. Vem
+            // da imputação e não de um campo à parte: são a mesma decisão.
+            centro?.DepartmentId,
+
+            // A rubrica, para BR-8. `approval` transporta-a sem a interpretar e
+            // devolve-a a quem sabe lê-la — a mesma coisa que faz com a
+            // referência de origem.
+            centro?.Id.ToString(),
             $"Pagamento de {amount:N2} {compra.Currency} a {compra.SupplierName}, " +
             $"factura {compra.SupplierInvoiceNumber}",
             cancellationToken);
@@ -444,7 +471,8 @@ public sealed class CreatePaymentRequest(
         try
         {
             pedido = PaymentRequest.Create(
-                compra, amount, requestedByEmployeeId, submissao.RequestId!.Value, requestedOn, notes);
+                compra, amount, requestedByEmployeeId, submissao.RequestId!.Value, requestedOn,
+                centro?.Id, notes);
         }
         catch (Exception error) when (error is ArgumentException or ArgumentOutOfRangeException or InvalidOperationException)
         {
@@ -479,6 +507,9 @@ public sealed record CreatePaymentRequestResult(
     public static CreatePaymentRequestResult InvoiceNotFound() =>
         new(CreatePaymentRequestOutcome.InvoiceNotFound, null, null, null);
 
+    public static CreatePaymentRequestResult CostCentreNotFound() =>
+        new(CreatePaymentRequestOutcome.CostCentreNotFound, null, null, null);
+
     public static CreatePaymentRequestResult ApprovalUnavailable() =>
         new(CreatePaymentRequestOutcome.ApprovalUnavailable, null, null, null);
 
@@ -496,6 +527,9 @@ public enum CreatePaymentRequestOutcome
 {
     Created,
     InvoiceNotFound,
+
+    /// <summary>A rubrica indicada não existe ou está desactivada — 404.</summary>
+    CostCentreNotFound,
 
     /// <summary>Sem motor de governança. 501 — a capacidade não existe.</summary>
     ApprovalUnavailable,

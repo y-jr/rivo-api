@@ -218,6 +218,7 @@ public static class PayablesEndpoints
             request.Amount,
             request.RequestedByEmployeeId,
             request.RequestedOn ?? DateOnly.FromDateTime(DateTime.UtcNow),
+            request.CostCentreId,
             request.Notes,
             BuildAuditContext(http),
             cancellationToken);
@@ -237,6 +238,9 @@ public static class PayablesEndpoints
 
             CreatePaymentRequestOutcome.InvoiceNotFound =>
                 Results.NotFound(new { erro = "Factura de compra não encontrada." }),
+
+            CreatePaymentRequestOutcome.CostCentreNotFound =>
+                Results.NotFound(new { erro = "Centro de custo não encontrado ou desactivado." }),
 
             // 501: sem motor de governança a capacidade não existe. Melhor não
             // criar o pedido do que criar um que nunca poderá ser pago (BR-1).
@@ -369,6 +373,12 @@ public sealed record CreatePaymentRequestRequest(
     decimal Amount,
     Guid RequestedByEmployeeId,
     DateOnly? RequestedOn,
+
+    /// <summary>
+    /// A que centro de custo a despesa é imputada. Sem isto o pedido não
+    /// consome orçamento, e uma política que exija BR-8 recusa a submissão.
+    /// </summary>
+    Guid? CostCentreId,
     string? Notes);
 
 /// <param name="ExecutedByEmployeeId">

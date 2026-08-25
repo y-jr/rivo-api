@@ -29,12 +29,18 @@ public interface IPaymentApproval
     /// </summary>
     bool IsAvailable { get; }
 
+    /// <param name="budgetReference">
+    /// A rubrica contra que BR-8 verifica — o centro de custo, em texto.
+    /// Atravessa a governança <strong>sem ser interpretada</strong> e volta a
+    /// `finance` na verificação orçamental.
+    /// </param>
     Task<PaymentApprovalSubmissionResult> SubmitAsync(
         Guid paymentRequestId,
         Guid requestedByEmployeeId,
         decimal amount,
         string currency,
         Guid? departmentId,
+        string? budgetReference,
         string summary,
         CancellationToken cancellationToken);
 

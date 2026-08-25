@@ -67,6 +67,36 @@ public static class FinanceModuleExtensions
         services.AddScoped<CancelPaymentRequest>();
         services.AddScoped<ExecutePayment>();
 
+        // Contabilidade & Fecho.
+        services.AddScoped<ILedgerStore, LedgerStore>();
+        services.AddScoped<OpenLedgerAccount>();
+        services.AddScoped<ListLedgerAccounts>();
+        services.AddScoped<DeactivateLedgerAccount>();
+        services.AddScoped<OpenJournal>();
+        services.AddScoped<ListJournals>();
+        services.AddScoped<PostJournalEntry>();
+        services.AddScoped<ListJournalEntries>();
+        services.AddScoped<GetJournalEntry>();
+        services.AddScoped<VoidJournalEntry>();
+        services.AddScoped<ManageAccountingPeriods>();
+        services.AddScoped<GetTrialBalance>();
+
+        // Planeamento.
+        services.AddScoped<IPlanningStore, PlanningStore>();
+        services.AddScoped<OpenCostCentre>();
+        services.AddScoped<ListCostCentres>();
+        services.AddScoped<DraftBudget>();
+        services.AddScoped<ReviseBudget>();
+        services.AddScoped<ApproveBudget>();
+        services.AddScoped<ListBudgets>();
+        services.AddScoped<RecordCostForecast>();
+        services.AddScoped<ListCostForecasts>();
+
+        // **O disponível orçamental de BR-8.** Registado como o contrato
+        // publicado, para que `approval` o receba sem conhecer nada de
+        // `finance` além dele.
+        services.AddScoped<IBudgetAvailability, BudgetAvailability>();
+
         // Cada módulo regista as policies das suas permissões (ADR-014).
         services.AddAuthorization(options =>
         {

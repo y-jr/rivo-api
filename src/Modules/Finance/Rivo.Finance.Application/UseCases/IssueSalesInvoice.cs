@@ -271,6 +271,39 @@ public static class FinanceAuditActions
     /// </para>
     /// </summary>
     public const string PaymentSegregationRefused = "finance.payment_request.segregation_refused";
+
+    // ---- Contabilidade ----
+
+    public const string AccountOpenedInChart = "finance.ledger_account.opened";
+    public const string JournalOpened = "finance.journal.opened";
+    public const string EntryPosted = "finance.journal_entry.posted";
+    public const string EntryVoided = "finance.journal_entry.voided";
+
+    /// <summary>
+    /// Fecho de período. É o acto que torna números definitivos.
+    /// </summary>
+    public const string PeriodClosed = "finance.accounting_period.closed";
+
+    /// <summary>
+    /// <strong>Reabertura de período fechado.</strong> Acção própria e das mais
+    /// sensíveis do módulo: faz números já reportados voltarem a mexer-se, e
+    /// quem audita precisa de a encontrar sem a procurar entre os fechos.
+    /// </summary>
+    public const string PeriodReopened = "finance.accounting_period.reopened";
+
+    // ---- Planeamento ----
+
+    public const string CostCentreOpened = "finance.cost_centre.opened";
+    public const string BudgetDrafted = "finance.budget.drafted";
+    public const string BudgetRevised = "finance.budget.revised";
+
+    /// <summary>
+    /// Aprovação de orçamento. É o momento em que o tecto passa a controlar, e
+    /// por isso o momento a que uma auditoria de BR-8 volta.
+    /// </summary>
+    public const string BudgetApproved = "finance.budget.approved";
+
+    public const string ForecastSubmitted = "finance.cost_forecast.submitted";
 }
 
 public static class FinanceAuditEntityTypes
@@ -282,4 +315,11 @@ public static class FinanceAuditEntityTypes
     public const string BankAccount = "finance.bank_account";
     public const string PurchaseInvoice = "finance.purchase_invoice";
     public const string PaymentRequest = "finance.payment_request";
+    public const string LedgerAccount = "finance.ledger_account";
+    public const string Journal = "finance.journal";
+    public const string JournalEntry = "finance.journal_entry";
+    public const string AccountingPeriod = "finance.accounting_period";
+    public const string CostCentre = "finance.cost_centre";
+    public const string Budget = "finance.budget";
+    public const string CostForecast = "finance.cost_forecast";
 }

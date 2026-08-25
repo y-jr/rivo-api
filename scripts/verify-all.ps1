@@ -25,7 +25,8 @@ $suites = @(
     "verify-fiscal",
     "verify-commercial",
     "verify-finance",
-    "verify-payables"
+    "verify-payables",
+    "verify-ledger"
 )
 
 function Wait-ForApi {

@@ -291,6 +291,117 @@ internal sealed class FakePayablesStore : IPayablesStore
     }
 }
 
+internal sealed class FakePlanningStore : IPlanningStore
+{
+    private readonly Dictionary<Guid, CostCentre> _centres = [];
+    private readonly List<Budget> _budgets = [];
+    private readonly List<DepartmentCostForecast> _forecasts = [];
+
+    /// <summary>
+    /// Comprometido por centro de custo e mês, posto à mão. Aqui não há pedidos
+    /// de pagamento a somar — o que se testa é a decisão de BR-8, não a soma.
+    /// </summary>
+    private readonly Dictionary<(Guid, int, int), decimal> _committed = [];
+
+    public int SaveCount { get; private set; }
+
+    public FakePlanningStore With(CostCentre centre)
+    {
+        _centres[centre.Id] = centre;
+        return this;
+    }
+
+    public FakePlanningStore With(Budget budget)
+    {
+        _budgets.Add(budget);
+        return this;
+    }
+
+    public FakePlanningStore WithCommitted(Guid costCentreId, int year, int month, decimal amount)
+    {
+        _committed[(costCentreId, year, month)] = amount;
+        return this;
+    }
+
+    public Task<CostCentre?> FindCostCentreAsync(Guid costCentreId, CancellationToken cancellationToken) =>
+        Task.FromResult(_centres.GetValueOrDefault(costCentreId));
+
+    public Task<CostCentre?> FindCostCentreForUpdateAsync(Guid costCentreId, CancellationToken cancellationToken) =>
+        FindCostCentreAsync(costCentreId, cancellationToken);
+
+    public Task<bool> CostCentreCodeExistsAsync(string code, CancellationToken cancellationToken) =>
+        Task.FromResult(_centres.Values.Any(c => c.Code == code));
+
+    public Task<IReadOnlyList<CostCentre>> ListCostCentresForDepartmentAsync(
+        Guid departmentId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<CostCentre>>(
+            [.. _centres.Values.Where(c => c.DepartmentId == departmentId)]);
+
+    public Task<IReadOnlyList<CostCentre>> ListCostCentresAsync(
+        bool includeInactive, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<CostCentre>>(
+            [.. _centres.Values.Where(c => includeInactive || c.IsActive)]);
+
+    public Task AddCostCentreAsync(CostCentre costCentre, CancellationToken cancellationToken)
+    {
+        _centres[costCentre.Id] = costCentre;
+        return Task.CompletedTask;
+    }
+
+    public Task<Budget?> FindBudgetAsync(Guid budgetId, CancellationToken cancellationToken) =>
+        Task.FromResult(_budgets.FirstOrDefault(b => b.Id == budgetId));
+
+    public Task<Budget?> FindBudgetForUpdateAsync(Guid budgetId, CancellationToken cancellationToken) =>
+        FindBudgetAsync(budgetId, cancellationToken);
+
+    public Task<Budget?> FindBudgetForAsync(
+        Guid costCentreId, int fiscalYear, CancellationToken cancellationToken) =>
+        Task.FromResult(_budgets.FirstOrDefault(
+            b => b.CostCentreId == costCentreId && b.FiscalYear == fiscalYear));
+
+    public Task<IReadOnlyList<Budget>> ListBudgetsAsync(
+        Guid? costCentreId, int? fiscalYear, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Budget>>([.. _budgets]);
+
+    public Task AddBudgetAsync(Budget budget, CancellationToken cancellationToken)
+    {
+        _budgets.Add(budget);
+        return Task.CompletedTask;
+    }
+
+    public Task<decimal> CommittedAgainstAsync(
+        Guid costCentreId, int fiscalYear, int month, CancellationToken cancellationToken) =>
+        Task.FromResult(_committed.GetValueOrDefault((costCentreId, fiscalYear, month)));
+
+    public Task<DepartmentCostForecast?> FindForecastAsync(Guid forecastId, CancellationToken cancellationToken) =>
+        Task.FromResult(_forecasts.FirstOrDefault(f => f.Id == forecastId));
+
+    public Task<DepartmentCostForecast?> FindForecastForUpdateAsync(
+        Guid forecastId, CancellationToken cancellationToken) =>
+        FindForecastAsync(forecastId, cancellationToken);
+
+    public Task<bool> ForecastExistsAsync(
+        Guid departmentId, int fiscalYear, int month, CancellationToken cancellationToken) =>
+        Task.FromResult(_forecasts.Any(
+            f => f.DepartmentId == departmentId && f.FiscalYear == fiscalYear && f.Month == month));
+
+    public Task<IReadOnlyList<DepartmentCostForecast>> ListForecastsAsync(
+        Guid? departmentId, int? fiscalYear, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<DepartmentCostForecast>>([.. _forecasts]);
+
+    public Task AddForecastAsync(DepartmentCostForecast forecast, CancellationToken cancellationToken)
+    {
+        _forecasts.Add(forecast);
+        return Task.CompletedTask;
+    }
+
+    public Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        SaveCount++;
+        return Task.CompletedTask;
+    }
+}
+
 internal sealed class FakeCustomerDirectory(CustomerReference? customer = null) : ICustomerDirectory
 {
     public Task<CustomerReference?> FindAsync(Guid customerId, CancellationToken cancellationToken) =>
@@ -354,7 +465,8 @@ internal sealed class FakePaymentApproval : IPaymentApproval
 
     public Task<PaymentApprovalSubmissionResult> SubmitAsync(
         Guid paymentRequestId, Guid requestedByEmployeeId, decimal amount, string currency,
-        Guid? departmentId, string summary, CancellationToken cancellationToken) =>
+        Guid? departmentId, string? budgetReference, string summary,
+        CancellationToken cancellationToken) =>
         Task.FromResult(_submission);
 
     public Task<PaymentApprovalState> GetStateAsync(
@@ -391,4 +503,160 @@ internal static class Opcoes
             FinalConsumerName = "Consumidor final",
             FiscalNotice = fiscalNotice,
         });
+}
+
+internal sealed class FakeLedgerStore : ILedgerStore
+{
+    private readonly Dictionary<Guid, LedgerAccount> _accounts = [];
+    private readonly Dictionary<Guid, Journal> _journals = [];
+    private readonly List<JournalEntry> _entries = [];
+    private readonly List<AccountingPeriod> _periods = [];
+
+    public int SaveCount { get; private set; }
+
+    public FakeLedgerStore With(LedgerAccount account)
+    {
+        _accounts[account.Id] = account;
+        return this;
+    }
+
+    public FakeLedgerStore With(Journal journal)
+    {
+        _journals[journal.Id] = journal;
+        return this;
+    }
+
+    public FakeLedgerStore With(AccountingPeriod period)
+    {
+        _periods.Add(period);
+        return this;
+    }
+
+    public FakeLedgerStore With(JournalEntry entry)
+    {
+        _entries.Add(entry);
+        return this;
+    }
+
+    public Task<LedgerAccount?> FindAccountAsync(Guid accountId, CancellationToken cancellationToken) =>
+        Task.FromResult(_accounts.GetValueOrDefault(accountId));
+
+    public Task<LedgerAccount?> FindAccountByCodeAsync(string code, CancellationToken cancellationToken) =>
+        Task.FromResult(_accounts.Values.FirstOrDefault(a => a.Code == code));
+
+    public Task<LedgerAccount?> FindAccountForUpdateAsync(Guid accountId, CancellationToken cancellationToken) =>
+        FindAccountAsync(accountId, cancellationToken);
+
+    public Task<IReadOnlyDictionary<string, LedgerAccount>> FindAccountsByCodeAsync(
+        IReadOnlyCollection<string> codes, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyDictionary<string, LedgerAccount>>(
+            _accounts.Values
+                .Where(a => codes.Contains(a.Code))
+                .ToDictionary(a => a.Code, StringComparer.Ordinal));
+
+    public Task<IReadOnlyList<LedgerAccount>> ListAccountsAsync(
+        bool includeInactive, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<LedgerAccount>>(
+            [.. _accounts.Values.Where(a => includeInactive || a.IsActive).OrderBy(a => a.Code, StringComparer.Ordinal)]);
+
+    public Task<bool> HasChildrenAsync(Guid accountId, CancellationToken cancellationToken) =>
+        Task.FromResult(_accounts.Values.Any(a => a.ParentId == accountId && a.IsActive));
+
+    public Task<bool> HasPostingsAsync(Guid accountId, CancellationToken cancellationToken) =>
+        Task.FromResult(_entries.SelectMany(e => e.Lines).Any(l => l.AccountId == accountId));
+
+    public Task AddAccountAsync(LedgerAccount account, CancellationToken cancellationToken)
+    {
+        _accounts[account.Id] = account;
+        return Task.CompletedTask;
+    }
+
+    public Task<Journal?> FindJournalAsync(Guid journalId, CancellationToken cancellationToken) =>
+        Task.FromResult(_journals.GetValueOrDefault(journalId));
+
+    public Task<Journal?> FindJournalByCodeAsync(string code, CancellationToken cancellationToken) =>
+        Task.FromResult(_journals.Values.FirstOrDefault(j => j.Code == code));
+
+    public Task<IReadOnlyList<Journal>> ListJournalsAsync(
+        bool includeInactive, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Journal>>(
+            [.. _journals.Values.Where(j => includeInactive || j.IsActive)]);
+
+    public Task AddJournalAsync(Journal journal, CancellationToken cancellationToken)
+    {
+        _journals[journal.Id] = journal;
+        return Task.CompletedTask;
+    }
+
+    public Task<JournalEntry?> FindEntryAsync(Guid entryId, CancellationToken cancellationToken) =>
+        Task.FromResult(_entries.FirstOrDefault(e => e.Id == entryId));
+
+    public Task<JournalEntry?> FindEntryForUpdateAsync(Guid entryId, CancellationToken cancellationToken) =>
+        FindEntryAsync(entryId, cancellationToken);
+
+    public Task<IReadOnlyList<JournalEntry>> ListEntriesAsync(
+        Guid? journalId, int? fiscalYear, int? period, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<JournalEntry>>([.. _entries]);
+
+    public Task<bool> EntryExistsAsync(
+        DateOnly transactionDate, string journalCode, string archivalNumber,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(_entries.Any(
+            e => e.TransactionDate == transactionDate
+                && e.JournalCode == journalCode
+                && e.ArchivalNumber == archivalNumber));
+
+    public Task AddEntryAsync(JournalEntry entry, CancellationToken cancellationToken)
+    {
+        _entries.Add(entry);
+        return Task.CompletedTask;
+    }
+
+    public Task<AccountingPeriod?> FindPeriodAsync(
+        int fiscalYear, int number, CancellationToken cancellationToken) =>
+        Task.FromResult(_periods.FirstOrDefault(p => p.FiscalYear == fiscalYear && p.Number == number));
+
+    public Task<AccountingPeriod?> FindPeriodForUpdateAsync(
+        int fiscalYear, int number, CancellationToken cancellationToken) =>
+        FindPeriodAsync(fiscalYear, number, cancellationToken);
+
+    public Task<IReadOnlyList<AccountingPeriod>> ListPeriodsAsync(
+        int fiscalYear, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AccountingPeriod>>(
+            [.. _periods.Where(p => p.FiscalYear == fiscalYear).OrderBy(p => p.Number)]);
+
+    public Task AddPeriodAsync(AccountingPeriod period, CancellationToken cancellationToken)
+    {
+        _periods.Add(period);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// A mesma conta que a implementação real: lançamentos **não anulados**, do
+    /// ano, até ao período pedido.
+    /// </summary>
+    public Task<IReadOnlyList<AccountMovement>> AccountMovementsAsync(
+        int fiscalYear, int? uptoPeriod, CancellationToken cancellationToken)
+    {
+        var linhas = _entries
+            .Where(e => !e.IsVoided
+                && e.TransactionDate.Year == fiscalYear
+                && (uptoPeriod is not { } ate || e.Period <= ate))
+            .SelectMany(e => e.Lines);
+
+        return Task.FromResult<IReadOnlyList<AccountMovement>>(
+            [.. linhas
+                .GroupBy(l => (l.AccountId, l.AccountCode))
+                .Select(g => new AccountMovement(
+                    g.Key.AccountId,
+                    g.Key.AccountCode,
+                    g.Where(l => l.Side == EntrySide.Debit).Sum(l => l.Amount),
+                    g.Where(l => l.Side == EntrySide.Credit).Sum(l => l.Amount)))]);
+    }
+
+    public Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        SaveCount++;
+        return Task.CompletedTask;
+    }
 }

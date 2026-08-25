@@ -284,14 +284,25 @@ revalidação, a correr em staging.
 > saída **está cumprido**: o ciclo pedido → aprovação → execução corre, com
 > BR-1, BR-3 e BR-5 impostas e verificadas por 22 casos de `verify-payables`.
 >
-> **O que a inversão custou:** BR-8 continua aberta. Sem Planeamento não há
-> disponível orçamental, e uma política com `RequiresBudgetCheck` recusa a
-> submissão em vez de a verificar. É a dívida a pagar em Contabilidade & Fecho
-> e Planeamento.
->
 > Tesouraria ganhou extracto de conta (`BankMovement`) a 2026-08-25 — append-only
 > imposto pela base de dados. **Fecha K6**; a reconciliação bancária ainda
 > depende de importar o extracto do banco.
+>
+> **A dívida da inversão foi paga no mesmo dia.** Contabilidade & Fecho e
+> Planeamento fecharam a 2026-08-25 (ADR-037), e com Planeamento veio o
+> disponível orçamental: **BR-8 deixou de recusar sempre e passou a
+> verificar**. Os cinco contextos internos de `finance` existem.
+>
+> **O que fica em dívida da Fase 4:**
+>
+> - **A contabilidade está de pé e vazia.** O plano de contas carrega-se — o
+>   Rivo fixa a estrutura do SAF-T e recusa-se a inventar o PGC angolano.
+> - **Os documentos não postam.** A factura, o recibo e a execução de pagamento
+>   não geram lançamentos; a contabilidade regista-se à mão. É o passo que
+>   depende do plano carregado, e por isso não podia vir antes.
+> - **K1 continua aberto**, e com ele os activos fixos e a depreciação.
+> - **PGC, câmbio (BNA) e reconciliação bancária** continuam por fazer, os três
+>   à espera de decisões que não são de engenharia.
 
 ---
 

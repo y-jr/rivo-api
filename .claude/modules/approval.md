@@ -220,12 +220,31 @@ módulo sem lhe arrastar a infraestrutura.
 aplicá-la-ia sobre um estado que o autor não chegou a ver — que é exactamente o
 que BR-17 existe para impedir.
 
+### BR-8 fechada (2026-08-25)
+
+Uma política com `RequiresBudgetCheck` deixou de recusar sempre: `approval`
+pergunta a `finance` se o valor cabe, **antes de escolher aprovadores**.
+
+O contrato — `IBudgetAvailability` — é uma pergunta e uma resposta. `approval`
+não vê orçamentos nem centros de custo, e a **rubrica atravessa-o sem ser
+interpretada**, exactamente como o `SourceReference` já fazia.
+
+**A direcção é `approval → Rivo.Finance.Contracts`, e não forma ciclo:**
+`finance` declara `IPaymentApproval` nas suas próprias palavras e é o
+composition root que os liga. Foi por isso que a inversão do lado de `finance`
+se fez em 2026-08-25, antes de BR-8 a exigir — ver `modules/finance.md`.
+
+Dos cinco resultados possíveis, **um só deixa passar**. "Não consegui
+verificar" recusa como "não cabe": uma política que exige verificação está a
+dizer que não se decide sem saber.
+
+⚠ **A verificação é à data de hoje.** `ApprovalSubmission` não carrega data, e o
+`ApprovalGateway` usa o relógio — um pedido retroactivo é verificado contra o
+mês corrente.
+
 ### Por fazer
 
-- **BR-7 e BR-8** — anti-fraccionamento e verificação orçamental exigem
-  `finance`. Uma política pode declarar `RequiresBudgetCheck`, e enquanto
-  `finance` não existir isso **recusa a submissão** em vez de fingir que
-  verificou (ADR-034).
-- **Metade de BR-3** — "quem aprova não paga" precisa de `finance`.
+- **BR-7** — anti-fraccionamento (janela de 30 dias por fornecedor e rubrica).
+  Continua por desenhar; é o K5.
 - **SLA e escalonamento.** O passo guarda o prazo; nada o faz cumprir.
 - **Delegação** — modelada em `docs`, ainda sem código.

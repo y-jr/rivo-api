@@ -24,6 +24,20 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
 
     public DbSet<PaymentRequest> PaymentRequests => Set<PaymentRequest>();
 
+    public DbSet<LedgerAccount> LedgerAccounts => Set<LedgerAccount>();
+
+    public DbSet<Journal> Journals => Set<Journal>();
+
+    public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
+
+    public DbSet<AccountingPeriod> AccountingPeriods => Set<AccountingPeriod>();
+
+    public DbSet<CostCentre> CostCentres => Set<CostCentre>();
+
+    public DbSet<Budget> Budgets => Set<Budget>();
+
+    public DbSet<DepartmentCostForecast> CostForecasts => Set<DepartmentCostForecast>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -375,6 +389,201 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
 
             // Quem pagou o quê — a consulta de quem confere BR-3 depois.
             request.HasIndex(r => r.ExecutedByEmployeeId);
+
+            // O consumo orçamental de BR-8: quanto está comprometido num centro
+            // de custo num mês.
+            request.HasIndex(r => new { r.CostCentreId, r.RequestedOn, r.Status })
+                .HasFilter("[cost_centre_id] IS NOT NULL");
+        });
+
+        // ---------- Contabilidade ----------
+
+        builder.Entity<LedgerAccount>(account =>
+        {
+            account.ToTable("ledger_account");
+            account.HasKey(a => a.Id);
+            account.Property(a => a.Version).IsConcurrencyToken();
+
+            // 30 caracteres é o que o `SAFAOGLAccountID` admite.
+            account.Property(a => a.Code).HasMaxLength(30).IsRequired();
+            account.Property(a => a.Name).HasMaxLength(200).IsRequired();
+            account.Property(a => a.ParentCode).HasMaxLength(30);
+            account.Property(a => a.Category).HasConversion<string>().HasMaxLength(2);
+
+            // `AcceptsPostings`, `IsFirstDegree` e `IsAnalytic` são leituras da
+            // categoria, não colunas.
+            account.Ignore(a => a.AcceptsPostings);
+            account.Ignore(a => a.IsFirstDegree);
+            account.Ignore(a => a.IsAnalytic);
+
+            // Duas contas com o mesmo código tornariam o `GroupingCode` ambíguo
+            // e o ficheiro SAF-T inválido. É a segunda linha de defesa — a
+            // primeira é a verificação no caso de uso.
+            account.HasIndex(a => a.Code).IsUnique();
+
+            account.HasOne<LedgerAccount>()
+                .WithMany()
+                .HasForeignKey(a => a.ParentId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<Journal>(journal =>
+        {
+            journal.ToTable("journal");
+            journal.HasKey(j => j.Id);
+            journal.Property(j => j.Version).IsConcurrencyToken();
+
+            journal.Property(j => j.Code).HasMaxLength(30).IsRequired();
+            journal.Property(j => j.Name).HasMaxLength(200).IsRequired();
+
+            // `JournalID` é único no ficheiro SAF-T.
+            journal.HasIndex(j => j.Code).IsUnique();
+        });
+
+        builder.Entity<JournalEntry>(entry =>
+        {
+            entry.ToTable("journal_entry");
+            entry.HasKey(e => e.Id);
+            entry.Property(e => e.Version).IsConcurrencyToken();
+
+            entry.Property(e => e.JournalCode).HasMaxLength(30).IsRequired();
+            entry.Property(e => e.ArchivalNumber).HasMaxLength(20).IsRequired();
+            entry.Property(e => e.Description).HasMaxLength(300).IsRequired();
+            entry.Property(e => e.SourceId).HasMaxLength(30).IsRequired();
+            entry.Property(e => e.Type).HasConversion<string>().HasMaxLength(1);
+            entry.Property(e => e.VoidReason).HasMaxLength(500);
+
+            entry.Property(e => e.TotalDebit).HasPrecision(18, 2);
+            entry.Property(e => e.TotalCredit).HasPrecision(18, 2);
+
+            // `TransactionId` compõe data, diário e número de arquivo — é
+            // derivado, não coluna.
+            entry.Ignore(e => e.TransactionId);
+
+            entry.HasOne<Journal>()
+                .WithMany()
+                .HasForeignKey(e => e.JournalId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // **O `TransactionID` do SAF-T, único.** É composto por três coisas
+            // que quem lança escolhe, e nada impede repeti-las por engano — o
+            // ficheiro só seria recusado meses depois.
+            entry.HasIndex(e => new { e.TransactionDate, e.JournalCode, e.ArchivalNumber })
+                .IsUnique();
+
+            // O balancete: lançamentos de um período.
+            entry.HasIndex(e => new { e.TransactionDate, e.Period });
+
+            entry.OwnsMany(e => e.Lines, line =>
+            {
+                line.ToTable("journal_entry_line");
+                line.WithOwner().HasForeignKey(l => l.JournalEntryId);
+                line.HasKey(l => l.Id);
+
+                line.Property(l => l.AccountCode).HasMaxLength(30).IsRequired();
+                line.Property(l => l.Description).HasMaxLength(300).IsRequired();
+                line.Property(l => l.SourceDocumentId).HasMaxLength(60);
+                line.Property(l => l.Side).HasConversion<string>().HasMaxLength(6);
+                line.Property(l => l.Amount).HasPrecision(18, 2);
+
+                // O balancete soma por conta.
+                line.HasIndex(l => l.AccountId);
+
+                // A contabilidade analítica: o que se gastou por centro de custo.
+                line.HasIndex(l => l.CostCentreId).HasFilter("[cost_centre_id] IS NOT NULL");
+
+                line.HasIndex(l => new { l.JournalEntryId, l.RecordNumber }).IsUnique();
+            });
+        });
+
+        builder.Entity<AccountingPeriod>(period =>
+        {
+            period.ToTable("accounting_period");
+            period.HasKey(p => p.Id);
+
+            // **Aqui é a regra, não formalidade** (BR-17): um fecho simultâneo
+            // a um lançamento é exactamente a corrida que deixaria um movimento
+            // cair dentro de um período já dado por fechado.
+            period.Property(p => p.Version).IsConcurrencyToken();
+
+            period.Property(p => p.Status).HasConversion<string>().HasMaxLength(10);
+            period.Property(p => p.ReopenReason).HasMaxLength(500);
+
+            period.Ignore(p => p.AcceptsPostings);
+            period.Ignore(p => p.IsAdjustmentPeriod);
+
+            period.HasIndex(p => new { p.FiscalYear, p.Number }).IsUnique();
+        });
+
+        // ---------- Planeamento ----------
+
+        builder.Entity<CostCentre>(centre =>
+        {
+            centre.ToTable("cost_centre");
+            centre.HasKey(c => c.Id);
+            centre.Property(c => c.Version).IsConcurrencyToken();
+
+            centre.Property(c => c.Code).HasMaxLength(20).IsRequired();
+            centre.Property(c => c.Name).HasMaxLength(200).IsRequired();
+
+            centre.HasIndex(c => c.Code).IsUnique();
+
+            // Sem chave estrangeira para `hr.department`: são schemas de
+            // módulos distintos, e o mapeamento é opcional por desenho (D4).
+            centre.HasIndex(c => c.DepartmentId).HasFilter("[department_id] IS NOT NULL");
+        });
+
+        builder.Entity<Budget>(budget =>
+        {
+            budget.ToTable("budget");
+            budget.HasKey(b => b.Id);
+            budget.Property(b => b.Version).IsConcurrencyToken();
+
+            budget.Property(b => b.Currency).HasMaxLength(3).IsRequired();
+            budget.Property(b => b.Status).HasConversion<string>().HasMaxLength(10);
+            budget.Property(b => b.AnnualTotal).HasPrecision(18, 2);
+
+            budget.Ignore(b => b.IsInForce);
+
+            budget.HasOne<CostCentre>()
+                .WithMany()
+                .HasForeignKey(b => b.CostCentreId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // **Um orçamento por centro de custo e ano.** Dois tectos para o
+            // mesmo ano tornariam a verificação de BR-8 ambígua — e uma
+            // verificação ambígua não verifica nada.
+            budget.HasIndex(b => new { b.CostCentreId, b.FiscalYear }).IsUnique();
+
+            budget.OwnsMany(b => b.Lines, line =>
+            {
+                line.ToTable("budget_line");
+                line.WithOwner().HasForeignKey(l => l.BudgetId);
+                line.HasKey(l => l.Id);
+
+                line.Property(l => l.Amount).HasPrecision(18, 2);
+
+                line.HasIndex(l => new { l.BudgetId, l.Month }).IsUnique();
+            });
+        });
+
+        builder.Entity<DepartmentCostForecast>(forecast =>
+        {
+            forecast.ToTable("cost_forecast");
+            forecast.HasKey(f => f.Id);
+            forecast.Property(f => f.Version).IsConcurrencyToken();
+
+            forecast.Property(f => f.Currency).HasMaxLength(3).IsRequired();
+            forecast.Property(f => f.Status).HasConversion<string>().HasMaxLength(10);
+            forecast.Property(f => f.OperationalCosts).HasPrecision(18, 2);
+            forecast.Property(f => f.FixedCosts).HasPrecision(18, 2);
+
+            // `Total` é a soma das duas — derivado, não coluna.
+            forecast.Ignore(f => f.Total);
+
+            // Uma previsão por departamento e mês. Duas seriam dois números a
+            // dizer coisas diferentes sobre o mesmo carregamento de caixa.
+            forecast.HasIndex(f => new { f.DepartmentId, f.FiscalYear, f.Month }).IsUnique();
         });
 
         // As chaves são geradas pelo domínio (Guid.CreateVersion7), nunca pela

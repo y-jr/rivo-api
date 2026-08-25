@@ -2,6 +2,7 @@ using Rivo.Approval.Application.Abstractions;
 using Rivo.Approval.Contracts;
 using Rivo.Approval.Domain;
 using Rivo.Audit.Contracts;
+using Rivo.Finance.Contracts;
 using Rivo.Hr.Contracts;
 
 namespace Rivo.Approval.Application;
@@ -20,11 +21,17 @@ namespace Rivo.Approval.Application;
 /// domínio, que a partir daí não volta a consultar nada de fora (BR-6).
 /// </para>
 /// </summary>
+/// <param name="budgets">
+/// Fonte do disponível orçamental (BR-8). <strong>Anulável de propósito:</strong>
+/// um ambiente sem `finance` ligado continua a arrancar — e uma política que
+/// exija verificação orçamental é aí recusada, não aprovada às cegas.
+/// </param>
 public sealed class ApprovalGateway(
     IApprovalStore store,
     IEmployeeDirectory employees,
     IAuditTrail audit,
-    TimeProvider clock) : IApprovalGateway
+    TimeProvider clock,
+    IBudgetAvailability? budgets = null) : IApprovalGateway
 {
     public async Task<SubmissionResult> SubmitAsync(
         ApprovalSubmission submission,
@@ -60,16 +67,56 @@ public sealed class ApprovalGateway(
 
         var policy = best[0];
 
-        // BR-8. Enquanto `finance` não existir, um processo que exija
-        // verificação orçamental é recusado — não aprovado às cegas.
+        var now = clock.GetUtcNow();
+
+        // **BR-8, e é aqui que ela acontece.**
+        //
+        // Antes da decisão, não depois: o ponto de RN-017 é que ninguém decide
+        // sobre uma despesa que já se sabe não caber. Verificar depois seria
+        // pedir a alguém que aprovasse e só então descobrir que não podia.
+        //
+        // A verificação corre **antes de resolver aprovadores** porque é a mais
+        // barata de falhar: um processo que não passa no orçamento não chega a
+        // criar-se, e não fica nada por limpar.
         if (policy.RequiresBudgetCheck)
         {
-            return SubmissionResult.BudgetCheckUnavailable(
-                "Esta política exige verificação orçamental (BR-8), e o módulo `finance` " +
-                "ainda não existe. O pedido não foi criado.");
+            if (budgets is null)
+            {
+                return SubmissionResult.BudgetCheckUnavailable(
+                    "Esta política exige verificação orçamental (BR-8) e não há fonte de " +
+                    "orçamento ligada neste ambiente. O pedido não foi criado.");
+            }
+
+            if (submission.Amount is not { } valor || string.IsNullOrWhiteSpace(submission.Currency))
+            {
+                return SubmissionResult.BudgetCheckUnavailable(
+                    "Esta política exige verificação orçamental (BR-8) e o processo não traz " +
+                    "valor. Um processo sem valor não consome orçamento — e a política não " +
+                    "devia exigir a verificação.");
+            }
+
+            var check = await budgets.CheckAsync(
+                new BudgetCheck(
+                    submission.BudgetReference,
+                    submission.DepartmentId,
+                    valor,
+                    submission.Currency,
+                    DateOnly.FromDateTime(now.UtcDateTime)),
+                cancellationToken);
+
+            // **Só `Within` deixa passar.** Todos os outros recusam, incluindo
+            // os que significam "não consegui verificar": uma política que
+            // exige verificação está a dizer que não se decide sem saber, e
+            // aprovar por omissão é o modo de falha que BR-8 existe para
+            // impedir.
+            if (check.Outcome is not BudgetCheckOutcome.Within)
+            {
+                return check.Outcome is BudgetCheckOutcome.Exceeded
+                    ? SubmissionResult.BudgetExceeded(check.Reason!)
+                    : SubmissionResult.BudgetCheckUnavailable(check.Reason!);
+            }
         }
 
-        var now = clock.GetUtcNow();
         var resolved = new List<ResolvedStep>();
 
         foreach (var step in policy.Steps.OrderBy(s => s.Order))
