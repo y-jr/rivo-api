@@ -31,6 +31,11 @@ public static class PayablesEndpoints
         group.MapPost("/accounts/{accountId:guid}/deposits", DepositAsync)
             .RequireAuthorization(FinancePermissions.PayablesWrite);
 
+        // O extracto. Leitura, e por isso a mesma permissão de consultar
+        // contas — ver o que se moveu não é poder mover.
+        group.MapGet("/accounts/{accountId:guid}/statement", GetStatementAsync)
+            .RequireAuthorization(FinancePermissions.PayablesRead);
+
         // ---- Contas a Pagar ----
         group.MapGet("/purchase-invoices", ListPurchaseInvoicesAsync)
             .RequireAuthorization(FinancePermissions.PayablesRead);
@@ -103,6 +108,28 @@ public static class PayablesEndpoints
                 ["deposito"] = ["O valor tem de ser maior que zero e a conta tem de estar aberta."],
             }),
         };
+    }
+
+    private static async Task<IResult> GetStatementAsync(
+        Guid accountId,
+        GetAccountStatement statement,
+        DateOnly? from,
+        DateOnly? to,
+        CancellationToken cancellationToken)
+    {
+        if (from is { } inicio && to is { } fim && inicio > fim)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["periodo"] = ["A data inicial é posterior à final."],
+            });
+        }
+
+        var extracto = await statement.ExecuteAsync(accountId, from, to, cancellationToken);
+
+        return extracto is null
+            ? Results.NotFound(new { erro = "Conta não encontrada." })
+            : Results.Ok(extracto);
     }
 
     private static async Task<IResult> ListPurchaseInvoicesAsync(

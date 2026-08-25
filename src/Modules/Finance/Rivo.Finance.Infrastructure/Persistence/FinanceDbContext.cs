@@ -18,6 +18,8 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
 
     public DbSet<BankAccount> Accounts => Set<BankAccount>();
 
+    public DbSet<BankMovement> Movements => Set<BankMovement>();
+
     public DbSet<PurchaseInvoice> PurchaseInvoices => Set<PurchaseInvoice>();
 
     public DbSet<PaymentRequest> PaymentRequests => Set<PaymentRequest>();
@@ -270,6 +272,42 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
             account.Property(a => a.Balance).HasPrecision(18, 2);
 
             account.HasIndex(a => a.Iban).IsUnique().HasFilter("[iban] IS NOT NULL");
+        });
+
+        builder.Entity<BankMovement>(movement =>
+        {
+            movement.ToTable("bank_movement");
+            movement.HasKey(m => m.Id);
+
+            // **Sem contador de concorrência, e é deliberado.** Um movimento
+            // nunca é alterado — quem colide é o saldo da conta, e é lá que
+            // BR-17 age.
+            movement.Property(m => m.Direction).HasConversion<string>().HasMaxLength(10);
+            movement.Property(m => m.Amount).HasPrecision(18, 2);
+            movement.Property(m => m.BalanceAfter).HasPrecision(18, 2);
+            movement.Property(m => m.Description).HasMaxLength(300).IsRequired();
+            movement.Property(m => m.SourceType).HasMaxLength(40);
+
+            movement.HasOne<BankAccount>()
+                .WithMany(a => a.Movements)
+                .HasForeignKey(m => m.BankAccountId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // O índice do extracto: uma conta, ordenada no tempo.
+            movement.HasIndex(m => new { m.BankAccountId, m.OccurredAt });
+
+            // Do movimento de volta ao documento que o causou — o percurso da
+            // reconciliação.
+            movement.HasIndex(m => new { m.SourceType, m.SourceId })
+                .HasFilter("[source_id] IS NOT NULL");
+
+            // Campo de suporte, configurado depois da relação existir: o
+            // caminho de escrita nunca carrega o extracto, e acrescentar um
+            // movimento não obriga a ler os anteriores.
+            builder.Entity<BankAccount>()
+                .Metadata
+                .FindNavigation(nameof(BankAccount.Movements))!
+                .SetPropertyAccessMode(PropertyAccessMode.Field);
         });
 
         builder.Entity<PurchaseInvoice>(invoice =>

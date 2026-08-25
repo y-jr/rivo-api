@@ -336,7 +336,88 @@ Test-Case "16. Execucao e auditada, com quem pagou e o processo" {
     "1 registo, com quem pagou e o processo que o autorizou"
 }
 
-Test-Case "17. Dados sobrevivem ao reinicio da stack" {
+Test-Case "17. Extracto: cada movimento de saldo deixa linha, com a origem" {
+    $extracto = Invoke-RestMethod "$base/finance/accounts/$($script:contaId)/statement" -Headers $managerHeaders
+
+    # Um carregamento de 200000 e um pagamento de 114000.
+    if ($extracto.movements.Count -ne 2) { throw "esperados 2 movimentos, obtidos $($extracto.movements.Count)" }
+
+    $saida = $extracto.movements | Where-Object { $_.direction -eq "Debit" }
+    if (-not $saida) { throw "o pagamento nao deixou linha no extracto" }
+    if ([decimal]$saida.amount -ne 114000) { throw "montante errado: $($saida.amount)" }
+    if ([decimal]$saida.balanceAfter -ne 86000) { throw "saldo congelado errado: $($saida.balanceAfter)" }
+
+    # O percurso de volta que a reconciliacao precisa.
+    if ($saida.sourceType -ne "payment_request") { throw "origem nao apontada: $($saida.sourceType)" }
+    if ($saida.sourceId -ne $script:pedidoId) { throw "origem aponta ao documento errado" }
+
+    "2 movimentos; a saida aponta ao pedido que a causou"
+}
+
+Test-Case "18. Extracto ate hoje reconcilia com o saldo da conta" {
+    $extracto = Invoke-RestMethod "$base/finance/accounts/$($script:contaId)/statement" -Headers $managerHeaders
+
+    if ($extracto.reconciles -ne $true) { throw "extracto nao reconcilia com o saldo" }
+    if ([decimal]$extracto.closingBalance -ne 86000) { throw "fecho $($extracto.closingBalance), esperado 86000" }
+    if ([decimal]$extracto.totalCredits -ne 200000) { throw "creditos $($extracto.totalCredits)" }
+    if ([decimal]$extracto.totalDebits -ne 114000) { throw "debitos $($extracto.totalDebits)" }
+
+    # A soma tem de fechar: abertura + entradas - saidas = fecho.
+    $calculado = [decimal]$extracto.openingBalance + [decimal]$extracto.totalCredits - [decimal]$extracto.totalDebits
+    if ($calculado -ne [decimal]$extracto.closingBalance) { throw "a cadeia de saldos esta partida" }
+
+    "0 + 200000 - 114000 = 86000, e bate com a conta"
+}
+
+Test-Case "19. Janela fechada nao afirma reconciliacao" {
+    # Uma janela que acaba no passado nao deve bater com o saldo de hoje —
+    # dizer que nao reconcilia seria mentir ao contrario.
+    $extracto = Invoke-RestMethod "$base/finance/accounts/$($script:contaId)/statement?from=2020-01-01&to=2020-12-31" -Headers $managerHeaders
+
+    if ($null -ne $extracto.reconciles) { throw "afirmou reconciliacao sobre janela fechada" }
+    if ($extracto.movements.Count -ne 0) { throw "movimentos fora da janela" }
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/accounts/$($script:contaId)/statement?from=2026-12-31&to=2026-01-01" -Headers $managerHeaders }
+    if ($code -ne 400) { throw "datas invertidas: esperado 400, obtido $code" }
+
+    "janela fechada nao responde a pergunta; datas invertidas dao 400"
+}
+
+Test-Case "20. Extracto e append-only, imposto pela base de dados" {
+    $id = Invoke-Sql "select top 1 cast(id as nvarchar(50)) from finance.bank_movement where bank_account_id='$($script:contaId)'"
+    if (-not $id) { throw "sem movimentos para testar" }
+
+    # Um extracto que se pode editar nao serve para reconciliar nada.
+    $update = Invoke-RivoSql "update finance.bank_movement set amount=1 where id='$id'" -Raw
+    if ("$update" -notmatch "append-only|50020") { throw "UPDATE passou: $update" }
+
+    $delete = Invoke-RivoSql "delete from finance.bank_movement where id='$id'" -Raw
+    if ("$delete" -notmatch "append-only|50020") { throw "DELETE passou: $delete" }
+
+    # TRUNCATE nao dispara gatilhos em SQL Server. O que o impede e a sentinela
+    # referenciada por chave estrangeira.
+    $truncate = Invoke-RivoSql "truncate table finance.bank_movement" -Raw
+    if ("$truncate" -notmatch "FOREIGN KEY|referenc") { throw "TRUNCATE passou: $truncate" }
+
+    $ainda = Invoke-Sql "select count(*) from finance.bank_movement where id='$id'"
+    if ($ainda -ne "1") { throw "o movimento desapareceu" }
+
+    "UPDATE, DELETE e TRUNCATE recusados; o movimento continua la"
+}
+
+Test-Case "21. Saldo da conta bate com a soma dos movimentos" {
+    # A invariante que o extracto existe para tornar verificavel.
+    $divergentes = Invoke-Sql @"
+select count(*) from finance.bank_account a
+where a.balance <> isnull((
+    select sum(case when m.direction = 'Credit' then m.amount else -m.amount end)
+    from finance.bank_movement m where m.bank_account_id = a.id), 0)
+"@
+    if ($divergentes -ne "0") { throw "$divergentes conta(s) com saldo que nao bate com o extracto" }
+    "nenhuma conta diverge do proprio extracto"
+}
+
+Test-Case "22. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
@@ -347,7 +428,12 @@ Test-Case "17. Dados sobrevivem ao reinicio da stack" {
 
     $saldo = Invoke-Sql "select balance from finance.bank_account where id='$($script:contaId)'"
     if ([decimal]$saldo -ne 86000) { throw "saldo perdido: $saldo" }
-    "pagamento e saldo intactos apos restart"
+
+    $extracto = Invoke-RestMethod "$base/finance/accounts/$($script:contaId)/statement" -Headers $managerHeaders
+    if ($extracto.movements.Count -ne 2) { throw "extracto perdido: $($extracto.movements.Count) movimentos" }
+    if ($extracto.reconciles -ne $true) { throw "extracto deixou de reconciliar apos restart" }
+
+    "pagamento, saldo e extracto intactos apos restart"
 }
 
 Write-Host ""

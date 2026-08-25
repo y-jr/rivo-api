@@ -347,6 +347,7 @@ permissões, antes de o domínio a impor.**
 |---|---|---|
 | GET/POST | `/finance/accounts` | `finance.payables.read` / `.write` |
 | POST | `/finance/accounts/{id}/deposits` | `finance.payables.write` |
+| GET | `/finance/accounts/{id}/statement?from=&to=` | `finance.payables.read` |
 | GET/POST | `/finance/purchase-invoices` | `finance.payables.read` / `.write` |
 | GET | `/finance/purchase-invoices/{id}` | `finance.payables.read` |
 | GET | `/finance/payment-requests?purchaseInvoiceId=` | `finance.payables.read` |
@@ -365,7 +366,46 @@ Criar um pedido devolve **`202`**, não `201`: existe e ainda não é pagável.
   submissão.
 - **Adiantamentos.** Um pedido não excede a factura, e não há documento para
   pagar antes de dever.
-- **Movimentos de conta como entidade.** O saldo é um número na conta; não há
-  extracto. Reconciliação bancária depende disso.
+- **Reconciliação bancária propriamente dita** — confrontar o extracto do Rivo
+  com o do banco. O extracto existe (ver abaixo); falta importar o do banco e
+  emparelhar movimentos.
 - **Câmbio.** Pagar em moeda diferente da conta é recusado — não há conversão
   automática, porque o câmbio é uma decisão e ninguém a tomou.
+
+### Extracto de conta (2026-08-25)
+
+O saldo sozinho não é reconciliável. Uma conta com `86.000,00` não diz como lá
+chegou, e **reconciliação bancária é uma comparação entre movimentos, não entre
+saldos.** `BankMovement` é a linha do extracto.
+
+| Campo | Porquê |
+|---|---|
+| `Direction` + `Amount` | Sentido e quantia. O valor é sempre positivo; o sinal está na direcção |
+| `BalanceAfter` | O saldo **depois** do movimento, congelado. Guardado e não recalculado ao ler — se um dia o saldo divergir da soma, é esta coluna que mostra onde e quando |
+| `SourceType` + `SourceId` | O percurso de volta ao documento que o causou. Par texto/identificador em vez de FK: a origem pode vir de outro contexto interno, e uma FK obrigaria a tabela a conhecer todas as origens de antemão |
+
+**O movimento nasce dentro do agregado**, em `Deposit`/`Withdraw`. Saldo e
+extracto alteram-se no mesmo acto ou não se alteram — um chamador que se
+esquecesse de registar o movimento deixaria o extracto a mentir em silêncio, e
+ninguém daria por isso até à primeira reconciliação.
+
+A colecção **nunca é carregada no caminho de escrita**: acrescentar um movimento
+não obriga a ler os anteriores, por isso pagar numa conta com dez anos de
+histórico custa o mesmo que numa conta nova.
+
+**Append-only imposto pelo motor**, com a mesma peça que a trilha de auditoria
+usa desde o K9 — gatilho `INSTEAD OF UPDATE, DELETE` mais tabela sentinela
+contra `TRUNCATE`. Um extracto que se pode editar não serve para reconciliar
+nada. Corrigir faz-se como na contabilidade: com outro movimento em sentido
+contrário, que também fica no extracto.
+
+`GET /finance/accounts/{id}/statement` devolve abertura, movimentos, totais e
+fecho. **`reconciles` é nulo quando a janela tem fim** — num extracto de Março o
+fecho não deve bater com o saldo de hoje, e dizer que não reconcilia seria
+mentir ao contrário.
+
+As contas que já existiam receberam **um movimento de abertura** na migração: um
+extracto que fechasse a zero contra um saldo que não é zero pareceria defeito,
+quando é apenas o facto de os movimentos anteriores nunca terem sido
+registados. Uma linha explícita a dizê-lo é mais honesta do que uma divergência
+por explicar.

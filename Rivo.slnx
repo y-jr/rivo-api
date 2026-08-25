@@ -80,6 +80,7 @@
     <Project Path="tests/Modules/Documents/Rivo.Documents.Domain.Tests/Rivo.Documents.Domain.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/Finance/">
+    <Project Path="tests/Modules/Finance/Rivo.Finance.Application.Tests/Rivo.Finance.Application.Tests.csproj" />
     <Project Path="tests/Modules/Finance/Rivo.Finance.Domain.Tests/Rivo.Finance.Domain.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/Fiscal/">

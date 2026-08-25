@@ -36,7 +36,7 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `approval` | Completo para o âmbito fixado. Políticas, pedidos, decisões, BR-2/4/6/17, worker de reconciliação |
 | `fiscal` | ⚠ **Fatia mínima** (ADR-036). Taxa com vigência e determinação. Não é o motor fiscal |
 | `commercial` | ⚠ **Reduzido ao Cliente** (ADR-036). Sem funil comercial |
-| `finance` | **AR e AP feitos.** Ciclo de venda fechado (factura, nota de crédito, recibo, saldo) e Contas a Pagar com Tesouraria — BR-1, BR-3, BR-5 impostas. Falta Contabilidade & Fecho e Planeamento |
+| `finance` | **AR e AP feitos.** Ciclo de venda fechado (factura, nota de crédito, recibo, saldo), Contas a Pagar com Tesouraria — BR-1, BR-3, BR-5 impostas — e extracto de conta append-only. Falta Contabilidade & Fecho e Planeamento |
 | `procurement`, `payroll`, `projects`, `inventory`, `fleet` | Sem código. Definidos em [modules/](../modules/) |
 
 Detalhe com datas e ressalvas em [implemented.md](implemented.md).
@@ -61,18 +61,19 @@ O token viaja em claro. É o **K16**, e não pode ir para produção a sério.
 | Área | Estado |
 |---|---|
 | Código | 9 módulos, 45 projectos em `src/`, 131 ficheiros `.cs` |
-| Superfície HTTP | 93 endpoints em 9 grupos de rota, mais `/health` |
+| Superfície HTTP | 94 endpoints em 9 grupos de rota, mais `/health` |
 | ADRs | 36, aceites |
-| Testes | **383** em 13 projectos — 341 de domínio, 21 de arquitectura, 9 da API do host, 8 de Application, 4 de integração |
-| Verificação end-to-end | **10 suites** PowerShell, **141 casos**, todas re-executáveis |
+| Testes | **433** em 14 projectos — 348 de domínio, 51 de Application, 21 de arquitectura, 9 da API do host, 4 de integração |
+| Verificação end-to-end | **10 suites** PowerShell, **146 casos**, todas re-executáveis |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
 
 ## O que não existe
 
-- **Cobertura fora do domínio.** 341 testes de domínio contra 8 de Application
-  e 4 de Infrastructure. Cada módulo novo alarga a diferença.
+- **Cobertura de Application em sete dos nove módulos.** `finance` (43) e
+  `identity` (8) têm-na; os outros não. 348 testes de domínio contra 51 de
+  Application e 4 de Infrastructure.
 - **Testes de integração** em oito dos nove módulos. Só `notifications` os tem.
 - **Observabilidade.** Com o Azure fora de cena (ADR-031), o diagnóstico em
   produção é `docker compose logs` numa máquina. **Regressão assumida.**
@@ -101,9 +102,13 @@ O token viaja em claro. É o **K16**, e não pode ir para produção a sério.
 
 ## Riscos principais
 
-1. **Cobertura desigual entre camadas**, e a crescer. O domínio está bem
-   coberto; a Application quase não está. O CI apanha regressões de domínio e
-   violações de fronteira — não apanha um caso de uso errado que compile.
+1. **Cobertura desigual entre camadas.** Deixou de crescer em `finance`, que
+   era onde mais custava — `ExecutePayment`, `RegisterReceipt`,
+   `IssueCreditNote` e `CreatePaymentRequest` têm agora teste unitário, e a
+   ordem das verificações de BR-5 está fixada por um teste que falha se
+   alguém a inverter. **Os outros sete módulos continuam sem.** O CI apanha
+   regressões de domínio e violações de fronteira; um caso de uso errado que
+   compile continua a passar em `hr`, `approval` e nos restantes.
 2. **Nada revê o código além do próprio autor.** Com um colaborador, a revisão
    aprovadora teve de ficar a 0.
 3. **Três módulos parecem mais completos do que são.** `fiscal`, `commercial`
@@ -129,10 +134,9 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    recusa a submissão. AR e AP fecharam a 2026-08-25, com BR-1, BR-3 e BR-5
    impostas e verificadas.
 2. **Domínio e TLS** — fecha o K16 e é pré-requisito de qualquer uso real.
-3. **Cobertura de Application**, a começar pelos casos de uso que decidem —
-   `IssueSalesInvoice`, `RegisterReceipt` e `DecideOnRequest` são os que mais
-   custam se falharem. `RegisterReceipt` em particular: a regra do saldo vive
-   toda lá, e não há um único teste unitário sobre ela.
+3. **Cobertura de Application nos outros módulos** — `finance` fechou a
+   2026-08-25 com 43 testes. O próximo que mais custa é `DecideOnRequest` em
+   `approval`: BR-2, BR-4 e BR-6 vivem lá e só têm cobertura caixa-preta.
 4. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
    vendas a balcão saem com um marcador visível. Precisa de fonte primária.
 

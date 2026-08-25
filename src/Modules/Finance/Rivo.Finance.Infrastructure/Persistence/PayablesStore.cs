@@ -35,6 +35,62 @@ public sealed class PayablesStore(FinanceDbContext context) : IPayablesStore
     public async Task AddAccountAsync(BankAccount account, CancellationToken cancellationToken) =>
         await context.Accounts.AddAsync(account, cancellationToken);
 
+    public async Task<IReadOnlyList<BankMovement>> ListMovementsAsync(
+        Guid accountId,
+        DateOnly? from,
+        DateOnly? to,
+        CancellationToken cancellationToken)
+    {
+        var query = context.Movements
+            .AsNoTracking()
+            .Where(m => m.BankAccountId == accountId);
+
+        if (from is { } inicio)
+        {
+            var limite = new DateTimeOffset(inicio.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+            query = query.Where(m => m.OccurredAt >= limite);
+        }
+
+        if (to is { } fim)
+        {
+            // Fim de dia inclusive: um extracto "até 31 de Março" que deixasse
+            // de fora o que aconteceu nesse dia estaria errado por um dia todo.
+            var limite = new DateTimeOffset(fim.AddDays(1).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+            query = query.Where(m => m.OccurredAt < limite);
+        }
+
+        // Por instante e depois por identificador: o Guid v7 é ordenado no
+        // tempo, por isso dois movimentos no mesmo instante mantêm a ordem em
+        // que nasceram, e a listagem é estável entre chamadas.
+        return await query
+            .OrderBy(m => m.OccurredAt)
+            .ThenBy(m => m.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<decimal> OpeningBalanceAsync(
+        Guid accountId,
+        DateOnly? from,
+        CancellationToken cancellationToken)
+    {
+        // Sem data de início a janela começa na abertura da conta, e aí o saldo
+        // de abertura é zero por definição.
+        if (from is not { } inicio)
+        {
+            return 0m;
+        }
+
+        var limite = new DateTimeOffset(inicio.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
+
+        return await context.Movements
+            .AsNoTracking()
+            .Where(m => m.BankAccountId == accountId && m.OccurredAt < limite)
+            .OrderByDescending(m => m.OccurredAt)
+            .ThenByDescending(m => m.Id)
+            .Select(m => m.BalanceAfter)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
     public async Task<PurchaseInvoice?> FindPurchaseInvoiceAsync(
         Guid invoiceId,
         CancellationToken cancellationToken) =>

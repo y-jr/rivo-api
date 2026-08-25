@@ -98,24 +98,41 @@ dotnet test
 
 ## Estado da cobertura
 
-_Contagens de 2026-08-25. **383 testes** em 13 projectos._
+_Contagens de 2026-08-25. **433 testes** em 14 projectos._
 
 | Camada | Estado |
 |---|---|
-| Domain | **341 testes**, 9 módulos — `hr` 129, `finance` 102, `commercial` 20, `notifications` 20, `fiscal` 18, `approval` 17, `documents` 16, `audit` 10, `identity` 9 |
-| Application | **8 testes** em `identity`. Os restantes oito módulos por cobrir |
+| Domain | **348 testes**, 9 módulos — `hr` 129, `finance` 109, `commercial` 20, `notifications` 20, `fiscal` 18, `approval` 17, `documents` 16, `audit` 10, `identity` 9 |
+| Application | **51 testes** — `finance` 43, `identity` 8. Os restantes sete módulos por cobrir |
 | Infrastructure | **4 testes** em `notifications`, SQL Server real (ADR-026, ADR-029). Restantes oito módulos por cobrir |
 | API do host | **9 testes** em `tests/Rivo.Api.Tests` — tradução de excepções em códigos HTTP (ADR-035). Nasceu porque isto não é testável em nenhuma das outras camadas: as de domínio não conhecem HTTP, as de arquitectura verificam forma e não comportamento |
 | API de módulo | Nenhum (as suites PowerShell tocam-lhe indirectamente) |
 | Arquitectura | **21 testes** (ADR-024, ADR-025) |
 
-As dez suites PowerShell (**141 casos**) continuam a valer como smoke
+As dez suites PowerShell (**146 casos**) continuam a valer como smoke
 end-to-end. Não substituem teste de domínio, nem o inverso.
 
-**O desequilíbrio é o de sempre, e cresceu:** o domínio tem 341 testes e a
-Application tem 8. Cada módulo novo acrescenta domínio coberto e Application
-descoberta — o que lá existe é exercitado indirectamente pelas suites
-caixa-preta, que testam o sistema montado e não as unidades.
+**O desequilíbrio é o de sempre, mas deixou de crescer em `finance`.** O ADR-022
+fixou um projecto de teste por *domínio* de módulo, porque era aí que estavam as
+invariantes. Em `finance` deixou de ser verdade — as regras que mais custam se
+falharem **não vivem em agregado nenhum**:
+
+| Regra | Onde vive | Porquê não cabe no domínio |
+|---|---|---|
+| BR-5, dupla barreira | `ExecutePayment` | Uma metade está em `approval`, a outra na conta |
+| Saldo em aberto de uma factura | `RegisterReceipt`, `IssueCreditNote` | Invariante sobre o conjunto: nem a factura vê as suas notas de crédito, nem o recibo vê os outros recibos |
+| Taxa à data do facto gerador | `IssueSalesInvoice` | Orquestração entre `fiscal` e `finance` |
+| Total comprometido de uma compra | `CreatePaymentRequest` | Três pedidos de metade cada passam um a um; o agregado não os vê |
+
+`Rivo.Finance.Application.Tests` cobre-as com **43 testes** e duplos escritos à
+mão. Os stores falsos guardam em memória em vez de devolverem valores fixos:
+metade do que há para testar são invariantes sobre o conjunto, e um duplo que
+devolvesse um número fixo estaria a testar o duplo.
+
+Os restantes sete módulos continuam sem cobertura de Application, e o que lá
+existe é exercitado indirectamente pelas suites caixa-preta — que testam o
+sistema montado e não as unidades, e não distinguem *qual* das razões produziu
+um `409`.
 
 ## Integração
 

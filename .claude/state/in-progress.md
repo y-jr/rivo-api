@@ -1,6 +1,6 @@
 # Em Curso
 
-_Última actualização: 2026-08-24._
+_Última actualização: 2026-08-25._
 
 Nada em curso. Nenhuma funcionalidade está a meio.
 

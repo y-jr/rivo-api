@@ -95,7 +95,15 @@ public sealed class ExecutePayment(
             // **Segunda barreira: o saldo.** Sai antes de marcar o pedido para
             // que um saldo insuficiente não deixe o pedido executado sem
             // dinheiro ter saído.
-            conta.Withdraw(pedido.Amount);
+            // O extracto ganha a linha no mesmo acto que o saldo, e com a
+            // origem apontada: é por `payment_request` que a reconciliação
+            // volta do movimento ao documento que o causou.
+            conta.Withdraw(
+                pedido.Amount,
+                clock.GetUtcNow(),
+                $"Pagamento a {pedido.Payee.Name}, factura {pedido.SupplierInvoiceNumber}",
+                sourceType: BankMovementSources.PaymentRequest,
+                sourceId: pedido.Id);
 
             // BR-3 é imposta pelo agregado, com a lista que veio de `approval`.
             pedido.MarkExecuted(

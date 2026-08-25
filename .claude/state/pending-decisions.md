@@ -136,6 +136,13 @@ re-litigação:
 - [ ] Mecanismo de reconciliação bancária (OFX / CSV / MT940 / API) —
       depende de cada instituição.
 
+      **A metade que não dependia disto está feita** (2026-08-25): o Rivo tem
+      extracto de conta próprio, com movimento por alteração de saldo e o
+      apontador de volta ao documento que o causou. Falta o lado de fora —
+      importar o extracto do banco e emparelhar. **É essa metade que precisa da
+      decisão**, e a pergunta concreta para o banco é: em que formato
+      disponibiliza o extracto?
+
 ## Domínio e negócio
 
 - [x] ~~Numeração e conteúdo obrigatório de factura, estrutura de dados

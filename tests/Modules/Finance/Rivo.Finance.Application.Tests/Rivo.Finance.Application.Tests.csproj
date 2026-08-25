@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testa a camada Application de `finance`.
+
+    O ADR-022 fixou um projecto por *domínio* de módulo, porque era aí que
+    estavam as invariantes. Em `finance` deixou de ser verdade: as regras que
+    mais custam se falharem **não vivem em nenhum agregado**.
+
+      - BR-5 é uma dupla barreira cujas metades estão em módulos diferentes —
+        a decisão em `approval`, o saldo na conta.
+      - O que falta receber de uma factura é uma regra sobre o conjunto: nem a
+        factura vê as suas notas de crédito, nem o recibo vê os outros recibos.
+      - A taxa à data do facto gerador (ADR-011 §3) é orquestração entre
+        `fiscal` e `finance`.
+
+    Nenhuma delas era coberta por teste unitário nenhum: existiam 341 testes de
+    domínio e zero aqui. A suite caixa-preta apanha-as, mas exige stack de pé e
+    diz "409" sem dizer qual das razões.
+
+    Segue a estrutura de `Rivo.Identity.Application.Tests`: um projecto de teste
+    referencia um módulo, e este referencia só a Application de `finance`.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Finance\Rivo.Finance.Application\Rivo.Finance.Application.csproj" />
+  </ItemGroup>
+
+</Project>

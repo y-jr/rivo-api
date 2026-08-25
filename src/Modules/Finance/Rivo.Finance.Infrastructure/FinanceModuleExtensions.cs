@@ -57,6 +57,7 @@ public static class FinanceModuleExtensions
         services.AddScoped<OpenBankAccount>();
         services.AddScoped<DepositToAccount>();
         services.AddScoped<ListBankAccounts>();
+        services.AddScoped<GetAccountStatement>();
         services.AddScoped<RegisterPurchaseInvoice>();
         services.AddScoped<ListPurchaseInvoices>();
         services.AddScoped<GetPurchaseInvoice>();

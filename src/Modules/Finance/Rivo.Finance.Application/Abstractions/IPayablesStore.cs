@@ -25,6 +25,35 @@ public interface IPayablesStore
 
     Task AddAccountAsync(BankAccount account, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Os movimentos de uma conta numa janela de datas, por ordem de ocorrência.
+    ///
+    /// <para>
+    /// Método próprio e não a navegação do agregado: o caminho de escrita nunca
+    /// carrega os movimentos, e carregá-los para ler seria trazer o histórico
+    /// todo à memória para mostrar um mês.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<BankMovement>> ListMovementsAsync(
+        Guid accountId,
+        DateOnly? from,
+        DateOnly? to,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// O saldo com que a janela abre: o <c>BalanceAfter</c> do último movimento
+    /// <strong>anterior</strong> a <paramref name="from"/>.
+    ///
+    /// <para>
+    /// Lido do movimento e não somado: se a soma e o saldo divergirem, é essa
+    /// divergência que o extracto tem de mostrar, não esconder.
+    /// </para>
+    /// </summary>
+    Task<decimal> OpeningBalanceAsync(
+        Guid accountId,
+        DateOnly? from,
+        CancellationToken cancellationToken);
+
     Task<PurchaseInvoice?> FindPurchaseInvoiceAsync(Guid invoiceId, CancellationToken cancellationToken);
 
     Task<PurchaseInvoice?> FindPurchaseInvoiceForUpdateAsync(Guid invoiceId, CancellationToken cancellationToken);

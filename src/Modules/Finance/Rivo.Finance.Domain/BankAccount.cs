@@ -14,6 +14,8 @@ namespace Rivo.Finance.Domain;
 /// </summary>
 public sealed class BankAccount
 {
+    private readonly List<BankMovement> _movements = [];
+
     private BankAccount(Guid id, string name, string bank, string? iban, string currency)
     {
         Id = id;
@@ -63,6 +65,18 @@ public sealed class BankAccount
     /// </summary>
     public int Version { get; private set; }
 
+    /// <summary>
+    /// O extracto.
+    ///
+    /// <para>
+    /// <strong>Nunca é carregada no caminho de escrita</strong>, e é de
+    /// propósito: acrescentar um movimento não obriga a ler os anteriores, por
+    /// isso pagar numa conta com dez anos de histórico custa o mesmo que numa
+    /// conta nova. Quem lê o extracto lê-o pelo store, com filtro de datas.
+    /// </para>
+    /// </summary>
+    public IReadOnlyCollection<BankMovement> Movements => _movements;
+
     public static BankAccount Open(string name, string bank, string? iban, string currency)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -88,8 +102,17 @@ public sealed class BankAccount
             currency.Trim().ToUpperInvariant());
     }
 
-    /// <summary>Entrada de fundos — carregamento, transferência recebida.</summary>
-    public void Deposit(decimal amount)
+    /// <summary>
+    /// Entrada de fundos — carregamento, transferência recebida.
+    ///
+    /// <para>
+    /// <strong>O movimento nasce aqui, e não em quem chama.</strong> Saldo e
+    /// extracto alteram-se no mesmo acto, ou não se alteram: um chamador que se
+    /// esquecesse de registar o movimento deixaria o extracto a mentir em
+    /// silêncio, e ninguém daria por isso até à primeira reconciliação.
+    /// </para>
+    /// </summary>
+    public BankMovement Deposit(decimal amount, DateTimeOffset at, string? description)
     {
         if (amount <= 0)
         {
@@ -99,6 +122,10 @@ public sealed class BankAccount
 
         EnsureActive();
         Balance += amount;
+
+        return Register(
+            at, BankMovementDirection.Credit, amount,
+            description ?? "Carregamento de conta", sourceType: null, sourceId: null);
     }
 
     /// <summary>
@@ -110,7 +137,12 @@ public sealed class BankAccount
     /// Application porque depende de `approval`.
     /// </para>
     /// </summary>
-    public void Withdraw(decimal amount)
+    public BankMovement Withdraw(
+        decimal amount,
+        DateTimeOffset at,
+        string description,
+        string? sourceType = null,
+        Guid? sourceId = null)
     {
         if (amount <= 0)
         {
@@ -127,6 +159,8 @@ public sealed class BankAccount
         }
 
         Balance -= amount;
+
+        return Register(at, BankMovementDirection.Debit, amount, description, sourceType, sourceId);
     }
 
     /// <summary>
@@ -141,6 +175,24 @@ public sealed class BankAccount
     public void Reopen()
     {
         IsActive = true;
+    }
+
+    private BankMovement Register(
+        DateTimeOffset at,
+        BankMovementDirection direction,
+        decimal amount,
+        string description,
+        string? sourceType,
+        Guid? sourceId)
+    {
+        // `Balance` já está actualizado quando isto corre — é o saldo *depois*
+        // que a linha do extracto congela.
+        var movimento = BankMovement.Record(
+            Id, at, direction, amount, Balance, description, sourceType, sourceId);
+
+        _movements.Add(movimento);
+
+        return movimento;
     }
 
     private void EnsureActive()

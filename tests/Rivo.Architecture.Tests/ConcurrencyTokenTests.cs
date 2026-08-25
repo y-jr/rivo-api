@@ -84,6 +84,12 @@ public class ConcurrencyTokenTests
             "Objecto de valor, não agregado: substitui-se inteira e não tem identidade nem ciclo de " +
             "vida próprio. As colunas vivem na tabela de `Customer`, que tem o contador.",
 
+        ["BankMovement"] =
+            "Linha de extracto, append-only e imposta como tal pela base de dados: nunca é " +
+            "alterada depois de escrita, e corrigir faz-se com outro movimento em sentido " +
+            "contrário. Quem colide é o saldo da conta, e é `BankAccount` que tem o contador — " +
+            "mesma razão de AuditEvent.",
+
         ["Assignment"] =
             "Mutável (MarkDecided), mas só de dentro de ApprovalRequest, que tem o contador. " +
             "Duas decisões simultâneas colidem na raiz do agregado antes de chegarem aqui — " +

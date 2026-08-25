@@ -59,7 +59,7 @@ public sealed record OpenAccountResult(bool Succeeded, Guid? AccountId, string? 
 /// aqui faria o saldo bater por acidente e depois deixar de bater.
 /// </para>
 /// </summary>
-public sealed class DepositToAccount(IPayablesStore store, IAuditTrail audit)
+public sealed class DepositToAccount(IPayablesStore store, IAuditTrail audit, TimeProvider clock)
 {
     public async Task<AccountMovementOutcome> ExecuteAsync(
         Guid accountId,
@@ -77,7 +77,7 @@ public sealed class DepositToAccount(IPayablesStore store, IAuditTrail audit)
 
         try
         {
-            conta.Deposit(amount);
+            conta.Deposit(amount, clock.GetUtcNow(), reference);
         }
         catch (Exception error) when (error is ArgumentException or ArgumentOutOfRangeException or InvalidOperationException)
         {
@@ -127,6 +127,113 @@ public sealed record BankAccountView(
     string Currency,
     decimal Balance,
     bool IsActive);
+
+/// <summary>
+/// O extracto de uma conta: com que saldo a janela abre, o que se moveu, e com
+/// que saldo fecha.
+///
+/// <para>
+/// <strong>É o que torna a reconciliação bancária possível.</strong> Confrontar
+/// o Rivo com o banco é comparar movimentos, e até aqui só havia um saldo —
+/// um número sem explicação de como lá chegou.
+/// </para>
+///
+/// <para>
+/// A conta continua a ser a fonte do saldo corrente. O extracto não o
+/// recalcula: <strong>expõe os dois lado a lado</strong> em
+/// <see cref="AccountStatementView.Reconciles"/>, para que uma divergência
+/// apareça em vez de ser absorvida.
+/// </para>
+/// </summary>
+public sealed class GetAccountStatement(IPayablesStore store)
+{
+    public async Task<AccountStatementView?> ExecuteAsync(
+        Guid accountId,
+        DateOnly? from,
+        DateOnly? to,
+        CancellationToken cancellationToken)
+    {
+        var conta = await store.FindAccountAsync(accountId, cancellationToken);
+
+        if (conta is null)
+        {
+            return null;
+        }
+
+        var abertura = await store.OpeningBalanceAsync(accountId, from, cancellationToken);
+        var movimentos = await store.ListMovementsAsync(accountId, from, to, cancellationToken);
+
+        var creditos = movimentos
+            .Where(m => m.Direction is BankMovementDirection.Credit)
+            .Sum(m => m.Amount);
+
+        var debitos = movimentos
+            .Where(m => m.Direction is BankMovementDirection.Debit)
+            .Sum(m => m.Amount);
+
+        // O fecho vem do último movimento, não da soma. Se a cadeia de
+        // `BalanceAfter` estiver partida, é aqui que se vê.
+        var fecho = movimentos.Count > 0 ? movimentos[^1].BalanceAfter : abertura;
+
+        return new AccountStatementView(
+            conta.Id,
+            conta.Name,
+            conta.Bank,
+            conta.Currency,
+            from,
+            to,
+            abertura,
+            creditos,
+            debitos,
+            fecho,
+            conta.Balance,
+
+            // Só se pode afirmar reconciliação sobre uma janela que chega ao
+            // presente. Num extracto de Março, o fecho *não deve* bater com o
+            // saldo de hoje — e dizer que não reconcilia seria mentir ao
+            // contrário.
+            Reconciles: to is null ? fecho == conta.Balance : null,
+
+            [.. movimentos.Select(m => new BankMovementView(
+                m.Id,
+                m.OccurredAt,
+                m.Direction.ToString(),
+                m.Amount,
+                m.BalanceAfter,
+                m.Description,
+                m.SourceType,
+                m.SourceId))]);
+    }
+}
+
+/// <param name="AccountBalance">O saldo corrente da conta, para comparação.</param>
+/// <param name="Reconciles">
+/// Nulo quando a janela tem fim — a pergunta não se aplica.
+/// </param>
+public sealed record AccountStatementView(
+    Guid AccountId,
+    string Name,
+    string Bank,
+    string Currency,
+    DateOnly? From,
+    DateOnly? To,
+    decimal OpeningBalance,
+    decimal TotalCredits,
+    decimal TotalDebits,
+    decimal ClosingBalance,
+    decimal AccountBalance,
+    bool? Reconciles,
+    IReadOnlyList<BankMovementView> Movements);
+
+public sealed record BankMovementView(
+    Guid MovementId,
+    DateTimeOffset OccurredAt,
+    string Direction,
+    decimal Amount,
+    decimal BalanceAfter,
+    string Description,
+    string? SourceType,
+    Guid? SourceId);
 
 // ---------- Contas a Pagar ----------
 

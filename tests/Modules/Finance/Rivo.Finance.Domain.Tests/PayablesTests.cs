@@ -8,6 +8,7 @@ namespace Rivo.Finance.Domain.Tests;
 public class PayablesTests
 {
     private static readonly DateOnly Hoje = new(2026, 8, 25);
+    private static readonly DateTimeOffset Instante = new(2026, 8, 25, 10, 0, 0, TimeSpan.Zero);
 
     private static PayeeParty Fornecedor() => new("Sonangol Distribuidora", "5401234567");
 
@@ -22,7 +23,7 @@ public class PayablesTests
 
         if (saldo > 0)
         {
-            conta.Deposit(saldo);
+            conta.Deposit(saldo, Instante, "Carregamento inicial");
         }
 
         return conta;
@@ -65,7 +66,7 @@ public class PayablesTests
     {
         var conta = Conta(1_000m);
 
-        var erro = Assert.Throws<InsufficientFundsException>(() => conta.Withdraw(1_000.01m));
+        var erro = Assert.Throws<InsufficientFundsException>(() => conta.Withdraw(1_000.01m, Instante, "Tentativa"));
 
         // Sem asserir o número formatado: `N2` segue a cultura corrente, e o
         // teste passaria a depender de onde corre.
@@ -79,7 +80,7 @@ public class PayablesTests
     public void SacarExactamenteOSaldo_EAceite()
     {
         var conta = Conta(1_000m);
-        conta.Withdraw(1_000m);
+        conta.Withdraw(1_000m, Instante, "Pagamento");
 
         Assert.Equal(0m, conta.Balance);
     }
@@ -90,8 +91,8 @@ public class PayablesTests
         var conta = Conta();
         conta.Close();
 
-        Assert.Throws<InvalidOperationException>(() => conta.Withdraw(1m));
-        Assert.Throws<InvalidOperationException>(() => conta.Deposit(1m));
+        Assert.Throws<InvalidOperationException>(() => conta.Withdraw(1m, Instante, "Pagamento"));
+        Assert.Throws<InvalidOperationException>(() => conta.Deposit(1m, Instante, null));
     }
 
     [Theory]
@@ -99,15 +100,15 @@ public class PayablesTests
     [InlineData(-1)]
     public void MovimentoNaoPositivo_ERecusado(decimal valor)
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => Conta().Withdraw(valor));
-        Assert.Throws<ArgumentOutOfRangeException>(() => Conta().Deposit(valor));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Conta().Withdraw(valor, Instante, "Pagamento"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Conta().Deposit(valor, Instante, null));
     }
 
     [Fact]
     public void ODominioNaoMexeNoContadorDaConta()
     {
         var conta = Conta();
-        conta.Withdraw(100m);
+        conta.Withdraw(100m, Instante, "Pagamento");
 
         Assert.Equal(0, conta.Version);
     }
@@ -300,5 +301,116 @@ public class PayablesTests
         pedido.MarkExecuted(Guid.CreateVersion7(), Guid.CreateVersion7(), PaymentMethod.TB, [], DateTimeOffset.UtcNow);
 
         Assert.Equal(0, pedido.Version);
+    }
+
+    // ---- extracto de conta ----
+
+    /// <summary>
+    /// A razão de ser do extracto: saldo e movimento nascem no mesmo acto, e
+    /// nenhum caminho altera um sem o outro.
+    /// </summary>
+    [Fact]
+    public void CadaMovimentoDeSaldoDeixaLinhaNoExtracto()
+    {
+        var conta = Conta(0m);
+
+        conta.Deposit(200_000m, Instante, "Transferência do sócio");
+        conta.Withdraw(114_000m, Instante.AddHours(1), "Pagamento a fornecedor");
+
+        Assert.Equal(2, conta.Movements.Count);
+        Assert.Equal(86_000m, conta.Balance);
+    }
+
+    [Fact]
+    public void MovimentoCongelaOSaldoDepoisDeSi()
+    {
+        var conta = Conta(0m);
+
+        conta.Deposit(200_000m, Instante, null);
+        conta.Withdraw(114_000m, Instante.AddHours(1), "Pagamento");
+
+        var movimentos = conta.Movements.ToList();
+
+        Assert.Equal(200_000m, movimentos[0].BalanceAfter);
+        Assert.Equal(86_000m, movimentos[1].BalanceAfter);
+
+        // Depois um depósito. O saldo do movimento anterior não muda — é o que
+        // torna o extracto legível a posteriori.
+        conta.Deposit(14_000m, Instante.AddHours(2), null);
+
+        Assert.Equal(86_000m, movimentos[1].BalanceAfter);
+        Assert.Equal(100_000m, conta.Movements.Last().BalanceAfter);
+    }
+
+    [Fact]
+    public void SentidoDoMovimentoSegueOTipoDeOperacao()
+    {
+        var conta = Conta(0m);
+
+        conta.Deposit(1_000m, Instante, null);
+        conta.Withdraw(400m, Instante.AddMinutes(1), "Pagamento");
+
+        var movimentos = conta.Movements.ToList();
+
+        Assert.Equal(BankMovementDirection.Credit, movimentos[0].Direction);
+        Assert.Equal(BankMovementDirection.Debit, movimentos[1].Direction);
+
+        // Valor sempre positivo: o sentido está na direcção, não no sinal.
+        Assert.All(movimentos, m => Assert.True(m.Amount > 0));
+    }
+
+    /// <summary>
+    /// Uma recusa não pode deixar rasto no extracto — senão o extracto passa a
+    /// registar o que não aconteceu.
+    /// </summary>
+    [Fact]
+    public void MovimentoRecusado_NaoEntraNoExtracto()
+    {
+        var conta = Conta(1_000m);
+        var antes = conta.Movements.Count;
+
+        Assert.Throws<InsufficientFundsException>(
+            () => conta.Withdraw(5_000m, Instante, "Pagamento sem saldo"));
+
+        Assert.Equal(antes, conta.Movements.Count);
+        Assert.Equal(1_000m, conta.Balance);
+    }
+
+    /// <summary>
+    /// O percurso de volta que a reconciliação precisa: do movimento ao
+    /// documento que o causou.
+    /// </summary>
+    [Fact]
+    public void MovimentoAponta_ADocumentoDeOrigem()
+    {
+        var conta = Conta(200_000m);
+        var pedidoId = Guid.CreateVersion7();
+
+        var movimento = conta.Withdraw(
+            114_000m, Instante, "Pagamento a Sonangol",
+            BankMovementSources.PaymentRequest, pedidoId);
+
+        Assert.Equal(BankMovementSources.PaymentRequest, movimento.SourceType);
+        Assert.Equal(pedidoId, movimento.SourceId);
+    }
+
+    [Fact]
+    public void CarregamentoManual_NaoTemOrigemDocumental()
+    {
+        var conta = Conta(0m);
+
+        var movimento = conta.Deposit(50_000m, Instante, "Depósito em numerário");
+
+        Assert.Null(movimento.SourceType);
+        Assert.Null(movimento.SourceId);
+        Assert.Equal("Depósito em numerário", movimento.Description);
+    }
+
+    [Fact]
+    public void DepositoSemDescricao_RecebeUmaPorOmissao()
+    {
+        var movimento = Conta(0m).Deposit(1m, Instante, "   ");
+
+        Assert.False(string.IsNullOrWhiteSpace(movimento.Description));
     }
 }

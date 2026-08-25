@@ -1,6 +1,6 @@
 # Problemas Conhecidos
 
-_Última actualização: 2026-08-24._
+_Última actualização: 2026-08-25._
 
 Este ficheiro regista duas coisas distintas, e a distinção importa:
 
@@ -25,7 +25,7 @@ repetir é real.
 | K3 | Fluxo de despesa eventual avulsa do SGAP não coberto | Lacuna funcional — expansão de `procurement`, não módulo novo | `docs` §2 |
 | K4 | Validação de conformidade documental antes da decisão (checklist DAF do SGAP) | Lacuna — `docs` aponta para expansão de `fiscal` como serviço de validação | `docs` §2 |
 | K5 | Anti-fraccionamento (janela 30 dias) é regra nova, sem precedente no protótipo | Precisa de desenho — regra de `approval` alimentada por dados de `finance` | [domain/business-rules.md](../domain/business-rules.md) BR-7 |
-| K6 | Disponibilidade de tesouraria ligada à execução não existia no protótipo | Conceito novo em `finance` | `docs` §2 |
+| ~~K6~~ | ~~Disponibilidade de tesouraria ligada à execução~~ | **Fechado a 2026-08-25.** `BankAccount` é a disponibilidade e `ExecutePayment` verifica-a como metade de BR-5. O extracto (`BankMovement`) tornou-a auditável: o saldo deixou de ser um número sem explicação | [modules/finance.md](../modules/finance.md) |
 
 ## Anti-padrões do protótipo a não repetir
 
@@ -90,6 +90,12 @@ caminhos de destruição estão cobertos por duas peças:
 
 `TRUNCATE` precisou de peça própria porque, ao contrário do PostgreSQL, o SQL
 Server não dispara gatilhos nessa instrução.
+
+**As duas peças foram reutilizadas a 2026-08-25** em `finance.bank_movement`, o
+extracto de conta. A razão é a mesma que aqui: um registo que se pode editar não
+serve para o que existe — uma trilha reescrita não audita nada, e um extracto
+reescrito não reconcilia nada. **A ressalva abaixo vale igualmente para essa
+tabela.**
 
 **⚠ Fica por fazer a metade que depende de privilégios:** quem for dono da
 tabela pode remover o gatilho e a sentinela. Protege contra o erro, não contra

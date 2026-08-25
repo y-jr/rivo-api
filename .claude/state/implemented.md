@@ -10,9 +10,10 @@ terminar uma funcionalidade (passo 8 do fluxo em [CLAUDE.md](../CLAUDE.md)).
 Os restantes cinco — `procurement`, `payroll`, `projects`, `inventory`,
 `fleet` — estão definidos em [modules/](../modules/) e não têm código.
 
-⚠ **Três estão reduzidos ao mínimo pelo ADR-036**, e não implementados por
-inteiro: `fiscal` (só taxa com vigência e determinação), `commercial` (só
-Cliente), `finance` (só a factura de venda). Ver a ressalva em cada secção.
+⚠ **Dois estão reduzidos ao mínimo pelo ADR-036**, e não implementados por
+inteiro: `fiscal` (só taxa com vigência e determinação) e `commercial` (só
+Cliente). `finance` tem AR, AP e Tesouraria feitos, e faltam-lhe Contabilidade &
+Fecho e Planeamento. Ver a ressalva em cada secção.
 
 > As datas até 2026-08-16 vêm do carimbo das migrações EF Core — o repositório
 > só passou a estar sob git nesse dia. A partir daí vêm do histórico.
@@ -189,7 +190,7 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
 
 ## Verificação
 
-**Dez suites** PowerShell caixa-preta contra a stack em Docker, **141 casos**
+**Dez suites** PowerShell caixa-preta contra a stack em Docker, **146 casos**
 (2026-08-24), todas re-executáveis.
 
 Eram seis suites e 66 casos em 2026-08-16. `verify-hr` cresceu 13 → 16 com as
@@ -216,7 +217,7 @@ três módulos do ADR-036 tinham deixado.
 | `verify-fiscal` | 13 |
 | `verify-commercial` | 12 |
 | `verify-finance` | 29 |
-| `verify-payables` | 17 |
+| `verify-payables` | 22 |
 
 `verify-finance` corre por último e **monta os seus pré-requisitos pelas rotas
 de `fiscal` e `commercial`** — taxa, vigências e cliente. Não há atalho por SQL
@@ -283,11 +284,26 @@ de arquitectura, o que deixou de ser verdade em 2026-08-16._
 camadas, ciclos, autorização declarada em todo o endpoint e contadores de
 concorrência. As fronteiras deixaram de depender de revisão humana.
 
-Continua por cobrir, e é o desequilíbrio que cresce a cada módulo: **Application
-tem 8 testes** (só `identity`) contra 273 no domínio, e a **Infrastructure tem
-4** (só `notifications`). A camada API do host ganhou 9 em 2026-08-24
+**Application: 51 testes** (2026-08-25) — `finance` 43, `identity` 8. Os
+restantes sete módulos continuam sem. A **Infrastructure tem 4** (só
+`notifications`). A camada API do host ganhou 9 em 2026-08-24
 (`tests/Rivo.Api.Tests`, ADR-035); as APIs de módulo continuam sem testes
 próprios.
+
+`Rivo.Finance.Application.Tests` nasceu porque o ADR-022 fixou um projecto por
+*domínio* de módulo, e em `finance` isso deixou de chegar: BR-5 tem uma metade
+em `approval` e outra na conta, o saldo em aberto de uma factura é invariante
+sobre o conjunto, e a taxa à data do facto gerador é orquestração entre dois
+módulos. Nada disso cabe num agregado, e nada disso tinha teste unitário.
+
+**Verificado por mutação** em 2026-08-25, duas vezes:
+
+| Mutação | Falharam | Esperado |
+|---|---|---|
+| Desligar a verificação de estado em `ExecutePayment` (a ordem que era o defeito) | 2 | Segunda execução e pedido cancelado |
+| Determinar a taxa da nota de crédito à data de hoje em vez da do facto gerador | 1 | O teste do ADR-011 §3 |
+
+As alterações foram revertidas.
 
 ---
 
@@ -351,7 +367,9 @@ Proposta, Contrato Comercial e Acção de Cobrança não existem.
 
 ## finance
 
-_2026-08-24 — **só Contas a Receber**, ADR-036._
+_2026-08-24 a 2026-08-25 — **AR, AP e Tesouraria**, ADR-036._
+
+_A fatia de 2026-08-24 era só Contas a Receber; o resto veio no dia seguinte._
 
 - Cinco camadas, schema `finance`, 34 testes de domínio
 - `DocumentSeries` como agregado próprio, para impor numeração sequencial sem
@@ -371,6 +389,49 @@ _2026-08-24 — **só Contas a Receber**, ADR-036._
 ⚠ **As facturas não são documentos fiscais válidos em Angola** — têm a forma,
 falta a certificação da AGT e a cadeia `Hash`/`HashControl` (ADR-036).
 
-**Fora:** Contas a Pagar, Tesouraria, Contabilidade & Fecho, Planeamento,
-recebimentos, nota de crédito. Com eles ficam por fazer BR-1, BR-3, BR-5 e o
-disponível orçamental que BR-8 exige de `approval`.
+### Ciclo de venda fechado — 2026-08-25
+
+- `CreditNote` (série NC) e `Receipt` (série RG), cada um com série própria
+- **A nota de crédito herda o facto gerador da factura corrigida**, não a data
+  de hoje: o imposto que se devolve é o que foi liquidado (ADR-011 §3)
+- Saldo em aberto **calculado, não guardado** — total menos creditado menos
+  recebido, contando só documentos não anulados. Uma coluna de saldo seria
+  ponto de contenção a cada recebimento e ficaria errada em silêncio no dia em
+  que alguém estornasse um recibo sem a recalcular
+- Crédito e recebimento consomem o mesmo saldo. Receber ou creditar a mais é
+  **409**, não 400: é conflito de estado
+- Consumidor final, com o identificador vindo de configuração e menção fiscal
+  congelada na emissão
+
+### Contas a Pagar e Tesouraria — 2026-08-25
+
+- `BankAccount`, `PurchaseInvoice`, `PaymentRequest`, `ExecutePayment`
+- **BR-1, BR-3 e BR-5 impostas e verificadas.** A dupla barreira monta-se na
+  Application porque nenhuma das metades cabe num agregado
+- O **anti-padrão A3 do protótipo está fechado**: dois estados (`Eligible`,
+  `Executed`) mais `Cancelled`. Sem "pendente de aprovação" — isso é estado do
+  processo, e o que fica é um ponteiro
+- Ligação a `approval` **por inversão**, e aqui é obrigatória: BR-8 fará
+  `approval` ler `finance`, e uma referência directa traria de volta o ciclo
+  que o ADR-034 fechou
+- `Finance` paga sem pedir, `Manager` pede sem pagar — **BR-3 começa no
+  catálogo de permissões**, antes de o domínio a impor
+
+### Extracto de conta — 2026-08-25
+
+- `BankMovement`, a linha do extracto. O saldo sozinho não é reconciliável:
+  reconciliação bancária compara **movimentos**, não saldos
+- O movimento **nasce dentro do agregado**, em `Deposit`/`Withdraw` — saldo e
+  extracto alteram-se no mesmo acto ou não se alteram
+- `BalanceAfter` **congelado**, não recalculado ao ler: se um dia o saldo
+  divergir da soma, é essa coluna que mostra onde e quando
+- `SourceType`/`SourceId` fazem o percurso de volta ao documento que causou o
+  movimento — é o que a reconciliação precisa
+- **Append-only imposto pelo motor**, com a mesma peça do K9: gatilho
+  `INSTEAD OF UPDATE, DELETE` mais sentinela contra `TRUNCATE`
+- As contas que já existiam receberam **um movimento de abertura** na migração
+
+**Fora:** Contabilidade & Fecho e Planeamento — e com Planeamento o disponível
+orçamental que BR-8 exige de `approval`. Também adiantamentos, nota de débito,
+câmbio, e a reconciliação bancária propriamente dita (importar o extracto do
+banco e emparelhar movimentos).

@@ -277,6 +277,22 @@ data.
 **Critério de saída:** ciclo pedido → aprovação → execução, com auditoria e
 revalidação, a correr em staging.
 
+> **Estado a 2026-08-25 — a ordem interna foi invertida, e de propósito.**
+>
+> O ADR-036 fixou *emitir* como meta, o que pôs AR à frente. A ordem executada
+> foi **AR → AP → Tesouraria**, e Planeamento ficou por fazer. O critério de
+> saída **está cumprido**: o ciclo pedido → aprovação → execução corre, com
+> BR-1, BR-3 e BR-5 impostas e verificadas por 22 casos de `verify-payables`.
+>
+> **O que a inversão custou:** BR-8 continua aberta. Sem Planeamento não há
+> disponível orçamental, e uma política com `RequiresBudgetCheck` recusa a
+> submissão em vez de a verificar. É a dívida a pagar em Contabilidade & Fecho
+> e Planeamento.
+>
+> Tesouraria ganhou extracto de conta (`BankMovement`) a 2026-08-25 — append-only
+> imposto pela base de dados. **Fecha K6**; a reconciliação bancária ainda
+> depende de importar o extracto do banco.
+
 ---
 
 ## Fase 5 — `procurement` e `commercial`
