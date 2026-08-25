@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using Rivo.Audit.Contracts;
 using Rivo.Commercial.Contracts;
 using Rivo.Finance.Application.Abstractions;
@@ -20,10 +21,16 @@ public sealed class IssueSalesInvoice(
     ISalesInvoiceStore store,
     ICustomerDirectory customers,
     ITaxDetermination taxes,
-    IAuditTrail audit)
+    IAuditTrail audit,
+    IOptions<FinanceOptions> options)
 {
+    private readonly FinanceOptions _options = options.Value;
+
+    /// <param name="customerId">
+    /// Nulo é uma venda a consumidor final — não é campo esquecido.
+    /// </param>
     public async Task<IssueInvoiceResult> ExecuteAsync(
-        Guid customerId,
+        Guid? customerId,
         string seriesCode,
         DateOnly issuedOn,
         DateOnly? taxPointDate,
@@ -41,19 +48,49 @@ public sealed class IssueSalesInvoice(
         // data do documento, que é o caso corrente.
         var facto = taxPointDate ?? issuedOn;
 
-        var cliente = await customers.FindAsync(customerId, cancellationToken);
+        // Duas origens para a mesma coisa: o retrato do cliente que vai ficar
+        // congelado na factura.
+        InvoicedParty parte;
 
-        if (cliente is null)
+        if (customerId is { } identificador)
         {
-            return IssueInvoiceResult.CustomerNotFound();
+            var cliente = await customers.FindAsync(identificador, cancellationToken);
+
+            if (cliente is null)
+            {
+                return IssueInvoiceResult.CustomerNotFound();
+            }
+
+            // Facturar um cliente desactivado é quase sempre engano — e o
+            // cliente foi desactivado justamente para deixar de aparecer nestes
+            // fluxos.
+            if (cliente.Status is CustomerStatus.Inactive)
+            {
+                return IssueInvoiceResult.Rejected(
+                    $"O cliente '{cliente.Name}' está desactivado. Reactive-o antes de facturar.");
+            }
+
+            parte = new InvoicedParty(
+                cliente.Name,
+                cliente.TaxId,
+                cliente.BillingAddress.Detail,
+                cliente.BillingAddress.City,
+                cliente.BillingAddress.Country);
         }
-
-        // Facturar um cliente desactivado é quase sempre engano — e o cliente
-        // foi desactivado justamente para deixar de aparecer nestes fluxos.
-        if (cliente.Status is CustomerStatus.Inactive)
+        else
         {
-            return IssueInvoiceResult.Rejected(
-                $"O cliente '{cliente.Name}' está desactivado. Reactive-o antes de facturar.");
+            // Venda a quem não se identificou. O identificador vem de
+            // configuração porque a convenção angolana não está verificada em
+            // fonte primária — sem ele, recusa-se e diz-se porquê.
+            if (string.IsNullOrWhiteSpace(_options.FinalConsumerTaxId))
+            {
+                return IssueInvoiceResult.Rejected(
+                    "Facturar a consumidor final exige `Finance:FinalConsumerTaxId` configurado. " +
+                    "A convenção angolana para esse identificador não está fixada neste sistema.");
+            }
+
+            parte = InvoicedParty.FinalConsumer(
+                _options.FinalConsumerTaxId, _options.FinalConsumerName);
         }
 
         // As taxas resolvem-se todas antes de se tocar na série: se alguma
@@ -90,8 +127,14 @@ public sealed class IssueSalesInvoice(
             }
         }
 
+        // Série por omissão em configuração e não literal na Api: é a mesma que
+        // o seed abre, e um literal duplicado divergiria dela em silêncio.
+        var codigoSerie = string.IsNullOrWhiteSpace(seriesCode)
+            ? _options.DefaultSeries
+            : seriesCode;
+
         var serie = await store.FindSeriesForAllocationAsync(
-            DocumentType.FT, (seriesCode ?? string.Empty).Trim().ToUpperInvariant(), cancellationToken);
+            DocumentType.FT, (codigoSerie ?? string.Empty).Trim().ToUpperInvariant(), cancellationToken);
 
         if (serie is null)
         {
@@ -110,15 +153,14 @@ public sealed class IssueSalesInvoice(
                 numero,
                 issuedOn,
                 facto,
-                cliente.CustomerId,
-                new InvoicedParty(
-                    cliente.Name,
-                    cliente.TaxId,
-                    cliente.BillingAddress.Detail,
-                    cliente.BillingAddress.City,
-                    cliente.BillingAddress.Country),
+                customerId,
+                parte,
                 currency,
-                resolvidas);
+                resolvidas,
+                // Congelada na emissão. Vazia em configuração significa sistema
+                // certificado, e as facturas anteriores mantêm a que lhes foi
+                // gravada.
+                _options.FiscalNotice);
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException)
         {

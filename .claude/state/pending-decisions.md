@@ -1,6 +1,6 @@
 # Decisões Pendentes
 
-_Última actualização: 2026-08-24._
+_Última actualização: 2026-08-25._
 
 Decisões por tomar antes de o trabalho relacionado poder avançar com
 confiança. Uma vez decididas, registar como ADR em
@@ -62,11 +62,8 @@ re-litigação:
 - [ ] **Mecanismo geral de despacho de eventos** entre módulos. O worker de
       `notifications` resolve o caso dele; os eventos de domínio previstos em
       [modules/](../modules/) não têm mecanismo.
-- [ ] **Gestão central de versões de pacotes em `src/`.** Cada um dos 25
-      `.csproj` fixa as suas — diverge sozinho à medida que os módulos crescem.
-      `tests/` já está resolvido por `Directory.Build.props` (ADR-022); falta
-      fazer o equivalente em `src/`, provavelmente com
-      `Directory.Packages.props`.
+- [x] ~~**Gestão central de versões de pacotes em `src/`.**~~ Resolvido por
+      `Directory.Packages.props` na raiz, que é onde as versões vivem hoje.
 - [ ] **`SharedKernel`:** criar ou assumir que não é preciso. O
       [CLAUDE.md](../CLAUDE.md) manda mantê-lo mínimo, mas ele nunca existiu e
       até hoje não fez falta. Decidir explicitamente em vez de deixar a
@@ -98,26 +95,33 @@ re-litigação:
       participa das regras normais de autorização.
 - [ ] **⚠ Bootstrap do primeiro Cargo com autoridade** (ADR-015 §R2, ADR-016
       §R1). O seed atribui apenas Perfis de Acesso; a autoridade de decisão vem
-      do **Cargo**. `hr` já existe e já tem a tabela — **o bloqueio mudou de
-      módulo**: criar um Cargo com autoridade exige decisão de `approval`, que
-      não existe, e é isso que faz o `501`. Resolve-se estendendo o
-      `BootstrapUserSeeder` quando `approval` for implementado.
+      do **Cargo**.
+
+      **Actualizado em 2026-08-25:** `approval` existe desde 2026-08-23 e o
+      `501` fechou — a razão original deste pendente caducou. O que resta é o
+      ovo e a galinha: criar o primeiro Cargo com autoridade exige decisão de
+      `approval`, e não há ninguém com autoridade para a tomar. Resolve-se
+      estendendo o `BootstrapUserSeeder`, à maneira do ADR-016: o bootstrap é o
+      passo anterior às regras de autorização existirem.
 - [x] ~~Assemblies de contratos por módulo~~ — **ADR-017**. `Rivo.X.Contracts`
       sem dependências; criado quando o módulo tem consumidor. Já aplicado a
       `audit`, `documents`, `hr` e `notifications`. **Por exercitar:** a
       dependência mútua `hr ↔ approval`, que é o caso que motivou o ADR, só
       será posta à prova quando `approval` existir.
-- [ ] Permissões dos restantes cinco perfis. Estão semeados os sete, mas só
-      `Admin` e `HR` têm permissões — os outros esperam pelos módulos de
-      negócio que os justificam.
+- [ ] **Permissões de `AssetManager` e `ProjectManager`.** Dos sete perfis,
+      **cinco já têm permissões** (2026-08-25): `Admin`, `HR`, `Manager`,
+      `Finance` e `Sales`. Os dois que faltam esperam por `inventory`/`fleet` e
+      `projects`, que não têm código — inventar-lhes permissões seria adivinhar.
 - [ ] Gestão de segredos em produção (chave de assinatura JWT, credencial da
       base de dados).
-- [ ] **Topologia de produção e cabeçalhos reencaminhados.** Necessária para
-      corrigir K8 (o IP registado na sessão é o do proxy). Configurar
-      `X-Forwarded-For` sem definir os proxies de confiança permitiria a
-      qualquer cliente forjar o próprio IP — pior do que o defeito actual.
-- [ ] Aplicação de migrações em produção. No arranque só acontece em
-      `Development`; produção precisa de passo próprio no pipeline.
+- [x] ~~**Topologia de produção e cabeçalhos reencaminhados.**~~ **K8 fechado
+      em 2026-08-16.** A confiança não vem de uma lista de proxies: vem de o
+      container não publicar porto nenhum no host, portanto o único caminho até
+      ele é o reverse proxy (ADR-031).
+- [x] ~~Aplicação de migrações em produção.~~ **ADR-030** — migração no
+      arranque por interruptor explícito (`MIGRATE_ON_STARTUP`), porque o
+      deployment em VPS não tem pipeline com acesso à base de dados. O
+      interruptor é a aprovação.
 - [ ] **Provider de e-mail transaccional.** Bloqueia a entrega real: o canal
       registado é `LoggingNotificationChannel`, que escreve em log e não envia
       nada (K13). A porta `INotificationChannel` já existe — falta o adaptador.
@@ -219,29 +223,30 @@ re-litigação:
 
 ## Emissão sem certificação (ADR-036)
 
-- [ ] **Marcar visivelmente uma factura que não é documento fiscal?** O ADR-036
-      dispensou a certificação da AGT, e o risco central que ele regista é de
-      negócio: uma factura do Rivo tem número, série e ar de factura, e não é
-      documento fiscal válido em Angola. Quem olha para o ecrã não vê a
-      diferença.
+**As três primeiras foram respondidas a 2026-08-25.** Detalhe na adenda ao
+[ADR-036](../decisions/adr-036-emitir-sem-certificacao.md).
 
-      Opções: marca de água ou menção no documento enquanto não houver
-      `SoftwareValidationNumber`; ou nada, se a emissão nunca sair da empresa.
-      **Depende de a factura ser ou não entregue a clientes** — que é a
-      assunção de que todo o ADR-036 depende.
+- [x] ~~**Marcar visivelmente uma factura que não é documento fiscal?**~~
+      **Sim.** `SalesInvoice.FiscalNotice`, vinda de `Finance:FiscalNotice` e
+      **congelada na emissão** — no dia da certificação, as facturas emitidas
+      antes continuam a não ser válidas e mantêm a menção. Vazio em
+      configuração significa sistema certificado.
 
-- [ ] **Que série de numeração usar, e quem a abre?** A numeração
-      `[Tipo] [Série]/[Sequencial]` é âmbito do ADR-036, mas nada fixa se há
-      uma série por ano, por ponto de emissão, ou uma só.
+- [x] ~~**Que série de numeração usar, e quem a abre?**~~ **Uma contínua por
+      tipo de documento**, `S001`, sem reinício anual, criada pelo seed no
+      arranque. Reiniciar por ano obrigaria a decidir para qual série emitir
+      perto da viragem, que é uma hipótese de erro que a numeração contínua não
+      tem.
 
-- [ ] **Existe "consumidor final"?** O NIF é obrigatório em `Customer`
-      (`modules/commercial.md`), logo não se factura a quem não o forneça. Se o
-      negócio vender a particulares não identificados, falta o conceito — e a
-      convenção angolana para o caso (código convencional? cliente genérico?)
-      não está levantada em fonte primária.
+- [x] ~~**Existe "consumidor final"?**~~ **Sim.** `CustomerId` passa a anulável
+      e `InvoicedParty.FinalConsumer(...)` constrói o retrato de quem não se
+      identificou.
 
-      **Depende do negócio, não da técnica:** se as vendas são todas a empresas
-      com NIF, não há decisão a tomar.
+      ⚠ **Fica um pendente dentro deste:** o identificador que vai no lugar do
+      NIF vem de `Finance:FinalConsumerTaxId`, com omissão `CONSUMIDORFINAL` —
+      deliberadamente não plausível como NIF. **A convenção angolana continua
+      por levantar em fonte primária, e tem de substituir esta antes de
+      qualquer certificação.**
 
 - [ ] **Unicidade do NIF:** índice único em `commercial.customer` mais
       verificação na camada Application. Por fazer — não é invariante que o

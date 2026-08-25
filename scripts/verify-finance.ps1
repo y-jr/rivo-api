@@ -327,7 +327,58 @@ Test-Case "17. Autorizacao: sem token 401, sem a permissao 403" {
     "401 sem token; 403 nas duas direccoes da segregacao"
 }
 
-Test-Case "18. Dados sobrevivem ao reinicio da stack" {
+Test-Case "18. Serie por omissao existe sem ninguem a criar" {
+    # O seed abre-a no arranque (ADR-036). Sem isto, um ambiente novo devolvia
+    # 404 na primeira factura e o passo esquecido so aparecia ao facturar.
+    $existe = Invoke-Sql "select count(*) from finance.document_series where code='S001'"
+    if ($existe -ne "1") { throw "serie por omissao S001 nao foi semeada" }
+
+    # E emite-se sem indicar serie nenhuma.
+    $body = @{
+        customerId = $customerId
+        lines = @(@{ description = "Sem serie indicada"; quantity = 1; unitPrice = 100; taxCode = $codigoTaxa })
+    } | ConvertTo-Json
+    $r = Invoke-RestMethod "$base/finance/sales-invoices" -Method Post -Body $body -ContentType "application/json" -Headers $salesHeaders
+    if ($r.number -notlike "FT S001/*") { throw "numero '$($r.number)' nao usou a serie por omissao" }
+    "S001 semeada; emissao sem serie indicada usa-a"
+}
+
+Test-Case "19. Consumidor final: factura sem cliente registado" {
+    $body = @{
+        series = $serie
+        lines = @(@{ description = "Venda ao balcao"; quantity = 1; unitPrice = 2000; taxCode = $codigoTaxa })
+    } | ConvertTo-Json
+    $r = Invoke-RestMethod "$base/finance/sales-invoices" -Method Post -Body $body -ContentType "application/json" -Headers $salesHeaders
+
+    $f = Invoke-RestMethod "$base/finance/sales-invoices/$($r.invoiceId)" -Headers $adminHeaders
+    if ($null -ne $f.customerId) { throw "consumidor final com identificador de cliente" }
+    if (-not $f.isFinalConsumer) { throw "factura nao marcada como consumidor final" }
+    if (-not $f.customerTaxId) { throw "sem identificador convencionado no lugar do NIF" }
+
+    # A morada fica vazia porque **nao existe**, nao porque falta preencher.
+    if ($f.customerAddressDetail -ne "") { throw "consumidor final com morada: '$($f.customerAddressDetail)'" }
+
+    $script:consumidorFinalId = $r.invoiceId
+    "$($r.number) a '$($f.customerName)', NIF convencionado '$($f.customerTaxId)'"
+}
+
+Test-Case "20. Mencao de nao-validade fiscal fica congelada na factura" {
+    $f = Invoke-RestMethod "$base/finance/sales-invoices/$($script:invoiceId)" -Headers $adminHeaders
+    if (-not $f.fiscalNotice) { throw "factura sem mencao de nao-validade fiscal" }
+    if ($f.fiscalNotice -notmatch "AGT|fiscal") { throw "mencao nao diz o que devia: '$($f.fiscalNotice)'" }
+
+    # Congelada, nao derivada em leitura: sobrevive a anulacao, e sobrevivera a
+    # certificacao. E o ponto todo — no dia em que houver SoftwareValidationNumber,
+    # as facturas emitidas antes continuam a nao ser validas.
+    if ($f.status -ne "Cancelled") { throw "pre-condicao: a factura devia estar anulada pelo caso 12" }
+
+    $naBase = Invoke-Sql "select count(*) from finance.sales_invoice where id='$($script:invoiceId)' and fiscal_notice is not null"
+    if ($naBase -ne "1") { throw "mencao nao esta gravada na base de dados" }
+
+    "gravada na base e intacta depois de anulada"
+}
+
+Test-Case "21. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(180)
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)

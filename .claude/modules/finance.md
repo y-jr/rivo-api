@@ -173,3 +173,32 @@ tocar na série. Verificado contra a API — uma emissão recusada deixa
 - **Nota de crédito (NC)** — hoje corrige-se anulando e emitindo outra. A NC
   exige referenciar o documento corrigido, e `DocumentType` só declara `FT`.
 - **Recebimentos.** A factura sai; o dinheiro a entrar não está modelado.
+
+### Consumidor final e menção fiscal (2026-08-25)
+
+Duas das três perguntas que o ADR-036 deixou em aberto foram respondidas. Ver a
+adenda desse ADR.
+
+**Menção de não-validade fiscal.** `SalesInvoice.FiscalNotice`, vinda de
+`Finance:FiscalNotice` e **congelada na emissão**. É o ponto: no dia em que
+houver `SoftwareValidationNumber`, esvazia-se a configuração, as facturas novas
+saem sem menção, e as **emitidas antes mantêm a que lhes foi gravada** — porque
+continuam a não ser válidas. Derivá-la em leitura apagaria a marca de todo o
+histórico no instante da certificação.
+
+**Consumidor final.** `CustomerId` é anulável e `InvoicedParty.FinalConsumer(…)`
+constrói o retrato de quem não se identificou. As duas metades têm de bater
+certo: consumidor final com identificador de cliente, ou cliente registado sem
+ele, é recusado. A morada fica **vazia, não nula** — vazio é "não existe
+morada", nulo seria "não sabemos".
+
+⚠ **O identificador vem de `Finance:FinalConsumerTaxId`, com omissão
+`CONSUMIDORFINAL`** — deliberadamente não plausível como NIF. A convenção
+angolana não está verificada em fonte primária, e um número com ar de real seria
+tomado por verificado. **Substituir pelo oficial antes de certificar.** Vazio
+bloqueia a venda a consumidor final.
+
+**Série de numeração.** Uma contínua por tipo de documento, `S001`, sem reinício
+anual, criada pelo **seed** no arranque. Sem isso, um ambiente novo devolve
+`404` na primeira factura, e o passo esquecido só aparece quando alguém tenta
+facturar. Idempotente: se já existir, não lhe toca nem lhe recua o contador.

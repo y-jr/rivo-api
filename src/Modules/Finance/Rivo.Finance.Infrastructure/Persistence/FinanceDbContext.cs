@@ -44,6 +44,10 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
             invoice.Property(i => i.Currency).HasMaxLength(3).IsRequired();
             invoice.Property(i => i.CancellationReason).HasMaxLength(500);
 
+            // Menção de não-validade fiscal, congelada na emissão (ADR-036).
+            // Anulável: nulo é o estado de um sistema certificado.
+            invoice.Property(i => i.FiscalNotice).HasMaxLength(300);
+
             // Precisão fixada. Sem isto o SQL Server escolhe a omissão e o
             // total gravado deixa de ser exactamente o que o documento mostra.
             invoice.Property(i => i.NetTotal).HasPrecision(18, 2);
@@ -72,9 +76,14 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
             {
                 party.Property(p => p.Name).HasColumnName("customer_name").HasMaxLength(200).IsRequired();
                 party.Property(p => p.TaxId).HasColumnName("customer_tax_id").HasMaxLength(30).IsRequired();
+                // Continuam `IsRequired`, e é deliberado: numa venda a consumidor
+                // final a morada é **string vazia**, não nula. A distinção
+                // importa — vazio é "não existe morada", e nulo seria "não
+                // sabemos", que é outra coisa e não é o caso (ADR-036).
                 party.Property(p => p.AddressDetail).HasColumnName("customer_address_detail").HasMaxLength(300).IsRequired();
                 party.Property(p => p.City).HasColumnName("customer_city").HasMaxLength(100).IsRequired();
                 party.Property(p => p.Country).HasColumnName("customer_country").HasMaxLength(2).IsRequired();
+                party.Property(p => p.IsFinalConsumer).HasColumnName("customer_is_final_consumer");
             });
 
             // Sem chave estrangeira para `commercial.customer`: são schemas de

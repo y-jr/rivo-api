@@ -80,6 +80,17 @@ services:
       # obriga a aplicar cada decisão pelo endpoint, à mão.
       PositionApprovalReconciliation__Enabled: ${POSITION_APPROVAL_RECONCILIATION_ENABLED:-true}
       PositionApprovalReconciliation__PollIntervalSeconds: ${POSITION_APPROVAL_RECONCILIATION_INTERVAL_SECONDS:-60}
+
+      # Facturacao (ADR-036). A mencao de nao-validade fiscal e congelada em
+      # cada factura emitida: esvaziar aqui so afecta as seguintes.
+      Finance__DefaultSeries: ${FINANCE_DEFAULT_SERIES:-S001}
+      Finance__SeedDefaultSeries: ${FINANCE_SEED_DEFAULT_SERIES:-true}
+      # A omissao e a mencao, nao o vazio: vazio significa "sistema
+      # certificado", e nenhum ambiente o e. Um ambiente que esqueca esta
+      # variavel tem de sair com a mencao, nao sem ela.
+      Finance__FiscalNotice: ${FINANCE_FISCAL_NOTICE:-Documento sem validade fiscal - software nao certificado pela AGT.}
+      Finance__FinalConsumerTaxId: ${FINANCE_FINAL_CONSUMER_TAX_ID:-CONSUMIDORFINAL}
+      Finance__FinalConsumerName: ${FINANCE_FINAL_CONSUMER_NAME:-Consumidor final}
     volumes:
       # Anexos carregados. Sem este volume, um `docker compose down` leva os
       # ficheiros e deixa as linhas em `documents.document` a apontar para o

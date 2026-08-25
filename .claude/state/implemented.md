@@ -1,6 +1,6 @@
 # Implementado
 
-_Última actualização: 2026-08-24._
+_Última actualização: 2026-08-25._
 
 Funcionalidade concluída e a funcionar, por módulo. Actualizar como parte de
 terminar uma funcionalidade (passo 8 do fluxo em [CLAUDE.md](../CLAUDE.md)).
@@ -189,7 +189,7 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
 
 ## Verificação
 
-**Nove suites** PowerShell caixa-preta contra a stack em Docker, **113 casos**
+**Nove suites** PowerShell caixa-preta contra a stack em Docker, **116 casos**
 (2026-08-24), todas re-executáveis.
 
 Eram seis suites e 66 casos em 2026-08-16. `verify-hr` cresceu 13 → 16 com as
@@ -215,7 +215,7 @@ três módulos do ADR-036 tinham deixado.
 | `verify-notifications` | 13 |
 | `verify-fiscal` | 13 |
 | `verify-commercial` | 12 |
-| `verify-finance` | 18 |
+| `verify-finance` | 21 |
 
 `verify-finance` corre por último e **monta os seus pré-requisitos pelas rotas
 de `fiscal` e `commercial`** — taxa, vigências e cliente. Não há atalho por SQL

@@ -26,9 +26,10 @@ public sealed class SalesInvoice
         DocumentNumber number,
         DateOnly issuedOn,
         DateOnly taxPointDate,
-        Guid customerId,
+        Guid? customerId,
         InvoicedParty customer,
-        string currency)
+        string currency,
+        string? fiscalNotice)
     {
         Id = id;
         Number = number;
@@ -37,6 +38,7 @@ public sealed class SalesInvoice
         CustomerId = customerId;
         Customer = customer;
         Currency = currency;
+        FiscalNotice = fiscalNotice;
         Status = InvoiceStatus.Normal;
     }
 
@@ -72,7 +74,17 @@ public sealed class SalesInvoice
     /// </summary>
     public InvoiceStatus Status { get; private set; }
 
-    public Guid CustomerId { get; private set; }
+    /// <summary>
+    /// O cliente registado em `commercial`, ou <c>null</c> numa venda a
+    /// consumidor final.
+    ///
+    /// <para>
+    /// Nulo não é ausência de dados: <see cref="Customer"/> continua preenchido
+    /// com o que a factura tem de mostrar. O que falta é a ligação a um
+    /// registo, porque não há registo — a pessoa não se identificou.
+    /// </para>
+    /// </summary>
+    public Guid? CustomerId { get; private set; }
 
     /// <summary>
     /// O cliente <strong>tal como estava no momento da emissão</strong>.
@@ -105,6 +117,21 @@ public sealed class SalesInvoice
 
     public decimal GrossTotal { get; private set; }
 
+    /// <summary>
+    /// A menção que declara que este documento não é fiscalmente válido, ou
+    /// <c>null</c> quando o sistema estiver certificado.
+    ///
+    /// <para>
+    /// <strong>Congelada na emissão, como tudo o resto.</strong> É o ponto: no
+    /// dia em que houver <c>SoftwareValidationNumber</c>, as facturas emitidas
+    /// <em>antes</em> continuam a não ser válidas, e a menção tem de continuar
+    /// a aparecer nelas. Derivá-la em tempo de leitura apagaria a marca de todo
+    /// o histórico no momento da certificação — exactamente o contrário do que
+    /// se quer.
+    /// </para>
+    /// </summary>
+    public string? FiscalNotice { get; private set; }
+
     public DateTimeOffset? CancelledAt { get; private set; }
 
     public string? CancellationReason { get; private set; }
@@ -115,21 +142,46 @@ public sealed class SalesInvoice
     /// </summary>
     public int Version { get; private set; }
 
+    /// <param name="customerId">
+    /// Nulo numa venda a consumidor final. Em qualquer outro caso é
+    /// obrigatório: uma factura a um cliente registado que perdesse a ligação
+    /// deixaria de ser rastreável até ele.
+    /// </param>
+    /// <param name="fiscalNotice">
+    /// Menção de não-validade fiscal, congelada na emissão. Nula só quando o
+    /// sistema estiver certificado.
+    /// </param>
     public static SalesInvoice Issue(
         DocumentNumber number,
         DateOnly issuedOn,
         DateOnly taxPointDate,
-        Guid customerId,
+        Guid? customerId,
         InvoicedParty customer,
         string currency,
-        IReadOnlyList<NewInvoiceLine> lines)
+        IReadOnlyList<NewInvoiceLine> lines,
+        string? fiscalNotice = null)
     {
         ArgumentNullException.ThrowIfNull(number);
         ArgumentNullException.ThrowIfNull(customer);
 
         if (customerId == Guid.Empty)
         {
-            throw new ArgumentException("Uma factura pertence sempre a um cliente.", nameof(customerId));
+            throw new ArgumentException(
+                "Um identificador vazio não é o mesmo que ausência de cliente. " +
+                "Para consumidor final, passe nulo.",
+                nameof(customerId));
+        }
+
+        // As duas metades têm de bater certo. Um consumidor final com
+        // identificador de cliente, ou um cliente registado sem ele, é um
+        // engano de quem chama — e passaria despercebido na exportação.
+        if (customer.IsFinalConsumer != (customerId is null))
+        {
+            throw new ArgumentException(
+                customer.IsFinalConsumer
+                    ? "Uma factura a consumidor final não tem cliente registado."
+                    : "Uma factura a um cliente registado precisa do identificador dele.",
+                nameof(customerId));
         }
 
         if (string.IsNullOrWhiteSpace(currency) || currency.Trim().Length != 3)
@@ -153,7 +205,8 @@ public sealed class SalesInvoice
 
         var factura = new SalesInvoice(
             Guid.CreateVersion7(), number, issuedOn, taxPointDate, customerId, customer,
-            currency.Trim().ToUpperInvariant());
+            currency.Trim().ToUpperInvariant(),
+            string.IsNullOrWhiteSpace(fiscalNotice) ? null : fiscalNotice.Trim());
 
         var ordem = 1;
 
@@ -219,6 +272,55 @@ public enum InvoiceStatus
 /// </summary>
 public sealed class InvoicedParty
 {
+    /// <summary>
+    /// Venda a quem não se identificou.
+    ///
+    /// <para>
+    /// <strong>O NIF vem de configuração e não daqui.</strong> A convenção
+    /// angolana para o identificador de consumidor final não está verificada em
+    /// fonte primária neste repositório, e `CLAUDE.md` proíbe implementar
+    /// regras fiscais a partir de levantamento provisório. Fixar aqui um valor
+    /// dar-lhe-ia ar de código oficial verificado, que é a falha pior — parece
+    /// correcta.
+    /// </para>
+    ///
+    /// <para>
+    /// Enquanto o ADR-036 valer, o documento não é fiscalmente válido de
+    /// qualquer forma, e o valor configurado serve de marcador. <strong>Tem de
+    /// ser substituído pelo oficial antes de qualquer certificação.</strong>
+    /// </para>
+    /// </summary>
+    public static InvoicedParty FinalConsumer(string taxId, string name)
+    {
+        if (string.IsNullOrWhiteSpace(taxId))
+        {
+            throw new ArgumentException(
+                "Facturar a consumidor final exige o identificador convencionado, " +
+                "que vem de configuração (Finance:FinalConsumerTaxId).",
+                nameof(taxId));
+        }
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ArgumentException("O consumidor final precisa de designação.", nameof(name));
+        }
+
+        return new InvoicedParty(name.Trim(), taxId.Trim(), finalConsumer: true);
+    }
+
+    private InvoicedParty(string name, string taxId, bool finalConsumer)
+    {
+        Name = name;
+        TaxId = taxId;
+        IsFinalConsumer = finalConsumer;
+
+        // Sem morada, e não é omissão: quem não se identifica também não dá
+        // morada. Os campos ficam vazios em vez de inventados.
+        AddressDetail = string.Empty;
+        City = string.Empty;
+        Country = string.Empty;
+    }
+
     public InvoicedParty(string name, string taxId, string addressDetail, string city, string country)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -267,6 +369,13 @@ public sealed class InvoicedParty
     public string City { get; private set; }
 
     public string Country { get; private set; }
+
+    /// <summary>
+    /// Verdadeiro numa venda a quem não se identificou. Distingue-se de um
+    /// cliente registado com morada em falta — aqui a morada está vazia porque
+    /// não existe, não porque falta preencher.
+    /// </summary>
+    public bool IsFinalConsumer { get; private set; }
 }
 
 /// <param name="TaxPercentage">

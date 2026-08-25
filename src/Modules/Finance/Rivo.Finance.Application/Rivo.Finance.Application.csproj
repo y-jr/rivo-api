@@ -1,6 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <!-- `IOptions` para a configuração de ambiente de `finance`: série por
+         omissão, menção de não-validade fiscal e identificador de consumidor
+         final. É abstracção de configuração, não infraestrutura — não traz ORM
+         nem framework web. -->
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Rivo.Finance.Domain\Rivo.Finance.Domain.csproj" />
     <ProjectReference Include="..\Rivo.Finance.Contracts\Rivo.Finance.Contracts.csproj" />
     <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />

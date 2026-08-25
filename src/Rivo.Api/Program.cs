@@ -136,6 +136,10 @@ if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
 if (app.Configuration.GetValue("Bootstrap:SeedOnStartup", !app.Environment.IsProduction()))
 {
     await app.Services.SeedIdentityModuleAsync();
+
+    // Série de numeração por omissão (ADR-036). Idempotente: se já existir,
+    // não lhe toca — e em particular não lhe recua o contador.
+    await app.Services.SeedFinanceModuleAsync();
 }
 
 // Primeiro middleware do pipeline, para envolver tudo o que vem a seguir —

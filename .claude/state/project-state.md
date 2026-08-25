@@ -1,6 +1,6 @@
 # Estado do Projecto
 
-_Última actualização: 2026-08-24_
+_Última actualização: 2026-08-25_
 
 ## Fase actual
 
@@ -55,15 +55,15 @@ O token viaja em claro. É o **K16**, e não pode ir para produção a sério.
 | Código | 9 módulos, 45 projectos em `src/`, 131 ficheiros `.cs` |
 | Superfície HTTP | 71 endpoints em 9 grupos de rota, mais `/health` |
 | ADRs | 36, aceites |
-| Testes | **315** em 13 projectos — 273 de domínio, 21 de arquitectura, 9 da API do host, 8 de Application, 4 de integração |
-| Verificação end-to-end | **9 suites** PowerShell, **113 casos**, todas re-executáveis |
+| Testes | **326** em 13 projectos — 284 de domínio, 21 de arquitectura, 9 da API do host, 8 de Application, 4 de integração |
+| Verificação end-to-end | **9 suites** PowerShell, **116 casos**, todas re-executáveis |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
 
 ## O que não existe
 
-- **Cobertura fora do domínio.** 273 testes de domínio contra 8 de Application
+- **Cobertura fora do domínio.** 284 testes de domínio contra 8 de Application
   e 4 de Infrastructure. Cada módulo novo alarga a diferença.
 - **Testes de integração** em oito dos nove módulos. Só `notifications` os tem.
 - **Observabilidade.** Com o Azure fora de cena (ADR-031), o diagnóstico em

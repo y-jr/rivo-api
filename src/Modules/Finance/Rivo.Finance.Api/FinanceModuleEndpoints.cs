@@ -103,7 +103,7 @@ public static class FinanceModuleEndpoints
 
         var result = await issueInvoice.ExecuteAsync(
             request.CustomerId,
-            request.Series ?? "S001",
+            request.Series ?? string.Empty,
             request.IssuedOn ?? DateOnly.FromDateTime(DateTime.UtcNow),
             request.TaxPointDate,
             request.Currency ?? "AOA",
@@ -179,8 +179,13 @@ public sealed record OpenSeriesRequest(string Code);
 /// Data do facto gerador. Omitida, assume-se a data do documento — o caso
 /// corrente. É ela que determina a taxa (ADR-011 §3).
 /// </param>
+/// <param name="CustomerId">
+/// Omitido ou nulo, a factura sai a **consumidor final** — venda a quem não se
+/// identificou. Não é campo esquecido: é uma escolha, e o documento fica com a
+/// designação convencionada em vez de um cliente registado.
+/// </param>
 public sealed record IssueInvoiceRequest(
-    Guid CustomerId,
+    Guid? CustomerId,
     string? Series,
     DateOnly? IssuedOn,
     DateOnly? TaxPointDate,

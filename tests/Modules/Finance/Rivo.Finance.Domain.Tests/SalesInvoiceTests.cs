@@ -250,6 +250,132 @@ public class SalesInvoiceTests
         Assert.Equal(114_000m, factura.GrossTotal);
     }
 
+    // ---- consumidor final ----
+
+    private static SalesInvoice EmitidaAConsumidorFinal() =>
+        SalesInvoice.Issue(
+            Numero(), Hoje, Hoje, null,
+            InvoicedParty.FinalConsumer("CONSUMIDORFINAL", "Consumidor final"),
+            "AOA",
+            [new NewInvoiceLine("Servico", 1, 5_000m, "NOR", 14m)]);
+
+    [Fact]
+    public void ConsumidorFinal_NaoTemClienteRegistado()
+    {
+        var factura = EmitidaAConsumidorFinal();
+
+        Assert.Null(factura.CustomerId);
+        Assert.True(factura.Customer.IsFinalConsumer);
+        Assert.Equal("CONSUMIDORFINAL", factura.Customer.TaxId);
+    }
+
+    /// <summary>
+    /// A morada fica vazia porque **não existe**, não porque falta preencher.
+    /// Quem não se identifica também não dá morada.
+    /// </summary>
+    [Fact]
+    public void ConsumidorFinal_NaoTemMorada()
+    {
+        var cliente = EmitidaAConsumidorFinal().Customer;
+
+        Assert.Equal(string.Empty, cliente.AddressDetail);
+        Assert.Equal(string.Empty, cliente.City);
+    }
+
+    /// <summary>
+    /// O identificador do consumidor final vem de configuração. Fixá-lo no
+    /// domínio dar-lhe-ia ar de código oficial verificado, que não é.
+    /// </summary>
+    [Fact]
+    public void ConsumidorFinal_SemIdentificadorConfigurado_ERecusado()
+    {
+        Assert.Throws<ArgumentException>(() => InvoicedParty.FinalConsumer("  ", "Consumidor final"));
+    }
+
+    /// <summary>
+    /// As duas metades têm de bater certo: um engano aqui passaria despercebido
+    /// até à exportação.
+    /// </summary>
+    [Fact]
+    public void ConsumidorFinal_ComIdentificadorDeCliente_ERecusado()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            SalesInvoice.Issue(
+                Numero(), Hoje, Hoje, Guid.CreateVersion7(),
+                InvoicedParty.FinalConsumer("CONSUMIDORFINAL", "Consumidor final"),
+                "AOA", [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
+    }
+
+    [Fact]
+    public void ClienteRegistado_SemIdentificador_ERecusado()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            SalesInvoice.Issue(
+                Numero(), Hoje, Hoje, null, Cliente(), "AOA",
+                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
+    }
+
+    [Fact]
+    public void IdentificadorVazio_NaoEOMesmoQueAusencia()
+    {
+        // Guid.Empty é engano de quem chama; ausência escreve-se `null`.
+        Assert.Throws<ArgumentException>(() =>
+            SalesInvoice.Issue(
+                Numero(), Hoje, Hoje, Guid.Empty, Cliente(), "AOA",
+                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
+    }
+
+    // ---- menção de não-validade fiscal ----
+
+    [Fact]
+    public void MencaoFiscal_FicaCongeladaNaFactura()
+    {
+        const string mencao = "Documento sem validade fiscal.";
+
+        var factura = SalesInvoice.Issue(
+            Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
+            [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)], mencao);
+
+        Assert.Equal(mencao, factura.FiscalNotice);
+    }
+
+    /// <summary>
+    /// É o ponto todo: no dia em que houver certificação, as facturas emitidas
+    /// antes continuam a não ser válidas, e a menção tem de continuar nelas.
+    /// Derivá-la em leitura apagaria a marca de todo o histórico.
+    /// </summary>
+    [Fact]
+    public void MencaoFiscal_SobreviveAoCancelamento()
+    {
+        var factura = SalesInvoice.Issue(
+            Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
+            [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)], "Sem validade fiscal.");
+
+        factura.Cancel("Engano", DateTimeOffset.UtcNow);
+
+        Assert.Equal("Sem validade fiscal.", factura.FiscalNotice);
+    }
+
+    [Fact]
+    public void SemMencaoConfigurada_FicaNula()
+    {
+        // Nulo é o estado de um sistema certificado. Hoje nenhum ambiente o é,
+        // mas o domínio não impõe a menção — quem decide é a configuração.
+        Assert.Null(Emitida().FiscalNotice);
+    }
+
+    [Theory]
+    [InlineData("   ")]
+    [InlineData("")]
+    public void MencaoEmBranco_GuardaSeComoAusente(string mencao)
+    {
+        var factura = SalesInvoice.Issue(
+            Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
+            [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)], mencao);
+
+        Assert.Null(factura.FiscalNotice);
+    }
+
     [Fact]
     public void ODominioNaoMexeNoContadorDeConcorrencia()
     {

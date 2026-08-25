@@ -53,6 +53,7 @@ public sealed class GetSalesInvoice(ISalesInvoiceStore store)
             invoice.TaxPointDate,
             invoice.Status.ToString(),
             invoice.CustomerId,
+            invoice.Customer.IsFinalConsumer,
             invoice.Customer.Name,
             invoice.Customer.TaxId,
             invoice.Customer.AddressDetail,
@@ -62,6 +63,7 @@ public sealed class GetSalesInvoice(ISalesInvoiceStore store)
             invoice.NetTotal,
             invoice.TaxTotal,
             invoice.GrossTotal,
+            invoice.FiscalNotice,
             invoice.CancelledAt,
             invoice.CancellationReason,
             [.. invoice.Lines
@@ -77,13 +79,23 @@ public sealed class GetSalesInvoice(ISalesInvoiceStore store)
                     line.TaxAmount))]);
 }
 
+/// <param name="CustomerId">Nulo numa venda a consumidor final.</param>
+/// <param name="IsFinalConsumer">
+/// Verdadeiro quando a venda foi a quem não se identificou. Distingue-se de um
+/// cliente com morada em falta: aqui a morada está vazia porque não existe.
+/// </param>
+/// <param name="FiscalNotice">
+/// Menção de não-validade fiscal, congelada na emissão (ADR-036). Nula só num
+/// sistema certificado. <strong>Quem apresentar a factura tem de a mostrar.</strong>
+/// </param>
 public sealed record SalesInvoiceView(
     Guid InvoiceId,
     string Number,
     DateOnly IssuedOn,
     DateOnly TaxPointDate,
     string Status,
-    Guid CustomerId,
+    Guid? CustomerId,
+    bool IsFinalConsumer,
     string CustomerName,
     string CustomerTaxId,
     string CustomerAddressDetail,
@@ -93,6 +105,7 @@ public sealed record SalesInvoiceView(
     decimal NetTotal,
     decimal TaxTotal,
     decimal GrossTotal,
+    string? FiscalNotice,
     DateTimeOffset? CancelledAt,
     string? CancellationReason,
     IReadOnlyList<SalesInvoiceLineView> Lines);

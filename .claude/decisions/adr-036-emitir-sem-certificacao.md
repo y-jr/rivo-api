@@ -154,3 +154,58 @@ completo e das regras por verificar.
   assinatura se acrescenta sobre numeração e imutabilidade já existentes. Se
   aparecer um requisito de ordenação que a numeração não satisfaça, o custo
   sobe. Sinal de alerta: emissão concorrente sobre a mesma série.
+
+## Adenda (2026-08-25) — as três decisões que ficaram em aberto
+
+O ADR-036 deixou três perguntas por responder e registadas em
+`pending-decisions.md`. O utilizador respondeu-as a 2026-08-25.
+
+### 1. A factura é marcada visivelmente. **Sim.**
+
+`SalesInvoice.FiscalNotice` transporta a menção, vinda de
+`Finance:FiscalNotice`. Por omissão:
+
+> Documento sem validade fiscal — software não certificado pela AGT.
+
+**Congelada na emissão, e é o ponto todo.** No dia em que houver
+`SoftwareValidationNumber`, esvazia-se a configuração e as facturas novas saem
+sem menção — mas as **emitidas antes continuam a não ser válidas**, e a menção
+tem de continuar a aparecer nelas. Derivá-la em tempo de leitura apagaria a
+marca de todo o histórico no momento exacto da certificação, que é o contrário
+do que se quer.
+
+Nula significa sistema certificado. Hoje nenhum ambiente o é.
+
+### 2. Existe consumidor final. **Sim.**
+
+`SalesInvoice.CustomerId` passa a anulável, e `InvoicedParty.FinalConsumer(...)`
+constrói o retrato de quem não se identificou. As duas metades têm de bater
+certo: consumidor final com identificador de cliente, ou cliente registado sem
+ele, é recusado.
+
+A morada fica **vazia, não nula** — vazio é "não existe morada", nulo seria "não
+sabemos", e não é o caso.
+
+⚠ **O identificador vem de `Finance:FinalConsumerTaxId` e não do código.** A
+convenção angolana para o identificador de consumidor final **não está
+verificada em fonte primária** neste repositório, e `CLAUDE.md` proíbe
+implementar regras fiscais a partir de levantamento provisório. O valor por
+omissão — `CONSUMIDORFINAL` — é deliberadamente **não plausível como NIF**: um
+número com ar de real seria tomado por verificado e sobreviveria até à
+certificação. **Substituir pelo oficial antes de certificar.** Vazio bloqueia a
+venda a consumidor final, com mensagem que diz porquê.
+
+### 3. Séries de numeração: **uma contínua por tipo de documento.**
+
+`S001`, sem reinício anual, criada pelo **seed** no arranque (`Finance:DefaultSeries`,
+`Finance:SeedDefaultSeries`).
+
+Reiniciar por ano obrigaria a criar uma série cada Janeiro e a decidir para qual
+emitir perto da viragem — mais peças móveis, e cada uma delas uma hipótese de
+emitir na série errada. Numeração contínua é igualmente auditável e não tem essa
+data.
+
+Semeada e não criada à mão porque, sem ela, um ambiente novo devolve `404` na
+primeira factura — e o passo esquecido só aparece quando alguém tenta facturar.
+O seed é idempotente (ADR-016, ADR-028): se a série já existe, não lhe toca, e
+em particular **não lhe recua o contador**.
