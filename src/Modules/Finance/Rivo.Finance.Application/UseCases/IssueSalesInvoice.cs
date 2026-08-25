@@ -22,6 +22,8 @@ public sealed class IssueSalesInvoice(
     ICustomerDirectory customers,
     ITaxDetermination taxes,
     IAuditTrail audit,
+    PostDocument posting,
+    TimeProvider clock,
     IOptions<FinanceOptions> options)
 {
     private readonly FinanceOptions _options = options.Value;
@@ -169,9 +171,33 @@ public sealed class IssueSalesInvoice(
 
         await store.AddAsync(factura, cancellationToken);
 
-        // Uma só gravação: o avanço da série e a factura entram na mesma
-        // transacção. Se a série colidir com outra emissão simultânea, nada é
-        // gravado — e a colisão sai como 409 (ADR-035), não como número
+        // **A contabilidade entra na mesma transacção que o documento.** Se a
+        // postagem falhar, a factura não é emitida — um documento emitido que
+        // não lançou seria um buraco nos livros que ninguém vê.
+        var lancamento = await posting.PostAsync(
+            new DocumentPosting(
+                PostingEvent.SalesInvoiceIssued,
+                factura.Number.Formatted,
+
+                // O número da factura é único por construção — a série garante-o.
+                factura.Number.Formatted,
+                $"Venda a {factura.Customer.Name}",
+                factura.IssuedOn,
+                factura.NetTotal,
+                factura.TaxTotal,
+                factura.GrossTotal,
+                PostingSources.Automatic,
+                clock.GetUtcNow()),
+            cancellationToken);
+
+        if (lancamento.Outcome is DocumentPostingOutcome.PeriodClosed or DocumentPostingOutcome.Failed)
+        {
+            return IssueInvoiceResult.PostingBlocked(lancamento.Error!);
+        }
+
+        // Uma só gravação: o avanço da série, a factura e o lançamento entram
+        // na mesma transacção. Se a série colidir com outra emissão simultânea,
+        // nada é gravado — e a colisão sai como 409 (ADR-035), não como número
         // duplicado.
         await store.SaveChangesAsync(cancellationToken);
 
@@ -205,6 +231,13 @@ public sealed record IssueInvoiceResult(
     public static IssueInvoiceResult Success(Guid invoiceId, string number) =>
         new(IssueInvoiceOutcome.Issued, invoiceId, number, null);
 
+    /// <summary>
+    /// Há regra de postagem e não se consegue honrar. **A factura não é
+    /// emitida**: um documento que não lançou seria um buraco nos livros.
+    /// </summary>
+    public static IssueInvoiceResult PostingBlocked(string error) =>
+        new(IssueInvoiceOutcome.PostingBlocked, null, null, error);
+
     public static IssueInvoiceResult Rejected(string error) =>
         new(IssueInvoiceOutcome.Rejected, null, null, error);
 
@@ -231,6 +264,13 @@ public enum IssueInvoiceOutcome
     /// inventa código.
     /// </summary>
     ExemptionUnavailable,
+
+    /// <summary>
+    /// A contabilidade automática está ligada e a postagem falhou — período
+    /// fechado, conta em falta, diário morto. **409**: é o estado dos livros
+    /// ou da configuração que impede, não o pedido.
+    /// </summary>
+    PostingBlocked,
 }
 
 /// <summary>Acções de `finance` na trilha de auditoria.</summary>
@@ -304,6 +344,11 @@ public static class FinanceAuditActions
     public const string BudgetApproved = "finance.budget.approved";
 
     public const string ForecastSubmitted = "finance.cost_forecast.submitted";
+
+    // ---- Postagem automática ----
+
+    public const string PostingRuleDefined = "finance.posting_rule.defined";
+    public const string PostingRuleDeactivated = "finance.posting_rule.deactivated";
 }
 
 public static class FinanceAuditEntityTypes
@@ -322,4 +367,5 @@ public static class FinanceAuditEntityTypes
     public const string CostCentre = "finance.cost_centre";
     public const string Budget = "finance.budget";
     public const string CostForecast = "finance.cost_forecast";
+    public const string PostingRule = "finance.posting_rule";
 }

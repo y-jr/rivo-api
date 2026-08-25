@@ -145,6 +145,28 @@ re-litigação:
 
 ## Domínio e negócio
 
+- [ ] **O plano de contas (PGC angolano), e as regras de postagem que o usam.**
+      ⚠ **É o que hoje impede a contabilidade de servir para alguma coisa.**
+
+      Não é decisão de engenharia: o Rivo fixa a estrutura que o XSD do SAF-T
+      fixa — formato do código, as seis categorias, a conta agregadora — e
+      **recusa-se a inventar o conteúdo** (ADR-037). Não há fonte primária do
+      PGC neste repositório, e um plano plausível seria pior do que nenhum:
+      ninguém o reveria, e o erro apareceria no primeiro ficheiro entregue à
+      AGT.
+
+      **Precisa do contabilista.** São duas coisas:
+
+      1. As contas, carregadas de cima para baixo por
+         `POST /finance/ledger/accounts`.
+      2. As regras de postagem — que conta debita e que conta credita em cada
+         um dos cinco acontecimentos (factura de venda, nota de crédito,
+         recibo, factura de compra, execução de pagamento). O sistema verifica
+         que a regra equilibra, mas não sabe que contas usar.
+
+      Enquanto não existirem, os documentos emitem-se e **não lançam** — o que
+      é o comportamento correcto, e não uma avaria.
+
 - [x] ~~Numeração e conteúdo obrigatório de factura, estrutura de dados
       fiscal~~ — **resolvido** pelo XSD do SAF-T AO v1.01_01
       (`github.com/assoft-portugal/SAF-T-AO`). Ver

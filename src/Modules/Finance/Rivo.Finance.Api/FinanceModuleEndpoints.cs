@@ -150,6 +150,9 @@ public static class FinanceModuleEndpoints
                 "Creditar linha isenta exige o catálogo de códigos de isenção, que ainda não existe (ADR-036).",
                 statusCode: StatusCodes.Status501NotImplemented),
 
+            IssueCreditNoteOutcome.PostingBlocked =>
+                Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
+
             IssueCreditNoteOutcome.Rejected =>
                 Results.ValidationProblem(new Dictionary<string, string[]> { ["nota"] = [result.Error!] }),
 
@@ -241,6 +244,9 @@ public static class FinanceModuleEndpoints
                 Results.NotFound(new { erro = "Série RG não encontrada. Abra-a em /finance/series." }),
 
             RegisterReceiptOutcome.ExceedsOutstanding =>
+                Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
+
+            RegisterReceiptOutcome.PostingBlocked =>
                 Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
 
             RegisterReceiptOutcome.Rejected =>
@@ -358,6 +364,13 @@ public static class FinanceModuleEndpoints
             IssueInvoiceOutcome.ExemptionUnavailable => Results.Problem(
                 "Emitir com isenção exige o catálogo de códigos de isenção, que ainda não existe (ADR-036).",
                 statusCode: StatusCodes.Status501NotImplemented),
+
+            // 409: a contabilidade automatica esta ligada e a postagem nao passou.
+            // **Nem factura nem lancamento foram gravados** — a transaccao leva os
+            // dois, e um documento emitido que nao lancou seria um buraco nos
+            // livros que ninguem ve.
+            IssueInvoiceOutcome.PostingBlocked =>
+                Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
 
             IssueInvoiceOutcome.Rejected =>
                 Results.ValidationProblem(new Dictionary<string, string[]> { ["factura"] = [result.Error!] }),

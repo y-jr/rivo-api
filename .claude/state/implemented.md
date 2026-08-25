@@ -12,9 +12,10 @@ Os restantes cinco — `procurement`, `payroll`, `projects`, `inventory`,
 
 ⚠ **Dois estão reduzidos ao mínimo pelo ADR-036**, e não implementados por
 inteiro: `fiscal` (só taxa com vigência e determinação) e `commercial` (só
-Cliente). `finance` tem os cinco contextos internos desde 2026-08-25, mas a
-contabilidade está de pé e **vazia** — o plano de contas carrega-se, e os
-documentos ainda não geram lançamentos. Ver a ressalva em cada secção.
+Cliente). `finance` tem os cinco contextos internos desde 2026-08-25 e os
+documentos lançam nos livros, mas a contabilidade está de pé e **vazia** — o
+plano de contas carrega-se e as regras de postagem definem-se, e sem elas nada
+lança. Ver a ressalva em cada secção.
 
 > As datas até 2026-08-16 vêm do carimbo das migrações EF Core — o repositório
 > só passou a estar sob git nesse dia. A partir daí vêm do histórico.
@@ -191,8 +192,22 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
 
 ## Verificação
 
-**Onze suites** PowerShell caixa-preta contra a stack em Docker, **175 casos**
-(2026-08-24), todas re-executáveis.
+**Onze suites** PowerShell caixa-preta contra a stack em Docker, **191 casos**,
+todas re-executáveis.
+
+> ⚠ **Estado da verificação a 2026-08-25, ao fechar a postagem automática.**
+>
+> A última corrida completa deu **190 de 191**. A única falha foi o caso 38 de
+> `verify-ledger` — escrito nessa corrida — a correr contra o container
+> construído **antes** da separação `DocumentNumber` / `ArchivalKey`. Falhou por
+> afirmar exactamente a regra nova contra código velho.
+>
+> **A corrida de confirmação com o container reconstruído não chegou a
+> acontecer:** o motor do Docker Desktop passou a responder `500` e não voltou.
+> Os 45 casos de `verify-ledger` passaram isolados antes dessa última alteração.
+>
+> **Isto não está verificado ponta-a-ponta.** Fica por correr `verify-all` com o
+> container reconstruído — é o primeiro passo assim que houver Docker.
 
 Eram seis suites e 66 casos em 2026-08-16. `verify-hr` cresceu 13 → 16 com as
 funcionalidades novas de `hr`; `verify-authorization` 8 → 9 ao distinguir os
@@ -219,7 +234,7 @@ três módulos do ADR-036 tinham deixado.
 | `verify-commercial` | 12 |
 | `verify-finance` | 29 |
 | `verify-payables` | 22 |
-| `verify-ledger` | 29 |
+| `verify-ledger` | 45 |
 
 `verify-finance` corre por último e **monta os seus pré-requisitos pelas rotas
 de `fiscal` e `commercial`** — taxa, vigências e cliente. Não há atalho por SQL
@@ -491,7 +506,37 @@ passar por um pedido de pagamento não consome orçamento — este número é um
 limite inferior do consumo real. E a verificação é **à data de hoje**, não à do
 pedido.
 
-**Fora:** postagem automática nos livros (a factura, o recibo e o pagamento não
-geram lançamentos — regista-se à mão), activos fixos e depreciação (bloqueados
-por **K1**), adiantamentos, nota de débito, câmbio, e a reconciliação bancária
+### Postagem automática — 2026-08-25
+
+- `PostingRule`: um acontecimento, um diário, e linhas que dizem de que
+  **parcela** do documento se servem — `Net`, `Tax` ou `Gross`
+- **A tradução é configuração**, pela mesma razão que o plano de contas é: os
+  códigos vêm do plano carregado, e embuti-los em código obrigaria a inventá-lo
+- **A regra equilibra enquanto expressão**, verificada na configuração:
+  `Gross = Net + Tax`, e os dois lados têm de dar a mesma soma de coeficientes.
+  Apanha o erro que mais custaria — debitar o total e creditar só o líquido
+  equilibra numa factura isenta e falha em todas as outras
+- **Documento e lançamento na mesma transacção.** `PostDocument` não grava;
+  acrescenta à unidade de trabalho de quem chama. Se a postagem falhar, o
+  documento não é emitido — verificado: emitir para período fechado dá `409` e
+  nem factura nem lançamento ficam gravados
+- **Sem regra, não posta**, e isso é estado legítimo: ligar Contabilidade não
+  pode partir a facturação de quem ainda não carregou um plano
+- **Idempotente por construção**: o número de arquivo deriva do número do
+  documento (`FT S001/42` → `FT-S001-42`), e o índice único do `TransactionID`
+  é que impede o duplicado — não uma verificação que alguém pode esquecer
+- Cinco acontecimentos ligados: factura de venda, nota de crédito, recibo,
+  factura de compra e execução de pagamento
+- `finance.ledger.close` para definir regras, e não `.write`: uma regra decide
+  como **todos** os documentos futuros lançam
+
+⚠ **Um período que ninguém abriu passou a aceitar lançamentos** — mudança de
+semântica que a postagem obrigou. A linha regista um *fecho*, não dá licença;
+exigi-la faria a facturação parar no dia 1 de cada mês.
+
+⚠ **A anulação não estorna.** Anular um documento não gera lançamento inverso —
+o original fica, e corrige-se por regularização, à mão. É a lacuna mais visível.
+
+**Fora:** estorno automático, activos fixos e depreciação (bloqueados por
+**K1**), adiantamentos, nota de débito, câmbio, e a reconciliação bancária
 propriamente dita.

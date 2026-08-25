@@ -511,6 +511,7 @@ internal sealed class FakeLedgerStore : ILedgerStore
     private readonly Dictionary<Guid, Journal> _journals = [];
     private readonly List<JournalEntry> _entries = [];
     private readonly List<AccountingPeriod> _periods = [];
+    private readonly List<PostingRule> _rules = [];
 
     public int SaveCount { get; private set; }
 
@@ -628,6 +629,34 @@ internal sealed class FakeLedgerStore : ILedgerStore
     public Task AddPeriodAsync(AccountingPeriod period, CancellationToken cancellationToken)
     {
         _periods.Add(period);
+        return Task.CompletedTask;
+    }
+
+    public FakeLedgerStore With(PostingRule rule)
+    {
+        _rules.Add(rule);
+        return this;
+    }
+
+    public Task<PostingRule?> FindActivePostingRuleAsync(
+        PostingEvent postingEvent, CancellationToken cancellationToken) =>
+        Task.FromResult(_rules.FirstOrDefault(r => r.Event == postingEvent && r.IsActive));
+
+    public Task<PostingRule?> FindPostingRuleAsync(Guid ruleId, CancellationToken cancellationToken) =>
+        Task.FromResult(_rules.FirstOrDefault(r => r.Id == ruleId));
+
+    public Task<PostingRule?> FindPostingRuleForUpdateAsync(
+        Guid ruleId, CancellationToken cancellationToken) =>
+        FindPostingRuleAsync(ruleId, cancellationToken);
+
+    public Task<IReadOnlyList<PostingRule>> ListPostingRulesAsync(
+        bool includeInactive, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<PostingRule>>(
+            [.. _rules.Where(r => includeInactive || r.IsActive)]);
+
+    public Task AddPostingRuleAsync(PostingRule rule, CancellationToken cancellationToken)
+    {
+        _rules.Add(rule);
         return Task.CompletedTask;
     }
 

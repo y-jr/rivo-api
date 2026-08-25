@@ -90,6 +90,11 @@ public class ConcurrencyTokenTests
             "ajustamento, que o SAF-T distingue precisamente para isso. A anulação é na raiz, " +
             "que tem o contador.",
 
+        ["PostingRuleLine"] =
+            "Criada com a regra e nunca alterada — rever uma tradução é definir outra regra, " +
+            "porque as que já lançaram documentos não podem mudar de sentido a posteriori. " +
+            "A raiz tem o contador, e é lá que a desactivação colide.",
+
         ["BudgetLine"] =
             "O tecto de um mês, alterável **só de dentro de Budget** e só enquanto ele for " +
             "rascunho. Duas revisões simultâneas colidem na raiz antes de chegarem aqui — mesma " +

@@ -107,9 +107,8 @@ as listas de perfil **não se sobrepõem**. Um orçamento aprovado não se alter
   aos livros sem passar por um pedido não consome orçamento.
 - **A verificação é à data de hoje**, não à data do pedido: `ApprovalSubmission`
   não carrega data. Um pedido retroactivo é medido contra o mês corrente.
-- **Os documentos não geram lançamentos.** A factura de venda, o recibo e a
-  execução de pagamento não postam nos livros — a contabilidade regista-se à
-  mão. Ligá-los depende do plano carregado, e por isso não podia vir antes.
+- ~~Os documentos não geram lançamentos.~~ **Resolvido no mesmo dia** — ver a
+  adenda no fim deste ADR.
 - **`approval` ganhou uma dependência de `finance`.** Sem ciclo, mas real: são
   agora dois módulos que se conhecem por contrato em vez de um.
 
@@ -149,3 +148,60 @@ pergunta em aberto: somar as duas fontes contaria a dobrar.
 **Rejeitada.** `approval` já referencia `Rivo.Hr.Contracts` directamente, e não
 há ciclo a resolver. Uma porta declarada em `approval` e adaptada no
 composition root seria simetria sem ganho.
+
+---
+
+## Adenda — a postagem automática (2026-08-25)
+
+Feita no mesmo dia, e é a consequência directa das decisões acima.
+
+### 7. A tradução documento → contas também é configuração
+
+Pela mesma razão que o plano é: os códigos vêm do plano carregado, e uma
+tradução embutida em código teria de o inventar.
+
+`PostingRule` liga um acontecimento a um diário e a linhas que dizem de que
+**parcela** do documento se servem — `Net`, `Tax` ou `Gross`.
+
+### 8. A regra equilibra enquanto expressão, e é verificada na configuração
+
+As parcelas somam-se simbolicamente (`Gross = Net + Tax`), e a regra é recusada
+se os dois lados não derem a mesma expressão. Depois de aceite, **nenhum
+documento pode produzir um lançamento desequilibrado**.
+
+O caso que isto apanha é o que mais custaria: debitar o total e creditar só o
+líquido equilibra numa factura isenta e falha em todas as outras.
+
+### 9. Documento e lançamento entram na mesma transacção
+
+`PostDocument` não grava — acrescenta à unidade de trabalho de quem chama. Se a
+postagem falhar, o documento não é emitido.
+
+**É concretamente o que o ADR-001 comprou.** Sem isso seria preciso um outbox, e
+a contabilidade ficaria eventualmente consistente com os documentos que a
+originam.
+
+### 10. Sem regra, não posta
+
+O ciclo de venda funcionou meses sem contabilidade. Ligar Contabilidade não pode
+partir a facturação de quem ainda não carregou um plano. **Postar é opt-in.**
+
+### 11. Um período que ninguém abriu aceita lançamentos
+
+**Muda a semântica fixada acima em 3.** A linha de `accounting_period` existe
+para registar um *fecho*, não para dar licença de escrita.
+
+Foi a postagem automática que o obrigou: exigir a linha faria a facturação parar
+no dia 1 de cada mês por arrumação contabilística por fazer — um problema de
+operação criado por burocracia. Fechar continua a ser o único acto deliberado.
+
+### Consequências novas
+
+- **A anulação não estorna.** Anular um documento não gera lançamento inverso;
+  corrige-se por regularização, à mão. É a lacuna mais visível.
+- **`SourceID` é `rivo-auto`** e não a pessoa — informação (não houve mão humana
+  na tradução) e necessidade (o campo admite 30 caracteres, um `Guid` ocupa 36).
+- **A imputação analítica é do documento inteiro**, não por linha.
+- **Uma série cujo número de arquivo passe de 20 caracteres bloqueia a
+  postagem.** Recusa-se em vez de truncar: um número truncado deixaria de
+  encontrar o documento no arquivo, e podia colidir com outro.

@@ -32,6 +32,8 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
 
     public DbSet<AccountingPeriod> AccountingPeriods => Set<AccountingPeriod>();
 
+    public DbSet<PostingRule> PostingRules => Set<PostingRule>();
+
     public DbSet<CostCentre> CostCentres => Set<CostCentre>();
 
     public DbSet<Budget> Budgets => Set<Budget>();
@@ -513,6 +515,36 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
             period.Ignore(p => p.IsAdjustmentPeriod);
 
             period.HasIndex(p => new { p.FiscalYear, p.Number }).IsUnique();
+        });
+
+        builder.Entity<PostingRule>(rule =>
+        {
+            rule.ToTable("posting_rule");
+            rule.HasKey(r => r.Id);
+            rule.Property(r => r.Version).IsConcurrencyToken();
+
+            rule.Property(r => r.Event).HasConversion<string>().HasMaxLength(40);
+            rule.Property(r => r.JournalCode).HasMaxLength(30).IsRequired();
+            rule.Property(r => r.Description).HasMaxLength(200).IsRequired();
+
+            // **Uma regra activa por acontecimento.** Duas tornariam a tradução
+            // documento → contas ambígua, e o sistema não escolhe por si — o
+            // mesmo princípio das políticas de aprovação empatadas (ADR-034).
+            rule.HasIndex(r => r.Event).IsUnique().HasFilter("[is_active] = 1");
+
+            rule.OwnsMany(r => r.Lines, line =>
+            {
+                line.ToTable("posting_rule_line");
+                line.WithOwner().HasForeignKey(l => l.PostingRuleId);
+                line.HasKey(l => l.Id);
+
+                line.Property(l => l.AccountCode).HasMaxLength(30).IsRequired();
+                line.Property(l => l.Description).HasMaxLength(200).IsRequired();
+                line.Property(l => l.Side).HasConversion<string>().HasMaxLength(6);
+                line.Property(l => l.Amount).HasConversion<string>().HasMaxLength(5);
+
+                line.HasIndex(l => new { l.PostingRuleId, l.LineNumber }).IsUnique();
+            });
         });
 
         // ---------- Planeamento ----------

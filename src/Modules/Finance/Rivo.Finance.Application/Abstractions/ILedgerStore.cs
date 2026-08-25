@@ -99,6 +99,28 @@ public interface ILedgerStore
     Task AddPeriodAsync(AccountingPeriod period, CancellationToken cancellationToken);
 
     /// <summary>
+    /// A regra activa de um acontecimento, com as suas linhas.
+    ///
+    /// <para>
+    /// Uma só: duas regras activas para o mesmo acontecimento tornariam a
+    /// tradução ambígua, e o sistema não escolhe por si.
+    /// </para>
+    /// </summary>
+    Task<PostingRule?> FindActivePostingRuleAsync(
+        PostingEvent postingEvent,
+        CancellationToken cancellationToken);
+
+    Task<PostingRule?> FindPostingRuleAsync(Guid ruleId, CancellationToken cancellationToken);
+
+    Task<PostingRule?> FindPostingRuleForUpdateAsync(Guid ruleId, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<PostingRule>> ListPostingRulesAsync(
+        bool includeInactive,
+        CancellationToken cancellationToken);
+
+    Task AddPostingRuleAsync(PostingRule rule, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Movimento por conta num ano, contando só lançamentos **não anulados**.
     ///
     /// <para>

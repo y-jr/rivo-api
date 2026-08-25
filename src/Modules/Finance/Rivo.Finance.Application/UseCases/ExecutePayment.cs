@@ -30,6 +30,7 @@ public sealed class ExecutePayment(
     IPayablesStore store,
     IPaymentApproval approval,
     IAuditTrail audit,
+    PostDocument posting,
     TimeProvider clock)
 {
     public async Task<ExecutePaymentResult> ExecuteAsync(
@@ -135,9 +136,36 @@ public sealed class ExecutePayment(
             return ExecutePaymentResult.Rejected(error.Message);
         }
 
-        // Uma só gravação: saldo e pedido na mesma transacção. Se o contador de
-        // concorrência da conta colidir com outro pagamento simultâneo, nada é
-        // gravado — e a colisão sai como 409 (ADR-035), não como saldo negativo.
+        // O pagamento também lança: sai dinheiro e a dívida ao fornecedor baixa.
+        // Sem imposto a separar — o líquido é o próprio montante pago.
+        var lancamento = await posting.PostAsync(
+            new DocumentPosting(
+                PostingEvent.PaymentExecuted,
+                $"Pagamento de {pedido.SupplierInvoiceNumber}",
+
+                // Um pagamento não tem número próprio, e **dois pagamentos
+                // parciais da mesma factura no mesmo dia são legítimos** — a
+                // chave tem de ser a do pedido, não a da factura.
+                DocumentPosting.KeyFor("PG", pedido.Id),
+                $"Pagamento a {pedido.Payee.Name}",
+                DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime),
+                pedido.Amount,
+                0m,
+                pedido.Amount,
+                PostingSources.Automatic,
+                clock.GetUtcNow(),
+                pedido.CostCentreId),
+            cancellationToken);
+
+        if (lancamento.Outcome is DocumentPostingOutcome.PeriodClosed or DocumentPostingOutcome.Failed)
+        {
+            return ExecutePaymentResult.PostingBlocked(lancamento.Error!);
+        }
+
+        // Uma só gravação: saldo, pedido e lançamento na mesma transacção. Se o
+        // contador de concorrência da conta colidir com outro pagamento
+        // simultâneo, nada é gravado — e a colisão sai como 409 (ADR-035), não
+        // como saldo negativo.
         await store.SaveChangesAsync(cancellationToken);
 
         await audit.RecordAsync(
@@ -186,6 +214,10 @@ public sealed record ExecutePaymentResult(
     public static ExecutePaymentResult Rejected(string error) =>
         new(ExecutePaymentOutcome.Rejected, null, error);
 
+    /// <summary>Postagem automática ligada e falhada. O dinheiro não sai.</summary>
+    public static ExecutePaymentResult PostingBlocked(string error) =>
+        new(ExecutePaymentOutcome.PostingBlocked, null, error);
+
     public static ExecutePaymentResult NotExecutable(string error) =>
         new(ExecutePaymentOutcome.NotExecutable, null, error);
 }
@@ -213,6 +245,9 @@ public enum ExecutePaymentOutcome
     /// estado que impede, é *esta pessoa* — mesma distinção que `approval` faz.
     /// </summary>
     SegregationOfDuties,
+
+    /// <summary>Contabilidade automática ligada e a postagem falhou — 409.</summary>
+    PostingBlocked,
 
     Rejected,
 }

@@ -184,6 +184,9 @@ public static class PayablesEndpoints
                 erro = "Já existe uma factura com este número deste fornecedor.",
             }),
 
+            RegisterPurchaseInvoiceOutcome.PostingBlocked =>
+                Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
+
             _ => Results.ValidationProblem(
                 new Dictionary<string, string[]> { ["factura"] = [result.Error!] }),
         };
@@ -325,7 +328,8 @@ public static class PayablesEndpoints
             // não está é o estado — decisão em falta, ou saldo em falta.
             ExecutePaymentOutcome.NotApproved
                 or ExecutePaymentOutcome.InsufficientFunds
-                or ExecutePaymentOutcome.NotExecutable =>
+                or ExecutePaymentOutcome.NotExecutable
+                or ExecutePaymentOutcome.PostingBlocked =>
                 Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
 
             _ => Results.ValidationProblem(

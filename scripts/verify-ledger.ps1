@@ -79,6 +79,14 @@ $fornecedor = "F$curto"
 $diario = "D$curto"
 $centroCodigo = "CC$curto"
 
+# Contas para a postagem automatica: cliente, proveito e IVA liquidado.
+$cliente2 = "K$curto"
+$proveito = "P$curto"
+$ivaLiq = "I$curto"
+
+# Taxa propria desta corrida, como faz a suite de finance.
+$codigoTaxa = "T" + $curto
+
 # Ano fiscal próprio de cada corrida para os **períodos contabilísticos**: são
 # únicos por (ano, número), e reutilizar o ano corrente faria a segunda corrida
 # colidir no fecho.
@@ -94,6 +102,12 @@ $anoOrcamento = (Get-Date).Year
 
 $responsavel = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
         -Body (@{ fullName = "Responsavel CC $curto" } | ConvertTo-Json)).employeeId
+
+$scheduleId = (Invoke-RestMethod "$base/fiscal/tax-rates" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+        -Body (@{ code = $codigoTaxa; description = "IVA - suite ledger" } | ConvertTo-Json)).scheduleId
+
+Invoke-RestMethod "$base/fiscal/tax-rates/$scheduleId/versions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+    -Body (@{ percentage = 14; effectiveFrom = "2026-01-01"; legalInstrument = "Lei 20/26" } | ConvertTo-Json) | Out-Null
 
 Write-Host "`n=== Contabilidade & Fecho e Planeamento ===`n"
 
@@ -127,6 +141,15 @@ Test-Case "3. Carregar plano de contas de cima para baixo" {
 
     Invoke-RestMethod "$base/finance/ledger/accounts" -Method Post -ContentType "application/json" -Headers $financeHeaders `
         -Body (@{ code = $fornecedor; name = "Fornecedores"; category = "GM"; parentCode = $agregada } | ConvertTo-Json) | Out-Null
+
+    Invoke-RestMethod "$base/finance/ledger/accounts" -Method Post -ContentType "application/json" -Headers $financeHeaders `
+        -Body (@{ code = $cliente2; name = "Clientes c/c"; category = "GM"; parentCode = $agregada } | ConvertTo-Json) | Out-Null
+
+    Invoke-RestMethod "$base/finance/ledger/accounts" -Method Post -ContentType "application/json" -Headers $financeHeaders `
+        -Body (@{ code = $proveito; name = "Prestacao de servicos"; category = "GM"; parentCode = $agregada } | ConvertTo-Json) | Out-Null
+
+    Invoke-RestMethod "$base/finance/ledger/accounts" -Method Post -ContentType "application/json" -Headers $financeHeaders `
+        -Body (@{ code = $ivaLiq; name = "IVA liquidado"; category = "GM"; parentCode = $agregada } | ConvertTo-Json) | Out-Null
 
     "GR -> GA -> GM, com GroupingCode a apontar ao grau acima"
 }
@@ -569,7 +592,352 @@ Test-Case "28. Lancamentos e periodos sao auditados" {
     "lancar, fechar e reabrir na trilha, todos com actor"
 }
 
-Test-Case "29. Dados sobrevivem ao reinicio da stack" {
+# ---------- Postagem automatica ----------
+
+Test-Case "29. Sem regra de postagem, o ciclo de venda nao muda" {
+    # **E o estado por omissao, e tem de ser inofensivo.** O ciclo de venda
+    # funcionou meses sem contabilidade nenhuma.
+    $regras = Invoke-Sql "select count(*) from finance.posting_rule where is_active=1 and event='SalesInvoiceIssued'"
+    if ($regras -ne "0") { throw "ja existe regra activa de venda: $regras" }
+
+    $antes = Invoke-Sql "select count(*) from finance.journal_entry"
+
+    $cliente = (Invoke-RestMethod "$base/commercial/customers" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+            -Body (@{ name = "Cliente Postagem $curto"; taxId = "5417$curto"
+            addressDetail = "Rua 1"; city = "Luanda"; country = "AO" } | ConvertTo-Json)).customerId
+    $script:clientePost = $cliente
+
+    try {
+        $r = Invoke-RestMethod "$base/finance/sales-invoices" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+            -Body (@{ customerId = $cliente; issuedOn = "$anoOrcamento-08-10"
+            lines = @(@{ description = "Servico"; quantity = 1; unitPrice = 100000; taxCode = $codigoTaxa }) } | ConvertTo-Json -Depth 5)
+    }
+    catch { throw "emissao falhou: $($_.ErrorDetails.Message)" }
+
+    if (-not $r.invoiceId) { throw "factura nao emitida" }
+
+    $depois = Invoke-Sql "select count(*) from finance.journal_entry"
+    if ($antes -ne $depois) { throw "lancou sem regra configurada" }
+
+    "factura emitida, zero lancamentos — postar e opt-in"
+}
+
+Test-Case "30. Regra que nao equilibra e recusada na configuracao" {
+    # Debitar o total e creditar so o liquido esquece o imposto: equilibraria
+    # numa factura isenta e falharia em todas as outras.
+    $body = @{
+        event = "SalesInvoiceIssued"; journalCode = $diario; description = "Torta"
+        lines = @(
+            @{ accountCode = $cliente2; side = "Debit"; amount = "Gross"; description = "Divida" },
+            @{ accountCode = $proveito; side = "Credit"; amount = "Net"; description = "Proveito" }
+        )
+    } | ConvertTo-Json -Depth 5
+
+    try {
+        Invoke-RestMethod "$base/finance/ledger/posting-rules" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+        throw "esperado 400, a regra passou"
+    }
+    catch {
+        if (-not $_.Exception.Response) { throw }
+        if ([int]$_.Exception.Response.StatusCode -ne 400) { throw "esperado 400, obtido $([int]$_.Exception.Response.StatusCode)" }
+        if ($_.ErrorDetails.Message -notmatch "equilibrio") { throw "razao errada: $($_.ErrorDetails.Message)" }
+    }
+
+    "recusada antes de haver documento nenhum — nao para os numeros de um caso"
+}
+
+Test-Case "31. Regra que lanca em conta agregadora e recusada" {
+    $body = @{
+        event = "SalesInvoiceIssued"; journalCode = $diario; description = "Na agregadora"
+        lines = @(
+            @{ accountCode = $agregada; side = "Debit"; amount = "Gross"; description = "Divida" },
+            @{ accountCode = $proveito; side = "Credit"; amount = "Gross"; description = "Proveito" }
+        )
+    } | ConvertTo-Json -Depth 5
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/ledger/posting-rules" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "so se descobriria a primeira emissao se nao fosse verificado aqui"
+}
+
+Test-Case "32. Definir a regra de venda" {
+    $body = @{
+        event = "SalesInvoiceIssued"; journalCode = $diario; description = "Facturacao"
+        lines = @(
+            @{ accountCode = $cliente2; side = "Debit"; amount = "Gross"; description = "Divida do cliente" },
+            @{ accountCode = $proveito; side = "Credit"; amount = "Net"; description = "Proveito" },
+            @{ accountCode = $ivaLiq; side = "Credit"; amount = "Tax"; description = "IVA liquidado" }
+        )
+    } | ConvertTo-Json -Depth 5
+
+    $r = Invoke-RestMethod "$base/finance/ledger/posting-rules" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
+    if (-not $r.ruleId) { throw "sem ruleId" }
+    $script:regraId = $r.ruleId
+
+    "total a debito, liquido e imposto a credito"
+}
+
+Test-Case "33. Uma regra activa por acontecimento" {
+    $body = @{
+        event = "SalesInvoiceIssued"; journalCode = $diario; description = "Segunda"
+        lines = @(
+            @{ accountCode = $cliente2; side = "Debit"; amount = "Gross"; description = "A" },
+            @{ accountCode = $proveito; side = "Credit"; amount = "Gross"; description = "B" }
+        )
+    } | ConvertTo-Json -Depth 5
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/ledger/posting-rules" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+
+    $dup = Invoke-Sql "select count(*) from (select event from finance.posting_rule where is_active=1 group by event having count(*)>1) d"
+    if ($dup -ne "0") { throw "$dup acontecimentos com duas regras activas" }
+
+    "duas tornariam a traducao documento -> contas ambigua"
+}
+
+Test-Case "34. Emitir passa a lancar, na mesma transaccao" {
+    $antes = Invoke-Sql "select count(*) from finance.journal_entry"
+
+    $r = Invoke-RestMethod "$base/finance/sales-invoices" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+        -Body (@{ customerId = $script:clientePost; issuedOn = "$anoOrcamento-08-11"
+        lines = @(@{ description = "Servico"; quantity = 1; unitPrice = 100000; taxCode = $codigoTaxa }) } | ConvertTo-Json -Depth 5)
+
+    $numero = $r.number
+    $script:facturaPostada = $numero
+
+    $depois = Invoke-Sql "select count(*) from finance.journal_entry"
+    if ([int]$depois -ne [int]$antes + 1) { throw "esperado 1 lancamento novo, obtidos $([int]$depois - [int]$antes)" }
+
+    # O numero de arquivo deriva do numero do documento — e o que liga o
+    # lancamento ao papel.
+    $arquivo = $numero.Replace(" ", "-").Replace("/", "-")
+    $existe = Invoke-Sql "select count(*) from finance.journal_entry where archival_number='$arquivo'"
+    if ($existe -ne "1") { throw "lancamento nao encontrado por '$arquivo'" }
+
+    "$numero -> lancamento $arquivo"
+}
+
+Test-Case "35. O lancamento reparte liquido, imposto e total" {
+    $arquivo = $script:facturaPostada.Replace(" ", "-").Replace("/", "-")
+
+    $divida = Invoke-Sql @"
+select l.amount from finance.journal_entry_line l
+join finance.journal_entry e on e.id = l.journal_entry_id
+where e.archival_number = '$arquivo' and l.account_code = '$cliente2'
+"@
+    $proveitoValor = Invoke-Sql @"
+select l.amount from finance.journal_entry_line l
+join finance.journal_entry e on e.id = l.journal_entry_id
+where e.archival_number = '$arquivo' and l.account_code = '$proveito'
+"@
+    $ivaValor = Invoke-Sql @"
+select l.amount from finance.journal_entry_line l
+join finance.journal_entry e on e.id = l.journal_entry_id
+where e.archival_number = '$arquivo' and l.account_code = '$ivaLiq'
+"@
+
+    # 14% e a taxa desta corrida; aqui o que interessa e que
+    # total = liquido + imposto, seja qual for.
+    if ([decimal]$divida -ne [decimal]$proveitoValor + [decimal]$ivaValor) {
+        throw "total $divida != liquido $proveitoValor + imposto $ivaValor"
+    }
+    if ([decimal]$proveitoValor -ne 100000) { throw "liquido $proveitoValor" }
+
+    "$divida = $proveitoValor + $ivaValor"
+}
+
+Test-Case "36. O balancete do documento equilibra" {
+    $b = Invoke-RestMethod "$base/finance/ledger/trial-balance?fiscalYear=$anoOrcamento" -Headers $financeHeaders
+
+    if (-not $b.isBalanced) { throw "balancete nao equilibra" }
+
+    $linhaCliente = $b.lines | Where-Object { $_.accountCode -eq $cliente2 }
+    if (-not $linhaCliente) { throw "conta de cliente sem movimento" }
+
+    "debito total = credito total, com o documento la dentro"
+}
+
+Test-Case "37. Postar o mesmo documento duas vezes colide na chave do SAF-T" {
+    # Idempotencia por construcao: o numero de arquivo deriva do documento, e a
+    # chave (data, diario, arquivo) e unica.
+    $arquivo = $script:facturaPostada.Replace(" ", "-").Replace("/", "-")
+    $n = Invoke-Sql "select count(*) from finance.journal_entry where archival_number='$arquivo'"
+    if ($n -ne "1") { throw "$n lancamentos com a mesma chave" }
+
+    $dup = Invoke-Sql @"
+select count(*) from (
+  select transaction_date, journal_code, archival_number
+  from finance.journal_entry group by transaction_date, journal_code, archival_number
+  having count(*) > 1) d
+"@
+    if ($dup -ne "0") { throw "$dup chaves repetidas" }
+    "a chave unica e a garantia, nao uma verificacao que alguem pode esquecer"
+}
+
+Test-Case "38. A factura de compra lanca pelo seu proprio acontecimento" {
+    # A factura de venda ja provou o caminho. Este caso prova que o **ponto de
+    # ligacao e outro**: um `PostingEvent` trocado por engano faria a regra
+    # nunca disparar, e ninguem daria por isso.
+    #
+    # Auto-contido: define a regra, usa-a, e desactiva-a. Deixa-la activa faria
+    # `verify-payables` — que tambem regista facturas de compra — passar a
+    # lancar contra o plano desta corrida.
+    $body = @{
+        event = "PurchaseInvoiceRegistered"; journalCode = $diario; description = "Compras"
+        lines = @(
+            @{ accountCode = $custo; side = "Debit"; amount = "Net"; description = "Custo" },
+            @{ accountCode = $ivaLiq; side = "Debit"; amount = "Tax"; description = "IVA dedutivel" },
+            @{ accountCode = $fornecedor; side = "Credit"; amount = "Gross"; description = "Divida" }
+        )
+    } | ConvertTo-Json -Depth 5
+
+    $regra = (Invoke-RestMethod "$base/finance/ledger/posting-rules" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders).ruleId
+
+    try {
+        $numero = "FC-$curto"
+
+        Invoke-RestMethod "$base/finance/purchase-invoices" -Method Post -ContentType "application/json" -Headers $managerHeaders `
+            -Body (@{ supplierInvoiceNumber = $numero; supplierName = "Fornecedor $curto"
+            supplierTaxId = "5402$curto"; netTotal = 50000; taxTotal = 7000
+            issuedOn = "$anoOrcamento-08-12"; dueOn = "$anoOrcamento-12-31" } | ConvertTo-Json) | Out-Null
+
+        # **A chave de arquivo nao e o numero do fornecedor** — esse nao e
+        # unico. Procura-se pelo `SourceDocumentID` das linhas, que e onde o
+        # numero fica.
+        $lancado = Invoke-Sql "select count(distinct journal_entry_id) from finance.journal_entry_line where source_document_id='$numero'"
+        if ($lancado -ne "1") { throw "a factura de compra nao lancou" }
+
+        $chave = Invoke-Sql "select top 1 e.archival_number from finance.journal_entry e join finance.journal_entry_line l on l.journal_entry_id = e.id where l.source_document_id = '$numero'"
+        if ($chave -eq $numero) { throw "a chave de arquivo e o numero do fornecedor, e esse nao e unico" }
+
+        # O espelho da venda: custo e imposto a debito, divida a credito.
+        $debito = Invoke-Sql "select sum(amount) from finance.journal_entry_line where source_document_id='$numero' and side='Debit'"
+        $credito = Invoke-Sql "select sum(amount) from finance.journal_entry_line where source_document_id='$numero' and side='Credit'"
+        if ([decimal]$debito -ne 57000) { throw "debito $debito, esperado 57000" }
+        if ([decimal]$debito -ne [decimal]$credito) { throw "debito $debito != credito $credito" }
+    }
+    finally {
+        Invoke-RestMethod "$base/finance/ledger/posting-rules/$regra/deactivation" -Method Post -ContentType "application/json" -Headers $adminHeaders | Out-Null
+    }
+
+    "50000 + 7000 a debito, 57000 a credito; regra desactivada no fim"
+}
+
+Test-Case "39. Periodo fechado trava a emissao, e nada e gravado" {
+    # Um documento com data dentro de um periodo fechado nao devia existir.
+    # Re-executavel: numa segunda corrida o periodo ja existe e ja esta
+    # fechado, e as duas chamadas devolvem 409. E o estado que interessa.
+    Get-StatusCode { Invoke-RestMethod "$base/finance/ledger/periods" -Method Post -ContentType "application/json" -Headers $financeHeaders `
+            -Body (@{ fiscalYear = $anoOrcamento; number = 7 } | ConvertTo-Json) } | Out-Null
+
+    Get-StatusCode { Invoke-RestMethod "$base/finance/ledger/periods/$anoOrcamento/7/closure" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+            -Body (@{ closedByEmployeeId = $responsavel } | ConvertTo-Json) } | Out-Null
+
+    $estado = Invoke-Sql "select status from finance.accounting_period where fiscal_year=$anoOrcamento and number=7"
+    if ($estado -ne "Closed") { throw "o periodo 7 nao ficou fechado: $estado" }
+
+    $facturasAntes = Invoke-Sql "select count(*) from finance.sales_invoice"
+    $lancamentosAntes = Invoke-Sql "select count(*) from finance.journal_entry"
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/sales-invoices" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+            -Body (@{ customerId = $script:clientePost; issuedOn = "$anoOrcamento-07-15"
+            lines = @(@{ description = "Tardia"; quantity = 1; unitPrice = 1000; taxCode = $codigoTaxa }) } | ConvertTo-Json -Depth 5) }
+
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+
+    # **O que interessa: nem factura nem lancamento.** A postagem falha antes do
+    # SaveChanges, e a transaccao leva os dois.
+    $facturasDepois = Invoke-Sql "select count(*) from finance.sales_invoice"
+    $lancamentosDepois = Invoke-Sql "select count(*) from finance.journal_entry"
+
+    if ($facturasAntes -ne $facturasDepois) { throw "a factura foi gravada apesar da recusa" }
+    if ($lancamentosAntes -ne $lancamentosDepois) { throw "o lancamento foi gravado apesar da recusa" }
+
+    "409, e nem documento nem lancamento — a transaccao leva os dois"
+}
+
+Test-Case "40. Um periodo que ninguem abriu aceita lancamentos" {
+    # Exigir a linha faria a facturacao parar no dia 1 de cada mes por
+    # arrumacao contabilistica por fazer.
+    $existia = Invoke-Sql "select count(*) from finance.accounting_period where fiscal_year=$anoOrcamento and number=9"
+
+    $r = Invoke-RestMethod "$base/finance/sales-invoices" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+        -Body (@{ customerId = $script:clientePost; issuedOn = "$anoOrcamento-09-05"
+        lines = @(@{ description = "Setembro"; quantity = 1; unitPrice = 5000; taxCode = $codigoTaxa }) } | ConvertTo-Json -Depth 5)
+
+    if (-not $r.invoiceId) { throw "factura nao emitida" }
+
+    $agora = Invoke-Sql "select status from finance.accounting_period where fiscal_year=$anoOrcamento and number=9"
+    if ($agora -ne "Open") { throw "periodo nao ficou aberto: $agora" }
+
+    "a linha regista um *fecho*, nao da licenca — e ninguem fechou nada"
+}
+
+Test-Case "41. Desactivar a regra pára a postagem e mantem os lancamentos" {
+    $lancamentos = Invoke-Sql "select count(*) from finance.journal_entry"
+
+    Invoke-RestMethod "$base/finance/ledger/posting-rules/$($script:regraId)/deactivation" -Method Post -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    $r = Invoke-RestMethod "$base/finance/sales-invoices" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+        -Body (@{ customerId = $script:clientePost; issuedOn = "$anoOrcamento-08-20"
+        lines = @(@{ description = "Sem regra"; quantity = 1; unitPrice = 2000; taxCode = $codigoTaxa }) } | ConvertTo-Json -Depth 5)
+
+    if (-not $r.invoiceId) { throw "factura nao emitida" }
+
+    $depois = Invoke-Sql "select count(*) from finance.journal_entry"
+    if ($lancamentos -ne $depois) { throw "lancou com a regra desactivada" }
+
+    "os lancamentos que ela produziu ficam — sao factos, nao configuracao"
+}
+
+Test-Case "42. Definir regras e mais restrito que lancar" {
+    # Definir uma regra decide como **todos** os documentos futuros lancam.
+    $body = @{
+        event = "PaymentExecuted"; journalCode = $diario; description = "Tentativa"
+        lines = @(
+            @{ accountCode = $cliente2; side = "Debit"; amount = "Gross"; description = "A" },
+            @{ accountCode = $proveito; side = "Credit"; amount = "Gross"; description = "B" }
+        )
+    } | ConvertTo-Json -Depth 5
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/ledger/posting-rules" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
+    if ($code -ne 403) { throw "Finance definiu regra: esperado 403, obtido $code" }
+    "Finance lanca um a um; so quem fecha periodos decide como todos lancam"
+}
+
+Test-Case "43. Regras de postagem sao auditadas" {
+    $definida = Invoke-Sql "select count(*) from audit.audit_event where action='finance.posting_rule.defined' and entity_id='$($script:regraId)'"
+    if ($definida -ne "1") { throw "definicao nao auditada" }
+
+    $desactivada = Invoke-Sql "select count(*) from audit.audit_event where action='finance.posting_rule.deactivated' and entity_id='$($script:regraId)'"
+    if ($desactivada -ne "1") { throw "desactivacao nao auditada" }
+
+    "definir e desactivar na trilha — decidem como tudo lanca"
+}
+
+Test-Case "44. A suite nao deixa politica de BR-8 activa atras de si" {
+    # **Independencia entre suites.** A politica desta corrida e especifica de um
+    # departamento novo, e cada corrida criaria mais uma: a tabela cresceria sem
+    # limite e a guarda de `verify-payables` — que procura a politica generica —
+    # passaria a ter de a distinguir de dezenas.
+    #
+    # Nao ha rota para desactivar politicas, e por isso e SQL. Enquanto nao
+    # houver, e a unica forma de a suite se limpar.
+    Invoke-Sql @"
+update approval.policy set is_active = 0
+where process_type = 'finance.payment_request' and department_id = '$($script:departamentoId)'
+"@ | Out-Null
+
+    $activas = Invoke-Sql "select count(*) from approval.policy where process_type='finance.payment_request' and is_active=1 and department_id='$($script:departamentoId)'"
+    if ($activas -ne "0") { throw "$activas politicas ficaram activas" }
+
+    $generica = Invoke-Sql "select count(*) from approval.policy where process_type='finance.payment_request' and is_active=1 and department_id is null and requires_budget_check=0"
+    if ($generica -ne "1") { throw "a politica generica de verify-payables desapareceu: $generica" }
+
+    "a generica fica; a desta corrida sai"
+}
+
+Test-Case "45. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)

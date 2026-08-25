@@ -35,6 +35,10 @@ valor cabe, antes de escolher aprovadores. ⚠ Duas ressalvas assumidas — o
 consumo conta **compromissos e não realizações**, e a verificação é à **data de
 hoje** e não à do pedido.
 
+⚠ **A postagem automática reabre a primeira.** Desde 2026-08-25 os documentos
+lançam nos livros, e no dia em que o consumo passar a contar lançamentos há que
+escolher uma das fontes: somar as duas contaria a dobrar.
+
 ## Auditoria
 
 | # | Regra | Vinculados |

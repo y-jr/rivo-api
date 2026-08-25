@@ -318,17 +318,27 @@ public sealed class PostJournalEntry(ILedgerStore store, IAuditTrail audit, Time
         // em vez de uma vista sobre dados que ainda se mexem.
         var contabilistico = await store.FindPeriodAsync(fiscalYear, period, cancellationToken);
 
-        if (contabilistico is null)
-        {
-            return PostEntryResult.PeriodNotOpen(
-                $"O período {fiscalYear}/{period} não existe. Abra-o antes de lançar.");
-        }
-
-        if (!contabilistico.AcceptsPostings)
+        if (contabilistico is not null && !contabilistico.AcceptsPostings)
         {
             return PostEntryResult.PeriodClosed(
                 $"O período {fiscalYear}/{period} está fechado. " +
                 "Corrigir um período fechado faz-se por lançamento de regularização noutro período.");
+        }
+
+        if (contabilistico is null)
+        {
+            // **Um período que ninguém abriu também nunca foi fechado.**
+            //
+            // A linha de `accounting_period` existe para registar um *fecho*,
+            // não para dar licença de escrita. Exigi-la faria a facturação
+            // parar no dia 1 de cada mês por arrumação contabilística por
+            // fazer — que é um problema de operação criado por burocracia, não
+            // uma regra de negócio.
+            //
+            // Fechar continua a ser acto deliberado, e é o único que muda o que
+            // o sistema aceita.
+            await store.AddPeriodAsync(
+                AccountingPeriod.Open(fiscalYear, period), cancellationToken);
         }
 
         // A chave do SAF-T é composta por três coisas que quem lança escolhe.
@@ -439,9 +449,6 @@ public sealed record PostEntryResult(
     public static PostEntryResult AccountNotFound(string error) =>
         new(PostEntryOutcome.AccountNotFound, null, null, error);
 
-    public static PostEntryResult PeriodNotOpen(string error) =>
-        new(PostEntryOutcome.PeriodNotOpen, null, null, error);
-
     public static PostEntryResult PeriodClosed(string error) =>
         new(PostEntryOutcome.PeriodClosed, null, null, error);
 
@@ -460,9 +467,6 @@ public enum PostEntryOutcome
     Posted,
     JournalNotFound,
     AccountNotFound,
-
-    /// <summary>O período não existe — 404: não há onde lançar.</summary>
-    PeriodNotOpen,
 
     /// <summary>
     /// O período está fechado. <strong>409, não 400:</strong> o lançamento está

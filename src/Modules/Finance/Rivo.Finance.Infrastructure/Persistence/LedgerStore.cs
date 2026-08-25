@@ -176,6 +176,40 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
     public async Task AddPeriodAsync(AccountingPeriod period, CancellationToken cancellationToken) =>
         await context.AccountingPeriods.AddAsync(period, cancellationToken);
 
+    public async Task<PostingRule?> FindActivePostingRuleAsync(
+        PostingEvent postingEvent,
+        CancellationToken cancellationToken) =>
+        await context.PostingRules
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Event == postingEvent && r.IsActive, cancellationToken);
+
+    public async Task<PostingRule?> FindPostingRuleAsync(Guid ruleId, CancellationToken cancellationToken) =>
+        await context.PostingRules
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == ruleId, cancellationToken);
+
+    public async Task<PostingRule?> FindPostingRuleForUpdateAsync(
+        Guid ruleId,
+        CancellationToken cancellationToken) =>
+        await context.PostingRules.FirstOrDefaultAsync(r => r.Id == ruleId, cancellationToken);
+
+    public async Task<IReadOnlyList<PostingRule>> ListPostingRulesAsync(
+        bool includeInactive,
+        CancellationToken cancellationToken)
+    {
+        var query = context.PostingRules.AsNoTracking().AsQueryable();
+
+        if (!includeInactive)
+        {
+            query = query.Where(r => r.IsActive);
+        }
+
+        return await query.OrderBy(r => r.Event).ToListAsync(cancellationToken);
+    }
+
+    public async Task AddPostingRuleAsync(PostingRule rule, CancellationToken cancellationToken) =>
+        await context.PostingRules.AddAsync(rule, cancellationToken);
+
     public async Task<IReadOnlyList<AccountMovement>> AccountMovementsAsync(
         int fiscalYear,
         int? uptoPeriod,

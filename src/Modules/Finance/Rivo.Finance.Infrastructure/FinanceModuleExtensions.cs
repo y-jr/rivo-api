@@ -80,6 +80,10 @@ public static class FinanceModuleExtensions
         services.AddScoped<VoidJournalEntry>();
         services.AddScoped<ManageAccountingPeriods>();
         services.AddScoped<GetTrialBalance>();
+        services.AddScoped<PostDocument>();
+        services.AddScoped<DefinePostingRule>();
+        services.AddScoped<ListPostingRules>();
+        services.AddScoped<DeactivatePostingRule>();
 
         // Planeamento.
         services.AddScoped<IPlanningStore, PlanningStore>();

@@ -76,6 +76,19 @@ public static class LedgerEndpoints
         group.MapGet("/ledger/trial-balance", TrialBalanceAsync)
             .RequireAuthorization(FinancePermissions.LedgerRead);
 
+        // ---- Regras de postagem ----
+        //
+        // Definir uma regra decide como **todos** os documentos futuros lançam.
+        // Fica com quem fecha períodos, não com quem lança um a um.
+        group.MapGet("/ledger/posting-rules", ListPostingRulesAsync)
+            .RequireAuthorization(FinancePermissions.LedgerRead);
+
+        group.MapPost("/ledger/posting-rules", DefinePostingRuleAsync)
+            .RequireAuthorization(FinancePermissions.LedgerClose);
+
+        group.MapPost("/ledger/posting-rules/{ruleId:guid}/deactivation", DeactivatePostingRuleAsync)
+            .RequireAuthorization(FinancePermissions.LedgerClose);
+
         // ---- Planeamento ----
         group.MapGet("/planning/cost-centres", ListCostCentresAsync)
             .RequireAuthorization(FinancePermissions.PlanningRead);
@@ -296,9 +309,6 @@ public static class LedgerEndpoints
             PostEntryOutcome.AccountNotFound =>
                 Results.NotFound(new { erro = result.Error }),
 
-            PostEntryOutcome.PeriodNotOpen =>
-                Results.NotFound(new { erro = result.Error }),
-
             // 409 e não 400: o lançamento está bem formado, e noutro período
             // entrava sem objecção. É o estado dos livros que impede.
             PostEntryOutcome.PeriodClosed or PostEntryOutcome.DuplicateTransaction =>
@@ -406,6 +416,100 @@ public static class LedgerEndpoints
         int? period,
         CancellationToken cancellationToken) =>
         Results.Ok(await balance.ExecuteAsync(fiscalYear, period, cancellationToken));
+
+    // ---- Regras de postagem ----
+
+    private static async Task<IResult> ListPostingRulesAsync(
+        ListPostingRules list,
+        bool? includeInactive,
+        CancellationToken cancellationToken) =>
+        Results.Ok(await list.ExecuteAsync(includeInactive ?? false, cancellationToken));
+
+    private static async Task<IResult> DefinePostingRuleAsync(
+        PostingRuleRequest request,
+        DefinePostingRule define,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        if (!Enum.TryParse<PostingEvent>(request.Event, ignoreCase: true, out var acontecimento))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["event"] =
+                [
+                    "O acontecimento é um de: " +
+                    string.Join(", ", Enum.GetNames<PostingEvent>()) + ".",
+                ],
+            });
+        }
+
+        var linhas = new List<PostingRuleLineInput>();
+
+        foreach (var linha in request.Lines ?? [])
+        {
+            if (!Enum.TryParse<EntrySide>(linha.Side, ignoreCase: true, out var lado))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["lines"] = ["O lado de cada linha é `Debit` ou `Credit`."],
+                });
+            }
+
+            if (!Enum.TryParse<PostingAmount>(linha.Amount, ignoreCase: true, out var parcela))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["lines"] = ["A parcela de cada linha é `Net`, `Tax` ou `Gross`."],
+                });
+            }
+
+            linhas.Add(new PostingRuleLineInput(
+                linha.AccountCode, lado, parcela, linha.Description));
+        }
+
+        var result = await define.ExecuteAsync(
+            acontecimento, request.JournalCode, request.Description, linhas,
+            BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            DefinePostingRuleOutcome.Defined => Results.Created(
+                $"/finance/ledger/posting-rules?event={acontecimento}",
+                new { ruleId = result.RuleId }),
+
+            DefinePostingRuleOutcome.Duplicate =>
+                Results.Conflict(new { erro = result.Error }),
+
+            DefinePostingRuleOutcome.JournalNotFound =>
+                Results.NotFound(new { erro = "Diário não encontrado." }),
+
+            DefinePostingRuleOutcome.AccountNotFound =>
+                Results.NotFound(new { erro = result.Error }),
+
+            // Chave própria: a regra não equilibra enquanto expressão, e isso é
+            // diferente de um campo mal preenchido.
+            DefinePostingRuleOutcome.Unbalanced => Results.ValidationProblem(
+                new Dictionary<string, string[]> { ["equilibrio"] = [result.Error!] }),
+
+            _ => Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["regra"] = [result.Error!],
+            }),
+        };
+    }
+
+    private static async Task<IResult> DeactivatePostingRuleAsync(
+        Guid ruleId,
+        DeactivatePostingRule deactivate,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var feito = await deactivate.ExecuteAsync(ruleId, BuildAuditContext(http), cancellationToken);
+
+        return feito
+            ? Results.NoContent()
+            : Results.NotFound(new { erro = "Regra de postagem não encontrada." });
+    }
 
     // ---- Planeamento ----
 
@@ -667,3 +771,22 @@ public sealed record CostForecastRequest(
     decimal OperationalCosts,
     decimal FixedCosts,
     bool? Submit);
+
+/// <param name="Event">
+/// Um de: `SalesInvoiceIssued`, `CreditNoteIssued`, `ReceiptRegistered`,
+/// `PurchaseInvoiceRegistered`, `PaymentExecuted`.
+/// </param>
+public sealed record PostingRuleRequest(
+    string Event,
+    string JournalCode,
+    string Description,
+    IReadOnlyList<PostingRuleLineRequest>? Lines);
+
+/// <param name="Amount">
+/// De que parcela do documento a linha se serve: `Net`, `Tax` ou `Gross`.
+/// </param>
+public sealed record PostingRuleLineRequest(
+    string AccountCode,
+    string Side,
+    string Amount,
+    string Description);

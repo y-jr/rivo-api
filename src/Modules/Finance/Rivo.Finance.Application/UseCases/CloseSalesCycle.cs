@@ -19,6 +19,8 @@ public sealed class IssueCreditNote(
     ISalesInvoiceStore store,
     ITaxDetermination taxes,
     IAuditTrail audit,
+    PostDocument posting,
+    TimeProvider clock,
     IOptions<FinanceOptions> options)
 {
     private readonly FinanceOptions _options = options.Value;
@@ -120,6 +122,26 @@ public sealed class IssueCreditNote(
         }
 
         await store.AddCreditNoteAsync(nota, cancellationToken);
+
+        var lancamento = await posting.PostAsync(
+            new DocumentPosting(
+                PostingEvent.CreditNoteIssued,
+                nota.Number.Formatted,
+                nota.Number.Formatted,
+                $"Correcção de {nota.CorrectedInvoiceNumber}",
+                nota.IssuedOn,
+                nota.NetTotal,
+                nota.TaxTotal,
+                nota.GrossTotal,
+                PostingSources.Automatic,
+                clock.GetUtcNow()),
+            cancellationToken);
+
+        if (lancamento.Outcome is DocumentPostingOutcome.PeriodClosed or DocumentPostingOutcome.Failed)
+        {
+            return IssueCreditNoteResult.PostingBlocked(lancamento.Error!);
+        }
+
         await store.SaveChangesAsync(cancellationToken);
 
         await audit.RecordAsync(
@@ -162,6 +184,10 @@ public sealed record IssueCreditNoteResult(
     public static IssueCreditNoteResult ExemptionUnavailable() =>
         new(IssueCreditNoteOutcome.ExemptionUnavailable, null, null, null);
 
+    /// <summary>Postagem automática ligada e falhada. A nota não é emitida.</summary>
+    public static IssueCreditNoteResult PostingBlocked(string error) =>
+        new(IssueCreditNoteOutcome.PostingBlocked, null, null, error);
+
     public static IssueCreditNoteResult ExceedsOutstanding(string error) =>
         new(IssueCreditNoteOutcome.ExceedsOutstanding, null, null, error);
 }
@@ -179,6 +205,9 @@ public enum IssueCreditNoteOutcome
     /// preenchido — 409.
     /// </summary>
     ExceedsOutstanding,
+
+    /// <summary>Contabilidade automática ligada e a postagem falhou — 409.</summary>
+    PostingBlocked,
 }
 
 /// <summary>
@@ -193,6 +222,8 @@ public enum IssueCreditNoteOutcome
 public sealed class RegisterReceipt(
     ISalesInvoiceStore store,
     IAuditTrail audit,
+    PostDocument posting,
+    TimeProvider clock,
     IOptions<FinanceOptions> options)
 {
     private readonly FinanceOptions _options = options.Value;
@@ -288,6 +319,29 @@ public sealed class RegisterReceipt(
         }
 
         await store.AddReceiptAsync(recibo, cancellationToken);
+
+        // Num recibo não há imposto a separar: o total é o líquido, e a regra
+        // equilibra na mesma porque tirar a mesma parcela dos dois lados
+        // mantém a igualdade.
+        var lancamento = await posting.PostAsync(
+            new DocumentPosting(
+                PostingEvent.ReceiptRegistered,
+                recibo.Number.Formatted,
+                recibo.Number.Formatted,
+                $"Recebimento de {recibo.Customer.Name}",
+                recibo.ReceivedOn,
+                recibo.Total,
+                0m,
+                recibo.Total,
+                PostingSources.Automatic,
+                clock.GetUtcNow()),
+            cancellationToken);
+
+        if (lancamento.Outcome is DocumentPostingOutcome.PeriodClosed or DocumentPostingOutcome.Failed)
+        {
+            return RegisterReceiptResult.PostingBlocked(lancamento.Error!);
+        }
+
         await store.SaveChangesAsync(cancellationToken);
 
         await audit.RecordAsync(
@@ -325,6 +379,10 @@ public sealed record RegisterReceiptResult(
     public static RegisterReceiptResult SeriesNotFound() =>
         new(RegisterReceiptOutcome.SeriesNotFound, null, null, null);
 
+    /// <summary>Postagem automática ligada e falhada. O recibo não é registado.</summary>
+    public static RegisterReceiptResult PostingBlocked(string error) =>
+        new(RegisterReceiptOutcome.PostingBlocked, null, null, error);
+
     public static RegisterReceiptResult ExceedsOutstanding(string error) =>
         new(RegisterReceiptOutcome.ExceedsOutstanding, null, null, error);
 }
@@ -338,4 +396,7 @@ public enum RegisterReceiptOutcome
 
     /// <summary>Recebe mais do que está em aberto — 409.</summary>
     ExceedsOutstanding,
+
+    /// <summary>Contabilidade automática ligada e a postagem falhou — 409.</summary>
+    PostingBlocked,
 }

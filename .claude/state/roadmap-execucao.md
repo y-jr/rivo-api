@@ -32,7 +32,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 1 | Aterrar em produção — VPS | **Quase fechada** — publicado em 2026-08-23; 59 de 66 verificações passam. K16 (sem TLS) aberto |
 | 2 | `approval` — governança de decisões | **Critério de saída cumprido** em 2026-08-24 |
 | 3 | `fiscal` — o que não está bloqueado | **Reduzida a fatia mínima** em 2026-08-24 (ADR-036) |
-| 4 | `finance` — o núcleo | **AR feito** em 2026-08-24 (ADR-036); AP, Tesouraria, Contabilidade e Planeamento por iniciar |
+| 4 | `finance` — o núcleo | ✅ **Critério de saída cumprido** em 2026-08-25 — os cinco contextos internos, BR-1/3/5/8 impostas, e os documentos a lançar nos livros. Em dívida: o plano de contas (é do contabilista) e o estorno automático |
 | 5 | `procurement` e `commercial` | `commercial` reduzido ao Cliente e feito; `procurement` por iniciar |
 | 6 | `payroll` | Por iniciar |
 | 7 | `projects`, `inventory`, `fleet` | Por iniciar |
@@ -293,13 +293,15 @@ revalidação, a correr em staging.
 > disponível orçamental: **BR-8 deixou de recusar sempre e passou a
 > verificar**. Os cinco contextos internos de `finance` existem.
 >
+> **A postagem automática fechou no mesmo dia** — os cinco documentos lançam nos
+> livros na mesma transacção em que são emitidos (ADR-037, adenda).
+>
 > **O que fica em dívida da Fase 4:**
 >
-> - **A contabilidade está de pé e vazia.** O plano de contas carrega-se — o
->   Rivo fixa a estrutura do SAF-T e recusa-se a inventar o PGC angolano.
-> - **Os documentos não postam.** A factura, o recibo e a execução de pagamento
->   não geram lançamentos; a contabilidade regista-se à mão. É o passo que
->   depende do plano carregado, e por isso não podia vir antes.
+> - **A contabilidade está de pé e vazia.** O plano de contas carrega-se e as
+>   regras de postagem definem-se — o Rivo fixa a estrutura do SAF-T e recusa-se
+>   a inventar o PGC angolano. **Precisa do contabilista, não de código.**
+> - **A anulação não estorna.** Anular um documento não gera lançamento inverso.
 > - **K1 continua aberto**, e com ele os activos fixos e a depreciação.
 > - **PGC, câmbio (BNA) e reconciliação bancária** continuam por fazer, os três
 >   à espera de decisões que não são de engenharia.

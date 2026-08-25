@@ -25,6 +25,14 @@ public class SalesCycleTests
 
     private static readonly Guid ClienteId = Guid.CreateVersion7();
 
+    private static readonly DateTimeOffset Agora = new(2026, 8, 25, 10, 0, 0, TimeSpan.Zero);
+
+    /// <summary>
+    /// Sem regra de postagem configurada — que é o estado por omissão, e o que
+    /// estes testes querem: o ciclo de venda não depende de contabilidade.
+    /// </summary>
+    private static PostDocument SemPostagem() => new(new FakeLedgerStore());
+
     private static CustomerReference Cliente(CustomerStatus estado = CustomerStatus.Active) =>
         new(ClienteId, "Refriango", "5417654321", estado,
             new BillingAddress("Rua Rainha Ginga 12", "Luanda", "AO"));
@@ -38,7 +46,7 @@ public class SalesCycleTests
         CustomerReference? cliente = null,
         string finalConsumerTaxId = "CONSUMIDORFINAL") =>
         new(store, new FakeCustomerDirectory(cliente), impostos, new FakeAuditTrail(),
-            Opcoes.Financeiras(finalConsumerTaxId));
+            SemPostagem(), new RelogioFixo(Agora), Opcoes.Financeiras(finalConsumerTaxId));
 
     /// <summary>Uma factura já emitida, para os casos que partem dela.</summary>
     private static SalesInvoice FacturaDe(decimal bruto = 114_000m)
@@ -225,7 +233,7 @@ public class SalesCycleTests
     // ---- recibos: a regra do saldo ----
 
     private static RegisterReceipt Recebimento(FakeSalesInvoiceStore store) =>
-        new(store, new FakeAuditTrail(), Opcoes.Financeiras());
+        new(store, new FakeAuditTrail(), SemPostagem(), new RelogioFixo(Agora), Opcoes.Financeiras());
 
     [Fact]
     public async Task ReceberMaisDoQueEstaEmAberto_ERecusado()
@@ -301,7 +309,7 @@ public class SalesCycleTests
     // ---- nota de crédito ----
 
     private static IssueCreditNote Credito(FakeSalesInvoiceStore store, FakeTaxDetermination impostos) =>
-        new(store, impostos, new FakeAuditTrail(), Opcoes.Financeiras());
+        new(store, impostos, new FakeAuditTrail(), SemPostagem(), new RelogioFixo(Agora), Opcoes.Financeiras());
 
     /// <summary>
     /// ADR-011 §3 outra vez, e aqui é onde mais custa: o imposto que se devolve

@@ -237,7 +237,11 @@ public sealed record BankMovementView(
 
 // ---------- Contas a Pagar ----------
 
-public sealed class RegisterPurchaseInvoice(IPayablesStore store, IAuditTrail audit)
+public sealed class RegisterPurchaseInvoice(
+    IPayablesStore store,
+    IAuditTrail audit,
+    PostDocument posting,
+    TimeProvider clock)
 {
     public async Task<RegisterPurchaseInvoiceResult> ExecuteAsync(
         string supplierInvoiceNumber,
@@ -278,6 +282,34 @@ public sealed class RegisterPurchaseInvoice(IPayablesStore store, IAuditTrail au
         }
 
         await store.AddPurchaseInvoiceAsync(compra, cancellationToken);
+
+        // O número é do fornecedor, e é ele que vai para o número de arquivo
+        // do SAF-T: é assim que se encontra o documento físico.
+        var lancamento = await posting.PostAsync(
+            new DocumentPosting(
+                PostingEvent.PurchaseInvoiceRegistered,
+                compra.SupplierInvoiceNumber,
+
+                // **O número é do fornecedor, e não é único.** Dois
+                // fornecedores emitem `FT 100` no mesmo dia sem nada de
+                // errado — a chave do SAF-T colidiria. Usa-se a identidade do
+                // registo; o número do fornecedor fica na descrição e nas
+                // linhas, que é onde se procura.
+                DocumentPosting.KeyFor("FC", compra.Id),
+                $"Compra a {compra.SupplierName}",
+                compra.IssuedOn,
+                compra.NetTotal,
+                compra.TaxTotal,
+                compra.GrossTotal,
+                PostingSources.Automatic,
+                clock.GetUtcNow()),
+            cancellationToken);
+
+        if (lancamento.Outcome is DocumentPostingOutcome.PeriodClosed or DocumentPostingOutcome.Failed)
+        {
+            return RegisterPurchaseInvoiceResult.PostingBlocked(lancamento.Error!);
+        }
+
         await store.SaveChangesAsync(cancellationToken);
 
         await audit.RecordAsync(
@@ -304,6 +336,10 @@ public sealed record RegisterPurchaseInvoiceResult(
     public static RegisterPurchaseInvoiceResult Duplicate() =>
         new(RegisterPurchaseInvoiceOutcome.Duplicate, null, null);
 
+    /// <summary>Postagem automática ligada e falhada. A factura não é registada.</summary>
+    public static RegisterPurchaseInvoiceResult PostingBlocked(string error) =>
+        new(RegisterPurchaseInvoiceOutcome.PostingBlocked, null, error);
+
     public static RegisterPurchaseInvoiceResult Rejected(string error) =>
         new(RegisterPurchaseInvoiceOutcome.Rejected, null, error);
 }
@@ -312,6 +348,10 @@ public enum RegisterPurchaseInvoiceOutcome
 {
     Registered,
     Duplicate,
+
+    /// <summary>Contabilidade automática ligada e a postagem falhou — 409.</summary>
+    PostingBlocked,
+
     Rejected,
 }
 

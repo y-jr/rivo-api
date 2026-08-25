@@ -93,21 +93,31 @@ bancária.
 - Mecanismo de reconciliação bancária (OFX/CSV/MT940/API) — depende do
   banco.
 - Fonte da taxa de câmbio (candidato: BNA).
-- Postagem em `finance`: em tempo real ou em lote a partir dos módulos de
-  origem?
+- ~~Postagem em `finance`: em tempo real ou em lote?~~ — **resolvido a
+  2026-08-25: em tempo real, na mesma transacção do documento** (ADR-037,
+  adenda). Em lote exigiria um outbox e deixaria a contabilidade eventualmente
+  consistente com os documentos que a originam; a mesma transacção é o que o
+  ADR-001 comprou ao escolher monólito modular.
 
 ## Estado
 
-**Contas a Receber iniciado em 2026-08-24 — ADR-036.** As cinco camadas
-existem, com schema `finance`, migração aplicada e rotas alcançáveis.
+**Os cinco contextos internos existem, a 2026-08-25.** Contas a Receber abriu a
+2026-08-24 (ADR-036); Contas a Pagar, Tesouraria, Contabilidade & Fecho e
+Planeamento fecharam no dia seguinte (ADR-037), e com eles **BR-1, BR-3, BR-5 e
+BR-8**.
 
-É **só a factura de venda**. Contas a Pagar, Tesouraria, Contabilidade e
-Planeamento continuam por fazer — e com eles o *disponível orçamental* que BR-8
-exige de `approval`, e a execução de pagamento de BR-1, BR-3 e BR-5. Nada disso
-é preciso para emitir.
+Os documentos **lançam nos livros na mesma transacção** em que são emitidos.
 
-`Rivo.Finance.Contracts`, `Domain`, `Application`, `Infrastructure` e `Api`,
-com 34 testes de domínio.
+⚠ **Mas a contabilidade está de pé e vazia.** O plano de contas carrega-se e as
+regras de postagem definem-se — o Rivo fixa a estrutura do SAF-T e recusa-se a
+inventar o PGC angolano. **Sem elas, os documentos emitem-se e não lançam**, e
+isso é o comportamento correcto, não uma avaria.
+
+⚠ **As facturas continuam a não ser documentos fiscais válidos em Angola** —
+falta a certificação da AGT (ADR-036).
+
+As secções abaixo estão por ordem de construção. **A leitura mais recente é a do
+fim.**
 
 ### O que já está imposto
 
@@ -163,16 +173,17 @@ desactivado, taxa em falta, isenção sem catálogo) é verificado **antes** de 
 tocar na série. Verificado contra a API — uma emissão recusada deixa
 `nextSequence` intacto.
 
-### Por fazer
+### Por fazer, à data de 2026-08-24
 
-- **Contas a Pagar**, **Tesouraria**, **Contabilidade & Fecho**, **Planeamento**.
-- **BR-1, BR-3 e BR-5** — execução de pagamento com decisão revalidada e
-  disponibilidade de caixa. Nada disto existe.
-- **Disponível orçamental**, que `approval` precisa para BR-8. Enquanto não
-  existir, uma política com `RequiresBudgetCheck` recusa a submissão.
-- **Nota de crédito (NC)** — hoje corrige-se anulando e emitindo outra. A NC
-  exige referenciar o documento corrigido, e `DocumentType` só declara `FT`.
-- **Recebimentos.** A factura sai; o dinheiro a entrar não está modelado.
+> Tudo o que esta lista pedia ficou feito no dia seguinte. Fica como registo do
+> que a fatia de AR deixou em aberto.
+
+- ~~Contas a Pagar, Tesouraria, Contabilidade & Fecho, Planeamento~~
+- ~~BR-1, BR-3 e BR-5~~ — execução de pagamento com decisão revalidada e
+  disponibilidade de caixa.
+- ~~Disponível orçamental para BR-8~~
+- ~~Nota de crédito (NC)~~
+- ~~Recebimentos~~
 
 ### Consumidor final e menção fiscal (2026-08-25)
 
@@ -370,6 +381,9 @@ permissões, antes de o domínio a impor.**
 | POST | `/finance/planning/budgets/{id}/revision` | `finance.planning.write` |
 | POST | `/finance/planning/budgets/{id}/approval` | `finance.budgets.approve` |
 | GET/POST | `/finance/planning/cost-forecasts` | `finance.planning.read` / `.write` |
+| GET | `/finance/ledger/posting-rules` | `finance.ledger.read` |
+| POST | `/finance/ledger/posting-rules` | `finance.ledger.close` |
+| POST | `/finance/ledger/posting-rules/{id}/deactivation` | `finance.ledger.close` |
 
 Criar um pedido devolve **`202`**, não `201`: existe e ainda não é pagável.
 
@@ -584,6 +598,113 @@ fecho. É a mesma leitura que `CommittedAsync` faz sobre uma factura de compra.
   carrega data, e `approval` usa o relógio. Um pedido retroactivo é verificado
   contra o mês corrente.
 
+
+### Postagem automática (2026-08-25)
+
+Até aqui os documentos e os livros eram dois registos separados: emitia-se uma
+factura e lançava-se à mão. **Agora o documento traz o lançamento consigo.**
+
+#### A tradução é configuração, pela mesma razão que o plano de contas é
+
+O Rivo não sabe que conta é "Clientes" nem que conta é "IVA liquidado" — esses
+códigos vêm do plano que o cliente carregou (ADR-037). Uma tradução embutida em
+código teria de inventar o plano, que é exactamente o que se recusou a fazer.
+
+`PostingRule`: um acontecimento, um diário, e linhas que dizem de que **parcela**
+do documento se servem.
+
+| Parcela | O que é |
+|---|---|
+| `Net` | Base tributável |
+| `Tax` | Imposto |
+| `Gross` | Líquido mais imposto |
+
+```
+SalesInvoiceIssued → diário VND
+  Débito   2111  Gross   Dívida do cliente
+  Crédito  7111  Net     Proveito
+  Crédito  3431  Tax     IVA liquidado
+```
+
+#### A regra equilibra por construção, e verifica-se antes de haver documento
+
+**É a peça de que mais depende o resto.** As parcelas somam-se simbolicamente —
+`Gross = Net + Tax` — e a regra é recusada na configuração se os dois lados não
+derem a mesma expressão. Contando coeficientes: `Gross` vale `(1,1)`, `Net`
+vale `(1,0)`, `Tax` vale `(0,1)`.
+
+O caso que isto apanha é o que mais custaria: **debitar o total e creditar só o
+líquido** equilibra numa factura isenta e falha em todas as outras. Passaria no
+teste fácil e partiria em produção.
+
+Depois de aceite, **nenhum documento pode produzir um lançamento
+desequilibrado** — não porque se verifique a cada postagem, mas porque a regra
+que a gera não o permite.
+
+Uma parcela nula não gera linha (o SAF-T recusa valores não positivos), e o
+equilíbrio aguenta: tirar a mesma parcela dos dois lados mantém a igualdade.
+
+#### Documento e lançamento na mesma transacção
+
+`PostDocument` **não grava**. Acrescenta o lançamento à unidade de trabalho de
+quem chama, e é o `SaveChanges` desse que compromete os dois. Se a postagem
+falhar, o documento não é emitido.
+
+**É concretamente o que o ADR-001 comprou ao escolher monólito modular.** Sem
+isso seria preciso um outbox, e a contabilidade ficaria eventualmente
+consistente com os documentos que a originam.
+
+Verificado: emitir para um período fechado devolve `409` e **nem factura nem
+lançamento ficam gravados**.
+
+#### Sem regra, não posta — e isso é estado legítimo
+
+O ciclo de venda funcionou meses sem contabilidade nenhuma. Ligar Contabilidade
+não pode partir a facturação de quem ainda não carregou um plano de contas.
+**Postar é opt-in, uma regra de cada vez**, e desactivar uma regra pára a
+tradução dos documentos futuros sem tocar nos lançamentos que ela produziu —
+esses são factos, não configuração.
+
+#### Idempotência por construção
+
+O número de arquivo do SAF-T deriva do número do documento: `FT S001/42` vira
+`FT-S001-42`. Como o `TransactionID` é `(data, diário, arquivo)` e tem índice
+único, **postar o mesmo documento duas vezes colide** em vez de duplicar o
+movimento. A garantia é o índice, não uma verificação que alguém pode esquecer.
+
+⚠ Uma série cujo número de arquivo passe de 20 caracteres é **recusada, não
+truncada**: o número de arquivo é como se encontra o documento no arquivo, e um
+truncado deixaria de o encontrar — e podia colidir com outro.
+
+#### Um período que ninguém abriu aceita lançamentos
+
+**Mudança de semântica**, e foi a postagem automática que a obrigou: a linha de
+`accounting_period` existe para registar um **fecho**, não para dar licença de
+escrita. Exigi-la faria a facturação parar no dia 1 de cada mês por arrumação
+contabilística por fazer — um problema de operação criado por burocracia, não
+uma regra de negócio.
+
+Fechar continua a ser acto deliberado, e é o único que muda o que o sistema
+aceita.
+
+#### Definir regras é mais restrito que lançar
+
+`finance.ledger.close`, e não `.write`: definir uma regra decide como **todos**
+os documentos futuros lançam. Fica com quem responde pelos livros, não com quem
+lança um a um.
+
+#### O que fica por fazer
+
+- **A anulação não estorna.** Anular uma factura, uma nota de crédito ou um
+  recibo não gera lançamento inverso — o lançamento original fica. Corrigir
+  faz-se à mão, por regularização.
+- **`SourceID` é `rivo-auto`**, não a pessoa. É informação (não houve mão
+  humana na tradução) e também necessidade: o campo admite 30 caracteres e um
+  `Guid` ocupa 36.
+- **A imputação analítica é do documento inteiro**, não por linha. Repartir por
+  linha é contabilidade analítica a sério, e depende de um plano analítico
+  carregado.
+
 ### Por fazer, depois de Contabilidade e Planeamento
 
 - **Activos fixos e depreciação** — bloqueado por **K1**: a sobreposição com
@@ -591,7 +712,4 @@ fecho. É a mesma leitura que `CommittedAsync` faz sobre uma factura de compra.
 - **Reconciliação bancária propriamente dita** — importar o extracto do banco e
   emparelhar movimentos. Depende do formato, que é decisão do banco.
 - **Câmbio multi-moeda** — candidato BNA, sem fonte fixada.
-- **Postagem automática nos livros.** Hoje a factura de venda, o recibo e a
-  execução de pagamento **não geram lançamentos** — a contabilidade regista-se à
-  mão. Ligá-los é o passo que fecha o ciclo, e traz consigo o mapeamento
-  documento → contas, que depende do plano carregado.
+- ~~Postagem automática nos livros~~ — **feita a 2026-08-25**, ver acima.

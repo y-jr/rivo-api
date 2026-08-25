@@ -54,7 +54,7 @@ public class ExecutePaymentTests
         var trilha = new FakeAuditTrail();
         var relogio = new RelogioFixo(Agora);
 
-        return (new ExecutePayment(store, approval, trilha, relogio), store, trilha);
+        return (new ExecutePayment(store, approval, trilha, new PostDocument(new FakeLedgerStore()), relogio), store, trilha);
     }
 
     // ---- BR-1: sem decisão aprovada não se paga ----

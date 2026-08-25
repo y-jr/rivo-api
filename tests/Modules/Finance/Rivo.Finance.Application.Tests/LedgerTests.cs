@@ -97,11 +97,16 @@ public class LedgerTests
     }
 
     /// <summary>
-    /// Período inexistente e período fechado são coisas diferentes: um é 404
-    /// (não há onde lançar), o outro 409 (há, e está fechado).
+    /// <strong>Um período que ninguém abriu também nunca foi fechado.</strong>
+    ///
+    /// <para>
+    /// A linha existe para registar um fecho, não para dar licença. Exigi-la
+    /// faria a facturação parar no dia 1 de cada mês por arrumação
+    /// contabilística por fazer.
+    /// </para>
     /// </summary>
     [Fact]
-    public async Task PeriodoInexistente_DistingueSeDeFechado()
+    public async Task PeriodoQueNinguemAbriu_AceitaLancamentos()
     {
         var (store, _, _, _) = Livros();
 
@@ -109,7 +114,14 @@ public class LedgerTests
             "DIV", "ARQ-1", new DateOnly(2027, 3, 1), 2027, 3, "Ano seguinte",
             TransactionType.N, "utilizador", Equilibrado(), Contexto, CancellationToken.None);
 
-        Assert.Equal(PostEntryOutcome.PeriodNotOpen, resultado.Outcome);
+        Assert.Equal(PostEntryOutcome.Posted, resultado.Outcome);
+
+        // A linha do período passa a existir, aberta: regista um *fecho*, e
+        // ninguém fechou nada.
+        var periodo = await store.FindPeriodAsync(2027, 3, CancellationToken.None);
+
+        Assert.NotNull(periodo);
+        Assert.True(periodo.AcceptsPostings);
     }
 
     /// <summary>
