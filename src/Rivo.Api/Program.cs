@@ -80,7 +80,7 @@ var app = builder.Build();
 
 // Documentação e interface só em desenvolvimento: expor a superfície da API
 // em produção alarga o que um atacante sabe sem ter de adivinhar.
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment()) 
 {
     app.MapOpenApi();
     app.UseSwaggerUI(options => options.SwaggerEndpoint("/openapi/v1.json", "Rivo API"));

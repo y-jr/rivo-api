@@ -5,7 +5,7 @@
 
 ---
 
-## 0. Nota metodológica
+## 0. Nota metodológica 
 
 **Fontes usadas nesta análise:**
 
