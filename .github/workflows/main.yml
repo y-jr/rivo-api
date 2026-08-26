@@ -57,10 +57,22 @@ jobs:
             set -e
             cd /opt/projects/rivo
 
+            # Guarda as alterações locais do docker-compose.yml
+            git stash push -m "config-vps-$(date +%Y%m%d-%H%M%S)" docker-compose.yml
+      
+            # Puxa as atualizações do repositório
             git pull origin main
-
-            docker compose down
-
+            
+            # Reaplica as alterações locais (se houver conflito, resolve)
+            if git stash pop; then
+              echo "✅ Configurações locais reaplicadas com sucesso"
+            else
+              echo "⚠️ Conflito no docker-compose.yml - resolvendo..."
+              # Aborta para resolver manualmente
+              exit 1
+            fi
+            
+            # Sobe a aplicação
             docker compose up -d --build
 
             docker image prune -f
