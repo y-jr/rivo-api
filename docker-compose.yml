@@ -18,7 +18,8 @@ services:
     container_name: rivo-api
     restart: unless-stopped
     environment:
-      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ASPNETCORE_ENVIRONMENT: Development
+      #${ASPNETCORE_ENVIRONMENT:-Production}
       ASPNETCORE_HTTP_PORTS: 8080
 
       # Ligação ao SQL Server. Vem do .env, que não é versionado — ver
