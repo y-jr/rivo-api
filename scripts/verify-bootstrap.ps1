@@ -90,19 +90,40 @@ where r.name = 'HR' and c.claim_value = 'hr.positions.write'
 
     # Perfis ainda sem modulos de negocio que os justifiquem.
     #
-    # A lista encolheu duas vezes, e cada saida foi um modulo a nascer:
+    # A lista encolheu tres vezes, e cada saida foi um modulo a nascer:
     # `Manager` e `Finance` em 2026-08-23 (ADR-034), quando decidir sobre
     # pedidos passou a existir; `Sales` em 2026-08-24 (ADR-036), com clientes
-    # e emissao de facturas.
+    # e emissao de facturas; `AssetManager` em 2026-08-27, com a recepcao de
+    # mercadoria.
     #
-    # Os dois que restam continuam vazios porque `inventory`/`fleet` e
-    # `projects` nao tem codigo — inventar-lhes permissoes seria adivinhar.
+    # A saida do `AssetManager` nao e adivinhacao: a recepcao e a porta de
+    # entrada do stock, e `modules/procurement.md` diz que `procurement` publica
+    # o facto da recepcao para `inventory` o consumir. Quem gere activos e
+    # existencias e quem conta o que chega.
+    #
+    # So `ProjectManager` continua vazio, porque `projects` nao tem codigo.
     $shouldBeEmpty = Invoke-Sql @"
 select count(*) from [identity].app_role_claim c
 join [identity].app_role r on r.id = c.role_id
-where r.name in ('AssetManager','ProjectManager')
+where r.name = 'ProjectManager'
 "@
-    if ($shouldBeEmpty -ne "0") { throw "perfis sem modulo atribuido tem $shouldBeEmpty permissoes" }
+    if ($shouldBeEmpty -ne "0") { throw "ProjectManager tem $shouldBeEmpty permissoes sem modulo que as justifique" }
+
+    # **`AssetManager` recebe e nao encomenda.** E a segregacao que da valor ao
+    # 3-way match: se quem encomenda registasse a chegada, uma entrega a menos
+    # podia ser dada como completa sem que mais ninguem visse.
+    $recebe = Invoke-Sql @"
+select count(*) from [identity].app_role_claim c
+join [identity].app_role r on r.id = c.role_id
+where r.name = 'AssetManager' and c.claim_value = 'procurement.receipts.write'
+"@
+    $encomenda = Invoke-Sql @"
+select count(*) from [identity].app_role_claim c
+join [identity].app_role r on r.id = c.role_id
+where r.name = 'AssetManager' and c.claim_value = 'procurement.orders.write'
+"@
+    if ($recebe -ne "1") { throw "AssetManager nao recebe mercadoria" }
+    if ($encomenda -ne "0") { throw "AssetManager encomenda e recebe - a segregacao caiu" }
 
     # `Sales` vende e emite, mas **nao fixa a taxa** que a sua propria venda
     # vai liquidar, e **nao anula** o que emitiu (ADR-036).

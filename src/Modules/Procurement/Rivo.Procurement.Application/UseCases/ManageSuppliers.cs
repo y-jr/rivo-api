@@ -241,6 +241,9 @@ public static class ProcurementAuditActions
 
     public const string OrderIssued = "procurement.order.issued";
     public const string OrderCancelled = "procurement.order.cancelled";
+
+    public const string ReceiptRegistered = "procurement.receipt.registered";
+    public const string ReceiptCancelled = "procurement.receipt.cancelled";
 }
 
 public static class ProcurementAuditEntityTypes
@@ -248,4 +251,5 @@ public static class ProcurementAuditEntityTypes
     public const string Supplier = "procurement.supplier";
     public const string Requisition = "procurement.purchase_requisition";
     public const string PurchaseOrder = "procurement.purchase_order";
+    public const string GoodsReceipt = "procurement.goods_receipt";
 }

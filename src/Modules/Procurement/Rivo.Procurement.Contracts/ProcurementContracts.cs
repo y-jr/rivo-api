@@ -105,8 +105,28 @@ public static class ProcurementPermissions
     /// </summary>
     public const string OrdersWrite = "procurement.orders.write";
 
+    public const string ReceiptsRead = "procurement.receipts.read";
+
+    /// <summary>
+    /// Registar e anular recepções de mercadoria.
+    ///
+    /// <para>
+    /// <strong>Separada de `orders.write`, e desta vez a separação é usada.</strong>
+    /// Quem recebe a mercadoria confirma que chegou o que se encomendou; se
+    /// fosse a mesma pessoa que encomenda, uma entrega a menos podia ser
+    /// registada como completa sem que ninguém mais visse. É a metade de
+    /// segregação que dá valor ao 3-way match.
+    /// </para>
+    /// </summary>
+    public const string ReceiptsWrite = "procurement.receipts.write";
+
     public static readonly IReadOnlyList<string> All =
-        [SuppliersRead, SuppliersWrite, RequisitionsRead, RequisitionsWrite, OrdersRead, OrdersWrite];
+        [
+            SuppliersRead, SuppliersWrite,
+            RequisitionsRead, RequisitionsWrite,
+            OrdersRead, OrdersWrite,
+            ReceiptsRead, ReceiptsWrite,
+        ];
 
     /// <summary>
     /// O que um requisitante precisa: ver fornecedores para saber a quem pedir,
@@ -115,5 +135,5 @@ public static class ProcurementPermissions
     /// escolhe para que conta se paga.
     /// </summary>
     public static readonly IReadOnlyList<string> ForRequesters =
-        [SuppliersRead, RequisitionsRead, RequisitionsWrite, OrdersRead, OrdersWrite];
+        [SuppliersRead, RequisitionsRead, RequisitionsWrite, OrdersRead, OrdersWrite, ReceiptsRead];
 }

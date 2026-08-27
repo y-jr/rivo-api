@@ -77,8 +77,8 @@ não módulo novo.
 
 ## Estado
 
-**Fornecedor, Requisição Interna e Ordem de Compra feitos** — 2026-08-27.
-Recepção de Mercadoria e 3-way match por fazer.
+**Os quatro agregados feitos** — 2026-08-27. Falta o 3-way match, que precisa
+do terceiro lado: a factura de compra, que é de `finance`.
 
 O que existe:
 
@@ -87,8 +87,8 @@ O que existe:
 | Fornecedor | Feito. Nome, NIF único, IBAN verificado por ISO 13616, contactos, activação/desactivação. Publicado por `ISupplierDirectory` |
 | Requisição Interna | Feita. Rascunho com linhas, submissão a `approval`, aplicação da decisão, cancelamento |
 | Ordem de Compra | Feita. Só nasce de requisição aprovada, ao preço acordado, e o total encomendado não passa o aprovado |
-| Recepção de Mercadoria | ⚠ Por fazer |
-| 3-way match | ⚠ Por fazer. Precisa da Recepção e da factura de compra, que é de `finance` |
+| Recepção de Mercadoria | Feita. Parcial, acumulada por linha da ordem, e nunca acima do encomendado. Anulável por engano de registo |
+| 3-way match | ⚠ Por fazer. **Dois dos três lados existem** — encomendado e recebido, linha a linha, na vista da ordem. Falta a factura de compra, que é de `finance` |
 
 ### Decisões tomadas ao construir
 
@@ -113,6 +113,21 @@ O que existe:
   abrir a alçada por um número escolhido aqui. Enquanto não houver quem o
   decida, o caminho é uma requisição nova, que volta a passar por decisão.
   **É o ponto de configuração a preencher** quando alguém decidir.
+- **A recepção não gere stock, e é fronteira explícita.**
+  `modules/procurement.md` proíbe-o: níveis e valorização são de `inventory`, e
+  `procurement` publica o facto. Enquanto `inventory` não existir, o facto fica
+  registado e ninguém o consome — melhor do que este módulo começar a contar
+  existências e nunca mais largar o assunto.
+- **Anular uma recepção é corrigir um engano de registo**, não devolver
+  mercadoria ao fornecedor. A devolução é outro facto — sai material que
+  entrou, e do lado do dinheiro dá nota de crédito. Não existe, e não se finge
+  que este cancelamento a cobre.
+- **Receber acima do encomendado é recusado, sem tolerância.** Mesma razão da
+  ordem: um limiar de excesso aceitável é decisão de negócio sem fonte, e
+  aceitar em silêncio faria a empresa dever mais do que encomendou. **É o
+  segundo ponto de configuração a preencher.**
+- **A guia de remessa é inferência.** Não está em `docs`; fica opcional e em
+  texto livre, porque é documento do fornecedor e o Rivo não lhe impõe formato.
 - **A Ordem de Compra não tem número próprio.** Uma ordem que sai para o
   fornecedor precisa de uma referência que ele possa citar de volta, e escolher
   o formato — prefixo, reinício anual, se admite saltos — é decisão de negócio

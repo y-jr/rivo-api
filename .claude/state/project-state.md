@@ -45,7 +45,7 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `fiscal` | ⚠ **Fatia mínima** (ADR-036). Taxa com vigência e determinação. Não é o motor fiscal |
 | `commercial` | ⚠ **Reduzido ao Cliente** (ADR-036). Sem funil comercial |
 | `finance` | **Os cinco contextos existem, e os documentos lançam.** Venda (factura, nota de crédito, recibo, saldo), Contas a Pagar, Tesouraria com extracto append-only, Contabilidade & Fecho com postagem automática, Planeamento. **BR-1, BR-3, BR-5 e BR-8 impostas.** ⚠ Contabilidade vazia até alguém carregar o plano; a anulação não estorna; activos fixos bloqueados por K1 |
-| `procurement` | ⚠ **Três dos quatro agregados.** Fornecedor com IBAN verificado (ISO 13616) e publicado a `finance`; requisição com linhas, submissão a `approval` e aplicação da decisão; **Ordem de Compra**, que só nasce de requisição aprovada e não deixa encomendar acima do que foi aprovado. **Recepção de Mercadoria e 3-way match por fazer** |
+| `procurement` | **Os quatro agregados.** Fornecedor com IBAN verificado (ISO 13616) e publicado a `finance`; requisição com linhas e decisão de `approval`; Ordem de Compra, que só nasce de requisição aprovada e não deixa encomendar acima do aprovado; Recepção parcial, acumulada por linha e nunca acima do encomendado. ⚠ **3-way match por fazer** — dois dos três lados existem, falta a factura de compra, que é de `finance` |
 | `payroll`, `projects`, `inventory`, `fleet` | Sem código. Definidos em [modules/](../modules/) |
 
 Detalhe com datas e ressalvas em [implemented.md](implemented.md).
@@ -77,11 +77,11 @@ superfície inteira é legível por quem estiver a ouvir.
 
 | Área | Estado |
 |---|---|
-| Código | 10 módulos, 50 projectos em `src/`, 233 ficheiros `.cs` |
-| Superfície HTTP | 133 endpoints em 10 grupos de rota, mais `/health` |
+| Código | 10 módulos, 50 projectos em `src/`, 237 ficheiros `.cs` |
+| Superfície HTTP | 137 endpoints em 10 grupos de rota, mais `/health` |
 | ADRs | 38, aceites |
-| Testes | **651** em 15 projectos — 509 de domínio, 108 de Application, 21 de arquitectura, 9 da API do host, 4 de integração. **Todos passam**, os de integração incluídos |
-| Verificação end-to-end | **12 suites** PowerShell, **233 casos**. ✅ **233/233 a 2026-08-27**. A ressalva de 2026-08-25 fechou |
+| Testes | **671** em 15 projectos — 529 de domínio, 108 de Application, 21 de arquitectura, 9 da API do host, 4 de integração. **Todos passam**, os de integração incluídos |
+| Verificação end-to-end | **12 suites** PowerShell, **246 casos**. ✅ **246/246 a 2026-08-27**. A ressalva de 2026-08-25 fechou |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
@@ -157,12 +157,13 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    falta para a contabilidade deixar de estar vazia — e **precisa do
    contabilista, não de código**. Enquanto não houver, todo o resto da
    Contabilidade está de pé e sem uso.
-2. **Continuar `procurement`: Recepção de Mercadoria e 3-way match.** A cadeia
-   `requisição → OC → recepção → factura` está em três dos quatro elos. A
-   recepção compara com as quantidades da ordem; o match precisa dela e da
-   factura de compra, que é de `finance` — é aí que os dois módulos se
-   encontram, e é a fronteira que `docs` aponta como a melhor do protótipo
-   inteiro.
+2. **Fechar o 3-way match.** A cadeia `requisição → OC → recepção → factura`
+   está completa do lado de `procurement`, e a vista da ordem já dá dois dos
+   três lados — encomendado e recebido, linha a linha. Falta o terceiro: a
+   factura de compra, que é de `finance`. **É aí que os dois módulos se
+   encontram**, e é a fronteira que `docs` aponta como a melhor do protótipo
+   inteiro. Traz uma direcção nova, `finance → procurement`, que é decisão
+   arquitectural e merece ADR.
 3. **Ligar a factura de compra ao Fornecedor.** `finance` guarda hoje nome e
    NIF em texto. **Não é retroactivo:** as facturas emitidas guardam o que
    vigorava à data.

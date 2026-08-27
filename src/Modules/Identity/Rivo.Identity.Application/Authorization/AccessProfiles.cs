@@ -106,7 +106,12 @@ public static class AccessProfiles
                 // E vê as ordens de compra, que é o que a factura do fornecedor
                 // vai ter de casar. **Não as emite:** encomendar e pagar são as
                 // duas pontas do mesmo processo.
-                ProcurementPermissions.OrdersRead],
+                ProcurementPermissions.OrdersRead,
+
+                // E as recepções, que são o lado do meio do 3-way match: sem
+                // elas, casar a factura do fornecedor seria comparar o que se
+                // pediu com o que se cobrou, e nunca com o que chegou.
+                ProcurementPermissions.ReceiptsRead],
 
             // Note-se a ausência de `hr.positions.write`: RH atribui Cargos,
             // mas não decide quais existem nem quais conferem autoridade de
@@ -127,7 +132,20 @@ public static class AccessProfiles
                 CommercialPermissions.CustomersWrite,
                 .. FinancePermissions.ForBilling],
 
-            [AssetManager] = [],
+            // `AssetManager` deixa de estar vazio, e a razão não é adivinhação:
+            // **a recepção de mercadoria é a porta de entrada do stock**, e
+            // `modules/procurement.md` diz que `procurement` publica o facto da
+            // recepção para `inventory` o consumir. Quem gere activos e
+            // existências é quem conta o que chega.
+            //
+            // **Recebe e não encomenda**, e é a segregação que dá valor ao
+            // 3-way match: se quem encomenda fosse quem regista a chegada, uma
+            // entrega a menos podia ser dada como completa sem mais ninguém ver.
+            [AssetManager] = [
+                ProcurementPermissions.SuppliersRead,
+                ProcurementPermissions.OrdersRead,
+                ProcurementPermissions.ReceiptsRead,
+                ProcurementPermissions.ReceiptsWrite],
             [ProjectManager] = [],
         };
 }

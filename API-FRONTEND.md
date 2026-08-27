@@ -1,7 +1,7 @@
 # Rivo API - Guia para o Frontend
 
-Documento gerado a partir das rotas implementadas no backend. A API tem 134
-endpoints: 130 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
+Documento gerado a partir das rotas implementadas no backend. A API tem 138
+endpoints: 134 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
 
 ## Como ligar
 
@@ -253,6 +253,32 @@ Cancelar uma ordem devolve o valor ao disponível.
 Fornecedor desactivado devolve `409`. A moeda é herdada da requisição e não se
 envia. A ordem **não tem número próprio** — identifica-se pelo `purchaseOrderId`.
 
+### Recepções de mercadoria
+
+| Método e rota | Permissão | O que faz | Request/query | Sucesso |
+|---|---|---|---|---|
+| `GET /procurement/receipts` | `procurement.receipts.read` | Lista recepções | `purchaseOrderId?` | `200` |
+| `GET /procurement/receipts/{goodsReceiptId}` | `procurement.receipts.read` | Consulta recepção | Path `goodsReceiptId` | `200` recepção |
+| `POST /procurement/orders/{purchaseOrderId}/receipts` | `procurement.receipts.write` | Regista o que chegou | `{ receivedByEmployeeId, receivedOn?, deliveryNote?, lines? }`; linha `{ purchaseOrderLineId, quantityReceived }` | `201 { goodsReceiptId, estado: "Registered" }` |
+| `POST /procurement/receipts/{goodsReceiptId}/cancellation` | `procurement.receipts.write` | Anula recepção registada por engano | `{ reason }` | `204` |
+
+**Cada linha da recepção aponta a uma linha da ordem**, por
+`purchaseOrderLineId` — é por aí que o 3-way match compara. Uma linha que não
+pertença à ordem devolve `409`.
+
+**Recepções parciais são o caso normal:** somam por linha, e a ordem só fica
+`fullyReceived` quando todas as linhas chegam por inteiro. O `GET` da ordem dá
+`quantityReceived` por linha e `fullyReceived` na raiz.
+
+⚠ **Receber acima do encomendado devolve `409`**, e o acumulado conta — não só
+a contagem desta vez. Não há tolerância de excesso.
+
+⚠ **Anular uma recepção é corrigir um engano de registo**, e devolve a
+quantidade a "por receber". **Não é devolver mercadoria ao fornecedor** — esse
+é outro facto, e não existe.
+
+Uma ordem com mercadoria recebida **não se cancela** (`409`): anular primeiro a
+recepção. A recepção não gere stock — isso é de `inventory`, que não existe.
 
 ## HR
 

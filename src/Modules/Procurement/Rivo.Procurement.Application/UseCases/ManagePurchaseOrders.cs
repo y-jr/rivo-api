@@ -15,14 +15,28 @@ public sealed record PurchaseOrderView(
     DateOnly? ExpectedOn,
     string Status,
     string? CancellationReason,
+
+    /// <summary>
+    /// Verdadeiro quando todas as linhas chegaram por inteiro. É a pergunta que
+    /// quem espera pela mercadoria faz, e a que o 3-way match vai fazer a
+    /// seguir.
+    /// </summary>
+    bool FullyReceived,
     IReadOnlyList<PurchaseOrderLineView> Lines);
 
+/// <param name="QuantityReceived">
+/// Quanto já chegou desta linha, somando as recepções em vigor. É o segundo
+/// lado do 3-way match — o primeiro é <c>Quantity</c>, e o terceiro é a
+/// factura do fornecedor, que é de `finance`.
+/// </param>
 public sealed record PurchaseOrderLineView(
     Guid LineId,
     string Description,
     decimal Quantity,
     decimal UnitPrice,
-    decimal LineTotal);
+    decimal LineTotal,
+    decimal QuantityReceived);
+
 
 /// <param name="UnitPrice">
 /// Preço <strong>acordado</strong> com o fornecedor. Não é o estimado na
@@ -33,8 +47,29 @@ public sealed record NewPurchaseOrderLine(string Description, decimal Quantity, 
 
 internal static class PurchaseOrderViews
 {
-    internal static PurchaseOrderView ToView(PurchaseOrder ordem, string supplierName) =>
-        new(
+    internal static PurchaseOrderView ToView(
+        PurchaseOrder ordem,
+        string supplierName,
+        IReadOnlyDictionary<Guid, decimal> recebido)
+    {
+        var linhas = ordem.Lines
+            .Select(l => new PurchaseOrderLineView(
+                l.Id,
+                l.Description,
+                l.Quantity,
+                l.UnitPrice,
+                l.LineTotal,
+                recebido.TryGetValue(l.Id, out var quanto) ? quanto : 0m))
+            .ToList();
+
+        // Uma ordem cancelada nunca conta como recebida por inteiro, mesmo que
+        // não tenha linhas — `All` sobre um conjunto vazio é verdadeiro, e
+        // deixaria uma ordem sem linhas a dizer que chegou tudo.
+        var completa = ordem.Status is PurchaseOrderStatus.Issued
+            && linhas.Count > 0
+            && linhas.All(l => l.QuantityReceived >= l.Quantity);
+
+        return new PurchaseOrderView(
             ordem.Id,
             ordem.RequisitionId,
             ordem.SupplierId,
@@ -45,9 +80,11 @@ internal static class PurchaseOrderViews
             ordem.ExpectedOn,
             ordem.Status.ToString(),
             ordem.CancellationReason,
-            [.. ordem.Lines.Select(l => new PurchaseOrderLineView(
-                l.Id, l.Description, l.Quantity, l.UnitPrice, l.LineTotal))]);
+            completa,
+            linhas);
+    }
 }
+
 
 /// <summary>
 /// Emite uma ordem de compra a partir de uma requisição aprovada.
@@ -240,10 +277,12 @@ public sealed class ListPurchaseOrders(IProcurementStore store)
         foreach (var ordem in ordens)
         {
             var fornecedor = await store.FindSupplierAsync(ordem.SupplierId, cancellationToken);
+            var recebido = await store.ReceivedByOrderLineAsync(ordem.Id, cancellationToken);
 
             // O nome vem do fornecedor a cada leitura, e não de uma cópia
             // guardada na ordem: uma cópia ficava obsoleta em silêncio (BR-18).
-            vistas.Add(PurchaseOrderViews.ToView(ordem, fornecedor?.Name ?? "(fornecedor removido)"));
+            vistas.Add(PurchaseOrderViews.ToView(
+                ordem, fornecedor?.Name ?? "(fornecedor removido)", recebido));
         }
 
         return vistas;
@@ -264,10 +303,13 @@ public sealed class GetPurchaseOrder(IProcurementStore store)
         }
 
         var fornecedor = await store.FindSupplierAsync(ordem.SupplierId, cancellationToken);
+        var recebido = await store.ReceivedByOrderLineAsync(ordem.Id, cancellationToken);
 
-        return PurchaseOrderViews.ToView(ordem, fornecedor?.Name ?? "(fornecedor removido)");
+        return PurchaseOrderViews.ToView(
+            ordem, fornecedor?.Name ?? "(fornecedor removido)", recebido);
     }
 }
+
 
 /// <summary>
 /// Cancela uma ordem de compra. Nunca elimina — BR-14.
@@ -286,6 +328,21 @@ public sealed class CancelPurchaseOrder(IProcurementStore store, IAuditTrail aud
         {
             return CancelPurchaseOrderResult.NotFound();
         }
+
+        // **A mercadoria já cá está.** Cancelar a encomenda não a faz
+        // desaparecer, e deixaria a empresa com material recebido contra uma
+        // ordem que diz não existir — e o 3-way match sem o lado do meio.
+        //
+        // O que existe para isto é anular primeiro a recepção, se ela foi
+        // registada por engano. Se não foi, o que há para resolver é uma
+        // devolução ao fornecedor, que é outro facto e não existe.
+        if (await store.HasReceiptsAsync(ordem.Id, cancellationToken))
+        {
+            return CancelPurchaseOrderResult.Rejected(
+                "Esta ordem já tem mercadoria recebida. Anule primeiro a recepção, " +
+                "se foi registada por engano.");
+        }
+
 
         try
         {

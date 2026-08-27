@@ -49,6 +49,11 @@ public static class ProcurementModuleExtensions
         services.AddScoped<IssuePurchaseOrder>();
         services.AddScoped<CancelPurchaseOrder>();
 
+        services.AddScoped<ListGoodsReceipts>();
+        services.AddScoped<GetGoodsReceipt>();
+        services.AddScoped<RegisterGoodsReceipt>();
+        services.AddScoped<CancelGoodsReceipt>();
+
         // Cada módulo regista as policies das suas permissões (ADR-014).
         services.AddAuthorization(options =>
         {

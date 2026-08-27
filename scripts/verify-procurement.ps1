@@ -78,6 +78,10 @@ $managerHeaders = New-PerfilHeaders "Manager" "requisitante-pr-$stamp"
 $financeHeaders = New-PerfilHeaders "Finance" "tesouraria-pr-$stamp"
 $salesHeaders = New-PerfilHeaders "Sales" "vendas-pr-$stamp"
 
+# `AssetManager` recebe mercadoria e nao encomenda — a outra metade da
+# segregacao que da valor ao 3-way match.
+$assetHeaders = New-PerfilHeaders "AssetManager" "armazem-pr-$stamp"
+
 # IBAN de Angola calculado pela própria norma ISO 13616: `AO` vale 1024, os
 # quatro primeiros caracteres passam para o fim, e o resultado dá resto 1
 # módulo 97. O segundo é o mesmo com o último dígito trocado — o erro de quem
@@ -94,6 +98,11 @@ $requisitante = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentTyp
 
 $aprovador = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
     -Body (@{ fullName = "Aprovador PR $curto" } | ConvertTo-Json)).employeeId
+
+# Quem recebe a mercadoria, e nao e quem a pede: sem duas pessoas, a
+# segregacao do 3-way match nao se pode verificar.
+$recebedor = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+    -Body (@{ fullName = "Fiel de Armazem PR $curto" } | ConvertTo-Json)).employeeId
 
 # Cargo sem autoridade de aprovação: o que a confere passaria ele próprio por
 # governança (BR-20), e não é isso que se verifica aqui.
@@ -824,7 +833,256 @@ Test-Case "40. Emitir e cancelar ficam na trilha, com o total" {
     "emissao com total e cancelamento na trilha, ambos com actor"
 }
 
-Test-Case "41. Dados sobrevivem ao reinicio da stack" {
+# --- Recepção de Mercadoria
+
+Test-Case "41. Quem encomenda nao recebe (segregacao do 3-way match)" {
+    # **E a segregacao que da valor ao match.** Se quem encomenda fosse quem
+    # regista a chegada, uma entrega a menos podia ser dada como completa sem
+    # que mais ninguem visse — e o terceiro lado, a factura, ficava a ser
+    # comparado com dois numeros escritos pela mesma pessoa.
+    $mEncomenda = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='Manager' and c.claim_value='procurement.orders.write'"
+    $mRecebe = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='Manager' and c.claim_value='procurement.receipts.write'"
+    if ($mEncomenda -ne "1") { throw "Manager nao encomenda" }
+    if ($mRecebe -ne "0") { throw "Manager encomenda e recebe - a segregacao caiu" }
+
+    $aRecebe = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='AssetManager' and c.claim_value='procurement.receipts.write'"
+    $aEncomenda = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='AssetManager' and c.claim_value='procurement.orders.write'"
+    if ($aRecebe -ne "1") { throw "AssetManager nao recebe" }
+    if ($aEncomenda -ne "0") { throw "AssetManager encomenda" }
+
+    "Manager encomenda sem receber; AssetManager recebe sem encomendar"
+}
+
+Test-Case "42. Emitir uma ordem nova para receber contra ela" {
+    # A `ordemB` de 725000 ficou por receber, e a alcada tem 100000 livres
+    # depois do cancelamento e da ordem de 900000. Esta suite recebe contra a
+    # `ordemB`, que tem uma linha so.
+    $o = Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)" -Headers $managerHeaders
+    if ($o.status -ne "Issued") { throw "a ordem de referencia nao esta em vigor: $($o.status)" }
+    if ($o.lines.Count -ne 1) { throw "esperada 1 linha, obtidas $($o.lines.Count)" }
+
+    $script:linhaB = $o.lines[0].lineId
+    if ([decimal]$o.lines[0].quantity -ne 1) { throw "quantidade encomendada $($o.lines[0].quantity)" }
+
+    # Antes de haver recepcoes, o recebido e zero e a ordem nao esta completa.
+    if ([decimal]$o.lines[0].quantityReceived -ne 0) { throw "recebido $($o.lines[0].quantityReceived) antes de haver recepcoes" }
+    if ($o.fullyReceived -ne $false) { throw "ordem dada como recebida sem recepcao nenhuma" }
+
+    "ordem em vigor, 1 encomendada, 0 recebidas"
+}
+
+Test-Case "43. Nao se recebe uma linha de outra ordem" {
+    # Deixa-lo passar poria a recepcao a satisfazer uma encomenda diferente da
+    # que se pretende, e o match comparava coisas que nao se correspondem.
+    $body = @{
+        receivedByEmployeeId = $recebedor
+        lines                = @(@{ purchaseOrderLineId = [guid]::NewGuid().ToString(); quantityReceived = 1 })
+    } | ConvertTo-Json -Depth 5
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $assetHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    "409 - a contagem e sempre de uma linha desta ordem"
+}
+
+Test-Case "44. Receber acima do encomendado e recusado" {
+    # **Recusa, e nao tolerancia.** Aceitar em silencio faria a empresa dever
+    # mais do que encomendou, e o 3-way match deixava de ter contra que
+    # comparar. Um limiar de excesso aceitavel e decisao de negocio sem fonte.
+    $body = @{
+        receivedByEmployeeId = $recebedor
+        lines                = @(@{ purchaseOrderLineId = $script:linhaB; quantityReceived = 2 })
+    } | ConvertTo-Json -Depth 5
+
+    try {
+        Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $assetHeaders | Out-Null
+        throw "recebeu o dobro do encomendado"
+    }
+    catch {
+        if (-not $_.Exception.Response) { throw }
+        if ([int]$_.Exception.Response.StatusCode -ne 409) { throw "esperado 409, obtido $([int]$_.Exception.Response.StatusCode)" }
+        $corpo = $_.ErrorDetails.Message | ConvertFrom-Json
+        if ($corpo.erro -notmatch "Ratos e cabos") { throw "a mensagem nao nomeia a linha: $($corpo.erro)" }
+    }
+
+    $recepcoes = Invoke-Sql "select count(*) from procurement.goods_receipt where purchase_order_id='$($script:ordemB)'"
+    if ($recepcoes -ne "0") { throw "ficou uma recepcao gravada apesar do 409" }
+
+    "409 a nomear a linha, e nada gravado"
+}
+
+Test-Case "45. Registar a recepcao, com guia e com quem recebeu" {
+    $body = @{
+        receivedByEmployeeId = $recebedor
+        deliveryNote         = "GR $curto"
+        lines                = @(@{ purchaseOrderLineId = $script:linhaB; quantityReceived = 1 })
+    } | ConvertTo-Json -Depth 5
+
+    $g = Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $assetHeaders
+    $script:recepcaoId = $g.goodsReceiptId
+    if ($g.estado -ne "Registered") { throw "estado '$($g.estado)'" }
+
+    $lida = Invoke-RestMethod "$base/procurement/receipts/$($script:recepcaoId)" -Headers $assetHeaders
+    if ($lida.lines.Count -ne 1) { throw "relidas $($lida.lines.Count) linhas, esperada 1" }
+    if ($lida.deliveryNote -ne "GR $curto") { throw "guia perdida: '$($lida.deliveryNote)'" }
+    if ($lida.receivedByEmployeeId -ne $recebedor) { throw "quem recebeu perdeu-se" }
+    if ($lida.lines[0].purchaseOrderLineId -ne $script:linhaB) { throw "a ligacao a linha da ordem perdeu-se" }
+
+    "recepcao com guia GR $curto, ligada a linha da ordem"
+}
+
+Test-Case "46. A ordem passa a mostrar o que chegou" {
+    # E o segundo lado do 3-way match a aparecer na ordem: encomendado contra
+    # recebido, linha a linha.
+    $o = Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)" -Headers $managerHeaders
+    if ([decimal]$o.lines[0].quantityReceived -ne 1) { throw "recebido $($o.lines[0].quantityReceived), esperado 1" }
+    if ($o.fullyReceived -ne $true) { throw "a ordem devia estar completa" }
+
+    "1 de 1 recebida; a ordem esta completa"
+}
+
+Test-Case "47. Com a ordem completa, mais um e recusado" {
+    $body = @{
+        receivedByEmployeeId = $recebedor
+        lines                = @(@{ purchaseOrderLineId = $script:linhaB; quantityReceived = 1 })
+    } | ConvertTo-Json -Depth 5
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $assetHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    "409 - o acumulado conta, nao so a contagem desta vez"
+}
+
+Test-Case "48. Uma ordem com mercadoria recebida nao se cancela" {
+    # O material esta ca. Cancelar a encomenda nao o faz desaparecer, e
+    # deixaria a empresa com material recebido contra uma ordem que diz nao
+    # existir — e o match sem o lado do meio.
+    $body = @{ reason = "Desisti." } | ConvertTo-Json
+    try {
+        Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders | Out-Null
+        throw "cancelou uma ordem com mercadoria recebida"
+    }
+    catch {
+        if (-not $_.Exception.Response) { throw }
+        if ([int]$_.Exception.Response.StatusCode -ne 409) { throw "esperado 409, obtido $([int]$_.Exception.Response.StatusCode)" }
+        $corpo = $_.ErrorDetails.Message | ConvertFrom-Json
+        if ($corpo.erro -notmatch "Anule primeiro") { throw "o erro nao diz o que fazer: $($corpo.erro)" }
+    }
+
+    $estado = Invoke-Sql "select status from procurement.purchase_order where id='$($script:ordemB)'"
+    if ($estado -ne "Issued") { throw "a ordem mudou de estado apesar do 409: '$estado'" }
+
+    "409 a dizer o que fazer, e a ordem continua em vigor"
+}
+
+Test-Case "49. Anular a recepcao devolve a quantidade por receber" {
+    # Anular e corrigir um engano de registo — a guia lancada na ordem errada,
+    # a contagem mal feita. **Nao e devolver mercadoria ao fornecedor**, que e
+    # outro facto e nao existe.
+    $body = @{ reason = "Contagem errada: chegou a caixa vazia." } | ConvertTo-Json
+    Invoke-RestMethod "$base/procurement/receipts/$($script:recepcaoId)/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $assetHeaders | Out-Null
+
+    $estado = Invoke-Sql "select status from procurement.goods_receipt where id='$($script:recepcaoId)'"
+    if ($estado -ne "Cancelled") { throw "estado '$estado'" }
+
+    # BR-14: as linhas ficam. O erro foi cometido, e o registo de o ter sido e
+    # a parte que interessa a quem audita.
+    $linhas = Invoke-Sql "select count(*) from procurement.goods_receipt_line where goods_receipt_id='$($script:recepcaoId)'"
+    if ($linhas -ne "1") { throw "as linhas desapareceram com a anulacao" }
+
+    $o = Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)" -Headers $managerHeaders
+    if ([decimal]$o.lines[0].quantityReceived -ne 0) { throw "anulada e ainda conta: $($o.lines[0].quantityReceived)" }
+    if ($o.fullyReceived -ne $false) { throw "a ordem continua dada como completa" }
+
+    "anulada nao conta; a linha volta a 1 por receber, e o registo fica"
+}
+
+Test-Case "50. Recepcoes parciais somam, e a ordem so fecha no fim" {
+    # Uma entrega parcial e o caso normal, e distingue-se de duas contagens da
+    # mesma coisa: sao recepcoes diferentes, com guias diferentes.
+    $body = @{
+        supplierId = $script:fornecedorId
+        lines      = @(@{ description = "Cadeiras"; quantity = 10; unitPrice = 9000 })
+    } | ConvertTo-Json -Depth 5
+    $o = Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)/orders" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+    $script:ordemC = $o.purchaseOrderId
+    $linhaC = (Invoke-RestMethod "$base/procurement/orders/$($script:ordemC)" -Headers $managerHeaders).lines[0].lineId
+
+    foreach ($quantidade in @(4, 6)) {
+        $body = @{
+            receivedByEmployeeId = $recebedor
+            deliveryNote         = "GR $curto-$quantidade"
+            lines                = @(@{ purchaseOrderLineId = $linhaC; quantityReceived = $quantidade })
+        } | ConvertTo-Json -Depth 5
+        Invoke-RestMethod "$base/procurement/orders/$($script:ordemC)/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $assetHeaders | Out-Null
+
+        $parcial = Invoke-RestMethod "$base/procurement/orders/$($script:ordemC)" -Headers $managerHeaders
+        if ($quantidade -eq 4 -and $parcial.fullyReceived -ne $false) { throw "4 de 10 e a ordem ja diz completa" }
+    }
+
+    $final = Invoke-RestMethod "$base/procurement/orders/$($script:ordemC)" -Headers $managerHeaders
+    if ([decimal]$final.lines[0].quantityReceived -ne 10) { throw "acumulado $($final.lines[0].quantityReceived), esperado 10" }
+    if ($final.fullyReceived -ne $true) { throw "10 de 10 e a ordem nao fecha" }
+
+    $recepcoes = Invoke-Sql "select count(*) from procurement.goods_receipt where purchase_order_id='$($script:ordemC)' and status='Registered'"
+    if ($recepcoes -ne "2") { throw "$recepcoes recepcoes, esperadas 2" }
+
+    "4 + 6 = 10 em duas guias; a ordem so fecha na segunda"
+}
+
+Test-Case "51. Anular sem razao e recusado" {
+    $body = @{ reason = "" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/receipts/$($script:recepcaoId)/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $assetHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/receipts/$($script:recepcaoId)" -Method Delete -Headers $assetHeaders }
+    if ($code -ne 405 -and $code -ne 404) { throw "DELETE devia ser recusado, obtido $code" }
+
+    "409 sem razao, e DELETE recusado (BR-14)"
+}
+
+Test-Case "52. Autorizacao das recepcoes, nas duas direccoes" {
+    $body = @{
+        receivedByEmployeeId = $recebedor
+        lines                = @(@{ purchaseOrderLineId = $script:linhaB; quantityReceived = 1 })
+    } | ConvertTo-Json -Depth 5
+
+    # Manager encomenda e nao recebe.
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($code -ne 403) { throw "Manager registou uma recepcao: $code" }
+
+    # AssetManager recebe e nao encomenda.
+    $body = @{
+        supplierId = $script:fornecedorId
+        lines      = @(@{ description = "Ordem do armazem"; quantity = 1; unitPrice = 1000 })
+    } | ConvertTo-Json -Depth 5
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)/orders" -Method Post -Body $body -ContentType "application/json" -Headers $assetHeaders }
+    if ($code -ne 403) { throw "AssetManager emitiu uma ordem: $code" }
+
+    # Finance ve as recepcoes: e o lado do meio do 3-way match.
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/receipts" -Headers $financeHeaders }
+    if ($code -ne 200) { throw "Finance nao ve recepcoes: $code" }
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/receipts" -Headers $salesHeaders }
+    if ($code -ne 403) { throw "Sales a ler recepcoes: $code" }
+
+    "Manager nao recebe; AssetManager nao encomenda; Finance ve; Sales nao"
+}
+
+Test-Case "53. Recepcoes ficam na trilha, com a ordem e quem recebeu" {
+    $registo = Invoke-Sql "select count(*) from audit.audit_event where action='procurement.receipt.registered' and entity_id='$($script:recepcaoId)'"
+    if ($registo -ne "1") { throw "registo nao esta na trilha" }
+
+    $comOrdem = Invoke-Sql "select count(*) from audit.audit_event where action='procurement.receipt.registered' and entity_id='$($script:recepcaoId)' and new_value like '%$($script:ordemB)%'"
+    if ($comOrdem -ne "1") { throw "a trilha nao guarda a ordem" }
+
+    $anulacao = Invoke-Sql "select count(*) from audit.audit_event where action='procurement.receipt.cancelled' and entity_id='$($script:recepcaoId)'"
+    if ($anulacao -ne "1") { throw "anulacao nao esta na trilha" }
+
+    $semActor = Invoke-Sql "select count(*) from audit.audit_event where entity_type='procurement.goods_receipt' and entity_id='$($script:recepcaoId)' and actor_id is null"
+    if ($semActor -ne "0") { throw "ha registos sem actor" }
+
+    "registo com a ordem e anulacao na trilha, ambos com actor"
+}
+Test-Case "54. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
@@ -845,7 +1103,7 @@ Test-Case "41. Dados sobrevivem ao reinicio da stack" {
     "requisicao, ordem, linhas de ambas e IBAN intactos apos restart"
 }
 
-Test-Case "42. A suite nao deixa politica de procurement activa atras de si" {
+Test-Case "55. A suite nao deixa politica de procurement activa atras de si" {
     # **Independencia entre suites.** Sem isto, cada corrida deixaria mais uma
     # politica generica, e o caso 15 — que verifica a recusa quando nao ha
     # nenhuma — passaria a falhar a partir da segunda vez.

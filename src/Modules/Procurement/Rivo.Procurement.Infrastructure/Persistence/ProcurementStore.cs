@@ -151,6 +151,75 @@ public sealed class ProcurementStore(ProcurementDbContext context) : IProcuremen
     public async Task AddOrderAsync(PurchaseOrder order, CancellationToken cancellationToken) =>
         await context.Orders.AddAsync(order, cancellationToken);
 
+    public async Task<GoodsReceipt?> FindReceiptAsync(
+        Guid goodsReceiptId,
+        CancellationToken cancellationToken) =>
+        await context.Receipts
+            .AsNoTracking()
+            .Include(g => g.Lines)
+            .FirstOrDefaultAsync(g => g.Id == goodsReceiptId, cancellationToken);
+
+    public async Task<GoodsReceipt?> FindReceiptForUpdateAsync(
+        Guid goodsReceiptId,
+        CancellationToken cancellationToken) =>
+        await context.Receipts
+            .Include(g => g.Lines)
+            .FirstOrDefaultAsync(g => g.Id == goodsReceiptId, cancellationToken);
+
+    public async Task<IReadOnlyList<GoodsReceipt>> ListReceiptsAsync(
+        Guid? purchaseOrderId,
+        CancellationToken cancellationToken)
+    {
+        var query = context.Receipts
+            .AsNoTracking()
+            .Include(g => g.Lines)
+            .AsQueryable();
+
+        if (purchaseOrderId is { } ordem)
+        {
+            query = query.Where(g => g.PurchaseOrderId == ordem);
+        }
+
+        return await query
+            .OrderByDescending(g => g.ReceivedOn)
+            .ThenByDescending(g => g.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, decimal>> ReceivedByOrderLineAsync(
+        Guid purchaseOrderId,
+        CancellationToken cancellationToken)
+    {
+        // Agrupado na base de dados. Trazer as recepções todas para somar aqui
+        // cresceria com o histórico da ordem, e o que interessa é um número por
+        // linha.
+        var somas = await context.Receipts
+            .AsNoTracking()
+            .Where(g => g.PurchaseOrderId == purchaseOrderId
+                && g.Status == GoodsReceiptStatus.Registered)
+            .SelectMany(g => g.Lines)
+            .GroupBy(l => l.PurchaseOrderLineId)
+            .Select(grupo => new
+            {
+                LinhaDaOrdem = grupo.Key,
+                Recebido = grupo.Sum(l => l.QuantityReceived),
+            })
+            .ToListAsync(cancellationToken);
+
+        return somas.ToDictionary(s => s.LinhaDaOrdem, s => s.Recebido);
+    }
+
+    public async Task<bool> HasReceiptsAsync(Guid purchaseOrderId, CancellationToken cancellationToken) =>
+        await context.Receipts
+            .AsNoTracking()
+            .AnyAsync(
+                g => g.PurchaseOrderId == purchaseOrderId
+                    && g.Status == GoodsReceiptStatus.Registered,
+                cancellationToken);
+
+    public async Task AddReceiptAsync(GoodsReceipt receipt, CancellationToken cancellationToken) =>
+        await context.Receipts.AddAsync(receipt, cancellationToken);
+
     public Task SaveChangesAsync(CancellationToken cancellationToken) =>
         context.SaveChangesAsync(cancellationToken);
 }

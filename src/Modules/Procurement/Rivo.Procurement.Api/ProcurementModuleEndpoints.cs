@@ -66,6 +66,19 @@ public static class ProcurementModuleEndpoints
 
         group.MapPost("/orders/{purchaseOrderId:guid}/cancellation", CancelOrderAsync)
             .RequireAuthorization(ProcurementPermissions.OrdersWrite);
+        group.MapGet("/receipts", ListReceiptsAsync)
+            .RequireAuthorization(ProcurementPermissions.ReceiptsRead);
+
+        group.MapGet("/receipts/{goodsReceiptId:guid}", GetReceiptAsync)
+            .RequireAuthorization(ProcurementPermissions.ReceiptsRead);
+
+        // Recebe-se sempre contra uma ordem, e a rota di-lo — nao se recebe o
+        // que nao se encomendou.
+        group.MapPost("/orders/{purchaseOrderId:guid}/receipts", RegisterReceiptAsync)
+            .RequireAuthorization(ProcurementPermissions.ReceiptsWrite);
+
+        group.MapPost("/receipts/{goodsReceiptId:guid}/cancellation", CancelReceiptAsync)
+            .RequireAuthorization(ProcurementPermissions.ReceiptsWrite);
 
         return endpoints;
     }
@@ -389,6 +402,86 @@ public static class ProcurementModuleEndpoints
             _ => Results.Problem("Resultado inesperado ao cancelar a ordem de compra."),
         };
     }
+
+    private static async Task<IResult> ListReceiptsAsync(
+        ListGoodsReceipts listReceipts,
+        Guid? purchaseOrderId,
+        CancellationToken cancellationToken) =>
+        Results.Ok(await listReceipts.ExecuteAsync(purchaseOrderId, cancellationToken));
+
+    private static async Task<IResult> GetReceiptAsync(
+        Guid goodsReceiptId,
+        GetGoodsReceipt getReceipt,
+        CancellationToken cancellationToken)
+    {
+        var recepcao = await getReceipt.ExecuteAsync(goodsReceiptId, cancellationToken);
+
+        return recepcao is null
+            ? Results.NotFound(new { erro = "Recepção não encontrada." })
+            : Results.Ok(recepcao);
+    }
+
+    private static async Task<IResult> RegisterReceiptAsync(
+        Guid purchaseOrderId,
+        RegisterGoodsReceiptRequest request,
+        RegisterGoodsReceipt registerReceipt,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var linhas = request.Lines?
+            .Select(l => new NewGoodsReceiptLine(l.PurchaseOrderLineId, l.QuantityReceived))
+            .ToList() ?? [];
+
+        var resultado = await registerReceipt.ExecuteAsync(
+            purchaseOrderId,
+            request.ReceivedByEmployeeId,
+            request.ReceivedOn,
+            request.DeliveryNote,
+            linhas,
+            BuildAuditContext(http),
+            cancellationToken);
+
+        return resultado.Outcome switch
+        {
+            RegisterGoodsReceiptOutcome.Registered =>
+                Results.Created($"/procurement/receipts/{resultado.GoodsReceiptId}",
+                    new { goodsReceiptId = resultado.GoodsReceiptId, estado = "Registered" }),
+
+            RegisterGoodsReceiptOutcome.OrderNotFound or RegisterGoodsReceiptOutcome.ReceiverNotFound =>
+                Results.NotFound(new { erro = resultado.Error }),
+
+            // 409 nos três: é o estado — da ordem, da linha, ou do acumulado
+            // recebido — que impede, e não o corpo do pedido.
+            RegisterGoodsReceiptOutcome.OrderNotOpen
+                or RegisterGoodsReceiptOutcome.LineNotInOrder
+                or RegisterGoodsReceiptOutcome.ExceedsOrdered =>
+                Results.Conflict(new { erro = resultado.Error }),
+
+            RegisterGoodsReceiptOutcome.Rejected =>
+                Results.BadRequest(new { erro = resultado.Error }),
+
+            _ => Results.Problem("Resultado inesperado ao registar a recepção."),
+        };
+    }
+
+    private static async Task<IResult> CancelReceiptAsync(
+        Guid goodsReceiptId,
+        CancelGoodsReceiptRequest request,
+        CancelGoodsReceipt cancelReceipt,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var resultado = await cancelReceipt.ExecuteAsync(
+            goodsReceiptId, request.Reason, BuildAuditContext(http), cancellationToken);
+
+        return resultado.Outcome switch
+        {
+            CancelGoodsReceiptOutcome.Cancelled => Results.NoContent(),
+            CancelGoodsReceiptOutcome.NotFound => Results.NotFound(new { erro = resultado.Error }),
+            CancelGoodsReceiptOutcome.Rejected => Results.Conflict(new { erro = resultado.Error }),
+            _ => Results.Problem("Resultado inesperado ao anular a recepção."),
+        };
+    }
     /// <summary>
     /// Constrói o contexto de auditoria a partir do pedido. É a camada API que
     /// conhece o transporte; as de baixo recebem-no já feito.
@@ -469,3 +562,27 @@ public sealed record PurchaseOrderLineRequest(
     decimal UnitPrice);
 
 public sealed record CancelPurchaseOrderRequest(string Reason);
+
+/// <param name="ReceivedByEmployeeId">
+/// Quem recebeu, como Colaborador. Obrigatório: uma divergência entre o
+/// encomendado e o recebido é uma conversa com alguém.
+/// </param>
+/// <param name="DeliveryNote">
+/// Guia de remessa do fornecedor. Opcional e em texto livre — é documento
+/// dele, e o Rivo não lhe impõe formato.
+/// </param>
+public sealed record RegisterGoodsReceiptRequest(
+    Guid ReceivedByEmployeeId,
+    DateOnly? ReceivedOn,
+    string? DeliveryNote,
+    IReadOnlyList<GoodsReceiptLineRequest>? Lines);
+
+/// <param name="PurchaseOrderLineId">
+/// A linha da ordem que esta contagem satisfaz. É por ela que o 3-way match
+/// compara.
+/// </param>
+public sealed record GoodsReceiptLineRequest(
+    Guid PurchaseOrderLineId,
+    decimal QuantityReceived);
+
+public sealed record CancelGoodsReceiptRequest(string Reason);

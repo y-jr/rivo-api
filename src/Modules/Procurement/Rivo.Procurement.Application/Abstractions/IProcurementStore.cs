@@ -66,5 +66,45 @@ public interface IProcurementStore
 
     Task AddOrderAsync(PurchaseOrder order, CancellationToken cancellationToken);
 
+    Task<GoodsReceipt?> FindReceiptAsync(Guid goodsReceiptId, CancellationToken cancellationToken);
+
+    Task<GoodsReceipt?> FindReceiptForUpdateAsync(Guid goodsReceiptId, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<GoodsReceipt>> ListReceiptsAsync(
+        Guid? purchaseOrderId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Quanto já foi recebido de cada linha de uma ordem, contando só as
+    /// recepções em vigor.
+    ///
+    /// <para>
+    /// <strong>Por linha, e não por total.</strong> Receber duas unidades de uma
+    /// coisa e nenhuma de outra somaria certo no total e estaria errado em tudo
+    /// o resto — e é exactamente a divergência que o 3-way match existe para
+    /// apanhar.
+    /// </para>
+    ///
+    /// <para>
+    /// Linhas sem recepção nenhuma não aparecem no resultado. Quem lê trata a
+    /// ausência como zero.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, decimal>> ReceivedByOrderLineAsync(
+        Guid purchaseOrderId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Se uma ordem já tem alguma recepção em vigor.
+    ///
+    /// <para>
+    /// Existe para impedir cancelar uma ordem cuja mercadoria já chegou: o
+    /// material está cá, e cancelar a encomenda não o faz desaparecer.
+    /// </para>
+    /// </summary>
+    Task<bool> HasReceiptsAsync(Guid purchaseOrderId, CancellationToken cancellationToken);
+
+    Task AddReceiptAsync(GoodsReceipt receipt, CancellationToken cancellationToken);
+
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

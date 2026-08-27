@@ -201,7 +201,7 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
 
 ## Verificação
 
-**Doze suites** PowerShell caixa-preta contra a stack em Docker, **233 casos**,
+**Doze suites** PowerShell caixa-preta contra a stack em Docker, **246 casos**,
 todas re-executáveis.
 
 > ⚠ **Estado da verificação a 2026-08-25, ao fechar a postagem automática.**
@@ -219,7 +219,7 @@ todas re-executáveis.
 > e `verify-all` deu **191 de 191**, já com `procurement` dentro da imagem e com
 > o ADR-038 aplicado. A ressalva acima é histórico.
 >
-> **No mesmo dia passou a 233 de 233**, com `verify-procurement` a fechar a
+> **No mesmo dia passou a 246 de 246**, com `verify-procurement` a fechar a
 > lista. Corrida duas vezes seguidas antes de cada entrada, para provar que se
 > limpa a si própria — cria a política de que precisa e desactiva-a no fim.
 >
@@ -559,10 +559,9 @@ propriamente dita.
 
 ## procurement
 
-_2026-08-27 — **Fornecedor, Requisição Interna e Ordem de Compra**. A cadeia
-pára na Recepção._
+_2026-08-27 — **os quatro agregados**. A cadeia pára no 3-way match._
 
-- Cinco camadas, schema `procurement`, **80 testes de domínio**
+- Cinco camadas, schema `procurement`, **100 testes de domínio**
 - `Supplier`: nome, NIF único, IBAN, contactos, activação/desactivação.
   Desactivar, nunca eliminar (BR-14) — **não há `DELETE`**
 - **IBAN verificado pela norma ISO 13616** (mod-97). É a única validação de
@@ -601,8 +600,35 @@ pára na Recepção._
 - FK reais para a requisição e para o fornecedor — mesmo schema, mesmo módulo —
   e **sem cascata**: apagar uma requisição levaria atrás encomendas que saíram
 
-⚠ **Recepção de Mercadoria e 3-way match não existem.** É onde a cadeia
-`requisição → OC → recepção → factura` fica pelo terceiro elo.
+### Recepção de Mercadoria — 2026-08-27
+
+- **Só contra uma ordem em vigor**, e sempre ligada à **linha** da ordem que
+  satisfaz. Receber duas unidades de uma coisa e nenhuma de outra somaria certo
+  no total e estaria errado em tudo o resto — e é exactamente a divergência que
+  o 3-way match existe para apanhar
+- **Parcial é o caso normal.** Recepções sucessivas acumulam por linha, e a
+  ordem só fica completa quando todas as linhas chegam por inteiro
+- **Nunca acima do encomendado.** O acumulado conta, não só a contagem desta
+  vez. Invariante sobre o conjunto, na camada Application
+- **Quem recebeu é obrigatório** — uma divergência é uma conversa com alguém, e
+  sem nome não há com quem a ter
+- **Anular é corrigir um engano de registo**, não devolver ao fornecedor. A
+  quantidade volta a contar como por receber, e o registo do erro fica (BR-14)
+- **Uma ordem com mercadoria recebida não se cancela** — o material está cá, e
+  cancelar a encomenda não o faz desaparecer
+- A vista da ordem passou a dar `quantityReceived` por linha e `fullyReceived`
+  na raiz: **dois dos três lados do match**
+
+⚠ **Não gere stock, e é fronteira explícita.** `modules/procurement.md`
+proíbe-o: níveis e valorização são de `inventory`. O facto fica registado e,
+enquanto `inventory` não existir, ninguém o consome.
+
+⚠ **A devolução ao fornecedor não existe.** É outro facto — sai material que
+entrou, e do lado do dinheiro dá nota de crédito.
+
+⚠ **O 3-way match não existe.** Faltam-lhe as duas pontas juntas: a factura de
+compra é de `finance`, e ligá-la traz a direcção `finance → procurement`, que é
+decisão arquitectural.
 
 ⚠ **A ordem não tem número próprio.** Escolher o formato — prefixo, reinício
 anual, se admite saltos — é decisão de negócio sem fonte neste repositório.
@@ -615,8 +641,8 @@ aqui. É o ponto de configuração a preencher.
 guardar nome e NIF em texto — e as já emitidas devem continuar assim, porque
 guardam o que vigorava à data.
 
-- **`verify-procurement`, 42 casos** — 2026-08-27. Décima segunda suite, e
-  `verify-all` em **233/233**
+- **`verify-procurement`, 55 casos** — 2026-08-27. Décima segunda suite, e
+  `verify-all` em **246/246**
 
 O caso que justifica a suite é o **12**: a requisição é relida da base com as
 duas linhas intactas. O mapeamento de uma colecção por campo de apoio é onde o
@@ -625,14 +651,18 @@ nenhum teste de domínio o vê.
 
 Os restantes cobrem o IBAN (normalização, mod-97, e que uma recusa não apaga o
 que lá estava), a unicidade do NIF com o índice como segunda linha, BR-14 nos
-três agregados, o círculo inteiro com `approval` — submeter, decidir do outro
+quatro agregados, o círculo inteiro com `approval` — submeter, decidir do outro
 lado, aplicar deste, e a idempotência da segunda chamada —, a ausência de FK a
-sair do schema, e a segregação de que quem paga não qualifica o fornecedor nem
-emite ordens.
+sair do schema, e a segregação em três direcções: quem paga não qualifica o
+fornecedor nem emite ordens, e quem encomenda não regista a chegada.
 
 Os doze da Ordem de Compra fecham a alçada pelos dois lados: `1.000.000` e
 `725.000` contra um aprovado de `1.725.000` entram, o kwanza seguinte não, e
 cancelar a primeira devolve os `1.000.000` ao disponível.
+
+Os treze da Recepção fazem o mesmo à quantidade: parciais de 4 e 6 somam 10 e
+só aí a ordem fecha, receber acima do encomendado recusa contando o acumulado,
+e anular devolve a quantidade a "por receber" deixando o registo do erro.
 
 ⚠ **A cobertura de Application continua a ser nenhuma**, como nos outros sete
 módulos.

@@ -14,6 +14,8 @@ public sealed class ProcurementDbContext(DbContextOptions<ProcurementDbContext> 
 
     public DbSet<PurchaseOrder> Orders => Set<PurchaseOrder>();
 
+    public DbSet<GoodsReceipt> Receipts => Set<GoodsReceipt>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -143,6 +145,56 @@ public sealed class ProcurementDbContext(DbContextOptions<ProcurementDbContext> 
             line.Property(l => l.UnitPrice).HasPrecision(18, 2);
 
             line.Ignore(l => l.LineTotal);
+        });
+
+        builder.Entity<GoodsReceipt>(receipt =>
+        {
+            receipt.ToTable("goods_receipt");
+            receipt.HasKey(g => g.Id);
+
+            receipt.Property(g => g.Version).IsConcurrencyToken();
+
+            receipt.Property(g => g.DeliveryNote).HasMaxLength(60);
+            receipt.Property(g => g.Status).HasConversion<string>().HasMaxLength(20);
+            receipt.Property(g => g.CancellationReason).HasMaxLength(500);
+
+            // Sem cascata: anular a ordem não apaga o registo de que a
+            // mercadoria chegou (BR-14).
+            receipt.HasOne<PurchaseOrder>()
+                .WithMany()
+                .HasForeignKey(g => g.PurchaseOrderId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Sem FK para `hr.employee`: identificador de outro contexto
+            // (ADR-010).
+            receipt.HasIndex(g => g.PurchaseOrderId);
+            receipt.HasIndex(g => g.Status);
+            receipt.HasIndex(g => g.ReceivedByEmployeeId);
+
+            receipt.HasMany(g => g.Lines)
+                .WithOne()
+                .HasForeignKey(l => l.GoodsReceiptId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            receipt.Navigation(g => g.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        builder.Entity<GoodsReceiptLine>(line =>
+        {
+            line.ToTable("goods_receipt_line");
+            line.HasKey(l => l.Id);
+
+            line.Property(l => l.QuantityReceived).HasPrecision(18, 4);
+
+            // FK para a linha da ordem: é por ela que o 3-way match compara o
+            // que chegou com o que se pediu. **Restrict**, pela mesma razão de
+            // sempre — a contagem é facto, e não se apaga com a encomenda.
+            line.HasOne<PurchaseOrderLine>()
+                .WithMany()
+                .HasForeignKey(l => l.PurchaseOrderLineId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            line.HasIndex(l => l.PurchaseOrderLineId);
         });
 
         builder.Entity<PurchaseOrder>().Ignore(o => o.Total);

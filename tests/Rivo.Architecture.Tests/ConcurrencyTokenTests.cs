@@ -51,6 +51,10 @@ public class ConcurrencyTokenTests
             "Criado com a política e nunca editado — alterar uma alçada é criar outra política, " +
             "porque os pedidos em curso guardam a que lhes foi aplicada (BR-6).",
 
+        ["GoodsReceiptLine"] =
+            "Contagem de uma linha, dentro do agregado GoodsReceipt. Nasce com a recepcao e nunca " +
+            "se altera — anular a recepcao inteira e o que existe, e o contador dela cobre isso.",
+
         ["PurchaseOrderLine"] =
             "Parte do agregado PurchaseOrder, que nasce completo e não se altera depois de sair " +
             "para o fornecedor — o que existe para o corrigir é cancelar e emitir outra. O contador " +
