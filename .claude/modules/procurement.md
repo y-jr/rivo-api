@@ -77,7 +77,7 @@ não módulo novo.
 
 ## Estado
 
-**Fornecedor e Requisição Interna feitos** — 2026-08-27. Ordem de Compra,
+**Fornecedor, Requisição Interna e Ordem de Compra feitos** — 2026-08-27.
 Recepção de Mercadoria e 3-way match por fazer.
 
 O que existe:
@@ -86,9 +86,9 @@ O que existe:
 |---|---|
 | Fornecedor | Feito. Nome, NIF único, IBAN verificado por ISO 13616, contactos, activação/desactivação. Publicado por `ISupplierDirectory` |
 | Requisição Interna | Feita. Rascunho com linhas, submissão a `approval`, aplicação da decisão, cancelamento |
-| Ordem de Compra | ⚠ Por fazer. É o passo seguinte, e só nasce de requisição aprovada |
+| Ordem de Compra | Feita. Só nasce de requisição aprovada, ao preço acordado, e o total encomendado não passa o aprovado |
 | Recepção de Mercadoria | ⚠ Por fazer |
-| 3-way match | ⚠ Por fazer. Precisa das duas acima e da factura de compra, que é de `finance` |
+| 3-way match | ⚠ Por fazer. Precisa da Recepção e da factura de compra, que é de `finance` |
 
 ### Decisões tomadas ao construir
 
@@ -107,6 +107,16 @@ O que existe:
 - **`finance` ainda não consome o Fornecedor.** A factura de compra continua a
   guardar nome e NIF em texto. Ligá-la é trabalho seguinte, e **não é
   retroactivo**: as facturas já emitidas guardam o que vigorava à data.
+- **O total encomendado não passa o aprovado, e não há tolerância.** Um preço
+  acordado acima do estimado acontece, e um limiar de desvio aceitável — 5%?
+  10%? — é decisão de negócio que não está em fonte nenhuma. Inventá-lo seria
+  abrir a alçada por um número escolhido aqui. Enquanto não houver quem o
+  decida, o caminho é uma requisição nova, que volta a passar por decisão.
+  **É o ponto de configuração a preencher** quando alguém decidir.
+- **A Ordem de Compra não tem número próprio.** Uma ordem que sai para o
+  fornecedor precisa de uma referência que ele possa citar de volta, e escolher
+  o formato — prefixo, reinício anual, se admite saltos — é decisão de negócio
+  sem fonte. Fica o identificador, e o número quando houver quem o decida.
 
 ### Verificação
 

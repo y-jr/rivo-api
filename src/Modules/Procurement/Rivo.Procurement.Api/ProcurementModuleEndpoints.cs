@@ -53,6 +53,20 @@ public static class ProcurementModuleEndpoints
         group.MapPost("/requisitions/{requisitionId:guid}/cancellation", CancelRequisitionAsync)
             .RequireAuthorization(ProcurementPermissions.RequisitionsWrite);
 
+        group.MapGet("/orders", ListOrdersAsync)
+            .RequireAuthorization(ProcurementPermissions.OrdersRead);
+
+        group.MapGet("/orders/{purchaseOrderId:guid}", GetOrderAsync)
+            .RequireAuthorization(ProcurementPermissions.OrdersRead);
+
+        // A ordem nasce da requisição, e a rota di-lo: nao ha `POST /orders`
+        // avulso, porque nao ha ordem avulsa.
+        group.MapPost("/requisitions/{requisitionId:guid}/orders", IssueOrderAsync)
+            .RequireAuthorization(ProcurementPermissions.OrdersWrite);
+
+        group.MapPost("/orders/{purchaseOrderId:guid}/cancellation", CancelOrderAsync)
+            .RequireAuthorization(ProcurementPermissions.OrdersWrite);
+
         return endpoints;
     }
 
@@ -289,6 +303,92 @@ public static class ProcurementModuleEndpoints
         };
     }
 
+    private static async Task<IResult> ListOrdersAsync(
+        ListPurchaseOrders listOrders,
+        Guid? requisitionId,
+        Guid? supplierId,
+        CancellationToken cancellationToken) =>
+        Results.Ok(await listOrders.ExecuteAsync(requisitionId, supplierId, cancellationToken));
+
+    private static async Task<IResult> GetOrderAsync(
+        Guid purchaseOrderId,
+        GetPurchaseOrder getOrder,
+        CancellationToken cancellationToken)
+    {
+        var ordem = await getOrder.ExecuteAsync(purchaseOrderId, cancellationToken);
+
+        return ordem is null
+            ? Results.NotFound(new { erro = "Ordem de compra não encontrada." })
+            : Results.Ok(ordem);
+    }
+
+    private static async Task<IResult> IssueOrderAsync(
+        Guid requisitionId,
+        IssuePurchaseOrderRequest request,
+        IssuePurchaseOrder issueOrder,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var linhas = request.Lines?
+            .Select(l => new NewPurchaseOrderLine(l.Description, l.Quantity, l.UnitPrice))
+            .ToList() ?? [];
+
+        var resultado = await issueOrder.ExecuteAsync(
+            requisitionId,
+            request.SupplierId,
+            request.IssuedOn,
+            request.ExpectedOn,
+            linhas,
+            BuildAuditContext(http),
+            cancellationToken);
+
+        return resultado.Outcome switch
+        {
+            IssuePurchaseOrderOutcome.Issued =>
+                Results.Created($"/procurement/orders/{resultado.PurchaseOrderId}",
+                    new
+                    {
+                        purchaseOrderId = resultado.PurchaseOrderId,
+                        total = resultado.Total,
+                        estado = "Issued",
+                    }),
+
+            IssuePurchaseOrderOutcome.RequisitionNotFound or IssuePurchaseOrderOutcome.SupplierNotFound =>
+                Results.NotFound(new { erro = resultado.Error }),
+
+            // 409 nos três: é o estado que impede, e não o corpo do pedido.
+            // `ExceedsApproved` em particular não é um pedido inválido — é
+            // alçada esgotada, e corrige-se com uma requisição nova.
+            IssuePurchaseOrderOutcome.RequisitionNotApproved
+                or IssuePurchaseOrderOutcome.SupplierInactive
+                or IssuePurchaseOrderOutcome.ExceedsApproved =>
+                Results.Conflict(new { erro = resultado.Error }),
+
+            IssuePurchaseOrderOutcome.Rejected =>
+                Results.BadRequest(new { erro = resultado.Error }),
+
+            _ => Results.Problem("Resultado inesperado ao emitir a ordem de compra."),
+        };
+    }
+
+    private static async Task<IResult> CancelOrderAsync(
+        Guid purchaseOrderId,
+        CancelPurchaseOrderRequest request,
+        CancelPurchaseOrder cancelOrder,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var resultado = await cancelOrder.ExecuteAsync(
+            purchaseOrderId, request.Reason, BuildAuditContext(http), cancellationToken);
+
+        return resultado.Outcome switch
+        {
+            CancelPurchaseOrderOutcome.Cancelled => Results.NoContent(),
+            CancelPurchaseOrderOutcome.NotFound => Results.NotFound(new { erro = resultado.Error }),
+            CancelPurchaseOrderOutcome.Rejected => Results.Conflict(new { erro = resultado.Error }),
+            _ => Results.Problem("Resultado inesperado ao cancelar a ordem de compra."),
+        };
+    }
     /// <summary>
     /// Constrói o contexto de auditoria a partir do pedido. É a camada API que
     /// conhece o transporte; as de baixo recebem-no já feito.
@@ -347,3 +447,25 @@ public sealed record RequisitionLineRequest(
     decimal EstimatedUnitPrice);
 
 public sealed record CancelRequisitionRequest(string Reason);
+
+/// <param name="IssuedOn">Omitido, assume-se hoje.</param>
+/// <param name="ExpectedOn">
+/// Entrega esperada. Opcional — nem sempre está acordada — e nunca anterior à
+/// emissão.
+/// </param>
+public sealed record IssuePurchaseOrderRequest(
+    Guid SupplierId,
+    DateOnly? IssuedOn,
+    DateOnly? ExpectedOn,
+    IReadOnlyList<PurchaseOrderLineRequest>? Lines);
+
+/// <param name="UnitPrice">
+/// Preço <strong>acordado</strong> com o fornecedor, e não o estimado na
+/// requisição.
+/// </param>
+public sealed record PurchaseOrderLineRequest(
+    string Description,
+    decimal Quantity,
+    decimal UnitPrice);
+
+public sealed record CancelPurchaseOrderRequest(string Reason);

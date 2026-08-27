@@ -577,7 +577,254 @@ Test-Case "28. Abrir e submeter ficam na trilha, com actor" {
     "abrir, submeter e aprovar na trilha, todos com actor"
 }
 
-Test-Case "29. Dados sobrevivem ao reinicio da stack" {
+# --- Ordem de Compra
+
+Test-Case "29. De uma requisicao nao aprovada nao nasce ordem" {
+    # **A regra que este elo existe para impor.** Encomendar sem decisao
+    # registada e exactamente o que a governanca existe para impedir, e nao ha
+    # ordem avulsa — o fluxo leve de despesa eventual e lacuna assumida.
+    $body = @{
+        supplierId = $script:fornecedorId
+        lines      = @(@{ description = "Portatil"; quantity = 1; unitPrice = 100000 })
+    } | ConvertTo-Json -Depth 5
+
+    try {
+        Invoke-RestMethod "$base/procurement/requisitions/$($script:canceladaId)/orders" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders | Out-Null
+        throw "emitiu ordem de uma requisicao cancelada"
+    }
+    catch {
+        if (-not $_.Exception.Response) { throw }
+        if ([int]$_.Exception.Response.StatusCode -ne 409) { throw "esperado 409, obtido $([int]$_.Exception.Response.StatusCode)" }
+        $corpo = $_.ErrorDetails.Message | ConvertFrom-Json
+        if ($corpo.erro -notmatch "Cancelled") { throw "o erro nao diz em que estado esta: $($corpo.erro)" }
+    }
+
+    $ordens = Invoke-Sql "select count(*) from procurement.purchase_order where requisition_id='$($script:canceladaId)'"
+    if ($ordens -ne "0") { throw "ficou uma ordem gravada apesar do 409" }
+
+    "409 a nomear o estado, e nenhuma ordem gravada"
+}
+
+Test-Case "30. Fornecedor desactivado nao recebe encomendas" {
+    # Se ainda se lhe pudesse encomendar, a desactivacao era um rotulo.
+    $body = @{
+        supplierId = $script:estrangeiroId
+        lines      = @(@{ description = "Portatil"; quantity = 1; unitPrice = 100000 })
+    } | ConvertTo-Json -Depth 5
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)/orders" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    "409 - desactivar um fornecedor tem de significar alguma coisa"
+}
+
+Test-Case "31. Emitir ordem de requisicao aprovada, ao preco acordado" {
+    # **O preco nao e o estimado.** A requisicao diz o que se quer e por quanto
+    # se estima; a ordem diz o que se encomenda e por quanto se acordou. Entre
+    # as duas houve cotacao — copiar o estimado faria dela campo decorativo.
+    $body = @{
+        supplierId = $script:fornecedorId
+        expectedOn = "2026-09-30"
+        lines      = @(
+            @{ description = "Portatil 14 pol, 16 GB"; quantity = 2; unitPrice = 500000 }
+        )
+    } | ConvertTo-Json -Depth 5
+
+    $o = Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)/orders" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+    $script:ordemA = $o.purchaseOrderId
+
+    if ($o.estado -ne "Issued") { throw "estado '$($o.estado)'" }
+    if ([decimal]$o.total -ne 1000000) { throw "total $($o.total), esperado 1000000" }
+
+    # O estimado por unidade era 850000; o acordado e 500000. A ordem guarda o
+    # acordado, e a requisicao continua a guardar o estimado.
+    $preco = Invoke-Sql "select unit_price from procurement.purchase_order_line where purchase_order_id='$($script:ordemA)'"
+    if ([decimal]$preco -ne 500000) { throw "preco gravado $preco, esperado o acordado 500000" }
+
+    $estimado = Invoke-Sql "select top 1 estimated_unit_price from procurement.requisition_line where requisition_id='$($script:requisicaoId)' and description like 'Portatil%'"
+    if ([decimal]$estimado -ne 850000) { throw "a requisicao perdeu o estimado: $estimado" }
+
+    "1000000 ao preco acordado; a requisicao mantem o estimado de 850000"
+}
+
+Test-Case "32. As linhas da ordem sobrevivem a base de dados" {
+    # Mesma razao do caso 12, e a mesma classe de defeito: uma coleccao mapeada
+    # por campo de apoio grava e rele sem as linhas, em silencio.
+    $o = Invoke-RestMethod "$base/procurement/orders/$($script:ordemA)" -Headers $managerHeaders
+    if ($o.lines.Count -ne 1) { throw "relidas $($o.lines.Count) linhas, esperada 1" }
+    if ([decimal]$o.lines[0].lineTotal -ne 1000000) { throw "total da linha $($o.lines[0].lineTotal)" }
+
+    # A moeda vem da requisicao e nao de quem encomenda: foi nela que o valor
+    # aprovado foi expresso.
+    if ($o.currency -ne "AOA") { throw "moeda '$($o.currency)'" }
+
+    # O nome do fornecedor e lido a cada leitura, e nao copiado para a ordem —
+    # uma copia ficaria obsoleta em silencio (BR-18).
+    $nome = Invoke-Sql "select name from procurement.supplier where id='$($script:fornecedorId)'"
+    if ($o.supplierName -ne $nome) { throw "nome '$($o.supplierName)', na base '$nome'" }
+
+    $colunas = Invoke-Sql "select count(*) from sys.columns where object_id=object_id('procurement.purchase_order') and name in ('supplier_name','supplier_tax_id')"
+    if ($colunas -ne "0") { throw "a ordem copia o nome do fornecedor" }
+
+    "1 linha relida, moeda herdada, e o nome do fornecedor lido e nao copiado"
+}
+
+Test-Case "33. Encomendar acima do aprovado e recusado" {
+    # **A invariante sobre o conjunto.** Ja ha 1000000 encomendados contra uma
+    # requisicao aprovada por 1725000: restam 725000. Uma ordem de 800000
+    # passaria sozinha, e junta com a primeira encomendava acima da alcada sem
+    # que nada tivesse sido violado.
+    $body = @{
+        supplierId = $script:fornecedorId
+        lines      = @(@{ description = "Portateis a mais"; quantity = 1; unitPrice = 800000 })
+    } | ConvertTo-Json -Depth 5
+
+    try {
+        Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)/orders" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders | Out-Null
+        throw "encomendou acima do aprovado"
+    }
+    catch {
+        if (-not $_.Exception.Response) { throw }
+        if ([int]$_.Exception.Response.StatusCode -ne 409) { throw "esperado 409, obtido $([int]$_.Exception.Response.StatusCode)" }
+
+        # A mensagem tem de dar as tres parcelas: sem elas, quem a le nao sabe
+        # se pede menos, se cancela uma ordem, ou se abre requisicao nova.
+        $corpo = $_.ErrorDetails.Message | ConvertFrom-Json
+        foreach ($n in @("1725000", "1000000", "725000", "800000")) {
+            if ($corpo.erro -notmatch $n) { throw "a mensagem nao diz $n : $($corpo.erro)" }
+        }
+    }
+
+    "409 - a alcada nao se contorna encomendando as fatias"
+}
+
+Test-Case "34. O que resta cabe ao centimo" {
+    # O limite e inclusivo: 725000 exactos entram. Se nao entrassem, o ultimo
+    # bocado de cada requisicao ficava por encomendar sem razao nenhuma.
+    $body = @{
+        supplierId = $script:fornecedorId
+        lines      = @(@{ description = "Ratos e cabos"; quantity = 1; unitPrice = 725000 })
+    } | ConvertTo-Json -Depth 5
+
+    $o = Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)/orders" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+    $script:ordemB = $o.purchaseOrderId
+    if ([decimal]$o.total -ne 725000) { throw "total $($o.total)" }
+
+    # E agora nao resta nada: mais um kwanza e recusado.
+    $body = @{
+        supplierId = $script:fornecedorId
+        lines      = @(@{ description = "Mais um"; quantity = 1; unitPrice = 1 })
+    } | ConvertTo-Json -Depth 5
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)/orders" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($code -ne 409) { throw "com a alcada esgotada, esperado 409, obtido $code" }
+
+    "725000 exactos entram; o kwanza seguinte nao"
+}
+
+Test-Case "35. Cancelar uma ordem devolve a alcada" {
+    # Uma ordem cancelada deixou de ser compromisso, e continuar a contar
+    # contra o aprovado prenderia a requisicao a uma encomenda que ja nao
+    # existe.
+    $body = @{ reason = "Fornecedor sem stock." } | ConvertTo-Json
+    Invoke-RestMethod "$base/procurement/orders/$($script:ordemA)/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders | Out-Null
+
+    $estado = Invoke-Sql "select status from procurement.purchase_order where id='$($script:ordemA)'"
+    if ($estado -ne "Cancelled") { throw "estado '$estado'" }
+
+    # Libertados 1000000. Uma ordem de 900000 passa agora, e nao passava antes.
+    $body = @{
+        supplierId = $script:fornecedorId
+        lines      = @(@{ description = "Substituicao noutro fornecedor"; quantity = 1; unitPrice = 900000 })
+    } | ConvertTo-Json -Depth 5
+    $o = Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)/orders" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+    if ([decimal]$o.total -ne 900000) { throw "total $($o.total)" }
+
+    "cancelada nao conta; os 1000000 voltaram a estar disponiveis"
+}
+
+Test-Case "36. Uma ordem cancelada nao se altera nem se elimina (BR-14)" {
+    $body = @{ reason = "Outra vez." } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/orders/$($script:ordemA)/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($code -ne 409) { throw "cancelar duas vezes: esperado 409, obtido $code" }
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/orders/$($script:ordemA)" -Method Delete -Headers $managerHeaders }
+    if ($code -ne 405 -and $code -ne 404) { throw "DELETE devia ser recusado, obtido $code" }
+
+    # A ordem existiu e saiu para alguem: as linhas ficam.
+    $linhas = Invoke-Sql "select count(*) from procurement.purchase_order_line where purchase_order_id='$($script:ordemA)'"
+    if ($linhas -ne "1") { throw "as linhas desapareceram com o cancelamento" }
+
+    "409 no segundo cancelamento, DELETE recusado, linhas intactas"
+}
+
+Test-Case "37. Cancelar sem razao e recusado" {
+    $body = @{ reason = "" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    "409 - alguem do outro lado vai perguntar porque"
+}
+
+Test-Case "38. A ordem esta amarrada a requisicao e ao fornecedor" {
+    # Aqui ha FK, ao contrario da ligacao a `hr` e a `approval`: as tres tabelas
+    # vivem no mesmo schema e no mesmo modulo. **Sem cascata** — apagar uma
+    # requisicao levaria atras encomendas que sairam para fornecedores.
+    $fks = Invoke-Sql @"
+select count(*) from sys.foreign_keys fk
+join sys.tables t on t.object_id = fk.parent_object_id
+join sys.tables rt on rt.object_id = fk.referenced_object_id
+where t.name = 'purchase_order' and rt.name in ('purchase_requisition','supplier')
+  and fk.delete_referential_action = 0
+"@
+    if ($fks -ne "2") { throw "$fks FK sem cascata, esperadas 2" }
+
+    $foraDoSchema = Invoke-Sql @"
+select count(*) from sys.foreign_keys fk
+join sys.tables t on t.object_id = fk.parent_object_id
+join sys.schemas s on s.schema_id = t.schema_id
+join sys.tables rt on rt.object_id = fk.referenced_object_id
+join sys.schemas rs on rs.schema_id = rt.schema_id
+where s.name = 'procurement' and rs.name <> 'procurement'
+"@
+    if ($foraDoSchema -ne "0") { throw "$foraDoSchema FK a sair do schema procurement" }
+
+    "2 FK dentro do schema, sem cascata; 0 a sair dele"
+}
+
+Test-Case "39. Quem paga ve as ordens e nao as emite" {
+    # `Finance` precisa da ordem para casar a factura do fornecedor. Emiti-la e
+    # a outra ponta do mesmo processo.
+    $ve = Get-StatusCode { Invoke-RestMethod "$base/procurement/orders" -Headers $financeHeaders }
+    if ($ve -ne 200) { throw "Finance nao consegue ver ordens: $ve" }
+
+    $body = @{
+        supplierId = $script:fornecedorId
+        lines      = @(@{ description = "Ordem da tesouraria"; quantity = 1; unitPrice = 1000 })
+    } | ConvertTo-Json -Depth 5
+    $emite = Get-StatusCode { Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)/orders" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
+    if ($emite -ne 403) { throw "Finance emitiu uma ordem: $emite" }
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/orders" -Headers $salesHeaders }
+    if ($code -ne 403) { throw "Sales a ler ordens: $code" }
+
+    "Finance ve e nao emite; Sales nem ve"
+}
+
+Test-Case "40. Emitir e cancelar ficam na trilha, com o total" {
+    $emissao = Invoke-Sql "select count(*) from audit.audit_event where action='procurement.order.issued' and entity_id='$($script:ordemA)'"
+    if ($emissao -ne "1") { throw "emissao nao esta na trilha" }
+
+    $comTotal = Invoke-Sql "select count(*) from audit.audit_event where action='procurement.order.issued' and entity_id='$($script:ordemA)' and new_value like '%1000000%'"
+    if ($comTotal -ne "1") { throw "a trilha nao guarda o total encomendado" }
+
+    $cancelamento = Invoke-Sql "select count(*) from audit.audit_event where action='procurement.order.cancelled' and entity_id='$($script:ordemA)'"
+    if ($cancelamento -ne "1") { throw "cancelamento nao esta na trilha" }
+
+    $semActor = Invoke-Sql "select count(*) from audit.audit_event where entity_type='procurement.purchase_order' and entity_id='$($script:ordemA)' and actor_id is null"
+    if ($semActor -ne "0") { throw "ha registos sem actor" }
+
+    "emissao com total e cancelamento na trilha, ambos com actor"
+}
+
+Test-Case "41. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
@@ -591,10 +838,14 @@ Test-Case "29. Dados sobrevivem ao reinicio da stack" {
     $f = Invoke-RestMethod "$base/procurement/suppliers/$($script:fornecedorId)" -Headers $adminHeaders
     if ($f.iban -ne $ibanBom) { throw "IBAN perdido: $($f.iban)" }
 
-    "requisicao, linhas e IBAN intactos apos restart"
+    $o = Invoke-RestMethod "$base/procurement/orders/$($script:ordemA)" -Headers $managerHeaders
+    if ($o.status -ne "Cancelled") { throw "estado da ordem perdido: $($o.status)" }
+    if ($o.lines.Count -ne 1) { throw "linhas da ordem perdidas: $($o.lines.Count)" }
+
+    "requisicao, ordem, linhas de ambas e IBAN intactos apos restart"
 }
 
-Test-Case "30. A suite nao deixa politica de procurement activa atras de si" {
+Test-Case "42. A suite nao deixa politica de procurement activa atras de si" {
     # **Independencia entre suites.** Sem isto, cada corrida deixaria mais uma
     # politica generica, e o caso 15 — que verifica a recusa quando nao ha
     # nenhuma — passaria a falhar a partir da segunda vez.

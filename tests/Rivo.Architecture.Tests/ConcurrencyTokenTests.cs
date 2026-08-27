@@ -51,6 +51,11 @@ public class ConcurrencyTokenTests
             "Criado com a política e nunca editado — alterar uma alçada é criar outra política, " +
             "porque os pedidos em curso guardam a que lhes foi aplicada (BR-6).",
 
+        ["PurchaseOrderLine"] =
+            "Parte do agregado PurchaseOrder, que nasce completo e não se altera depois de sair " +
+            "para o fornecedor — o que existe para o corrigir é cancelar e emitir outra. O contador " +
+            "da ordem cobre o cancelamento, que é a única alteração que há.",
+
         ["RequisitionLine"] =
             "Parte do agregado PurchaseRequisition e só alterável enquanto ele for rascunho — " +
             "depois de submetido nada lhe toca, porque o valor que escolheu a faixa da alçada já " +

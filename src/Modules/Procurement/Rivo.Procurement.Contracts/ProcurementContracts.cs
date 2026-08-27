@@ -84,14 +84,36 @@ public static class ProcurementPermissions
     /// </summary>
     public const string RequisitionsWrite = "procurement.requisitions.write";
 
+    public const string OrdersRead = "procurement.orders.read";
+
+    /// <summary>
+    /// Emitir e cancelar ordens de compra.
+    ///
+    /// <para>
+    /// <strong>Separada de `requisitions.write` de propósito</strong>, e não
+    /// porque quem pede não possa encomendar — na prática de uma PME é a mesma
+    /// pessoa, e os dois perfis recebem as duas. É separada porque a decisão de
+    /// as separar tem de continuar possível: no dia em que houver uma função de
+    /// compras distinta de quem requisita, muda-se o catálogo e não o código.
+    /// </para>
+    ///
+    /// <para>
+    /// A segregação que importa está noutro sítio e já está imposta: entre a
+    /// requisição e a ordem há uma decisão de `approval`, tomada por outra
+    /// pessoa (BR-2).
+    /// </para>
+    /// </summary>
+    public const string OrdersWrite = "procurement.orders.write";
+
     public static readonly IReadOnlyList<string> All =
-        [SuppliersRead, SuppliersWrite, RequisitionsRead, RequisitionsWrite];
+        [SuppliersRead, SuppliersWrite, RequisitionsRead, RequisitionsWrite, OrdersRead, OrdersWrite];
 
     /// <summary>
     /// O que um requisitante precisa: ver fornecedores para saber a quem pedir,
-    /// e escrever requisições. <strong>Sem qualificar fornecedores</strong> —
-    /// quem pede a compra não escolhe para que conta se paga.
+    /// escrever requisições, e emitir a ordem depois de a decisão sair.
+    /// <strong>Sem qualificar fornecedores</strong> — quem pede a compra não
+    /// escolhe para que conta se paga.
     /// </summary>
     public static readonly IReadOnlyList<string> ForRequesters =
-        [SuppliersRead, RequisitionsRead, RequisitionsWrite];
+        [SuppliersRead, RequisitionsRead, RequisitionsWrite, OrdersRead, OrdersWrite];
 }

@@ -1,7 +1,7 @@
 # Rivo API - Guia para o Frontend
 
-Documento gerado a partir das rotas implementadas no backend. A API tem 130
-endpoints: 126 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
+Documento gerado a partir das rotas implementadas no backend. A API tem 134
+endpoints: 130 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
 
 ## Como ligar
 
@@ -223,8 +223,36 @@ Depois de submetida, a requisição **não se altera**: acrescentar ou remover
 linhas devolve `409`. O frontend deve esconder a edição fora de `Draft`.
 
 Submeter sem motor de aprovação ligado devolve `501`; sem política aplicável,
-`409`. Ordem de Compra e Recepção de Mercadoria **ainda não existem** — a
-cadeia pára na requisição aprovada.
+`409`. Uma requisição aprovada é o ponto de partida da Ordem de Compra,
+abaixo.
+
+### Ordens de compra
+
+| Método e rota | Permissão | O que faz | Request/query | Sucesso |
+|---|---|---|---|---|
+| `GET /procurement/orders` | `procurement.orders.read` | Lista ordens de compra | `requisitionId?`, `supplierId?` | `200` |
+| `GET /procurement/orders/{purchaseOrderId}` | `procurement.orders.read` | Consulta ordem | Path `purchaseOrderId` | `200` ordem |
+| `POST /procurement/requisitions/{requisitionId}/orders` | `procurement.orders.write` | Emite ordem a partir da requisição | `{ supplierId, issuedOn?, expectedOn?, lines? }`; linha `{ description, quantity, unitPrice }` | `201 { purchaseOrderId, total, estado: "Issued" }` |
+| `POST /procurement/orders/{purchaseOrderId}/cancellation` | `procurement.orders.write` | Cancela ordem | `{ reason }` | `204` |
+
+**Não há `POST /procurement/orders` avulso, e é deliberado:** uma ordem nasce
+sempre de uma requisição aprovada, e a rota diz a regra. Emitir contra uma
+requisição que não esteja em `Approved` devolve `409`, e a mensagem nomeia o
+estado em que ela está.
+
+`unitPrice` é o preço **acordado** com o fornecedor, e não o estimado na
+requisição — entre os dois houve cotação.
+
+⚠ **O total encomendado não pode passar o aprovado.** Uma requisição pode dar
+várias ordens — dividir por dois fornecedores é legítimo —, mas a soma das
+ordens em vigor não ultrapassa o total estimado que foi aprovado. Excedê-lo
+devolve `409` com as parcelas na mensagem: aprovado, já encomendado, restante,
+e pedido. **Não há tolerância de desvio**; o caminho é uma requisição nova.
+Cancelar uma ordem devolve o valor ao disponível.
+
+Fornecedor desactivado devolve `409`. A moeda é herdada da requisição e não se
+envia. A ordem **não tem número próprio** — identifica-se pelo `purchaseOrderId`.
+
 
 ## HR
 

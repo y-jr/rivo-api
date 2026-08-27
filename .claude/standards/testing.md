@@ -98,23 +98,23 @@ dotnet test
 
 ## Estado da cobertura
 
-_Contagens de 2026-08-27, executadas. **629 testes** em 15 projectos, e
+_Contagens de 2026-08-27, executadas. **651 testes** em 15 projectos, e
 **passam todos** — os 4 de Testcontainers incluídos, desde que o motor do
 Docker voltou._
 
 | Camada | Estado |
 |---|---|
-| Domain | **487 testes**, 10 módulos — `finance` 190, `hr` 129, `procurement` 58, `commercial` 20, `notifications` 20, `fiscal` 18, `approval` 17, `documents` 16, `audit` 10, `identity` 9 |
+| Domain | **509 testes**, 10 módulos — `finance` 190, `hr` 129, `procurement` 80, `commercial` 20, `notifications` 20, `fiscal` 18, `approval` 17, `documents` 16, `audit` 10, `identity` 9 |
 | Application | **108 testes** — `finance` 100, `identity` 8. Os restantes oito módulos por cobrir, `procurement` incluído |
 | Infrastructure | **4 testes** em `notifications`, SQL Server real (ADR-026, ADR-029). Restantes oito módulos por cobrir |
 | API do host | **9 testes** em `tests/Rivo.Api.Tests` — tradução de excepções em códigos HTTP (ADR-035). Nasceu porque isto não é testável em nenhuma das outras camadas: as de domínio não conhecem HTTP, as de arquitectura verificam forma e não comportamento |
 | API de módulo | Nenhum (as suites PowerShell tocam-lhe indirectamente) |
 | Arquitectura | **21 testes** (ADR-024, ADR-025) |
 
-As doze suites PowerShell (**221 casos**) continuam a valer como smoke
+As doze suites PowerShell (**233 casos**) continuam a valer como smoke
 end-to-end. Não substituem teste de domínio, nem o inverso.
 
-`verify-procurement` (30 casos) nasceu a 2026-08-27 por uma razão que as outras
+`verify-procurement` (42 casos) nasceu a 2026-08-27 por uma razão que as outras
 não tinham: **o agregado da requisição tem linhas**, e o mapeamento de uma
 colecção por campo de apoio é onde o EF Core falha em silêncio — grava e relê
 sem as linhas, sem erro nenhum, e nenhum teste de domínio o vê.

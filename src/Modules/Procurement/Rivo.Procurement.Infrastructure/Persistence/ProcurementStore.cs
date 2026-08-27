@@ -87,6 +87,70 @@ public sealed class ProcurementStore(ProcurementDbContext context) : IProcuremen
         CancellationToken cancellationToken) =>
         await context.Requisitions.AddAsync(requisition, cancellationToken);
 
+    public async Task<PurchaseOrder?> FindOrderAsync(
+        Guid purchaseOrderId,
+        CancellationToken cancellationToken) =>
+        await context.Orders
+            .AsNoTracking()
+            .Include(o => o.Lines)
+            .FirstOrDefaultAsync(o => o.Id == purchaseOrderId, cancellationToken);
+
+    public async Task<PurchaseOrder?> FindOrderForUpdateAsync(
+        Guid purchaseOrderId,
+        CancellationToken cancellationToken) =>
+        await context.Orders
+            .Include(o => o.Lines)
+            .FirstOrDefaultAsync(o => o.Id == purchaseOrderId, cancellationToken);
+
+    public async Task<IReadOnlyList<PurchaseOrder>> ListOrdersAsync(
+        Guid? requisitionId,
+        Guid? supplierId,
+        CancellationToken cancellationToken)
+    {
+        var query = context.Orders
+            .AsNoTracking()
+            .Include(o => o.Lines)
+            .AsQueryable();
+
+        if (requisitionId is { } requisicao)
+        {
+            query = query.Where(o => o.RequisitionId == requisicao);
+        }
+
+        if (supplierId is { } fornecedor)
+        {
+            query = query.Where(o => o.SupplierId == fornecedor);
+        }
+
+        return await query
+            .OrderByDescending(o => o.IssuedOn)
+            .ThenByDescending(o => o.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<decimal> OrderedAgainstRequisitionAsync(
+        Guid requisitionId,
+        CancellationToken cancellationToken)
+    {
+        // A soma é feita na base de dados e não em memória: carregar todas as
+        // ordens para as somar aqui traria também todas as linhas de todas
+        // elas, e o número que interessa é um só.
+        //
+        // `SumAsync` sobre um conjunto vazio devolveria zero na mesma, mas o
+        // `decimal?` está aqui de propósito — sem ele, a tradução para SQL
+        // devolve NULL quando não há linhas e o EF Core rebenta ao materializar.
+        var total = await context.Orders
+            .AsNoTracking()
+            .Where(o => o.RequisitionId == requisitionId && o.Status == PurchaseOrderStatus.Issued)
+            .SelectMany(o => o.Lines)
+            .SumAsync(l => (decimal?)(l.Quantity * l.UnitPrice), cancellationToken);
+
+        return total ?? 0m;
+    }
+
+    public async Task AddOrderAsync(PurchaseOrder order, CancellationToken cancellationToken) =>
+        await context.Orders.AddAsync(order, cancellationToken);
+
     public Task SaveChangesAsync(CancellationToken cancellationToken) =>
         context.SaveChangesAsync(cancellationToken);
 }

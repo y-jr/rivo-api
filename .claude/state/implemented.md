@@ -201,7 +201,7 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
 
 ## Verificação
 
-**Doze suites** PowerShell caixa-preta contra a stack em Docker, **221 casos**,
+**Doze suites** PowerShell caixa-preta contra a stack em Docker, **233 casos**,
 todas re-executáveis.
 
 > ⚠ **Estado da verificação a 2026-08-25, ao fechar a postagem automática.**
@@ -219,9 +219,9 @@ todas re-executáveis.
 > e `verify-all` deu **191 de 191**, já com `procurement` dentro da imagem e com
 > o ADR-038 aplicado. A ressalva acima é histórico.
 >
-> **No mesmo dia passou a 221 de 221**, com `verify-procurement` a fechar a
-> lista. Corrida duas vezes seguidas antes de entrar, para provar que se limpa
-> a si própria — cria a política de que precisa e desactiva-a no fim.
+> **No mesmo dia passou a 233 de 233**, com `verify-procurement` a fechar a
+> lista. Corrida duas vezes seguidas antes de cada entrada, para provar que se
+> limpa a si própria — cria a política de que precisa e desactiva-a no fim.
 >
 > Os 629 testes .NET passam todos, os 4 de Testcontainers incluídos.
 
@@ -559,10 +559,10 @@ propriamente dita.
 
 ## procurement
 
-_2026-08-27 — **Fornecedor e Requisição Interna**. A cadeia pára na Ordem de
-Compra._
+_2026-08-27 — **Fornecedor, Requisição Interna e Ordem de Compra**. A cadeia
+pára na Recepção._
 
-- Cinco camadas, schema `procurement`, **58 testes de domínio**
+- Cinco camadas, schema `procurement`, **80 testes de domínio**
 - `Supplier`: nome, NIF único, IBAN, contactos, activação/desactivação.
   Desactivar, nunca eliminar (BR-14) — **não há `DELETE`**
 - **IBAN verificado pela norma ISO 13616** (mod-97). É a única validação de
@@ -582,15 +582,41 @@ Compra._
   **só** `SuppliersRead` — quem fixa o IBAN não pode ser quem executa o
   pagamento
 
-⚠ **Ordem de Compra, Recepção de Mercadoria e 3-way match não existem.** É
-onde a cadeia `requisição → OC → recepção → factura` fica pelo primeiro elo.
+### Ordem de Compra — 2026-08-27
+
+- **Só nasce de requisição aprovada.** Rascunho, pendente, recusada e cancelada
+  recusam todas, e a mensagem diz em que estado está — as quatro corrigem-se de
+  maneiras diferentes. Não há ordem avulsa: a rota é
+  `POST /procurement/requisitions/{id}/orders`, e a forma diz a regra
+- **Ao preço acordado, e não ao estimado.** A requisição diz o que se quer e
+  por quanto se estima; a ordem diz o que se encomenda e por quanto se acordou.
+  Entre as duas houve cotação — copiar o estimado faria dela campo decorativo
+- **O total encomendado não passa o aprovado.** Uma requisição pode dar mais do
+  que uma ordem (dividir por dois fornecedores é legítimo), mas três ordens de
+  metade cada passariam uma a uma e, juntas, encomendavam acima da alçada.
+  Invariante sobre o conjunto, na camada Application — mesma forma do
+  `CommittedAsync` de `finance`
+- **Cancelar devolve a alçada:** uma ordem cancelada deixou de ser compromisso
+- Fornecedor desactivado não recebe encomendas; a moeda é herdada da requisição
+- FK reais para a requisição e para o fornecedor — mesmo schema, mesmo módulo —
+  e **sem cascata**: apagar uma requisição levaria atrás encomendas que saíram
+
+⚠ **Recepção de Mercadoria e 3-way match não existem.** É onde a cadeia
+`requisição → OC → recepção → factura` fica pelo terceiro elo.
+
+⚠ **A ordem não tem número próprio.** Escolher o formato — prefixo, reinício
+anual, se admite saltos — é decisão de negócio sem fonte neste repositório.
+
+⚠ **Não há tolerância de desvio sobre o aprovado.** Um limiar (5%? 10%?) é
+decisão de negócio, e inventá-lo seria abrir a alçada por um número escolhido
+aqui. É o ponto de configuração a preencher.
 
 ⚠ **`finance` ainda não consome o Fornecedor.** A factura de compra continua a
 guardar nome e NIF em texto — e as já emitidas devem continuar assim, porque
 guardam o que vigorava à data.
 
-- **`verify-procurement`, 30 casos** — 2026-08-27. Passou a ser a décima segunda
-  suite, e `verify-all` está em **221/221**
+- **`verify-procurement`, 42 casos** — 2026-08-27. Décima segunda suite, e
+  `verify-all` em **233/233**
 
 O caso que justifica a suite é o **12**: a requisição é relida da base com as
 duas linhas intactas. O mapeamento de uma colecção por campo de apoio é onde o
@@ -599,9 +625,14 @@ nenhum teste de domínio o vê.
 
 Os restantes cobrem o IBAN (normalização, mod-97, e que uma recusa não apaga o
 que lá estava), a unicidade do NIF com o índice como segunda linha, BR-14 nos
-dois agregados, o círculo inteiro com `approval` — submeter, decidir do outro
+três agregados, o círculo inteiro com `approval` — submeter, decidir do outro
 lado, aplicar deste, e a idempotência da segunda chamada —, a ausência de FK a
-sair do schema, e a segregação de que quem paga não qualifica o fornecedor.
+sair do schema, e a segregação de que quem paga não qualifica o fornecedor nem
+emite ordens.
+
+Os doze da Ordem de Compra fecham a alçada pelos dois lados: `1.000.000` e
+`725.000` contra um aprovado de `1.725.000` entram, o kwanza seguinte não, e
+cancelar a primeira devolve os `1.000.000` ao disponível.
 
 ⚠ **A cobertura de Application continua a ser nenhuma**, como nos outros sete
 módulos.

@@ -101,7 +101,12 @@ public static class AccessProfiles
                 // quem fixa o IBAN decide para onde o dinheiro sai, e quem
                 // executa o pagamento não pode ser a mesma pessoa. É BR-3
                 // aplicada um passo antes do pagamento.
-                ProcurementPermissions.SuppliersRead],
+                ProcurementPermissions.SuppliersRead,
+
+                // E vê as ordens de compra, que é o que a factura do fornecedor
+                // vai ter de casar. **Não as emite:** encomendar e pagar são as
+                // duas pontas do mesmo processo.
+                ProcurementPermissions.OrdersRead],
 
             // Note-se a ausência de `hr.positions.write`: RH atribui Cargos,
             // mas não decide quais existem nem quais conferem autoridade de

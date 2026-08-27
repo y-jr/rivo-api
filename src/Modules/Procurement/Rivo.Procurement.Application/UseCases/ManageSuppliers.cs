@@ -238,10 +238,14 @@ public static class ProcurementAuditActions
     public const string RequisitionApproved = "procurement.requisition.approved";
     public const string RequisitionRefused = "procurement.requisition.refused";
     public const string RequisitionCancelled = "procurement.requisition.cancelled";
+
+    public const string OrderIssued = "procurement.order.issued";
+    public const string OrderCancelled = "procurement.order.cancelled";
 }
 
 public static class ProcurementAuditEntityTypes
 {
     public const string Supplier = "procurement.supplier";
     public const string Requisition = "procurement.purchase_requisition";
+    public const string PurchaseOrder = "procurement.purchase_order";
 }

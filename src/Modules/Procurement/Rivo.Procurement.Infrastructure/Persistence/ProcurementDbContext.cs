@@ -12,6 +12,8 @@ public sealed class ProcurementDbContext(DbContextOptions<ProcurementDbContext> 
 
     public DbSet<PurchaseRequisition> Requisitions => Set<PurchaseRequisition>();
 
+    public DbSet<PurchaseOrder> Orders => Set<PurchaseOrder>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -91,6 +93,59 @@ public sealed class ProcurementDbContext(DbContextOptions<ProcurementDbContext> 
             // a hipótese de a soma gravada discordar das parcelas.
             line.Ignore(l => l.EstimatedTotal);
         });
+
+        builder.Entity<PurchaseOrder>(order =>
+        {
+            order.ToTable("purchase_order");
+            order.HasKey(o => o.Id);
+
+            order.Property(o => o.Version).IsConcurrencyToken();
+
+            order.Property(o => o.Currency).HasMaxLength(3).IsRequired();
+            order.Property(o => o.Status).HasConversion<string>().HasMaxLength(20);
+            order.Property(o => o.CancellationReason).HasMaxLength(500);
+
+            // FK real para a requisição: as duas vivem no mesmo schema e no
+            // mesmo módulo, e uma ordem sem a requisição que a autorizou não
+            // teria sentido nenhum. **Sem cascata** — apagar uma requisição
+            // levaria atrás encomendas que saíram para fornecedores (BR-14).
+            order.HasOne<PurchaseRequisition>()
+                .WithMany()
+                .HasForeignKey(o => o.RequisitionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // O fornecedor também é deste schema, e a restrição impede
+            // desqualificar por eliminação o que tem encomendas em curso.
+            order.HasOne<Supplier>()
+                .WithMany()
+                .HasForeignKey(o => o.SupplierId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            order.HasIndex(o => o.RequisitionId);
+            order.HasIndex(o => o.SupplierId);
+            order.HasIndex(o => o.Status);
+
+            order.HasMany(o => o.Lines)
+                .WithOne()
+                .HasForeignKey(l => l.PurchaseOrderId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            order.Navigation(o => o.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        builder.Entity<PurchaseOrderLine>(line =>
+        {
+            line.ToTable("purchase_order_line");
+            line.HasKey(l => l.Id);
+
+            line.Property(l => l.Description).HasMaxLength(500).IsRequired();
+            line.Property(l => l.Quantity).HasPrecision(18, 4);
+            line.Property(l => l.UnitPrice).HasPrecision(18, 2);
+
+            line.Ignore(l => l.LineTotal);
+        });
+
+        builder.Entity<PurchaseOrder>().Ignore(o => o.Total);
 
         // `EstimatedTotal` da requisição também é derivado, das linhas.
         builder.Entity<PurchaseRequisition>().Ignore(r => r.EstimatedTotal);
