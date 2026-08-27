@@ -81,7 +81,7 @@ superfície inteira é legível por quem estiver a ouvir.
 | Superfície HTTP | 129 endpoints em 10 grupos de rota, mais `/health` |
 | ADRs | 38, aceites |
 | Testes | **629** em 15 projectos — 487 de domínio, 108 de Application, 21 de arquitectura, 9 da API do host, 4 de integração. **Todos passam**, os de integração incluídos: o motor do Docker voltou a 2026-08-27 |
-| Verificação end-to-end | **11 suites** PowerShell, **191 casos**. ✅ **191/191 a 2026-08-27**, com o container reconstruído e já com `procurement` dentro. A ressalva de 2026-08-25 fechou |
+| Verificação end-to-end | **12 suites** PowerShell, **221 casos**. ✅ **221/221 a 2026-08-27**, com `verify-procurement` incluída. A ressalva de 2026-08-25 fechou |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
@@ -153,9 +153,6 @@ ADR-024); o K15 (2026-08-24, ADR-035).
 
 Não é uma sequência ratificada — é o que está por decidir e por fazer.
 
-0. **Escrever `verify-procurement`.** O módulo novo é o único com código e sem
-   suite de verificação end-to-end. As outras onze passam 191/191 desde
-   2026-08-27, e `procurement` não está entre elas.
 1. **Carregar um plano de contas real e definir as regras de postagem.** É o que
    falta para a contabilidade deixar de estar vazia — e **precisa do
    contabilista, não de código**. Enquanto não houver, todo o resto da

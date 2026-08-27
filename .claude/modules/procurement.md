@@ -108,10 +108,17 @@ O que existe:
   guardar nome e NIF em texto. Ligá-la é trabalho seguinte, e **não é
   retroactivo**: as facturas já emitidas guardam o que vigorava à data.
 
+### Verificação
+
+**58 testes de domínio** e **`verify-procurement`, 30 casos** (2026-08-27), que
+faz de `procurement` o décimo segundo membro do `verify-all` — em 221/221.
+
+O caso que justifica a suite é o das linhas relidas da base: o mapeamento de
+uma colecção por campo de apoio é onde o EF Core falha em silêncio, e nenhum
+teste de domínio o vê.
+
 ### Ainda por fazer, além dos agregados
 
-- **Suite de verificação end-to-end.** As onze suites PowerShell não cobrem
-  `procurement`; a cobertura é de domínio (58 testes) e nada mais.
 - **Cobertura de Application.** Os casos de uso não têm teste unitário — mesma
   lacuna dos outros sete módulos.
 - Despesa eventual avulsa (lacuna do SGAP, acima).

@@ -111,8 +111,13 @@ Docker voltou._
 | API de módulo | Nenhum (as suites PowerShell tocam-lhe indirectamente) |
 | Arquitectura | **21 testes** (ADR-024, ADR-025) |
 
-As onze suites PowerShell (**191 casos**) continuam a valer como smoke
+As doze suites PowerShell (**221 casos**) continuam a valer como smoke
 end-to-end. Não substituem teste de domínio, nem o inverso.
+
+`verify-procurement` (30 casos) nasceu a 2026-08-27 por uma razão que as outras
+não tinham: **o agregado da requisição tem linhas**, e o mapeamento de uma
+colecção por campo de apoio é onde o EF Core falha em silêncio — grava e relê
+sem as linhas, sem erro nenhum, e nenhum teste de domínio o vê.
 
 **O desequilíbrio é o de sempre, mas deixou de crescer em `finance`.** O ADR-022
 fixou um projecto de teste por *domínio* de módulo, porque era aí que estavam as

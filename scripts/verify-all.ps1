@@ -15,6 +15,7 @@ $base = "http://localhost:5080"
 # A ordem segue as dependências: `verify-finance` monta os seus pré-requisitos
 # pelas rotas de `fiscal` e `commercial`, e corre depois delas para que uma
 # falha apareça na suite do módulo que a causou, e não na de quem o consome.
+# `verify-procurement` fecha, pela mesma razão: consome `hr` e `approval`.
 $suites = @(
     "verify-bootstrap",
     "verify-authorization",
@@ -26,7 +27,10 @@ $suites = @(
     "verify-commercial",
     "verify-finance",
     "verify-payables",
-    "verify-ledger"
+    "verify-ledger",
+
+    # `procurement` fecha: monta o seu cenario por `hr` e por `approval`.
+    "verify-procurement"
 )
 
 function Wait-ForApi {

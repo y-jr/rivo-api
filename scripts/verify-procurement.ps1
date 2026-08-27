@@ -1,0 +1,614 @@
+# Verificação de Procurement — Fornecedor e Requisição Interna.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#   pwsh -File scripts/verify-procurement.ps1
+#
+# Duas coisas que os testes de domínio não conseguem provar, e que são a razão
+# de esta suite existir:
+#
+#   - **O agregado sobrevive à base de dados.** A requisição tem linhas, e o
+#     mapeamento de uma colecção com campo de apoio é exactamente onde o EF Core
+#     falha em silêncio: grava e relê sem as linhas, sem erro nenhum.
+#   - **A fronteira com `approval` fecha o círculo.** O domínio testa que
+#     `MarkApproved` recusa fora de pendente; só aqui se vê a requisição
+#     submetida, decidida do outro lado, e o efeito aplicado deste.
+#
+# Monta o cenário pelas rotas reais de `hr` e `approval`. Sem atalho por SQL —
+# excepto para desactivar políticas, que não tem rota.
+#
+# Re-executável: cada corrida cria os seus colaboradores, cargo, departamento,
+# fornecedores e requisições, e desactiva no fim a política que criou.
+
+$ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "_ambiente.ps1")
+$base = Get-RivoBaseUrl
+$failures = 0
+
+function Test-Case {
+    param([string]$Name, [scriptblock]$Body)
+    try {
+        $detail = & $Body
+        Write-Host ("  PASSA  " + $Name + $(if ($detail) { "  -- $detail" } else { "" })) -ForegroundColor Green
+    }
+    catch {
+        Write-Host ("  FALHA  " + $Name + "  -- " + $_.Exception.Message) -ForegroundColor Red
+        $script:failures++
+    }
+}
+
+function Get-StatusCode {
+    param([scriptblock]$Request)
+    try { & $Request | Out-Null; return 200 }
+    catch {
+        if ($_.Exception.Response) { return [int]$_.Exception.Response.StatusCode }
+        if ($_.Exception.Message -match "401|Unauthorized") { return 401 }
+        throw
+    }
+}
+
+function Invoke-Sql { param([string]$q) return (Invoke-RivoSql $q) }
+
+$dotenv = Get-RivoCredentials
+
+function Get-Token {
+    param([string]$Email, [string]$Password)
+    $body = @{ email = $Email; password = $Password } | ConvertTo-Json
+    return (Invoke-RestMethod "$base/identity/login" -Method Post -Body $body -ContentType "application/json").accessToken
+}
+
+$pass = "Rivo!Password2026"
+$stamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+$curto = "$stamp".Substring("$stamp".Length - 6)
+
+$adminHeaders = @{ Authorization = "Bearer " + (Get-Token $dotenv["BOOTSTRAP_ADMIN_EMAIL"] $dotenv["BOOTSTRAP_ADMIN_PASSWORD"]) }
+
+function New-PerfilHeaders {
+    param([string]$Perfil, [string]$Sufixo)
+    $email = "$Sufixo@rivo.ao"
+    $body = @{ email = $email; password = $script:pass } | ConvertTo-Json
+    $id = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $body -ContentType "application/json").userId
+    $body = @{ profile = $Perfil } | ConvertTo-Json
+    Invoke-RestMethod "$base/identity/users/$id/roles" -Method Post -Body $body -ContentType "application/json" -Headers $script:adminHeaders | Out-Null
+    return @{ Authorization = "Bearer " + (Get-Token $email $script:pass) }
+}
+
+# `Manager` requisita; `Finance` vê fornecedores para registar a factura de
+# compra; `Sales` não tem nada em `procurement` e serve para o 403.
+$managerHeaders = New-PerfilHeaders "Manager" "requisitante-pr-$stamp"
+$financeHeaders = New-PerfilHeaders "Finance" "tesouraria-pr-$stamp"
+$salesHeaders = New-PerfilHeaders "Sales" "vendas-pr-$stamp"
+
+# IBAN de Angola calculado pela própria norma ISO 13616: `AO` vale 1024, os
+# quatro primeiros caracteres passam para o fim, e o resultado dá resto 1
+# módulo 97. O segundo é o mesmo com o último dígito trocado — o erro de quem
+# copia à mão, que é o caso que o mod-97 existe para apanhar.
+$ibanBom = "AO71000600000109131234151"
+$ibanMau = "AO71000600000109131234152"
+
+# --- Cenário, montado pelas rotas reais.
+$departamento = (Invoke-RestMethod "$base/hr/departments" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+    -Body (@{ name = "Contabilidade PR $curto" } | ConvertTo-Json)).departmentId
+
+$requisitante = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+    -Body (@{ fullName = "Requisitante PR $curto"; departmentId = $departamento } | ConvertTo-Json)).employeeId
+
+$aprovador = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+    -Body (@{ fullName = "Aprovador PR $curto" } | ConvertTo-Json)).employeeId
+
+# Cargo sem autoridade de aprovação: o que a confere passaria ele próprio por
+# governança (BR-20), e não é isso que se verifica aqui.
+$cargo = (Invoke-RestMethod "$base/hr/positions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+    -Body (@{ name = "Director de Compras $curto"; hierarchyLevel = 2; grantsApprovalAuthority = $false } | ConvertTo-Json)).positionId
+
+Invoke-RestMethod "$base/hr/employees/$aprovador/positions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+    -Body (@{ positionId = $cargo } | ConvertTo-Json) | Out-Null
+
+# **Estado determinista antes de começar.** O caso 15 verifica que submeter sem
+# política recusa, e isso só é verificável se não houver nenhuma. Uma corrida
+# anterior desta suite deixa a sua desactivada, mas uma interrompida a meio não
+# — e sem isto o caso passava ou falhava conforme o que ficou para trás.
+Invoke-Sql "update approval.policy set is_active = 0 where process_type = 'procurement.purchase_requisition'" | Out-Null
+
+Write-Host "`n=== Procurement: Fornecedor e Requisicao Interna ===`n"
+
+# --- Fornecedor
+
+Test-Case "1. Quem paga nao qualifica o fornecedor (BR-3 um passo antes)" {
+    # Quem fixa o IBAN decide para onde o dinheiro sai. Se fosse a mesma pessoa
+    # que executa o pagamento, a segregacao de BR-3 ficava vazia — bastava
+    # apontar o fornecedor a uma conta propria e mandar pagar.
+    $fVe = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='Finance' and c.claim_value='procurement.suppliers.read'"
+    $fEscreve = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='Finance' and c.claim_value='procurement.suppliers.write'"
+    if ($fVe -ne "1") { throw "Finance nao ve fornecedores, e precisa deles para a factura de compra" }
+    if ($fEscreve -ne "0") { throw "Finance qualifica fornecedores e executa pagamentos - a segregacao caiu" }
+
+    # E quem requisita tambem nao: quem pede a compra nao escolhe a conta.
+    $mEscreve = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='Manager' and c.claim_value='procurement.suppliers.write'"
+    $mRequisita = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='Manager' and c.claim_value='procurement.requisitions.write'"
+    if ($mEscreve -ne "0") { throw "Manager qualifica fornecedores" }
+    if ($mRequisita -ne "1") { throw "Manager nao requisita" }
+
+    "Finance ve e nao qualifica; Manager requisita e nao qualifica"
+}
+
+Test-Case "2. Qualificar fornecedor, com o IBAN normalizado na gravacao" {
+    $body = @{
+        name  = "Angoferragens $curto"; taxId = "5417 $curto"
+        iban  = "AO71 0006 0000 0109 1312 3415 1"
+        email = "geral-$curto@angoferragens.ao"
+    } | ConvertTo-Json
+
+    $f = Invoke-RestMethod "$base/procurement/suppliers" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
+    $script:fornecedorId = $f.supplierId
+
+    # O NIF e o IBAN chegam agrupados, como vem da factura e do extracto. Sem
+    # normalizar, procurar por qualquer um deles nao encontraria nada.
+    $nif = Invoke-Sql "select tax_id from procurement.supplier where id='$($script:fornecedorId)'"
+    $iban = Invoke-Sql "select iban from procurement.supplier where id='$($script:fornecedorId)'"
+    if ($nif -ne "5417$curto") { throw "NIF gravado '$nif', esperado 5417$curto" }
+    if ($iban -ne $ibanBom) { throw "IBAN gravado '$iban', esperado $ibanBom" }
+
+    "NIF e IBAN sem espacos; $ibanBom"
+}
+
+Test-Case "3. NIF repetido devolve o identificador do que ja existe" {
+    $body = @{ name = "Outro nome qualquer"; taxId = "5417$curto" } | ConvertTo-Json
+    try {
+        Invoke-RestMethod "$base/procurement/suppliers" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+        throw "o duplicado passou"
+    }
+    catch {
+        if (-not $_.Exception.Response) { throw }
+        if ([int]$_.Exception.Response.StatusCode -ne 409) { throw "esperado 409, obtido $([int]$_.Exception.Response.StatusCode)" }
+
+        # O identificador vem no corpo de proposito: quem tentou registar quase
+        # de certeza quer trabalhar com o fornecedor que ja existe, e sem ele
+        # teria de o procurar as cegas.
+        $corpo = $_.ErrorDetails.Message | ConvertFrom-Json
+        if ($corpo.supplierId -ne $script:fornecedorId) { throw "409 sem apontar ao existente" }
+    }
+
+    $ux = Invoke-Sql "select count(*) from sys.indexes where object_id=object_id('procurement.supplier') and is_unique=1 and name like '%tax_id%'"
+    if ($ux -ne "1") { throw "indice unico do NIF em falta na base de dados" }
+
+    "409 com o supplierId existente, e indice unico como segunda linha"
+}
+
+Test-Case "4. IBAN com um digito trocado e recusado, e nada e gravado" {
+    $body = @{ name = "Fornecedor IBAN mau $curto"; taxId = "5999$curto"; iban = $ibanMau } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/suppliers" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+
+    # **A recusa tem de ser total.** Guardar o fornecedor sem IBAN deixaria um
+    # registo a meio, e o proximo a olhar acharia que faltava preencher em vez
+    # de saber que o valor estava errado.
+    $existe = Invoke-Sql "select count(*) from procurement.supplier where tax_id='5999$curto'"
+    if ($existe -ne "0") { throw "fornecedor gravado apesar do IBAN recusado" }
+
+    "400 pelo mod-97 da ISO 13616; o fornecedor nao chegou a existir"
+}
+
+Test-Case "5. IBAN de outro pais e aceite - a norma nao e de Angola" {
+    # O comprimento por pais nao e verificado de proposito: o registo nacional
+    # muda quando um pais entra ou altera o esquema, e nao esta em fonte
+    # primaria aqui. O do Reino Unido tem 22 caracteres contra os 25 de ca.
+    $body = @{ name = "Fornecedor estrangeiro $curto"; taxId = "5888$curto"; iban = "GB82WEST12345698765432" } | ConvertTo-Json
+    $f = Invoke-RestMethod "$base/procurement/suppliers" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
+    $script:estrangeiroId = $f.supplierId
+
+    $iban = Invoke-Sql "select iban from procurement.supplier where id='$($script:estrangeiroId)'"
+    if ($iban -ne "GB82WEST12345698765432") { throw "IBAN estrangeiro perdido: '$iban'" }
+
+    "GB82WEST12345698765432 aceite, com 22 caracteres"
+}
+
+Test-Case "6. Actualizar sem tocar no IBAN nao o apaga" {
+    # Um corpo parcial que omite o campo nao pode significar "tira-lhe a conta".
+    # Se significasse, cada correccao de nome apagaria o IBAN em silencio, e so
+    # se descobriria no dia em que houvesse um pagamento para fazer.
+    $body = @{ name = "Angoferragens SU $curto" } | ConvertTo-Json
+    Invoke-RestMethod "$base/procurement/suppliers/$($script:fornecedorId)/details" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    $iban = Invoke-Sql "select iban from procurement.supplier where id='$($script:fornecedorId)'"
+    if ($iban -ne $ibanBom) { throw "IBAN perdido numa alteracao de nome: '$iban'" }
+
+    $nome = Invoke-Sql "select name from procurement.supplier where id='$($script:fornecedorId)'"
+    if ($nome -ne "Angoferragens SU $curto") { throw "nome nao mudou: '$nome'" }
+
+    "nome alterado, IBAN intacto"
+}
+
+Test-Case "7. IBAN errado numa alteracao nao substitui o que la esta" {
+    $body = @{ iban = $ibanMau } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/suppliers/$($script:fornecedorId)/details" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+
+    # Trocar um IBAN bom por nenhum, por causa de uma tentativa falhada, seria
+    # pior do que a tentativa.
+    $iban = Invoke-Sql "select iban from procurement.supplier where id='$($script:fornecedorId)'"
+    if ($iban -ne $ibanBom) { throw "o IBAN anterior perdeu-se: '$iban'" }
+
+    "400, e o IBAN anterior continua la"
+}
+
+Test-Case "8. Desactivar tira da listagem e nao elimina (BR-14)" {
+    $body = @{ active = $false } | ConvertTo-Json
+    Invoke-RestMethod "$base/procurement/suppliers/$($script:estrangeiroId)/status" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    $activos = Invoke-RestMethod "$base/procurement/suppliers" -Headers $adminHeaders
+    if ($activos.supplierId -contains $script:estrangeiroId) { throw "desactivado ainda aparece na listagem por omissao" }
+
+    $todos = Invoke-RestMethod "$base/procurement/suppliers?includeInactive=true" -Headers $adminHeaders
+    if ($todos.supplierId -notcontains $script:estrangeiroId) { throw "desactivado desapareceu de includeInactive" }
+
+    # Um fornecedor referenciado por facturas e pagamentos e parte desses
+    # registos. Elimina-lo deixaria historico sem contraparte.
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/suppliers/$($script:estrangeiroId)" -Method Delete -Headers $adminHeaders }
+    if ($code -ne 405 -and $code -ne 404) { throw "DELETE devia ser recusado, obtido $code" }
+
+    $existe = Invoke-Sql "select count(*) from procurement.supplier where id='$($script:estrangeiroId)'"
+    if ($existe -ne "1") { throw "fornecedor desapareceu da base de dados" }
+
+    "fora da listagem, DELETE recusado ($code), linha intacta"
+}
+
+Test-Case "9. O IBAN entra na trilha, antes e depois" {
+    # Alterar o IBAN e o passo silencioso de uma fraude de pagamento. Sem o
+    # valor anterior na trilha, uma alteracao maliciosa nao se distingue de uma
+    # correccao legitima.
+    $n = Invoke-Sql "select count(*) from audit.audit_event where action='procurement.supplier.registered' and entity_id='$($script:fornecedorId)'"
+    if ($n -ne "1") { throw "registo do fornecedor nao esta na trilha" }
+
+    $comIban = Invoke-Sql "select count(*) from audit.audit_event where action='procurement.supplier.registered' and entity_id='$($script:fornecedorId)' and new_value like '%$ibanBom%'"
+    if ($comIban -ne "1") { throw "a trilha do registo nao guarda o IBAN" }
+
+    $comAnterior = Invoke-Sql "select count(*) from audit.audit_event where action='procurement.supplier.updated' and entity_id='$($script:fornecedorId)' and previous_value like '%$ibanBom%'"
+    if ($comAnterior -lt "1") { throw "a alteracao nao guarda o IBAN anterior" }
+
+    $semActor = Invoke-Sql "select count(*) from audit.audit_event where entity_type='procurement.supplier' and entity_id='$($script:fornecedorId)' and actor_id is null"
+    if ($semActor -ne "0") { throw "ha registos sem actor" }
+
+    "registo e alteracao na trilha, com o IBAN de antes e de depois"
+}
+
+# --- Requisição Interna
+
+Test-Case "10. Requisitante inexistente e recusado" {
+    # O colaborador e lido pelo contrato de `hr` (ADR-010). Sem esta
+    # verificacao, uma requisicao nasceria com um identificador que nao e de
+    # ninguem, e so `approval` o descobriria ao tentar verificar BR-2.
+    $body = @{
+        requestedByEmployeeId = [guid]::NewGuid().ToString()
+        justification         = "Requisitante que nao existe."
+        lines                 = @(@{ description = "Portatil"; quantity = 1; estimatedUnitPrice = 100 })
+    } | ConvertTo-Json -Depth 5
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/requisitions" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+    "404 - o requisitante e lido do contrato de hr, nao aceite por palavra"
+}
+
+Test-Case "11. Abrir requisicao: rascunho, e o total e a soma das linhas" {
+    $body = @{
+        requestedByEmployeeId = $requisitante
+        justification         = "Substituir os dois portateis avariados da contabilidade."
+        lines                 = @(
+            @{ description = "Portatil 14 pol, 16 GB"; quantity = 2; estimatedUnitPrice = 850000 },
+            @{ description = "Rato sem fios"; quantity = 2; estimatedUnitPrice = 12500 }
+        )
+    } | ConvertTo-Json -Depth 5
+
+    $r = Invoke-RestMethod "$base/procurement/requisitions" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+    $script:requisicaoId = $r.requisitionId
+
+    if ($r.estado -ne "Draft") { throw "estado '$($r.estado)', esperado Draft" }
+    if ([decimal]$r.estimatedTotal -ne 1725000) { throw "total $($r.estimatedTotal), esperado 1725000" }
+
+    # Nasce em rascunho e nao submetida: submeter e acto separado, e e o que
+    # congela o que se pede.
+    $processo = Invoke-Sql "select count(*) from procurement.purchase_requisition where id='$($script:requisicaoId)' and approval_request_id is not null"
+    if ($processo -ne "0") { throw "um rascunho ja tem processo de aprovacao" }
+
+    "2 x 850000 + 2 x 12500 = 1725000, em Draft"
+}
+
+Test-Case "12. As linhas sobrevivem a base de dados" {
+    # **E o caso que justifica esta suite.** A coleccao de linhas e mapeada por
+    # campo de apoio, e um mapeamento errado grava e rele sem elas — sem erro
+    # nenhum, e sem que teste de dominio algum o veja.
+    $r = Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)" -Headers $managerHeaders
+    if ($r.lines.Count -ne 2) { throw "relidas $($r.lines.Count) linhas, esperadas 2" }
+
+    $portatil = $r.lines | Where-Object { $_.description -like "Portatil*" }
+    if (-not $portatil) { throw "a linha do portatil desapareceu" }
+    if ([decimal]$portatil.estimatedTotal -ne 1700000) { throw "total da linha $($portatil.estimatedTotal)" }
+
+    $naBase = Invoke-Sql "select count(*) from procurement.requisition_line where requisition_id='$($script:requisicaoId)'"
+    if ($naBase -ne "2") { throw "$naBase linhas na base de dados, esperadas 2" }
+
+    "2 linhas relidas da base, com o total por linha certo"
+}
+
+Test-Case "13. Sem departamento indicado, herda o do requisitante" {
+    # E o departamento que escolhe a politica de aprovacao aplicavel. Deixa-lo
+    # nulo quando o requisitante tem um faria a requisicao cair na politica
+    # generica em vez da do seu departamento.
+    $dep = Invoke-Sql "select cast(department_id as varchar(36)) from procurement.purchase_requisition where id='$($script:requisicaoId)'"
+    if ($dep -ne $departamento) { throw "departamento '$dep', esperado $departamento" }
+    "herdado de hr, e nao inventado"
+}
+
+Test-Case "14. Linha sem quantidade positiva e recusada" {
+    $body = @{
+        requestedByEmployeeId = $requisitante
+        justification         = "Quantidade invalida."
+        lines                 = @(@{ description = "Portatil"; quantity = 0; estimatedUnitPrice = 100 })
+    } | ConvertTo-Json -Depth 5
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/requisitions" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "400 - pedir zero de alguma coisa nao e um pedido"
+}
+
+Test-Case "15. Sem politica configurada, submeter recusa e diz porque" {
+    # 409 e nao 500: a capacidade existe e funcionou. E configuracao em falta, e
+    # quem le o erro tem de saber que o corrige em `approval` e nao no pedido.
+    try {
+        Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)/submission" -Method Post -Headers $managerHeaders | Out-Null
+        throw "submeteu sem politica configurada"
+    }
+    catch {
+        if (-not $_.Exception.Response) { throw }
+        if ([int]$_.Exception.Response.StatusCode -ne 409) { throw "esperado 409, obtido $([int]$_.Exception.Response.StatusCode)" }
+        $corpo = $_.ErrorDetails.Message | ConvertFrom-Json
+        if ($corpo.erro -notmatch "procurement.purchase_requisition") { throw "o erro nao nomeia o tipo de processo: $($corpo.erro)" }
+    }
+
+    # E a requisicao fica em rascunho: falhar a submissao nao pode fazer perder
+    # o que ja foi escrito.
+    $estado = Invoke-Sql "select status from procurement.purchase_requisition where id='$($script:requisicaoId)'"
+    if ($estado -ne "Draft") { throw "estado '$estado' depois de uma submissao falhada" }
+
+    "409 a nomear o tipo de processo, e a requisicao continua em Draft"
+}
+
+Test-Case "16. Com politica, submeter cria o processo em approval" {
+    Invoke-RestMethod "$base/approval/policies" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+        -Body (@{ processType = "procurement.purchase_requisition"; steps = @(@{ approverPositionId = $cargo }) } | ConvertTo-Json -Depth 5) | Out-Null
+
+    $r = Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)/submission" -Method Post -Headers $managerHeaders
+    $script:processoId = $r.approvalRequestId
+
+    if ($r.estado -ne "PendingApproval") { throw "estado '$($r.estado)'" }
+    if (-not $script:processoId) { throw "submetida sem processo de aprovacao" }
+
+    $processo = Invoke-RestMethod "$base/approval/requests/$($script:processoId)" -Headers $adminHeaders
+    if ($processo.processType -ne "procurement.purchase_requisition") { throw "tipo de processo errado: $($processo.processType)" }
+    if ($processo.sourceModule -ne "procurement") { throw "modulo de origem errado: $($processo.sourceModule)" }
+
+    # A referencia e a requisicao, e nao o requisitante: e o registo que o
+    # processo decide, e e por ela que `procurement` o reencontra.
+    if ($processo.sourceReference -ne $script:requisicaoId) { throw "referencia de origem errada: $($processo.sourceReference)" }
+    if ($processo.pendingApprovers -notcontains $aprovador) { throw "o aprovador nao ficou atribuido ao passo" }
+
+    "202, processo $($script:processoId) com a requisicao por referencia"
+}
+
+Test-Case "17. O valor estimado vai com a submissao, e escolhe a alcada" {
+    # E estimativa, e a palavra importa: e o que o requisitante acha que custa,
+    # antes de haver cotacao e antes de haver factura. Sem valor, a requisicao
+    # nao cairia em faixa de alcada nenhuma e todas seriam iguais.
+    $valor = Invoke-Sql "select amount from approval.request where id='$($script:processoId)'"
+    if ([decimal]$valor -ne 1725000) { throw "valor no processo $valor, esperado 1725000" }
+
+    $moeda = Invoke-Sql "select currency from approval.request where id='$($script:processoId)'"
+    if ($moeda -ne "AOA") { throw "moeda '$moeda'" }
+
+    "1725000 AOA no processo, vindos das linhas"
+}
+
+Test-Case "18. A requisicao nao guarda o estado da decisao" {
+    # Anti-padrao do prototipo, e o mesmo que `finance` evita nos pedidos de
+    # pagamento: uma copia do estado fica obsoleta em silencio, e passam a
+    # existir duas versoes da verdade sobre a mesma decisao.
+    $colunas = Invoke-Sql @"
+select count(*) from sys.columns
+where object_id = object_id('procurement.purchase_requisition')
+  and name in ('approval_status','decision','approved_by','decided_by')
+"@
+    if ($colunas -ne "0") { throw "a requisicao copia o estado da decisao" }
+
+    $ponteiro = Invoke-Sql "select count(*) from sys.columns where object_id=object_id('procurement.purchase_requisition') and name='approval_request_id'"
+    if ($ponteiro -ne "1") { throw "sem ponteiro para o processo" }
+
+    "so um ponteiro para approval, sem copia do estado"
+}
+
+Test-Case "19. Depois de submetida, submeter outra vez recusa" {
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)/submission" -Method Post -Headers $managerHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    "409 - o que se pede ja foi congelado do lado de approval (BR-6)"
+}
+
+Test-Case "20. Enquanto ninguem decide, aplicar a decisao devolve 202" {
+    # 202 e nao 200: nao ha decisao para aplicar, e quem chamou tem de voltar.
+    try {
+        $r = Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)/approval-outcome" -Method Post -Headers $managerHeaders
+        if ($r.estado -ne "PendingApproval") { throw "estado '$($r.estado)'" }
+    }
+    catch { throw "aplicar a decisao pendente falhou: $($_.Exception.Message)" }
+
+    "202 e continua PendingApproval"
+}
+
+Test-Case "21. Decidida em approval, o efeito e aplicado em procurement" {
+    # **`approval` nunca empurra.** `modules/approval.md` proibe expressamente
+    # que o motor altere dados de negocio do modulo de origem — o efeito parte
+    # daqui, e e por isso que existe uma rota para o pedir.
+    $body = @{ decidedByEmployeeId = $aprovador; action = "Approved"; notes = "Substituicao justificada." } | ConvertTo-Json
+    Invoke-RestMethod "$base/approval/requests/$($script:processoId)/decisions" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    # Decidido do outro lado, e a requisicao ainda nao sabe.
+    $antes = Invoke-Sql "select status from procurement.purchase_requisition where id='$($script:requisicaoId)'"
+    if ($antes -ne "PendingApproval") { throw "approval alterou a requisicao sozinho: '$antes'" }
+
+    $r = Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)/approval-outcome" -Method Post -Headers $managerHeaders
+    if ($r.estado -ne "Approved") { throw "estado '$($r.estado)'" }
+
+    "aprovada em approval, e so aplicada quando procurement pergunta"
+}
+
+Test-Case "22. Aplicar a decisao outra vez nao falha nem duplica" {
+    # Idempotente por construcao: quem chama pode chamar outra vez, e um worker
+    # de reconciliacao vai chamar.
+    $r = Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)/approval-outcome" -Method Post -Headers $managerHeaders
+    if ($r.estado -ne "Approved") { throw "estado '$($r.estado)' na segunda chamada" }
+
+    $aprovacoes = Invoke-Sql "select count(*) from audit.audit_event where action='procurement.requisition.approved' and entity_id='$($script:requisicaoId)'"
+    if ($aprovacoes -ne "1") { throw "$aprovacoes registos de aprovacao na trilha, esperado 1" }
+
+    "segunda chamada devolve Approved, e a trilha nao duplica"
+}
+
+Test-Case "23. Uma requisicao aprovada ja nao se cancela" {
+    # Ha decisao registada, e desfaze-la aqui apagaria a decisao de outra
+    # pessoa. O que se cancela nesse ponto e a Ordem de Compra.
+    $body = @{ reason = "Mudei de ideias." } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+
+    $estado = Invoke-Sql "select status from procurement.purchase_requisition where id='$($script:requisicaoId)'"
+    if ($estado -ne "Approved") { throw "estado alterado apesar do 409: '$estado'" }
+
+    "409, e continua Approved"
+}
+
+Test-Case "24. Um rascunho cancela-se, com razao, e nao se elimina" {
+    $body = @{
+        requestedByEmployeeId = $requisitante
+        justification         = "Pedido que vai ser cancelado."
+        lines                 = @(@{ description = "Cadeira"; quantity = 1; estimatedUnitPrice = 45000 })
+    } | ConvertTo-Json -Depth 5
+
+    $r = Invoke-RestMethod "$base/procurement/requisitions" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+    $script:canceladaId = $r.requisitionId
+
+    $body = @{ reason = "Resolvido de outra forma." } | ConvertTo-Json
+    Invoke-RestMethod "$base/procurement/requisitions/$($script:canceladaId)/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders | Out-Null
+
+    $estado = Invoke-Sql "select status from procurement.purchase_requisition where id='$($script:canceladaId)'"
+    if ($estado -ne "Cancelled") { throw "estado '$estado'" }
+
+    $razao = Invoke-Sql "select closing_reason from procurement.purchase_requisition where id='$($script:canceladaId)'"
+    if ($razao -ne "Resolvido de outra forma.") { throw "razao perdida: '$razao'" }
+
+    # BR-14: a linha fica, e as linhas do pedido com ela.
+    $linhas = Invoke-Sql "select count(*) from procurement.requisition_line where requisition_id='$($script:canceladaId)'"
+    if ($linhas -ne "1") { throw "as linhas desapareceram com o cancelamento" }
+
+    "Cancelled com razao, e a linha continua la (BR-14)"
+}
+
+Test-Case "25. Cancelar sem razao e recusado" {
+    # Sem razao, quem abriu a requisicao nao sabe se foi engano, se foi decisao,
+    # nem o que corrigir para voltar a pedir.
+    $body = @{
+        requestedByEmployeeId = $requisitante
+        justification         = "Outro pedido."
+        lines                 = @(@{ description = "Secretaria"; quantity = 1; estimatedUnitPrice = 90000 })
+    } | ConvertTo-Json -Depth 5
+    $r = Invoke-RestMethod "$base/procurement/requisitions" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+
+    $body = @{ reason = "" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/requisitions/$($r.requisitionId)/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    "409 - um cancelamento sem razao nao explica nada a ninguem"
+}
+
+Test-Case "26. Sem chave estrangeira entre schemas para hr nem para approval" {
+    # O requisitante e o processo sao identificadores de outro contexto. Uma FK
+    # entre schemas amarraria o ciclo de vida dos dois lados (ADR-010) — e
+    # impediria `procurement` de existir sem eles.
+    $fks = Invoke-Sql @"
+select count(*) from sys.foreign_keys fk
+join sys.tables t on t.object_id = fk.parent_object_id
+join sys.schemas s on s.schema_id = t.schema_id
+join sys.tables rt on rt.object_id = fk.referenced_object_id
+join sys.schemas rs on rs.schema_id = rt.schema_id
+where s.name = 'procurement' and rs.name <> 'procurement'
+"@
+    if ($fks -ne "0") { throw "$fks chaves estrangeiras a sair do schema procurement" }
+    "0 FK a sair do schema - a ligacao e por identificador"
+}
+
+Test-Case "27. Autorizacao: 401 sem token, 403 no perfil errado" {
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/suppliers" }
+    if ($code -ne 401) { throw "sem token esperado 401, obtido $code" }
+
+    # `Sales` nao tem nada em `procurement`.
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/requisitions" -Headers $salesHeaders }
+    if ($code -ne 403) { throw "Sales a ler requisicoes: $code" }
+
+    # `Finance` ve fornecedores e nao os qualifica — a segregacao do caso 1,
+    # agora imposta pela rota e nao so pelo catalogo.
+    $ve = Get-StatusCode { Invoke-RestMethod "$base/procurement/suppliers" -Headers $financeHeaders }
+    if ($ve -ne 200) { throw "Finance nao consegue ver fornecedores: $ve" }
+
+    $body = @{ name = "Fornecedor da tesouraria"; taxId = "5777$curto" } | ConvertTo-Json
+    $escreve = Get-StatusCode { Invoke-RestMethod "$base/procurement/suppliers" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
+    if ($escreve -ne 403) { throw "Finance qualificou um fornecedor: $escreve" }
+
+    "401 sem token; Sales 403; Finance ve e nao qualifica"
+}
+
+Test-Case "28. Abrir e submeter ficam na trilha, com actor" {
+    $abertura = Invoke-Sql "select count(*) from audit.audit_event where action='procurement.requisition.opened' and entity_id='$($script:requisicaoId)'"
+    if ($abertura -ne "1") { throw "abertura nao esta na trilha" }
+
+    $submissao = Invoke-Sql "select count(*) from audit.audit_event where action='procurement.requisition.submitted' and entity_id='$($script:requisicaoId)'"
+    if ($submissao -ne "1") { throw "submissao nao esta na trilha" }
+
+    $comProcesso = Invoke-Sql "select count(*) from audit.audit_event where action='procurement.requisition.submitted' and entity_id='$($script:requisicaoId)' and new_value like '%$($script:processoId)%'"
+    if ($comProcesso -ne "1") { throw "a submissao nao guarda o processo de aprovacao" }
+
+    $semActor = Invoke-Sql "select count(*) from audit.audit_event where entity_type='procurement.purchase_requisition' and entity_id='$($script:requisicaoId)' and actor_id is null"
+    if ($semActor -ne "0") { throw "ha registos sem actor" }
+
+    "abrir, submeter e aprovar na trilha, todos com actor"
+}
+
+Test-Case "29. Dados sobrevivem ao reinicio da stack" {
+    Restart-RivoStack
+    $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
+    do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
+    if (-not $up) { throw "API nao voltou" }
+
+    $r = Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)" -Headers $managerHeaders
+    if ($r.status -ne "Approved") { throw "estado perdido: $($r.status)" }
+    if ($r.lines.Count -ne 2) { throw "linhas perdidas: $($r.lines.Count)" }
+    if ([decimal]$r.estimatedTotal -ne 1725000) { throw "total perdido: $($r.estimatedTotal)" }
+
+    $f = Invoke-RestMethod "$base/procurement/suppliers/$($script:fornecedorId)" -Headers $adminHeaders
+    if ($f.iban -ne $ibanBom) { throw "IBAN perdido: $($f.iban)" }
+
+    "requisicao, linhas e IBAN intactos apos restart"
+}
+
+Test-Case "30. A suite nao deixa politica de procurement activa atras de si" {
+    # **Independencia entre suites.** Sem isto, cada corrida deixaria mais uma
+    # politica generica, e o caso 15 — que verifica a recusa quando nao ha
+    # nenhuma — passaria a falhar a partir da segunda vez.
+    #
+    # Nao ha rota para desactivar politicas, e por isso e SQL.
+    Invoke-Sql "update approval.policy set is_active = 0 where process_type = 'procurement.purchase_requisition'" | Out-Null
+
+    $activas = Invoke-Sql "select count(*) from approval.policy where process_type = 'procurement.purchase_requisition' and is_active = 1"
+    if ($activas -ne "0") { throw "$activas politicas de procurement continuam activas" }
+
+    "a politica desta corrida sai; a suite volta a poder correr do zero"
+}
+
+Write-Host ""
+if ($failures -gt 0) { Write-Host "$failures teste(s) falharam." -ForegroundColor Red; exit 1 }
+Write-Host "Todos os testes passaram." -ForegroundColor Green
+exit 0

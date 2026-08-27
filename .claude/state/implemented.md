@@ -201,7 +201,7 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
 
 ## Verificação
 
-**Onze suites** PowerShell caixa-preta contra a stack em Docker, **191 casos**,
+**Doze suites** PowerShell caixa-preta contra a stack em Docker, **221 casos**,
 todas re-executáveis.
 
 > ⚠ **Estado da verificação a 2026-08-25, ao fechar a postagem automática.**
@@ -218,6 +218,10 @@ todas re-executáveis.
 > **Fechado a 2026-08-27.** O motor do Docker voltou, a stack foi reconstruída
 > e `verify-all` deu **191 de 191**, já com `procurement` dentro da imagem e com
 > o ADR-038 aplicado. A ressalva acima é histórico.
+>
+> **No mesmo dia passou a 221 de 221**, com `verify-procurement` a fechar a
+> lista. Corrida duas vezes seguidas antes de entrar, para provar que se limpa
+> a si própria — cria a política de que precisa e desactiva-a no fim.
 >
 > Os 629 testes .NET passam todos, os 4 de Testcontainers incluídos.
 
@@ -585,17 +589,20 @@ onde a cadeia `requisição → OC → recepção → factura` fica pelo primeir
 guardar nome e NIF em texto — e as já emitidas devem continuar assim, porque
 guardam o que vigorava à data.
 
-⚠ **Sem suite de verificação end-to-end.** As onze suites PowerShell não cobrem
-`procurement`, e a cobertura de Application é nenhuma.
+- **`verify-procurement`, 30 casos** — 2026-08-27. Passou a ser a décima segunda
+  suite, e `verify-all` está em **221/221**
 
-**Exercitado à mão contra a stack a 2026-08-27**, e isso não é o mesmo que uma
-suite — não é re-executável nem corre no CI. O que se confirmou: fornecedor
-registado com o IBAN normalizado e relido da base; NIF repetido a devolver
-`409` com o identificador do existente; IBAN com um dígito trocado a devolver
-`400`; requisição aberta com duas linhas e **relida da base com as linhas
-intactas** (o que os testes de domínio não podem provar); submissão sem
-política a devolver `409` com a razão certa; com política, `202` e o processo
-criado em `approval` com `processType` e `sourceReference` correctos; segunda
-submissão `409`; decisão aplicada e **idempotente** na segunda chamada;
-cancelar depois de aprovada `409`.
+O caso que justifica a suite é o **12**: a requisição é relida da base com as
+duas linhas intactas. O mapeamento de uma colecção por campo de apoio é onde o
+EF Core falha em silêncio — grava e relê sem as linhas, sem erro nenhum — e
+nenhum teste de domínio o vê.
+
+Os restantes cobrem o IBAN (normalização, mod-97, e que uma recusa não apaga o
+que lá estava), a unicidade do NIF com o índice como segunda linha, BR-14 nos
+dois agregados, o círculo inteiro com `approval` — submeter, decidir do outro
+lado, aplicar deste, e a idempotência da segunda chamada —, a ausência de FK a
+sair do schema, e a segregação de que quem paga não qualifica o fornecedor.
+
+⚠ **A cobertura de Application continua a ser nenhuma**, como nos outros sete
+módulos.
 
