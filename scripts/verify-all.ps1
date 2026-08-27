@@ -34,7 +34,22 @@ $suites = @(
 )
 
 function Wait-ForApi {
-    param([int]$TimeoutSeconds = 180)
+    # 420 s e nao 180: **a paciencia deste script nao pode ser menor que a da
+    # aplicacao.** A API espera ate `Database__StartupTimeoutSeconds` pela base
+    # de dados, e em desenvolvimento isso sao 420 s — um `docker compose
+    # restart` nao respeita `depends_on`, por isso o SQL Server reinicia com ela
+    # e a recuperacao da base leva o tempo que leva.
+    #
+    # Com 180 s aqui, uma suite que reinicia a stack no ultimo caso devolvia o
+    # controlo antes de a API voltar, e a suite **seguinte** falhava inteira com
+    # "An error occurred while sending the request" — dezenas de falhas que nao
+    # sao defeitos da aplicacao e apontam para o modulo errado. Observado a
+    # 2026-08-27, com `verify-procurement` a falhar 40 casos depois de
+    # `verify-ledger` reiniciar a stack.
+    #
+    # O mesmo numero ja estava em `Wait-RivoApi` (_ambiente.ps1); ficou por
+    # alinhar aqui, e a divergencia entre os dois e que criou o defeito.
+    param([int]$TimeoutSeconds = 420)
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {
