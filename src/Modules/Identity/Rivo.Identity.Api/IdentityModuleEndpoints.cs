@@ -38,6 +38,26 @@ public static class IdentityModuleEndpoints
         group.MapPost("/users/{userId:guid}/roles", AssignRoleAsync)
             .RequireAuthorization(Permissions.RolesAssign);
 
+
+        // --- Conta própria. Só exigem sessão válida: o recurso é quem chama.
+
+        group.MapPost("/me/password", ChangePasswordAsync).RequireAuthorization();
+        group.MapGet("/me/sessions", ListSessionsAsync).RequireAuthorization();
+
+        group.MapPost("/me/sessions/{sessionId:guid}/revocation", RevokeSessionAsync)
+            .RequireAuthorization();
+
+        // --- Contas de terceiros. Exigem permissão.
+
+        group.MapPost("/users/{userId:guid}/password-reset", ResetPasswordAsync)
+            .RequireAuthorization(Permissions.UsersWrite);
+
+        group.MapPost("/users/{userId:guid}/status", SetStatusAsync)
+            .RequireAuthorization(Permissions.UsersWrite);
+
+        group.MapPost("/users/{userId:guid}/roles/{profile}/removal", RemoveRoleAsync)
+            .RequireAuthorization(Permissions.RolesAssign);
+
         return endpoints;
     }
 
@@ -231,6 +251,183 @@ public static class IdentityModuleEndpoints
     /// Lê o identificador da sessão do token. O handler do JWT reescreve "sid"
     /// para o URI de <see cref="ClaimTypes.Sid"/>, por isso tentam-se ambos.
     /// </summary>
+
+    private static async Task<IResult> ChangePasswordAsync(
+        ChangePasswordRequest request,
+        ChangeOwnPassword changePassword,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var userId = ReadUserId(http.User);
+        var sessionId = ReadSessionId(http.User);
+
+        if (userId is null || sessionId is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var resultado = await changePassword.ExecuteAsync(
+            userId.Value,
+            sessionId.Value,
+            request.CurrentPassword,
+            request.NewPassword,
+            BuildAuditContext(http),
+            cancellationToken);
+
+        return resultado.Result switch
+        {
+            PasswordChangeResult.Changed => Results.NoContent(),
+
+            // 401 e não 403: é a credencial que falha, não a autorização. Quem
+            // recebe isto tem de reintroduzir a password, não pedir permissão.
+            PasswordChangeResult.WrongCurrentPassword =>
+                Results.Problem(
+                    "A password actual não confere.",
+                    statusCode: StatusCodes.Status401Unauthorized),
+
+            PasswordChangeResult.Rejected => Results.ValidationProblem(
+                new Dictionary<string, string[]> { ["newPassword"] = [.. resultado.Errors] }),
+
+            // O token é válido e a conta desapareceu entretanto.
+            PasswordChangeResult.UserNotFound => Results.Unauthorized(),
+
+            _ => Results.Problem("Resultado inesperado ao mudar a password."),
+        };
+    }
+
+    private static async Task<IResult> ResetPasswordAsync(
+        Guid userId,
+        ResetPasswordRequest request,
+        ResetUserPassword resetPassword,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var resultado = await resetPassword.ExecuteAsync(
+            userId, request.NewPassword, BuildAuditContext(http), cancellationToken);
+
+        return resultado.Result switch
+        {
+            PasswordChangeResult.Changed => Results.NoContent(),
+            PasswordChangeResult.UserNotFound => Results.NotFound(new { erro = "Utilizador não encontrado." }),
+
+            PasswordChangeResult.Rejected => Results.ValidationProblem(
+                new Dictionary<string, string[]> { ["newPassword"] = [.. resultado.Errors] }),
+
+            _ => Results.Problem("Resultado inesperado ao repor a password."),
+        };
+    }
+
+    private static async Task<IResult> SetStatusAsync(
+        Guid userId,
+        SetAccountStatusRequest request,
+        SetAccountStatus setStatus,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Reason))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                // Fechar o acesso de alguém sem dizer porquê deixa quem audita
+                // a olhar para um registo que não explica nada.
+                ["reason"] = ["Indique a razão: fica na trilha de auditoria."],
+            });
+        }
+
+        // Desactivar a própria conta trancava quem administra fora do sistema,
+        // e a recuperação exigiria mexer na base de dados à mão.
+        if (ReadUserId(http.User) == userId && !request.Active)
+        {
+            return Results.Conflict(new { erro = "Não é possível desactivar a própria conta." });
+        }
+
+        var resultado = await setStatus.ExecuteAsync(
+            userId, request.Active, request.Reason, BuildAuditContext(http), cancellationToken);
+
+        return resultado switch
+        {
+            AccountStatusOutcome.Changed => Results.NoContent(),
+            AccountStatusOutcome.UserNotFound => Results.NotFound(new { erro = "Utilizador não encontrado." }),
+            _ => Results.Problem("Resultado inesperado ao alterar o estado da conta."),
+        };
+    }
+
+    private static async Task<IResult> RemoveRoleAsync(
+        Guid userId,
+        string profile,
+        RemoveAccessProfile removeProfile,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var outcome = await removeProfile.ExecuteAsync(
+            userId, profile, BuildAuditContext(http), cancellationToken);
+
+        return outcome switch
+        {
+            AssignProfileOutcome.Assigned => Results.NoContent(),
+            AssignProfileOutcome.UserNotFound => Results.NotFound(new { erro = "Utilizador não encontrado." }),
+
+            // 404 e não 400, ao contrário da atribuição: aqui o perfil vem no
+            // URI, e é parte do recurso que não foi encontrado.
+            AssignProfileOutcome.ProfileNotFound => Results.NotFound(new { erro = "Perfil de acesso não encontrado." }),
+
+            _ => Results.Problem("Resultado inesperado ao retirar o perfil."),
+        };
+    }
+
+    private static async Task<IResult> ListSessionsAsync(
+        ListOwnSessions listSessions,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var userId = ReadUserId(http.User);
+        var sessionId = ReadSessionId(http.User);
+
+        if (userId is null || sessionId is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        return Results.Ok(await listSessions.ExecuteAsync(
+            userId.Value, sessionId.Value, cancellationToken));
+    }
+
+    private static async Task<IResult> RevokeSessionAsync(
+        Guid sessionId,
+        RevokeOwnSession revokeSession,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var userId = ReadUserId(http.User);
+
+        if (userId is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var resultado = await revokeSession.ExecuteAsync(
+            userId.Value, sessionId, BuildAuditContext(http), cancellationToken);
+
+        return resultado switch
+        {
+            RevokeSessionOutcome.Revoked => Results.NoContent(),
+
+            // Sessão de outra pessoa devolve o mesmo que sessão inexistente —
+            // ver a nota em `RevokeOwnSession`.
+            RevokeSessionOutcome.NotFound => Results.NotFound(new { erro = "Sessão não encontrada." }),
+
+            _ => Results.Problem("Resultado inesperado ao terminar a sessão."),
+        };
+    }
+
+    /// <summary>Identificador do utilizador autenticado, lido do token.</summary>
+    private static Guid? ReadUserId(ClaimsPrincipal principal)
+    {
+        var value = principal.FindFirstValue(JwtRegisteredClaimNames.Sub)
+            ?? principal.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        return Guid.TryParse(value, out var id) ? id : null;
+    }
     private static Guid? ReadSessionId(ClaimsPrincipal principal)
     {
         var value = principal.FindFirstValue(ClaimTypes.Sid)

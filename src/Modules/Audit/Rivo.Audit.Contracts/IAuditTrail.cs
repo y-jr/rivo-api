@@ -64,6 +64,27 @@ public static class AuditActions
     public const string UserLoginFailed = "identity.user.login_failed";
     public const string UserLoggedOut = "identity.user.logged_out";
     public const string ProfileAssigned = "identity.user.profile_assigned";
+    public const string ProfileRemoved = "identity.user.profile_removed";
+
+    /// <summary>O próprio mudou a sua password.</summary>
+    public const string PasswordChanged = "identity.user.password_changed";
+
+    /// <summary>
+    /// Tentou mudar a password e falhou a actual. Registada porque uma
+    /// sequência delas é a assinatura de quem tem o token e não a credencial.
+    /// </summary>
+    public const string PasswordChangeRefused = "identity.user.password_change_refused";
+
+    /// <summary>
+    /// Um administrador repôs a password de outra conta. <strong>Acção própria
+    /// e não uma mudança qualquer</strong>: é o caminho por onde uma conta é
+    /// tomada, e quem audita tem de o encontrar sem o procurar no meio das
+    /// mudanças legítimas.
+    /// </summary>
+    public const string PasswordReset = "identity.user.password_reset";
+
+    public const string AccountDeactivated = "identity.user.deactivated";
+    public const string AccountReactivated = "identity.user.reactivated";
 
     /// <summary>
     /// Uma identidade de provider externo passou a poder entrar nesta conta

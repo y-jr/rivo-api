@@ -51,8 +51,20 @@ public sealed class UserAccounts(
             return null;
         }
 
-        // CheckPasswordAsync compara em tempo constante e respeita o lockout
-        // configurado. Não substituir por comparação manual de hashes.
+        // **Conta desactivada falha como se a password estivesse errada.**
+        // Distinguir os dois casos diria a quem tenta que o endereço existe e
+        // que a conta foi fechada — informação que não se dá a quem não entrou.
+        //
+        // Tem de ser verificado aqui: `CheckPasswordAsync` compara o hash e
+        // **não** olha ao bloqueio, ao contrário do que o comentário anterior
+        // dizia. Quem olha é o `SignInManager`, que este módulo não usa.
+        if (await users.IsLockedOutAsync(user))
+        {
+            return null;
+        }
+
+        // Compara em tempo constante. Não substituir por comparação manual de
+        // hashes.
         if (!await users.CheckPasswordAsync(user, password))
         {
             return null;
@@ -72,7 +84,14 @@ public sealed class UserAccounts(
         // mantém. É por isto que o ADR-032 não precisou de migração nenhuma.
         var user = await users.FindByLoginAsync(provider, providerKey);
 
-        return user is null ? null : await ToAuthenticatedAccountAsync(user);
+        // Desactivar uma conta tem de fechar **todas** as portas. Sem isto, o
+        // Google continuava a abrir a que a password já não abria.
+        if (user is null || await users.IsLockedOutAsync(user))
+        {
+            return null;
+        }
+
+        return await ToAuthenticatedAccountAsync(user);
     }
 
     public async Task<LinkExternalLoginResult> LinkExternalLoginAsync(
@@ -106,11 +125,32 @@ public sealed class UserAccounts(
         return LinkExternalLoginResult.Linked(await ToAuthenticatedAccountAsync(user));
     }
 
-    public async Task<IReadOnlyList<UserSummary>> ListAsync(CancellationToken cancellationToken) =>
-        await users.Users
-            .OrderBy(user => user.Email)
-            .Select(user => new UserSummary(user.Id, user.Email!))
-            .ToListAsync(cancellationToken);
+    public async Task<IReadOnlyList<UserSummary>> ListAsync(CancellationToken cancellationToken)
+    {
+        var contas = await users.Users.OrderBy(user => user.Email).ToListAsync(cancellationToken);
+        var agora = DateTimeOffset.UtcNow;
+        var resumo = new List<UserSummary>(contas.Count);
+
+        // Uma consulta por conta para os perfis. É N+1, e é aceitável aqui: a
+        // lista de contas de uma PME cabe num ecrã, e a alternativa era juntar
+        // três tabelas do Identity à mão.
+        foreach (var conta in contas)
+        {
+            var perfis = await users.GetRolesAsync(conta);
+            resumo.Add(new UserSummary(conta.Id, conta.Email!, IsActive(conta, agora), [.. perfis]));
+        }
+
+        return resumo;
+    }
+
+    /// <summary>
+    /// Uma conta está activa enquanto não tiver bloqueio no futuro. É a leitura
+    /// inversa de <c>SetActiveAsync</c>, e vive aqui para as duas não poderem
+    /// divergir.
+    /// </summary>
+    private static bool IsActive(ApplicationUser user, DateTimeOffset now) =>
+        user.LockoutEnd is null || user.LockoutEnd <= now;
+
 
     public async Task<AssignProfileOutcome> AssignProfileAsync(
         Guid userId,
@@ -138,6 +178,114 @@ public sealed class UserAccounts(
         if (!await users.IsInRoleAsync(user, profile))
         {
             await users.AddToRoleAsync(user, profile);
+        }
+
+        return AssignProfileOutcome.Assigned;
+    }
+
+    public async Task<PasswordChangeOutcome> ChangePasswordAsync(
+        Guid userId,
+        string currentPassword,
+        string newPassword,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var user = await users.FindByIdAsync(userId.ToString());
+
+        if (user is null)
+        {
+            return PasswordChangeOutcome.UserNotFound();
+        }
+
+        // Verificação explícita antes de `ChangePasswordAsync`, para distinguir
+        // "a actual está errada" de "a nova não passa as regras". O Identity
+        // devolve as duas como o mesmo insucesso, e quem chama precisa de as
+        // separar: uma é 401, a outra é 400.
+        if (!await users.CheckPasswordAsync(user, currentPassword))
+        {
+            return PasswordChangeOutcome.WrongCurrentPassword();
+        }
+
+        var result = await users.ChangePasswordAsync(user, currentPassword, newPassword);
+
+        return result.Succeeded
+            ? PasswordChangeOutcome.Changed()
+            : PasswordChangeOutcome.Rejected([.. result.Errors.Select(error => error.Description)]);
+    }
+
+    public async Task<PasswordChangeOutcome> ResetPasswordAsync(
+        Guid userId,
+        string newPassword,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var user = await users.FindByIdAsync(userId.ToString());
+
+        if (user is null)
+        {
+            return PasswordChangeOutcome.UserNotFound();
+        }
+
+        // Token gerado e consumido no mesmo acto. É a via suportada do Identity
+        // para repor sem conhecer a password actual — mexer no hash à mão
+        // saltaria as regras de password e o carimbo de segurança.
+        var token = await users.GeneratePasswordResetTokenAsync(user);
+        var result = await users.ResetPasswordAsync(user, token, newPassword);
+
+        return result.Succeeded
+            ? PasswordChangeOutcome.Changed()
+            : PasswordChangeOutcome.Rejected([.. result.Errors.Select(error => error.Description)]);
+    }
+
+    public async Task<AccountStatusOutcome> SetActiveAsync(
+        Guid userId,
+        bool active,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var user = await users.FindByIdAsync(userId.ToString());
+
+        if (user is null)
+        {
+            return AccountStatusOutcome.UserNotFound;
+        }
+
+        // O bloqueio do Identity, e não uma coluna nova: as duas que isto usa
+        // já existem na tabela desde o primeiro dia. `MaxValue` é o idioma da
+        // biblioteca para "bloqueado até ordem em contrário".
+        await users.SetLockoutEnabledAsync(user, true);
+        await users.SetLockoutEndDateAsync(user, active ? null : DateTimeOffset.MaxValue);
+
+        return AccountStatusOutcome.Changed;
+    }
+
+    public async Task<AssignProfileOutcome> RemoveProfileAsync(
+        Guid userId,
+        string profile,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var user = await users.FindByIdAsync(userId.ToString());
+
+        if (user is null)
+        {
+            return AssignProfileOutcome.UserNotFound;
+        }
+
+        if (!await roles.RoleExistsAsync(profile))
+        {
+            return AssignProfileOutcome.ProfileNotFound;
+        }
+
+        // Repetível sem erro, como a atribuição: retirar um perfil que já não
+        // está atribuído produz o estado pretendido na mesma.
+        if (await users.IsInRoleAsync(user, profile))
+        {
+            await users.RemoveFromRoleAsync(user, profile);
         }
 
         return AssignProfileOutcome.Assigned;

@@ -98,14 +98,14 @@ dotnet test
 
 ## Estado da cobertura
 
-_Contagens de 2026-08-27, executadas. **671 testes** em 15 projectos, e
-**passam todos** — os 4 de Testcontainers incluídos, desde que o motor do
-Docker voltou._
+_Contagens de 2026-08-27, executadas. **691 testes** em 15 projectos, e
+**687 passam** — os 4 de Testcontainers falham desde que o motor do Docker
+voltou a cair, na mesma tarde em que a suite tinha passado inteira._
 
 | Camada | Estado |
 |---|---|
 | Domain | **529 testes**, 10 módulos — `finance` 190, `hr` 129, `procurement` 100, `commercial` 20, `notifications` 20, `fiscal` 18, `approval` 17, `documents` 16, `audit` 10, `identity` 9 |
-| Application | **108 testes** — `finance` 100, `identity` 8. Os restantes oito módulos por cobrir, `procurement` incluído |
+| Application | **128 testes** — `finance` 100, `identity` 28. Os restantes oito módulos por cobrir, `procurement` incluído |
 | Infrastructure | **4 testes** em `notifications`, SQL Server real (ADR-026, ADR-029). Restantes oito módulos por cobrir |
 | API do host | **9 testes** em `tests/Rivo.Api.Tests` — tradução de excepções em códigos HTTP (ADR-035). Nasceu porque isto não é testável em nenhuma das outras camadas: as de domínio não conhecem HTTP, as de arquitectura verificam forma e não comportamento |
 | API de módulo | Nenhum (as suites PowerShell tocam-lhe indirectamente) |

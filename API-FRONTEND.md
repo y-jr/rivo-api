@@ -1,7 +1,7 @@
 # Rivo API - Guia para o Frontend
 
-Documento gerado a partir das rotas implementadas no backend. A API tem 138
-endpoints: 134 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
+Documento gerado a partir das rotas implementadas no backend. A API tem 144
+endpoints: 140 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
 
 ## Como ligar
 
@@ -69,6 +69,36 @@ pelos casos de uso e não têm um DTO HTTP nomeado.
 
 Registo inválido devolve `400`; login falhado devolve `401` sem revelar se o
 email existe. Google não configurado devolve `501`.
+
+### Conta e sessões
+
+| Método e rota | Permissão | O que faz | Request | Sucesso |
+|---|---|---|---|---|
+| `POST /identity/me/password` | JWT | Muda a própria password | `{ currentPassword, newPassword }` | `204` |
+| `GET /identity/me/sessions` | JWT | Lista as sessões do próprio | Sem parâmetros | `200` colecção |
+| `POST /identity/me/sessions/{sessionId}/revocation` | JWT | Termina uma sessão própria | Sem corpo | `204` |
+| `POST /identity/users/{userId}/password-reset` | `identity.users.write` | Repõe a password de outra conta | `{ newPassword }` | `204` |
+| `POST /identity/users/{userId}/status` | `identity.users.write` | Activa ou desactiva a conta | `{ active, reason }` | `204` |
+| `POST /identity/users/{userId}/roles/{profile}/removal` | `identity.roles.assign` | Retira um perfil | Sem corpo | `204` |
+
+**Mudar a password termina as outras sessões** e mantém a de onde se mudou.
+Password actual errada devolve `401` — é a credencial que falha, não a
+autorização. Password nova fraca devolve `400` com os motivos em `errors`.
+
+**Desactivar uma conta termina todas as sessões** e fecha os dois caminhos de
+entrada, password e Google. `reason` é obrigatória (`400` sem ela) e fica na
+trilha. Desactivar a própria conta devolve `409`.
+
+`GET /identity/me/sessions` devolve `sessionId`, `ipAddress`, `userAgent`,
+`createdAt`, `expiresAt`, `revokedAt`, `isActive` e **`isCurrent`** — usar o
+último para não oferecer «terminar» na sessão de onde se está a olhar.
+Revogar a sessão de outra pessoa devolve `404`, e não `403`.
+
+⚠ Retirar um perfil **não tem efeito imediato no token que a pessoa já tem**:
+as permissões são resolvidas na autenticação. Para cortar já, desactivar a
+conta.
+
+`GET /identity/users` passou a devolver também `isActive` e `roles`.
 
 ## Comercial
 

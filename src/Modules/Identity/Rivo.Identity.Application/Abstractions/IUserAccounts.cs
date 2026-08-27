@@ -68,9 +68,69 @@ public interface IUserAccounts
     /// forçar a actualização, revoga-se a sessão.
     /// </summary>
     Task<AssignProfileOutcome> AssignProfileAsync(Guid userId, string profile, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Muda a password do próprio, exigindo a actual.
+    ///
+    /// <para>
+    /// <strong>A password actual é obrigatória, e é o ponto todo.</strong> Sem
+    /// ela, um token roubado mudava a password e trancava o dono fora da sua
+    /// própria conta — a sessão passava a valer mais do que a credencial.
+    /// </para>
+    /// </summary>
+    Task<PasswordChangeOutcome> ChangePasswordAsync(
+        Guid userId,
+        string currentPassword,
+        string newPassword,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Repõe a password de outra conta, sem exigir a actual.
+    ///
+    /// <para>
+    /// É o caminho de quem administra, para quem perdeu o acesso. É também o
+    /// caminho óbvio de uma tomada de conta — por isso fica na trilha com acção
+    /// própria, e não confundida com uma mudança de password normal.
+    /// </para>
+    /// </summary>
+    Task<PasswordChangeOutcome> ResetPasswordAsync(
+        Guid userId,
+        string newPassword,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Activa ou desactiva uma conta.
+    ///
+    /// <para>
+    /// <strong>Não elimina</strong> (BR-14): a conta é referenciada pela trilha
+    /// de auditoria e por tudo o que a pessoa fez. Desactivar é o que existe.
+    /// </para>
+    ///
+    /// <para>
+    /// Usa o bloqueio do ASP.NET Core Identity, que já tem colunas para isso —
+    /// não foi preciso schema novo. Uma conta desactivada falha a autenticação
+    /// como se a password estivesse errada.
+    /// </para>
+    /// </summary>
+    Task<AccountStatusOutcome> SetActiveAsync(Guid userId, bool active, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Retira um Perfil de Acesso a um utilizador.
+    ///
+    /// <para>
+    /// Um utilizador sem perfil nenhum é estado válido: fica autenticado e sem
+    /// permissões. É o que se quer para alguém que muda de funções e ainda não
+    /// tem as novas.
+    /// </para>
+    /// </summary>
+    Task<AssignProfileOutcome> RemoveProfileAsync(Guid userId, string profile, CancellationToken cancellationToken);
 }
 
-public sealed record UserSummary(Guid UserId, string Email);
+/// <param name="IsActive">
+/// Falso quando a conta está desactivada. Uma listagem que não distinguisse
+/// activos de desactivados deixava quem administra sem saber quem ainda entra.
+/// </param>
+public sealed record UserSummary(Guid UserId, string Email, bool IsActive, IReadOnlyList<string> Roles);
 
 /// <param name="Account">Preenchido apenas quando a ligação foi feita.</param>
 public sealed record LinkExternalLoginResult(LinkExternalLoginOutcome Outcome, AuthenticatedAccount? Account)
@@ -131,3 +191,43 @@ public sealed record AuthenticatedAccount(
     string Email,
     IReadOnlyList<string> Roles,
     IReadOnlyList<string> Permissions);
+
+/// <param name="Errors">
+/// Motivos da recusa, vindos das regras de password do Identity. Próprios para
+/// devolver a quem chamou — dizem o que corrigir.
+/// </param>
+public sealed record PasswordChangeOutcome(
+    PasswordChangeResult Result,
+    IReadOnlyList<string> Errors)
+{
+    public static PasswordChangeOutcome Changed() => new(PasswordChangeResult.Changed, []);
+
+    public static PasswordChangeOutcome UserNotFound() => new(PasswordChangeResult.UserNotFound, []);
+
+    public static PasswordChangeOutcome WrongCurrentPassword() =>
+        new(PasswordChangeResult.WrongCurrentPassword, []);
+
+    public static PasswordChangeOutcome Rejected(IReadOnlyList<string> errors) =>
+        new(PasswordChangeResult.Rejected, errors);
+}
+
+public enum PasswordChangeResult
+{
+    Changed,
+    UserNotFound,
+
+    /// <summary>
+    /// A password actual não confere. <strong>401 e não 403</strong>: é a
+    /// credencial que falha, não a autorização.
+    /// </summary>
+    WrongCurrentPassword,
+
+    /// <summary>A nova password não passa as regras. 400, com os motivos.</summary>
+    Rejected,
+}
+
+public enum AccountStatusOutcome
+{
+    Changed,
+    UserNotFound,
+}

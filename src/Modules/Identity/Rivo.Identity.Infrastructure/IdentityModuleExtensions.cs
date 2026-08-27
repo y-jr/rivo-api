@@ -59,7 +59,17 @@ public static class IdentityModuleExtensions
                 options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
             })
             .AddRoles<ApplicationRole>()
-            .AddEntityFrameworkStores<RivoIdentityDbContext>();
+            .AddEntityFrameworkStores<RivoIdentityDbContext>()
+
+            // Necessário para `GeneratePasswordResetTokenAsync`, que é a via
+            // suportada de repor uma password sem conhecer a actual. Sem isto,
+            // repor rebentava com "No IUserTwoFactorTokenProvider named
+            // Default is registered" — e a alternativa era mexer no hash à mão,
+            // que saltaria as regras de password e o carimbo de segurança.
+            //
+            // O token é gerado e consumido no mesmo pedido, por isso a
+            // persistência do anel de chaves não é aqui um problema.
+            .AddDefaultTokenProviders();
 
         services
             .AddOptions<JwtOptions>()
@@ -93,6 +103,12 @@ public static class IdentityModuleExtensions
         services.AddScoped<LogOut>();
         services.AddScoped<ListUsers>();
         services.AddScoped<AssignAccessProfile>();
+        services.AddScoped<RemoveAccessProfile>();
+        services.AddScoped<ChangeOwnPassword>();
+        services.AddScoped<ResetUserPassword>();
+        services.AddScoped<SetAccountStatus>();
+        services.AddScoped<ListOwnSessions>();
+        services.AddScoped<RevokeOwnSession>();
         services.AddSingleton<ListAccessProfiles>();
 
         services.AddScoped<AccessProfileSeeder>();

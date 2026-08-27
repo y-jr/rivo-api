@@ -191,6 +191,46 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
   `git pull`, `compose up --build`, sonda de `/health`. Ambiente publicado em
   `http://187.77.178.242`, atrás de Caddy na rede `proxy`. **Sem TLS** enquanto
   não houver domínio — K16
+### Gestão de conta em `identity` — 2026-08-27
+
+Seis endpoints que faltavam a qualquer sistema com contas, e nenhum precisou de
+migração: o bloqueio do ASP.NET Core Identity já tinha as colunas.
+
+- **Mudar a própria password** exige a actual — sem isso, um token roubado
+  mudava a password e trancava o dono cá fora. **Termina as outras sessões** e
+  mantém a de onde se mudou: quem muda fá-lo por suspeitar que alguém a sabe
+- **Repor a password de outra conta** termina **todas** as sessões, avisa o
+  dono, e fica na trilha com **acção própria** — é o caminho por onde uma conta
+  é tomada, e quem audita tem de o encontrar sem o procurar entre as mudanças
+  legítimas
+- **Activar e desactivar contas.** ⚠ **Era a lacuna mais grave do módulo:** não
+  havia como cortar o acesso a quem sai da empresa. Desactivar termina as
+  sessões e fecha os **dois** caminhos de entrada — password e Google. Exige
+  razão, e desactivar a própria conta é recusado
+- **Ver e terminar as próprias sessões.** A lista marca a corrente, para não se
+  terminar aquela de onde se está a olhar. Revogar a de outra pessoa devolve o
+  mesmo que sessão inexistente
+- **Retirar um perfil de acesso.** Sem efeito imediato no token já emitido — as
+  permissões resolvem-se na autenticação (ADR-014)
+- `GET /identity/users` passou a dar `isActive` e `roles`
+
+Nova permissão `identity.users.write`, separada de `roles.assign`: quem atribui
+perfis decide o que uma pessoa pode fazer; quem repõe passwords decide **quem
+ela é**.
+
+**20 testes de Application novos** (28 no módulo). Cinco dos seis endpoints
+foram exercitados contra a stack.
+
+⚠ **O sexto não.** `password-reset` rebentou com 500 — faltavam os token
+providers do Identity, que `GeneratePasswordResetTokenAsync` exige. A correcção
+(`AddDefaultTokenProviders()`) está aplicada e compila, **e não foi
+exercitada**: o motor do Docker caiu durante a reconstrução.
+
+⚠ **O bloqueio por tentativas falhadas continua inactivo.** As opções estão
+configuradas (5 tentativas, 15 minutos), mas quem as aplica é o `SignInManager`,
+que este módulo não usa — `CheckPasswordAsync` só compara o hash. Defeito
+pré-existente, encontrado ao construir isto.
+
 - `Rivo.Fiscal`, `Rivo.Commercial` e `Rivo.Finance` acrescentados à solução e
   ao host — 2026-08-24 — ADR-036
 - Contrato HTTP escrito para quem consome a API de fora —

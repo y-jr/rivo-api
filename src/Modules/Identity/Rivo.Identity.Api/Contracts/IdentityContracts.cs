@@ -25,3 +25,17 @@ public sealed record CurrentUserResponse(
 
 /// <param name="Profile">Nome do Perfil de Acesso, como consta de /identity/roles.</param>
 public sealed record AssignRoleRequest(string Profile);
+
+/// <param name="CurrentPassword">
+/// Obrigatória. Sem ela, um token roubado mudava a password e trancava o dono
+/// fora da sua própria conta.
+/// </param>
+public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+
+public sealed record ResetPasswordRequest(string NewPassword);
+
+/// <param name="Reason">
+/// Obrigatória. Fecha ou reabre o acesso de alguém, e a trilha tem de dizer
+/// porquê.
+/// </param>
+public sealed record SetAccountStatusRequest(bool Active, string Reason);

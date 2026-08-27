@@ -64,9 +64,106 @@ internal sealed class FakeUserAccounts : IUserAccounts
     public Task<IReadOnlyList<UserSummary>> ListAsync(CancellationToken cancellationToken) =>
         throw new NotSupportedException("Não usado nestes testes.");
 
-    public Task<AssignProfileOutcome> AssignProfileAsync(Guid userId, string profile, CancellationToken cancellationToken) =>
-        throw new NotSupportedException("Não usado nestes testes.");
+    /// <summary>
+    /// Estado em memória para os casos de uso de conta. Guarda-se em vez de se
+    /// devolver valor fixo: metade do que há para testar é o efeito de uma
+    /// operação sobre a seguinte — mudar a password e depois verificá-la.
+    /// </summary>
+    public Dictionary<Guid, string> Passwords { get; } = [];
+
+    public HashSet<Guid> Deactivated { get; } = [];
+
+    public Dictionary<Guid, HashSet<string>> Profiles { get; } = [];
+
+    public Task<PasswordChangeOutcome> ChangePasswordAsync(
+        Guid userId, string currentPassword, string newPassword, CancellationToken cancellationToken)
+    {
+        if (!Passwords.TryGetValue(userId, out var actual))
+        {
+            return Task.FromResult(PasswordChangeOutcome.UserNotFound());
+        }
+
+        if (actual != currentPassword)
+        {
+            return Task.FromResult(PasswordChangeOutcome.WrongCurrentPassword());
+        }
+
+        // Regra mínima, só para haver um caminho de recusa que não seja a
+        // password actual errada.
+        if (newPassword.Length < 8)
+        {
+            return Task.FromResult(PasswordChangeOutcome.Rejected(["Password demasiado curta."]));
+        }
+
+        Passwords[userId] = newPassword;
+        return Task.FromResult(PasswordChangeOutcome.Changed());
+    }
+
+    public Task<PasswordChangeOutcome> ResetPasswordAsync(
+        Guid userId, string newPassword, CancellationToken cancellationToken)
+    {
+        if (!Passwords.ContainsKey(userId))
+        {
+            return Task.FromResult(PasswordChangeOutcome.UserNotFound());
+        }
+
+        Passwords[userId] = newPassword;
+        return Task.FromResult(PasswordChangeOutcome.Changed());
+    }
+
+    public Task<AccountStatusOutcome> SetActiveAsync(Guid userId, bool active, CancellationToken cancellationToken)
+    {
+        if (!Passwords.ContainsKey(userId))
+        {
+            return Task.FromResult(AccountStatusOutcome.UserNotFound);
+        }
+
+        if (active)
+        {
+            Deactivated.Remove(userId);
+        }
+        else
+        {
+            Deactivated.Add(userId);
+        }
+
+        return Task.FromResult(AccountStatusOutcome.Changed);
+    }
+
+    public Task<AssignProfileOutcome> RemoveProfileAsync(
+        Guid userId, string profile, CancellationToken cancellationToken)
+    {
+        if (!Passwords.ContainsKey(userId))
+        {
+            return Task.FromResult(AssignProfileOutcome.UserNotFound);
+        }
+
+        if (Profiles.TryGetValue(userId, out var perfis))
+        {
+            perfis.Remove(profile);
+        }
+
+        return Task.FromResult(AssignProfileOutcome.Assigned);
+    }
+
+    public Task<AssignProfileOutcome> AssignProfileAsync(Guid userId, string profile, CancellationToken cancellationToken)
+    {
+        if (!Passwords.ContainsKey(userId))
+        {
+            return Task.FromResult(AssignProfileOutcome.UserNotFound);
+        }
+
+        if (!Profiles.TryGetValue(userId, out var perfis))
+        {
+            perfis = [];
+            Profiles[userId] = perfis;
+        }
+
+        perfis.Add(profile);
+        return Task.FromResult(AssignProfileOutcome.Assigned);
+    }
 }
+
 
 internal sealed class FakeSessionStore : ISessionStore
 {
@@ -80,6 +177,22 @@ internal sealed class FakeSessionStore : ISessionStore
 
     public Task<Session?> FindAsync(Guid sessionId, CancellationToken cancellationToken) =>
         Task.FromResult(Added.FirstOrDefault(session => session.Id == sessionId));
+
+    public Task<IReadOnlyList<Session>> ListForUserAsync(Guid userId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Session>>(
+            [.. Added.Where(session => session.UserId == userId).OrderByDescending(s => s.CreatedAt)]);
+
+    public Task<int> RevokeAllForUserAsync(Guid userId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var activas = Added.Where(s => s.UserId == userId && s.IsActiveAt(now)).ToList();
+
+        foreach (var sessao in activas)
+        {
+            sessao.Revoke(now);
+        }
+
+        return Task.FromResult(activas.Count);
+    }
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
@@ -109,4 +222,28 @@ internal sealed class FakeAuditTrail : IAuditTrail
     }
 
     public bool Has(string action) => Records.Any(record => record.Action == action);
+}
+
+internal sealed class FakeNotifier : Rivo.Notifications.Contracts.INotifier
+{
+    public List<Rivo.Notifications.Contracts.NotificationRequest> Queued { get; } = [];
+
+    public Task QueueAsync(
+        Rivo.Notifications.Contracts.NotificationRequest request,
+        CancellationToken cancellationToken)
+    {
+        Queued.Add(request);
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>
+/// Relógio parado. Escrito à mão em vez de trazer
+/// <c>Microsoft.Extensions.TimeProvider.Testing</c>, pela mesma razão que em
+/// `finance`: são quatro linhas, e o ADR-022 rejeitou dependências que não
+/// resolvem problema nenhum.
+/// </summary>
+internal sealed class RelogioFixo(DateTimeOffset agora) : TimeProvider
+{
+    public override DateTimeOffset GetUtcNow() => agora;
 }

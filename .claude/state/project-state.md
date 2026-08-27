@@ -36,7 +36,7 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 
 | Módulo | Estado |
 |---|---|
-| `identity` | Completo. JWT com sessão revogável, RBAC com 7 perfis, entrar com Google, bootstrap por seed |
+| `identity` | Completo. JWT com sessão revogável, RBAC com 7 perfis, entrar com Google, bootstrap por seed, **gestão de conta** — mudar e repor password, activar/desactivar contas, ver e terminar sessões, retirar perfis |
 | `audit` | Completo. Trilha append-only imposta pela base de dados, consulta filtrada |
 | `documents` | Completo. Upload/download, hash de integridade, ligação a `hr` por FK entre schemas |
 | `notifications` | Completo menos a entrega real. Fila com estado e worker — **sem envio de e-mail** (K13) |
@@ -78,9 +78,9 @@ superfície inteira é legível por quem estiver a ouvir.
 | Área | Estado |
 |---|---|
 | Código | 10 módulos, 50 projectos em `src/`, 237 ficheiros `.cs` |
-| Superfície HTTP | 137 endpoints em 10 grupos de rota, mais `/health` |
+| Superfície HTTP | 143 endpoints em 10 grupos de rota, mais `/health` |
 | ADRs | 38, aceites |
-| Testes | **671** em 15 projectos — 529 de domínio, 108 de Application, 21 de arquitectura, 9 da API do host, 4 de integração. **Todos passam**, os de integração incluídos |
+| Testes | **691** em 15 projectos — 529 de domínio, 128 de Application, 21 de arquitectura, 9 da API do host, 4 de integração. **687 passam**; os 4 de integração exigem Docker, e o motor caiu a 2026-08-27 depois de a suite ter passado inteira |
 | Verificação end-to-end | **12 suites** PowerShell, **246 casos**. ✅ **246/246 a 2026-08-27**. A ressalva de 2026-08-25 fechou |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
@@ -153,34 +153,40 @@ ADR-024); o K15 (2026-08-24, ADR-035).
 
 Não é uma sequência ratificada — é o que está por decidir e por fazer.
 
-1. **Carregar um plano de contas real e definir as regras de postagem.** É o que
+1. **Terminar a verificação da reposição de password.** Cinco dos seis
+   endpoints novos de `identity` foram exercitados contra a stack; o sexto,
+   `POST /users/{id}/password-reset`, rebentou com 500 por faltarem os token
+   providers do ASP.NET Core Identity. A correcção — `AddDefaultTokenProviders()`
+   — está aplicada e compila, **e não foi exercitada**: o motor do Docker caiu
+   durante a reconstrução. É o primeiro `curl` a fazer quando ele voltar.
+2. **Carregar um plano de contas real e definir as regras de postagem.** É o que
    falta para a contabilidade deixar de estar vazia — e **precisa do
    contabilista, não de código**. Enquanto não houver, todo o resto da
    Contabilidade está de pé e sem uso.
-2. **Fechar o 3-way match.** A cadeia `requisição → OC → recepção → factura`
+3. **Fechar o 3-way match.** A cadeia `requisição → OC → recepção → factura`
    está completa do lado de `procurement`, e a vista da ordem já dá dois dos
    três lados — encomendado e recebido, linha a linha. Falta o terceiro: a
    factura de compra, que é de `finance`. **É aí que os dois módulos se
    encontram**, e é a fronteira que `docs` aponta como a melhor do protótipo
    inteiro. Traz uma direcção nova, `finance → procurement`, que é decisão
    arquitectural e merece ADR.
-3. **Ligar a factura de compra ao Fornecedor.** `finance` guarda hoje nome e
+4. **Ligar a factura de compra ao Fornecedor.** `finance` guarda hoje nome e
    NIF em texto. **Não é retroactivo:** as facturas emitidas guardam o que
    vigorava à data.
-4. **Decidir quem cancela um pedido de aprovação (K18).** Hoje basta
+5. **Decidir quem cancela um pedido de aprovação (K18).** Hoje basta
    `approval.requests.read`, o que faz de uma permissão de leitura um poder de
    veto. A correcção é de uma linha; **a decisão não é** — é a mesma pergunta
    de segregação que BR-2 e BR-3 já responderam para decidir e para pagar.
-5. **Estorno automático.** Anular uma factura, uma nota de crédito ou um recibo
+6. **Estorno automático.** Anular uma factura, uma nota de crédito ou um recibo
    **não gera lançamento inverso** — o original fica e corrige-se à mão. É a
    lacuna mais visível da postagem.
-6. **Domínio e TLS** — fecha o K16 **e o K17** (com a documentação da API
+7. **Domínio e TLS** — fecha o K16 **e o K17** (com a documentação da API
    aberta, a superfície viaja em claro), e é pré-requisito de qualquer uso
    real.
-7. **Cobertura de Application nos outros módulos** — `finance` tem 100 testes. O
+8. **Cobertura de Application nos outros módulos** — `finance` tem 100 testes. O
    próximo que mais custa é `DecideOnRequest` em `approval`: BR-2, BR-4 e BR-6
    vivem lá e só têm cobertura caixa-preta.
-8. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
+9. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
    vendas a balcão saem com um marcador visível. Precisa de fonte primária.
 
 **Fechado a 2026-08-27:** o Swagger no ambiente publicado passou a ter

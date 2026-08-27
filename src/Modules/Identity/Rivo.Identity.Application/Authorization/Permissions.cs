@@ -18,7 +18,21 @@ public static class Permissions
     public const string ClaimType = "permission";
 
     public const string UsersRead = "identity.users.read";
+
+    /// <summary>
+    /// Repor a password de outra pessoa e activar ou desactivar contas.
+    ///
+    /// <para>
+    /// <strong>Separada de `RolesAssign` de propósito.</strong> Quem atribui
+    /// perfis decide o que uma pessoa pode fazer; quem tem esta decide
+    /// <em>quem</em> a pessoa é — repõe-lhe a password e entra na conta dela.
+    /// São poderes diferentes e a organização pode querer separá-los.
+    /// </para>
+    /// </summary>
+    public const string UsersWrite = "identity.users.write";
+
     public const string RolesRead = "identity.roles.read";
+
     public const string RolesAssign = "identity.roles.assign";
 
     /// <summary>
@@ -28,6 +42,7 @@ public static class Permissions
     public static readonly IReadOnlyList<string> All =
     [
         UsersRead,
+        UsersWrite,
         RolesRead,
         RolesAssign,
     ];
