@@ -215,22 +215,11 @@ todas re-executáveis.
 > acontecer:** o motor do Docker Desktop passou a responder `500` e não voltou.
 > Os 45 casos de `verify-ledger` passaram isolados antes dessa última alteração.
 >
-> **Isto não está verificado ponta-a-ponta.** Fica por correr `verify-all` com o
-> container reconstruído — é o primeiro passo assim que houver Docker.
+> **Fechado a 2026-08-27.** O motor do Docker voltou, a stack foi reconstruída
+> e `verify-all` deu **191 de 191**, já com `procurement` dentro da imagem e com
+> o ADR-038 aplicado. A ressalva acima é histórico.
 >
-> **Continua por correr a 2026-08-27.** O motor do Docker Desktop não voltou:
-> `docker ps` responde que o named pipe `dockerDesktopLinuxEngine` não existe,
-> e o serviço privilegiado `com.docker.service` está parado — arrancá-lo exige
-> elevação, que não se obtém de dentro da sessão. Os 571 testes .NET correram
-> na mesma: **567 passam**, e os 4 que falham são os de Testcontainers, pela
-> mesma razão.
->
-> ⚠ **O ADR-038 mexeu no `Program.cs` e no `docker-compose.yml`** e não foi
-> exercitado contra a stack. O que muda é o gate de `MapOpenApi`; o pipeline de
-> autenticação, autorização e persistência que as suites exercitam não foi
-> tocado. **Isto é uma expectativa, não uma verificação** — a corrida de
-> `verify-all` continua em dívida, e agora com uma alteração a mais para
-> confirmar.
+> Os 629 testes .NET passam todos, os 4 de Testcontainers incluídos.
 
 Eram seis suites e 66 casos em 2026-08-16. `verify-hr` cresceu 13 → 16 com as
 funcionalidades novas de `hr`; `verify-authorization` 8 → 9 ao distinguir os
@@ -598,4 +587,15 @@ guardam o que vigorava à data.
 
 ⚠ **Sem suite de verificação end-to-end.** As onze suites PowerShell não cobrem
 `procurement`, e a cobertura de Application é nenhuma.
+
+**Exercitado à mão contra a stack a 2026-08-27**, e isso não é o mesmo que uma
+suite — não é re-executável nem corre no CI. O que se confirmou: fornecedor
+registado com o IBAN normalizado e relido da base; NIF repetido a devolver
+`409` com o identificador do existente; IBAN com um dígito trocado a devolver
+`400`; requisição aberta com duas linhas e **relida da base com as linhas
+intactas** (o que os testes de domínio não podem provar); submissão sem
+política a devolver `409` com a razão certa; com política, `202` e o processo
+criado em `approval` com `processType` e `sourceReference` correctos; segunda
+submissão `409`; decisão aplicada e **idempotente** na segunda chamada;
+cancelar depois de aprovada `409`.
 

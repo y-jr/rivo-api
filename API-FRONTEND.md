@@ -326,9 +326,14 @@ Se a base de dados estiver inacessível, devolve `503` com Problem Details.
    autorização no backend como fonte final.
 3. Após qualquer `202`, consultar o recurso indicado no header `Location` ou
    no identificador devolvido e apresentar estado pendente.
-4. Não usar `DELETE`, `PUT` ou `PATCH` para as operações existentes. Cancelar,
+4. ⚠ **Os enumerados não vêm todos no mesmo formato.** `commercial.status` e
+   `procurement.status` (fornecedor) saem como **número** — `0` = activo,
+   `1` = inactivo; `hr.status` e o estado da requisição saem como **texto**.
+   Verificado contra a API a 2026-08-27. Não assumir um dos dois: ler o campo
+   pelo tipo que vem, ou confirmar no `/openapi/v1.json`.
+5. Não usar `DELETE`, `PUT` ou `PATCH` para as operações existentes. Cancelar,
    desactivar, fechar e aprovar são todos `POST` por contrato.
-5. Enviar `Content-Type: multipart/form-data` apenas para upload de
+6. Enviar `Content-Type: multipart/form-data` apenas para upload de
    documentos; os restantes requests de escrita são JSON.
-6. Enviar um correlation/request id quando a infraestrutura do cliente o
+7. Enviar um correlation/request id quando a infraestrutura do cliente o
    suportar e guardar o valor devolvido pelos logs para diagnóstico.
