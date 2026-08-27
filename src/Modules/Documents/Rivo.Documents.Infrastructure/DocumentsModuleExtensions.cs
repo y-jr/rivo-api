@@ -55,6 +55,7 @@ public static class DocumentsModuleExtensions
         services.AddScoped<IDocumentCatalogue, DocumentCatalogue>();
         services.AddScoped<UploadDocument>();
         services.AddScoped<DownloadDocument>();
+        services.AddScoped<ListDocuments>();
 
         services.AddAuthorization(options =>
         {

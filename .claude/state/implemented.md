@@ -191,6 +191,26 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
   `git pull`, `compose up --build`, sonda de `/health`. Ambiente publicado em
   `http://187.77.178.242`, atrás de Caddy na rede `proxy`. **Sem TLS** enquanto
   não houver domínio — K16
+### `GET /documents` — 2026-08-28
+
+Listagem do arquivo, com `category`, `from`, `to` e `limit`.
+
+**A falta doía:** até aqui só se alcançava um documento sabendo o
+identificador, e o identificador vive no módulo que o anexou. Um ficheiro
+carregado e não ligado a registo nenhum — porque a ligação falhou, ou porque
+ninguém a chegou a fazer — ficava irrecuperável.
+
+- **Não substitui a listagem do contexto de origem.** Quem procura os anexos de
+  um colaborador pede-os a `hr`, que sabe quais são (ADR-009). Esta serve quem
+  procura no arquivo, e não no registo
+- **Só os disponíveis.** Um documento anulado continua na base de dados por
+  BR-14 — isso interessa a quem audita, não a quem procura um ficheiro
+- **Sempre limitada**, com tecto de 200. Sem tecto, a rota cresce com o arquivo
+  inteiro e o primeiro ano de uso torna-a inutilizável. Um `limit` acima do
+  tecto é **cortado**, e não recusado
+
+4 casos novos em `verify-documents` (17).
+
 ### Desactivar políticas de aprovação — 2026-08-27
 
 `POST /approval/policies/{id}/deactivation`. Um endpoint, e sem agregado novo:
@@ -258,7 +278,7 @@ pré-existente, encontrado ao construir isto.
 
 ## Verificação
 
-**Doze suites** PowerShell caixa-preta contra a stack em Docker, **246 casos**,
+**Doze suites** PowerShell caixa-preta contra a stack em Docker, **250 casos**,
 todas re-executáveis.
 
 > ⚠ **Estado da verificação a 2026-08-25, ao fechar a postagem automática.**

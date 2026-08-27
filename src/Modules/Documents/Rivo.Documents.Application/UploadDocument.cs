@@ -129,3 +129,45 @@ public static class DocumentAuditEntityTypes
 {
     public const string Document = "documents.document";
 }
+
+/// <summary>
+/// Lista documentos por categoria e janela de carregamento.
+///
+/// <para>
+/// <strong>Faltava, e a falta doía:</strong> até aqui só se alcançava um
+/// documento sabendo o identificador, e o identificador vive no módulo que o
+/// anexou. Um ficheiro carregado e não ligado a registo nenhum — porque a
+/// ligação falhou, ou porque ninguém a chegou a fazer — ficava irrecuperável.
+/// </para>
+///
+/// <para>
+/// <strong>Não substitui a listagem do contexto de origem.</strong> Quem
+/// procura os anexos de um colaborador pede-os a `hr`, que sabe quais são
+/// (ADR-009). Esta rota serve quem procura no arquivo, e não no registo.
+/// </para>
+/// </summary>
+public sealed class ListDocuments(IDocumentRepository repository)
+{
+    /// <summary>Tecto por omissão, o mesmo da trilha de auditoria.</summary>
+    private const int DefaultLimit = 50;
+
+    /// <summary>
+    /// Tecto máximo. Existe para que um `limit` grande de mais não traga o
+    /// arquivo inteiro por engano — quem precisa de tudo pagina.
+    /// </summary>
+    private const int MaxLimit = 200;
+
+    public async Task<IReadOnlyList<DocumentDescriptor>> ExecuteAsync(
+        string? category,
+        DateOnly? from,
+        DateOnly? to,
+        int? limit,
+        CancellationToken cancellationToken)
+    {
+        var tecto = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
+
+        var documentos = await repository.ListAsync(category, from, to, tecto, cancellationToken);
+
+        return [.. documentos.Select(UploadDocument.Map)];
+    }
+}

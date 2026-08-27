@@ -153,9 +153,15 @@ Test-Case "6. Sem autenticacao -> 401; sem permissao -> 403" {
     if ($code -ne "401") { throw "esperado 401, obtido $code" }
 
     $e = "semdoc-$stamp@rivo.ao"
+
+    # Guardado para os casos da listagem: e a mesma conta sem `documents.read`,
+    # e criar outra so para repetir a verificacao seria ruido.
+    $script:semPermissaoEmail = $e
+
     $b = @{ email = $e; password = $pass } | ConvertTo-Json
     Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json" | Out-Null
     $t = Get-Token $e $pass
+
     $code = Get-CurlStatus "$base/documents/$($script:documentId)" $t
     if ($code -ne "403") { throw "esperado 403, obtido $code" }
     "401 e 403 correctos"
@@ -245,6 +251,69 @@ Test-Case "13. Ficheiro sobrevive ao reinicio da stack" {
     Remove-Item $out -Force
     if ($after -ne $content) { throw "conteudo perdido ou alterado" }
     "conteudo intacto apos restart"
+}
+
+Test-Case "14. Listar o arquivo, sem saber identificadores" {
+    # **E a razao de a rota existir.** Ate aqui so se alcancava um documento
+    # sabendo o identificador — e o identificador vive no modulo que o anexou.
+    # Um ficheiro carregado e nao ligado a registo nenhum ficava irrecuperavel.
+    $t = Get-Token $dotenv["BOOTSTRAP_ADMIN_EMAIL"] $dotenv["BOOTSTRAP_ADMIN_PASSWORD"]
+
+    $todos = Invoke-RestMethod "$base/documents" -Headers @{ Authorization = "Bearer $t" }
+    if ($todos.documentId -notcontains $script:documentId) { throw "o documento carregado nao aparece na listagem" }
+
+    $primeiro = $todos | Select-Object -First 1
+    foreach ($campo in @("documentId", "fileName", "contentType", "category", "contentHash", "uploadedAt")) {
+        if (-not $primeiro.PSObject.Properties.Name.Contains($campo)) { throw "campo '$campo' em falta na listagem" }
+    }
+
+    "$($todos.Count) documentos, com metadados completos"
+}
+
+Test-Case "15. Filtrar por categoria e por janela" {
+    $t = Get-Token $dotenv["BOOTSTRAP_ADMIN_EMAIL"] $dotenv["BOOTSTRAP_ADMIN_PASSWORD"]
+    $hoje = (Get-Date).ToString("yyyy-MM-dd")
+
+    $daCategoria = Invoke-RestMethod "$base/documents?category=contrato" -Headers @{ Authorization = "Bearer $t" }
+    if ($daCategoria | Where-Object { $_.category -ne "contrato" }) { throw "o filtro de categoria deixou passar outra" }
+
+    # A janela e inclusiva nos dois extremos: quem pede "de hoje a hoje" espera
+    # o que carregou hoje la dentro.
+    $deHoje = Invoke-RestMethod "$base/documents?from=$hoje&to=$hoje" -Headers @{ Authorization = "Bearer $t" }
+    if ($deHoje.documentId -notcontains $script:documentId) { throw "janela de hoje nao inclui o que se carregou hoje" }
+
+    $ontem = (Get-Date).AddDays(-1).ToString("yyyy-MM-dd")
+    $anteontem = (Get-Date).AddDays(-2).ToString("yyyy-MM-dd")
+    $janelaFechada = Invoke-RestMethod "$base/documents?from=$anteontem&to=$ontem" -Headers @{ Authorization = "Bearer $t" }
+    if ($janelaFechada.documentId -contains $script:documentId) { throw "janela fechada devolveu o documento de hoje" }
+
+    "categoria filtra; janela inclusiva nos dois extremos"
+}
+
+Test-Case "16. A listagem e sempre limitada" {
+    # Sem tecto, esta rota cresce com o arquivo inteiro e o primeiro ano de uso
+    # torna-a inutilizavel.
+    $t = Get-Token $dotenv["BOOTSTRAP_ADMIN_EMAIL"] $dotenv["BOOTSTRAP_ADMIN_PASSWORD"]
+
+    $um = Invoke-RestMethod "$base/documents?limit=1" -Headers @{ Authorization = "Bearer $t" }
+    if (@($um).Count -ne 1) { throw "limit=1 devolveu $(@($um).Count)" }
+
+    # Um pedido absurdo e cortado no tecto maximo, e nao aceite.
+    $muitos = Invoke-RestMethod "$base/documents?limit=99999" -Headers @{ Authorization = "Bearer $t" }
+    if (@($muitos).Count -gt 200) { throw "limit=99999 devolveu $(@($muitos).Count), acima do tecto" }
+
+    "limit=1 devolve 1; limit absurdo e cortado em 200"
+}
+
+Test-Case "17. Listar exige permissao de leitura" {
+    $code = Get-CurlStatus -Url "$base/documents"
+    if ($code -ne "401") { throw "sem token esperado 401, obtido $code" }
+
+    $semPermissao = Get-Token $script:semPermissaoEmail $pass
+    $code = Get-CurlStatus -Url "$base/documents" -Token $semPermissao
+    if ($code -ne "403") { throw "sem permissao esperado 403, obtido $code" }
+
+    "401 sem token, 403 sem documents.read"
 }
 
 Remove-Item $tempFile -Force -ErrorAction SilentlyContinue

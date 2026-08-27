@@ -1,7 +1,7 @@
 # Rivo API - Guia para o Frontend
 
-Documento gerado a partir das rotas implementadas no backend. A API tem 145
-endpoints: 141 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
+Documento gerado a partir das rotas implementadas no backend. A API tem 146
+endpoints: 142 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
 
 ## Como ligar
 
@@ -117,12 +117,23 @@ duplicado devolve `409` com `customerId` do cliente existente.
 
 | Método e rota | Permissão | O que faz | Request | Sucesso |
 |---|---|---|---|---|
+| `GET /documents` | `documents.read` | Lista o arquivo | `category?`, `from?`, `to?`, `limit` (default `50`, máximo `200`) | `200` colecção |
 | `POST /documents/` | `documents.write` | Faz upload de documento | `multipart/form-data`: ficheiro `file` e campo `category` | `201 DocumentDescriptor` |
 | `GET /documents/{documentId}` | `documents.read` | Descarrega ficheiro | Path `documentId` | `200` binário com content type e nome |
 | `GET /documents/{documentId}/metadata` | `documents.read` | Consulta metadados | Path `documentId` | `200 { documentId, fileName, contentType, sizeInBytes, category, contentHash, uploadedBy, uploadedAt }` |
 
 O upload aceita ficheiros até 25 MB. Ficheiro vazio ou acima do limite devolve
 `400`.
+
+**`GET /documents` lista o arquivo, e não os anexos de um registo.** Quem
+procura os documentos de um colaborador pede-os a `hr`
+(`GET /hr/employees/{id}/documents`), que sabe quais são. Esta rota serve quem
+procura no arquivo — tipicamente um ficheiro carregado e ainda não ligado a
+nada.
+
+A janela `from`/`to` é sobre a data de carregamento e é **inclusiva nos dois
+extremos**. Documentos anulados não aparecem. `limit` é sempre aplicado: um
+valor acima de `200` é cortado, não recusado.
 
 ## Fiscal
 

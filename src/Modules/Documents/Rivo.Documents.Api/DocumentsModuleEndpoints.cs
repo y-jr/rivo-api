@@ -25,6 +25,11 @@ public static class DocumentsModuleEndpoints
             // vector de CSRF que a antiforgery protegesse.
             .DisableAntiforgery();
 
+        // Listagem do arquivo. Não substitui a listagem do contexto de origem:
+        // quem procura os anexos de um colaborador pede-os a `hr` (ADR-009).
+        group.MapGet("/", ListAsync)
+            .RequireAuthorization(DocumentPermissions.Read);
+
         group.MapGet("/{documentId:guid}", DownloadAsync)
             .RequireAuthorization(DocumentPermissions.Read);
 
@@ -33,6 +38,15 @@ public static class DocumentsModuleEndpoints
 
         return endpoints;
     }
+
+    private static async Task<IResult> ListAsync(
+        ListDocuments listDocuments,
+        string? category,
+        DateOnly? from,
+        DateOnly? to,
+        int? limit,
+        CancellationToken cancellationToken) =>
+        Results.Ok(await listDocuments.ExecuteAsync(category, from, to, limit, cancellationToken));
 
     private static AuditContext BuildAuditContext(HttpContext http)
     {

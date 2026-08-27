@@ -38,7 +38,7 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 |---|---|
 | `identity` | Completo. JWT com sessão revogável, RBAC com 7 perfis, entrar com Google, bootstrap por seed, **gestão de conta** — mudar e repor password, activar/desactivar contas, ver e terminar sessões, retirar perfis |
 | `audit` | Completo. Trilha append-only imposta pela base de dados, consulta filtrada |
-| `documents` | Completo. Upload/download, hash de integridade, ligação a `hr` por FK entre schemas |
+| `documents` | Completo. Upload/download, listagem do arquivo, hash de integridade, ligação a `hr` por FK entre schemas |
 | `notifications` | Completo menos a entrega real. Fila com estado e worker — **sem envio de e-mail** (K13) |
 | `hr` | Completo. Colaborador, Departamento, Cargo, Contrato, Assiduidade, Férias, Benefícios, Recrutamento, Onboarding/Offboarding |
 | `approval` | Completo para o âmbito fixado. Políticas (criar e desactivar), pedidos, decisões, BR-2/4/6/17, worker de reconciliação. ⚠ **K18**: cancelar um pedido exige só permissão de leitura |
@@ -78,10 +78,10 @@ superfície inteira é legível por quem estiver a ouvir.
 | Área | Estado |
 |---|---|
 | Código | 10 módulos, 50 projectos em `src/`, 237 ficheiros `.cs` |
-| Superfície HTTP | 144 endpoints em 10 grupos de rota, mais `/health` |
+| Superfície HTTP | 145 endpoints em 10 grupos de rota, mais `/health` |
 | ADRs | 38, aceites |
 | Testes | **691** em 15 projectos — 529 de domínio, 128 de Application, 21 de arquitectura, 9 da API do host, 4 de integração. **687 passam**; os 4 de integração exigem Docker, e o motor caiu a 2026-08-27 depois de a suite ter passado inteira |
-| Verificação end-to-end | **12 suites** PowerShell, **246 casos**. ✅ **246/246 a 2026-08-27**. A ressalva de 2026-08-25 fechou |
+| Verificação end-to-end | **12 suites** PowerShell, **250 casos**. ⚠ Última corrida completa: **246/246 a 2026-08-27**. Os 4 casos novos de `verify-documents` e as alterações de `verify-ledger`/`verify-procurement` estão por correr — o Docker caiu |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
@@ -159,10 +159,10 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    providers do ASP.NET Core Identity. A correcção — `AddDefaultTokenProviders()`
    — está aplicada e compila, **e não foi exercitada**: o motor do Docker caiu
    durante a reconstrução. É o primeiro `curl` a fazer quando ele voltar.
-2. **Verificar a desactivação de políticas contra a stack.** O endpoint está
-   escrito e as duas suites já se limpam por ele em vez de por SQL — e nada
-   disso foi exercitado, pela mesma razão: o Docker está em baixo. Vai no mesmo
-   `verify-all` que o passo 1.
+2. **Verificar a desactivação de políticas e a listagem de documentos.** Os
+   dois endpoints estão escritos, as suites também, e **nada foi exercitado** —
+   o Docker está em baixo desde 2026-08-27. Vai tudo no mesmo `verify-all` que
+   o passo 1, e são 250 casos.
 3. **Carregar um plano de contas real e definir as regras de postagem.** É o que
    falta para a contabilidade deixar de estar vazia — e **precisa do
    contabilista, não de código**. Enquanto não houver, todo o resto da
