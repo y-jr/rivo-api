@@ -7,6 +7,8 @@ using Rivo.Api.OpenApi;
 using Rivo.Audit.Api;
 using Rivo.Commercial.Api;
 using Rivo.Commercial.Infrastructure;
+using Rivo.Procurement.Api;
+using Rivo.Procurement.Infrastructure;
 using Rivo.Audit.Infrastructure;
 using Rivo.Documents.Api;
 using Rivo.Documents.Infrastructure;
@@ -19,6 +21,7 @@ using Rivo.Approval.Infrastructure;
 using Rivo.Hr.Api;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Hr.Application.Abstractions;
+using Rivo.Procurement.Application.Abstractions;
 using Rivo.Hr.Infrastructure;
 using Rivo.Identity.Api;
 using Rivo.Notifications.Api;
@@ -58,6 +61,7 @@ builder.Services.AddDocumentsModule(builder.Configuration);
 builder.Services.AddNotificationsModule(builder.Configuration);
 builder.Services.AddFiscalModule(builder.Configuration);
 builder.Services.AddCommercialModule(builder.Configuration);
+builder.Services.AddProcurementModule(builder.Configuration);
 builder.Services.AddFinanceModule(builder.Configuration);
 builder.Services.AddHrModule(builder.Configuration);
 builder.Services.AddApprovalModule(builder.Configuration);
@@ -75,6 +79,12 @@ builder.Services.AddScoped<IHrApprovalSubmission, HrApprovalSubmission>();
 // fará `approval` ler `finance`, e uma referência directa traria de volta o
 // ciclo que o ADR-034 fechou. Ver Composition/FinancePaymentApproval.
 builder.Services.AddScoped<IPaymentApproval, FinancePaymentApproval>();
+
+// E `procurement`, para a requisição interna. Aqui não há ciclo a quebrar —
+// `approval` não lê `procurement` — mas mantém-se a inversão para que o módulo
+// continue a não saber qual é o motor de governança.
+// Ver Composition/ProcurementApprovalSubmission.
+builder.Services.AddScoped<IProcurementApprovalSubmission, ProcurementApprovalSubmission>();
 
 var app = builder.Build();
 
@@ -159,6 +169,7 @@ if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
             await app.Services.MigrateNotificationsModuleAsync();
             await app.Services.MigrateFiscalModuleAsync();
             await app.Services.MigrateCommercialModuleAsync();
+            await app.Services.MigrateProcurementModuleAsync();
             await app.Services.MigrateFinanceModuleAsync();
             await app.Services.MigrateHrModuleAsync();
             await app.Services.MigrateApprovalModuleAsync();
@@ -242,6 +253,7 @@ app.MapAuditModule();
 app.MapDocumentsModule();
 app.MapFiscalModule();
 app.MapCommercialModule();
+app.MapProcurementModule();
 app.MapFinanceModule();
 app.MapPayables();
 app.MapLedger();

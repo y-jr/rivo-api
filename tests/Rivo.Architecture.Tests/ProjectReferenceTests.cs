@@ -64,12 +64,34 @@ public class ProjectReferenceTests
         // Tesouraria e à execução de pagamento, que não estão feitas.
         ["Finance"] = ["Audit", "Fiscal", "Commercial"],
 
+        // `procurement` é dono do Fornecedor e da Requisição Interna. Duas
+        // direcções, e nenhuma delas é `approval`:
+        //
+        //   - `audit`, porque qualificar um fornecedor e submeter uma
+        //     requisição são actos auditados — e o IBAN em particular decide
+        //     para onde o dinheiro sai;
+        //   - `hr`, porque o requisitante é um Colaborador, lido pelo contrato
+        //     e nunca por leitura de tabela (ADR-010).
+        //
+        // **`approval` não aparece, e é deliberado.** `procurement` submete a
+        // decisão por `IProcurementApprovalSubmission`, declarado nas suas
+        // próprias palavras e ligado ao motor no composition root. Aqui não
+        // havia ciclo a quebrar — `approval` não lê `procurement` —, mas a
+        // inversão mantém a propriedade do ADR-034: o módulo de negócio não
+        // sabe qual é o motor de governança.
+        //
+        // As direcções que `modules/procurement.md` lista e que faltam —
+        // `documents` (cotações), `inventory` (recepção de bens) e
+        // `notifications` — pertencem à Ordem de Compra e à Recepção, que não
+        // estão feitas.
+        ["Procurement"] = ["Audit", "Hr"],
+
         ["Documents"] = ["Audit"],
         ["Hr"] = ["Audit", "Documents"],
         // `identity` compõe o catálogo de permissões a partir do que cada
         // módulo declara — cada um diz que permissões existem, `identity`
         // decide que perfis as recebem (ADR-005).
-        ["Identity"] = ["Audit", "Hr", "Documents", "Notifications", "Approval", "Fiscal", "Commercial", "Finance"],
+        ["Identity"] = ["Audit", "Hr", "Documents", "Notifications", "Approval", "Fiscal", "Commercial", "Finance", "Procurement"],
 
         // `approval` resolve aprovadores por Cargo, que é de `hr` (ADR-034).
         //

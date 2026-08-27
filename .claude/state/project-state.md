@@ -4,7 +4,7 @@ _Última actualização: 2026-08-27_
 
 ## Fase actual
 
-**Nove dos catorze módulos têm código, e há um ambiente publicado.**
+**Dez dos catorze módulos têm código, e há um ambiente publicado.**
 
 As quatro capacidades transversais estão feitas — `audit`, `documents`,
 `notifications` e `approval`. A partir daí, o objectivo do produto mudou: o
@@ -45,7 +45,8 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `fiscal` | ⚠ **Fatia mínima** (ADR-036). Taxa com vigência e determinação. Não é o motor fiscal |
 | `commercial` | ⚠ **Reduzido ao Cliente** (ADR-036). Sem funil comercial |
 | `finance` | **Os cinco contextos existem, e os documentos lançam.** Venda (factura, nota de crédito, recibo, saldo), Contas a Pagar, Tesouraria com extracto append-only, Contabilidade & Fecho com postagem automática, Planeamento. **BR-1, BR-3, BR-5 e BR-8 impostas.** ⚠ Contabilidade vazia até alguém carregar o plano; a anulação não estorna; activos fixos bloqueados por K1 |
-| `procurement`, `payroll`, `projects`, `inventory`, `fleet` | Sem código. Definidos em [modules/](../modules/) |
+| `procurement` | ⚠ **Fornecedor e Requisição Interna.** Fornecedor com IBAN verificado (ISO 13616) e publicado a `finance`; requisição com linhas, submissão a `approval` e aplicação da decisão. **Ordem de Compra, Recepção e 3-way match por fazer** |
+| `payroll`, `projects`, `inventory`, `fleet` | Sem código. Definidos em [modules/](../modules/) |
 
 Detalhe com datas e ressalvas em [implemented.md](implemented.md).
 
@@ -76,10 +77,10 @@ superfície inteira é legível por quem estiver a ouvir.
 
 | Área | Estado |
 |---|---|
-| Código | 9 módulos, 45 projectos em `src/`, 213 ficheiros `.cs` |
-| Superfície HTTP | 118 endpoints em 9 grupos de rota, mais `/health` |
+| Código | 10 módulos, 50 projectos em `src/`, 229 ficheiros `.cs` |
+| Superfície HTTP | 129 endpoints em 10 grupos de rota, mais `/health` |
 | ADRs | 38, aceites |
-| Testes | **571** em 14 projectos — 429 de domínio, 108 de Application, 21 de arquitectura, 9 da API do host, 4 de integração. **567 passam**; os 4 de integração exigem Docker e falharam com `DockerUnavailableException`. Corrido a 2026-08-27, com o motor do Docker Desktop em baixo |
+| Testes | **629** em 15 projectos — 487 de domínio, 108 de Application, 21 de arquitectura, 9 da API do host, 4 de integração. **Todos passam**, os de integração incluídos: o motor do Docker voltou a 2026-08-27 |
 | Verificação end-to-end | **11 suites** PowerShell, **191 casos**. ⚠ Última corrida: **190/191**, com a falha a ser uma asserção nova contra container por reconstruir. Ver a ressalva em [implemented.md](implemented.md) |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
@@ -159,20 +160,28 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    falta para a contabilidade deixar de estar vazia — e **precisa do
    contabilista, não de código**. Enquanto não houver, todo o resto da
    Contabilidade está de pé e sem uso.
-2. **Decidir quem cancela um pedido de aprovação (K18).** Hoje basta
+2. **Continuar `procurement`: Ordem de Compra, Recepção e 3-way match.** A
+   cadeia `requisição → OC → recepção → factura` está no primeiro elo. A OC só
+   nasce de requisição aprovada, e o match precisa da factura de compra, que é
+   de `finance` — é aí que os dois módulos se encontram, e é a fronteira que
+   `docs` aponta como a melhor do protótipo inteiro.
+3. **Ligar a factura de compra ao Fornecedor.** `finance` guarda hoje nome e
+   NIF em texto. **Não é retroactivo:** as facturas emitidas guardam o que
+   vigorava à data.
+4. **Decidir quem cancela um pedido de aprovação (K18).** Hoje basta
    `approval.requests.read`, o que faz de uma permissão de leitura um poder de
    veto. A correcção é de uma linha; **a decisão não é** — é a mesma pergunta
    de segregação que BR-2 e BR-3 já responderam para decidir e para pagar.
-3. **Estorno automático.** Anular uma factura, uma nota de crédito ou um recibo
+5. **Estorno automático.** Anular uma factura, uma nota de crédito ou um recibo
    **não gera lançamento inverso** — o original fica e corrige-se à mão. É a
    lacuna mais visível da postagem.
-4. **Domínio e TLS** — fecha o K16 **e o K17** (com a documentação da API
+6. **Domínio e TLS** — fecha o K16 **e o K17** (com a documentação da API
    aberta, a superfície viaja em claro), e é pré-requisito de qualquer uso
    real.
-5. **Cobertura de Application nos outros módulos** — `finance` tem 100 testes. O
+7. **Cobertura de Application nos outros módulos** — `finance` tem 100 testes. O
    próximo que mais custa é `DecideOnRequest` em `approval`: BR-2, BR-4 e BR-6
    vivem lá e só têm cobertura caixa-preta.
-6. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
+8. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
    vendas a balcão saem com um marcador visível. Precisa de fonte primária.
 
 **Fechado a 2026-08-27:** o Swagger no ambiente publicado passou a ter

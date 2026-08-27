@@ -5,6 +5,7 @@ using Rivo.Documents.Contracts;
 using Rivo.Finance.Contracts;
 using Rivo.Fiscal.Contracts;
 using Rivo.Hr.Contracts;
+using Rivo.Procurement.Contracts;
 
 namespace Rivo.Identity.Application.Authorization;
 
@@ -50,7 +51,8 @@ public static class AccessProfiles
                 .. ApprovalPermissions.All,
                 .. FiscalPermissions.All,
                 .. FinancePermissions.All,
-                .. CommercialPermissions.All],
+                .. CommercialPermissions.All,
+                .. ProcurementPermissions.All],
 
             // `Manager` decide sobre pedidos de aprovação — incluindo pedidos de
             // pagamento — e regista facturas de compra e pede que sejam pagas.
@@ -66,7 +68,13 @@ public static class AccessProfiles
 
                 // Elabora o orçamento do seu centro de custo. **Não o aprova**
                 // — quem sobe o tecto não pode ser quem precisa que ele suba.
-                .. FinancePermissions.ForBudgetOwners],
+                .. FinancePermissions.ForBudgetOwners,
+
+                // Requisita compras para o seu departamento. **Sem qualificar
+                // fornecedores** — quem pede a compra não escolhe para que
+                // conta se paga, e é a mesma separação que tira a `Manager` a
+                // execução do pagamento.
+                .. ProcurementPermissions.ForRequesters],
 
             // `Finance` é a tesouraria e a supervisão: regista o dinheiro que
             // entra, credita, anula e estorna. **Sem emitir facturas** — quem
@@ -86,7 +94,14 @@ public static class AccessProfiles
 
                 // Aprova orçamentos, e não os escreve. É a outra metade da
                 // segregação que dá sentido a BR-8.
-                .. FinancePermissions.ForBudgetApprovers],
+                .. FinancePermissions.ForBudgetApprovers,
+
+                // Vê fornecedores — precisa deles para registar a factura de
+                // compra. **Não os qualifica**, e a ausência é deliberada:
+                // quem fixa o IBAN decide para onde o dinheiro sai, e quem
+                // executa o pagamento não pode ser a mesma pessoa. É BR-3
+                // aplicada um passo antes do pagamento.
+                ProcurementPermissions.SuppliersRead],
 
             // Note-se a ausência de `hr.positions.write`: RH atribui Cargos,
             // mas não decide quais existem nem quais conferem autoridade de

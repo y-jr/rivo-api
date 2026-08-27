@@ -24,6 +24,13 @@
     <Project Path="src/Modules/Commercial/Rivo.Commercial.Domain/Rivo.Commercial.Domain.csproj" />
     <Project Path="src/Modules/Commercial/Rivo.Commercial.Infrastructure/Rivo.Commercial.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Procurement/">
+    <Project Path="src/Modules/Procurement/Rivo.Procurement.Api/Rivo.Procurement.Api.csproj" />
+    <Project Path="src/Modules/Procurement/Rivo.Procurement.Application/Rivo.Procurement.Application.csproj" />
+    <Project Path="src/Modules/Procurement/Rivo.Procurement.Contracts/Rivo.Procurement.Contracts.csproj" />
+    <Project Path="src/Modules/Procurement/Rivo.Procurement.Domain/Rivo.Procurement.Domain.csproj" />
+    <Project Path="src/Modules/Procurement/Rivo.Procurement.Infrastructure/Rivo.Procurement.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/Documents/">
     <Project Path="src/Modules/Documents/Rivo.Documents.Api/Rivo.Documents.Api.csproj" />
     <Project Path="src/Modules/Documents/Rivo.Documents.Application/Rivo.Documents.Application.csproj" />
@@ -75,6 +82,9 @@
   </Folder>
   <Folder Name="/tests/Commercial/">
     <Project Path="tests/Modules/Commercial/Rivo.Commercial.Domain.Tests/Rivo.Commercial.Domain.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Procurement/">
+    <Project Path="tests/Modules/Procurement/Rivo.Procurement.Domain.Tests/Rivo.Procurement.Domain.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/Documents/">
     <Project Path="tests/Modules/Documents/Rivo.Documents.Domain.Tests/Rivo.Documents.Domain.Tests.csproj" />

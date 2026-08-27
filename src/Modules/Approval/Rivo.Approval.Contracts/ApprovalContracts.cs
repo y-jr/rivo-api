@@ -198,8 +198,21 @@ public static class ApprovalProcessTypes
     /// </summary>
     public const string PaymentRequest = "finance.payment_request";
 
+    /// <summary>
+    /// Requisição interna de compra (`procurement`).
+    ///
+    /// <para>
+    /// É o primeiro processo de `procurement` a passar por aqui, e o segundo
+    /// com valor monetário — o valor <strong>estimado</strong> selecciona a
+    /// faixa da política, e é sobre ele que BR-8 verifica o orçamento. Estimado
+    /// e não facturado: a verificação acontece antes de haver compromisso, que
+    /// é o único momento em que ainda serve para alguma coisa.
+    /// </para>
+    /// </summary>
+    public const string PurchaseRequisition = "procurement.purchase_requisition";
+
     public static readonly IReadOnlyList<string> All =
-        [PositionAssignment, LeaveRequest, PaymentRequest];
+        [PositionAssignment, LeaveRequest, PaymentRequest, PurchaseRequisition];
 }
 
 /// <summary>Catálogo de permissões de `approval`, declarado pelo próprio módulo.</summary>

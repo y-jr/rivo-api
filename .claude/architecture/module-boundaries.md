@@ -49,6 +49,7 @@ Os que estão já determinados em `docs/`:
 | `finance` | Disponível orçamental (leitura para verificação em `approval`) | approval |
 | `fiscal` | Determinação fiscal; requisitos de documento fiscal | commercial, procurement, finance |
 | `documents` | Armazenar/obter documento e versões | hr, finance, commercial, payroll, fiscal, procurement |
+| `procurement` | `ISupplierDirectory` — Fornecedor: id, nome, NIF, IBAN, estado. Implementado a 2026-08-27 | finance (AP e Tesouraria) |
 | `audit` | Registar evento de auditoria | todos |
 | `notifications` | Entregar notificação | todos |
 

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rivo.Procurement.Domain\Rivo.Procurement.Domain.csproj" />
+    <ProjectReference Include="..\Rivo.Procurement.Contracts\Rivo.Procurement.Contracts.csproj" />
+    <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
+
+    <!-- O requisitante é um Colaborador, e o acesso é exclusivamente pelo
+         contrato (ADR-010). `procurement` nunca lê tabelas de `hr`. -->
+    <ProjectReference Include="..\..\Hr\Rivo.Hr.Contracts\Rivo.Hr.Contracts.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

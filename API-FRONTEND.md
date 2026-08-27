@@ -1,7 +1,7 @@
 # Rivo API - Guia para o Frontend
 
-Documento gerado a partir das rotas implementadas no backend. A API tem 119
-endpoints: 115 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
+Documento gerado a partir das rotas implementadas no backend. A API tem 130
+endpoints: 126 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
 
 ## Como ligar
 
@@ -194,6 +194,37 @@ de transacção devolve `409`.
 
 Moeda assume `AOA`; `submit` assume `false`. Orçamento aprovado não pode ser
 revisto e devolve `409`.
+
+## Procurement
+
+| Método e rota | Permissão | O que faz | Request/query | Sucesso |
+|---|---|---|---|---|
+| `GET /procurement/suppliers` | `procurement.suppliers.read` | Lista fornecedores | `includeInactive?` (default `false`) | `200` |
+| `GET /procurement/suppliers/{supplierId}` | `procurement.suppliers.read` | Consulta fornecedor | Path `supplierId` | `200` fornecedor |
+| `POST /procurement/suppliers` | `procurement.suppliers.write` | Qualifica fornecedor | `{ name, taxId, iban?, email?, phone? }` | `201 { supplierId }` |
+| `POST /procurement/suppliers/{supplierId}/details` | `procurement.suppliers.write` | Actualiza dados | `{ name?, iban?, email?, phone? }` | `204` |
+| `POST /procurement/suppliers/{supplierId}/status` | `procurement.suppliers.write` | Activa/desactiva | `{ active }` | `204` |
+| `GET /procurement/requisitions` | `procurement.requisitions.read` | Lista requisições | `requestedByEmployeeId?`, `status?` | `200` |
+| `GET /procurement/requisitions/{requisitionId}` | `procurement.requisitions.read` | Consulta requisição | Path `requisitionId` | `200` requisição |
+| `POST /procurement/requisitions` | `procurement.requisitions.write` | Abre requisição em rascunho | `{ requestedByEmployeeId, departmentId?, justification, currency?, requestedOn?, lines? }`; linha `{ description, quantity, estimatedUnitPrice }` | `201 { requisitionId, estimatedTotal, estado: "Draft" }` |
+| `POST /procurement/requisitions/{requisitionId}/submission` | `procurement.requisitions.write` | Submete a aprovação | Sem corpo | `202 { approvalRequestId, estado: "PendingApproval" }` |
+| `POST /procurement/requisitions/{requisitionId}/approval-outcome` | `procurement.requisitions.read` | Aplica a decisão de `approval` | Sem corpo | `200 { estado }` ou `202` ainda pendente |
+| `POST /procurement/requisitions/{requisitionId}/cancellation` | `procurement.requisitions.write` | Cancela requisição | `{ reason }` | `204` |
+
+Estados da requisição: `Draft`, `PendingApproval`, `Approved`, `Refused`,
+`Cancelled`. Moeda assume `AOA`; sem `departmentId`, usa-se o departamento do
+requisitante.
+
+**O IBAN é verificado pela norma ISO 13616.** Um dígito trocado devolve `400`
+e o fornecedor não é guardado — a validação existe porque um IBAN errado paga
+a outra pessoa.
+
+Depois de submetida, a requisição **não se altera**: acrescentar ou remover
+linhas devolve `409`. O frontend deve esconder a edição fora de `Draft`.
+
+Submeter sem motor de aprovação ligado devolve `501`; sem política aplicável,
+`409`. Ordem de Compra e Recepção de Mercadoria **ainda não existem** — a
+cadeia pára na requisição aprovada.
 
 ## HR
 

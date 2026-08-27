@@ -77,4 +77,41 @@ não módulo novo.
 
 ## Estado
 
-Não iniciado.
+**Fornecedor e Requisição Interna feitos** — 2026-08-27. Ordem de Compra,
+Recepção de Mercadoria e 3-way match por fazer.
+
+O que existe:
+
+| Peça | Estado |
+|---|---|
+| Fornecedor | Feito. Nome, NIF único, IBAN verificado por ISO 13616, contactos, activação/desactivação. Publicado por `ISupplierDirectory` |
+| Requisição Interna | Feita. Rascunho com linhas, submissão a `approval`, aplicação da decisão, cancelamento |
+| Ordem de Compra | ⚠ Por fazer. É o passo seguinte, e só nasce de requisição aprovada |
+| Recepção de Mercadoria | ⚠ Por fazer |
+| 3-way match | ⚠ Por fazer. Precisa das duas acima e da factura de compra, que é de `finance` |
+
+### Decisões tomadas ao construir
+
+- **As linhas da requisição são inferência.** `docs` lista para a Requisição
+  apenas id, requisitante, departamento, justificação e estado. Sem saber o que
+  se pede e por quanto, não há como gerar a Ordem de Compra nem como dar a
+  `approval` o valor que selecciona a faixa da alçada. São "atributos
+  principais", não lista fechada.
+- **A submissão a `approval` é por inversão**, `IProcurementApprovalSubmission`,
+  ligada no composition root — o mesmo desenho de `hr` e de `finance`. Aqui não
+  havia ciclo a quebrar; mantém-se para o módulo não saber qual é o motor.
+- **O IBAN é verificado, o NIF não.** O mod-97 do IBAN é norma ISO 13616,
+  internacional e publicada — não é regra fiscal angolana, e por isso não cai na
+  proibição do `CLAUDE.md`. E o custo do erro é assimétrico: um NIF errado dá
+  uma factura por corrigir, um IBAN errado paga a outra pessoa.
+- **`finance` ainda não consome o Fornecedor.** A factura de compra continua a
+  guardar nome e NIF em texto. Ligá-la é trabalho seguinte, e **não é
+  retroactivo**: as facturas já emitidas guardam o que vigorava à data.
+
+### Ainda por fazer, além dos agregados
+
+- **Suite de verificação end-to-end.** As onze suites PowerShell não cobrem
+  `procurement`; a cobertura é de domínio (58 testes) e nada mais.
+- **Cobertura de Application.** Os casos de uso não têm teste unitário — mesma
+  lacuna dos outros sete módulos.
+- Despesa eventual avulsa (lacuna do SGAP, acima).

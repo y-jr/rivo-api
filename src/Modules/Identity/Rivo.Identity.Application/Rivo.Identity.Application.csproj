@@ -8,6 +8,7 @@
     <ProjectReference Include="..\..\Fiscal\Rivo.Fiscal.Contracts\Rivo.Fiscal.Contracts.csproj" />
     <ProjectReference Include="..\..\Finance\Rivo.Finance.Contracts\Rivo.Finance.Contracts.csproj" />
     <ProjectReference Include="..\..\Commercial\Rivo.Commercial.Contracts\Rivo.Commercial.Contracts.csproj" />
+    <ProjectReference Include="..\..\Procurement\Rivo.Procurement.Contracts\Rivo.Procurement.Contracts.csproj" />
     <ProjectReference Include="..\..\Documents\Rivo.Documents.Contracts\Rivo.Documents.Contracts.csproj" />
     <ProjectReference Include="..\..\Notifications\Rivo.Notifications.Contracts\Rivo.Notifications.Contracts.csproj" />
   </ItemGroup>

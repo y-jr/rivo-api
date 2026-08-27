@@ -51,6 +51,11 @@ public class ConcurrencyTokenTests
             "Criado com a política e nunca editado — alterar uma alçada é criar outra política, " +
             "porque os pedidos em curso guardam a que lhes foi aplicada (BR-6).",
 
+        ["RequisitionLine"] =
+            "Parte do agregado PurchaseRequisition e só alterável enquanto ele for rascunho — " +
+            "depois de submetido nada lhe toca, porque o valor que escolheu a faixa da alçada já " +
+            "foi congelado do lado de `approval`. O contador da requisição cobre as duas coisas.",
+
         ["PayeeParty"] =
             "Retrato de a quem se paga, congelado. Objecto de valor sem identidade nem ciclo de " +
             "vida próprio — vive nas colunas de quem o guarda, e é essa entidade que tem o contador.",

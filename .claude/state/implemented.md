@@ -563,3 +563,39 @@ o original fica, e corrige-se por regularização, à mão. É a lacuna mais vis
 **Fora:** estorno automático, activos fixos e depreciação (bloqueados por
 **K1**), adiantamentos, nota de débito, câmbio, e a reconciliação bancária
 propriamente dita.
+
+## procurement
+
+_2026-08-27 — **Fornecedor e Requisição Interna**. A cadeia pára na Ordem de
+Compra._
+
+- Cinco camadas, schema `procurement`, **58 testes de domínio**
+- `Supplier`: nome, NIF único, IBAN, contactos, activação/desactivação.
+  Desactivar, nunca eliminar (BR-14) — **não há `DELETE`**
+- **IBAN verificado pela norma ISO 13616** (mod-97). É a única validação de
+  formato do módulo, e a assimetria justifica-a: um NIF errado dá uma factura
+  por corrigir, um IBAN errado paga a outra pessoa
+- `PurchaseRequisition`: rascunho com linhas, submissão a `approval`, aplicação
+  da decisão, cancelamento. **Depois de submetida não se altera** — o valor que
+  seleccionou a faixa da alçada já foi congelado do outro lado (BR-6)
+- `ISupplierDirectory` publicado, com procura por identificador e por NIF —
+  este último para quem tem a factura na mão e não o identificador
+- `IProcurementApprovalSubmission` invertido no composition root, como em `hr` e
+  em `finance`. **`procurement` não sabe que `approval` existe**
+- `ApprovalProcessTypes.PurchaseRequisition` — segundo processo com valor
+  monetário, e o segundo sobre que BR-8 verifica orçamento. Sem rubrica: a
+  verificação recua para o departamento
+- `Manager` ganhou `ProcurementPermissions.ForRequesters`; `Finance` ganhou
+  **só** `SuppliersRead` — quem fixa o IBAN não pode ser quem executa o
+  pagamento
+
+⚠ **Ordem de Compra, Recepção de Mercadoria e 3-way match não existem.** É
+onde a cadeia `requisição → OC → recepção → factura` fica pelo primeiro elo.
+
+⚠ **`finance` ainda não consome o Fornecedor.** A factura de compra continua a
+guardar nome e NIF em texto — e as já emitidas devem continuar assim, porque
+guardam o que vigorava à data.
+
+⚠ **Sem suite de verificação end-to-end.** As onze suites PowerShell não cobrem
+`procurement`, e a cobertura de Application é nenhuma.
+
