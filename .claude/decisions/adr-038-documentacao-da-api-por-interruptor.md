@@ -70,6 +70,23 @@ No compose, `OpenApi__Expose: ${EXPOSE_OPENAPI:-false}`; no `.env`,
 colateral de `ASPNETCORE_ENVIRONMENT`, é uma decisão escrita no
 `docker-compose.yml` de quem opera o ambiente"*. Passa a valer para as duas.
 
+## Verificação
+
+Exercitado contra a stack a 2026-08-27, e o ensaio foi escolhido para
+**discriminar**: o container corre com `ASPNETCORE_ENVIRONMENT=Development`,
+logo se o interruptor não fizesse nada a omissão `IsDevelopment()` expunha na
+mesma e o resultado não provava coisa nenhuma.
+
+| `OpenApi__Expose` | `/openapi/v1.json` | `/swagger` | `/health` |
+|---|---|---|---|
+| `true` | `200` | `200` | `200` |
+| `false` | **`404`** | **`404`** | `200` |
+
+Com `false` e ambiente `Development`, os dois fecham e a aplicação continua a
+responder. O interruptor decide, e o nome do ambiente já não.
+
+`verify-all` correu na mesma imagem: **191 de 191**.
+
 ## Consequences
 
 - Quem opera o ambiente publicado tem o Swagger **e** os cabeçalhos
