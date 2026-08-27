@@ -18,9 +18,17 @@ services:
     container_name: rivo-api
     restart: unless-stopped
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      #${ASPNETCORE_ENVIRONMENT:-Production}
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       ASPNETCORE_HTTP_PORTS: 8080
+
+      # Documentação da API (`/swagger` e `/openapi/v1.json`) — ADR-038.
+      #
+      # Por omissão fechada fora de desenvolvimento: expor a superfície poupa
+      # trabalho de reconhecimento a quem ataca. Abre-se pondo
+      # `EXPOSE_OPENAPI=true` no `.env` — **interruptor próprio, e não
+      # `ASPNETCORE_ENVIRONMENT=Development`**, que traria atrás os cabeçalhos
+      # reencaminhados desligados (K8) e a página de excepções com stack trace.
+      OpenApi__Expose: ${EXPOSE_OPENAPI:-false}
 
       # Ligação ao SQL Server. Vem do .env, que não é versionado — ver
       # .env.example.

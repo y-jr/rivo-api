@@ -78,9 +78,24 @@ builder.Services.AddScoped<IPaymentApproval, FinancePaymentApproval>();
 
 var app = builder.Build();
 
-// Documentação e interface só em desenvolvimento: expor a superfície da API
-// em produção alarga o que um atacante sabe sem ter de adivinhar.
-if (app.Environment.IsDevelopment()) 
+// Documentação e interface da API, por interruptor explícito — ADR-038.
+//
+// Expor a superfície da API alarga o que um atacante sabe sem ter de
+// adivinhar, e por isso a omissão continua a ser não expor fora de
+// desenvolvimento. Mas **quem opera o ambiente tem de poder dizer que sim**
+// sem para isso ter de mentir sobre o ambiente.
+//
+// Pôr `ASPNETCORE_ENVIRONMENT=Development` num ambiente publicado abre o
+// Swagger, sim — e traz atrás duas coisas que ninguém pediu: o
+// `UseForwardedHeaders` deixa de correr, o que **reabre o K8 em silêncio** e
+// volta a guardar em `user_session` o IP do proxy em vez do do cliente; e o
+// `WebApplication` acrescenta a página de excepções de desenvolvimento à
+// frente de todo o pipeline, que devolve stack trace e código-fonte a quem
+// provocar um erro não tratado.
+//
+// Mesmo desenho de `Database:MigrateOnStartup` (ADR-030): a decisão é escrita
+// no compose de quem opera o ambiente, não é efeito colateral do nome dele.
+if (app.Configuration.GetValue("OpenApi:Expose", app.Environment.IsDevelopment()))
 {
     app.MapOpenApi();
     app.UseSwaggerUI(options => options.SwaggerEndpoint("/openapi/v1.json", "Rivo API"));
