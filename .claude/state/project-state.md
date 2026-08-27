@@ -1,6 +1,6 @@
 # Estado do Projecto
 
-_Última actualização: 2026-08-25_
+_Última actualização: 2026-08-27_
 
 ## Fase actual
 
@@ -64,14 +64,22 @@ Deployment por `.github/workflows/main.yml`: SSH, `git pull`,
 ⚠ **Sem TLS** — não há domínio, e o Let's Encrypt não emite para endereços IP.
 O token viaja em claro. É o **K16**, e não pode ir para produção a sério.
 
+A documentação da API (`/swagger`, `/openapi/v1.json`) é publicada por
+interruptor próprio, `EXPOSE_OPENAPI` (ADR-038). Foi aberta a 2026-08-26 para
+o frontend poder ler o contrato do ambiente — e, na primeira tentativa, foi
+aberta pondo `ASPNETCORE_ENVIRONMENT=Development` no compose, o que **reabriu
+o K8 em silêncio** e pôs a página de excepções de desenvolvimento à frente do
+pipeline. Corrigido a 2026-08-27. O risco que fica é o **K17**: sem TLS, a
+superfície inteira é legível por quem estiver a ouvir.
+
 ## Números
 
 | Área | Estado |
 |---|---|
 | Código | 9 módulos, 45 projectos em `src/`, 213 ficheiros `.cs` |
 | Superfície HTTP | 118 endpoints em 9 grupos de rota, mais `/health` |
-| ADRs | 37, aceites |
-| Testes | **571** em 14 projectos — 429 de domínio, 108 de Application, 21 de arquitectura, 9 da API do host, 4 de integração. **567 passam**; os 4 de integração exigem Docker e falharam com `DockerUnavailableException` a 2026-08-25 |
+| ADRs | 38, aceites |
+| Testes | **571** em 14 projectos — 429 de domínio, 108 de Application, 21 de arquitectura, 9 da API do host, 4 de integração. **567 passam**; os 4 de integração exigem Docker e falharam com `DockerUnavailableException`. Corrido a 2026-08-27, com o motor do Docker Desktop em baixo |
 | Verificação end-to-end | **11 suites** PowerShell, **191 casos**. ⚠ Última corrida: **190/191**, com a falha a ser uma asserção nova contra container por reconstruir. Ver a ressalva em [implemented.md](implemented.md) |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
@@ -98,7 +106,10 @@ O token viaja em claro. É o **K16**, e não pode ir para produção a sério.
   > utilizador que nunca existiu. **Enquanto o utilizador não confirmar que a
   > decisão foi dele, isto é um facto observado, não uma decisão ratificada.**
 - **Frontend.** React + Tailwind decidido; sem código. A pasta `front/` é
-  trabalho de outra sessão.
+  trabalho de outra sessão. O contrato HTTP que esse trabalho consome está
+  escrito em [API-FRONTEND.md](../../API-FRONTEND.md), na raiz do repositório
+  — 119 rotas com permissão, corpo e código de sucesso, verificadas contra o
+  código a 2026-08-27.
 - **`SharedKernel`.** O [CLAUDE.md](../CLAUDE.md) refere-o e manda mantê-lo
   mínimo; nunca chegou a ser criado. O ADR-035 considerou criá-lo e decidiu
   contra — ver a alternativa B desse ADR.
@@ -123,8 +134,13 @@ O token viaja em claro. É o **K16**, e não pode ir para produção a sério.
    e `finance` respondem a HTTP e têm testes, o que é fácil de confundir com
    estarem feitos. Uma factura do Rivo tem número, série e ar de factura, e não
    é documento fiscal. Mitigação: ⚠ em cada `modules/*.md`, no ADR-036 e aqui.
-4. **K16 — sem TLS.** Credenciais e token em claro no ambiente publicado.
-5. **`hr.Colaborador` como ponto de acoplamento** — mitigado por ADR-010 e
+4. **K16 — sem TLS.** Credenciais e token em claro no ambiente publicado. Com
+   a documentação da API agora aberta (K17), a superfície inteira viaja no
+   mesmo canal.
+5. **K18 — cancelar um pedido de aprovação exige só permissão de leitura.**
+   Quem acompanha processos pode matá-los. Não é escalada de privilégio; é
+   segregação de funções por definir para um acto que já existe.
+6. **`hr.Colaborador` como ponto de acoplamento** — mitigado por ADR-010 e
    respeitado no código, mas exige vigilância à medida que os consumidores
    aparecem.
 
@@ -143,15 +159,26 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    falta para a contabilidade deixar de estar vazia — e **precisa do
    contabilista, não de código**. Enquanto não houver, todo o resto da
    Contabilidade está de pé e sem uso.
-2. **Estorno automático.** Anular uma factura, uma nota de crédito ou um recibo
+2. **Decidir quem cancela um pedido de aprovação (K18).** Hoje basta
+   `approval.requests.read`, o que faz de uma permissão de leitura um poder de
+   veto. A correcção é de uma linha; **a decisão não é** — é a mesma pergunta
+   de segregação que BR-2 e BR-3 já responderam para decidir e para pagar.
+3. **Estorno automático.** Anular uma factura, uma nota de crédito ou um recibo
    **não gera lançamento inverso** — o original fica e corrige-se à mão. É a
    lacuna mais visível da postagem.
-3. **Domínio e TLS** — fecha o K16 e é pré-requisito de qualquer uso real.
-4. **Cobertura de Application nos outros módulos** — `finance` tem 98 testes. O
+4. **Domínio e TLS** — fecha o K16 **e o K17** (com a documentação da API
+   aberta, a superfície viaja em claro), e é pré-requisito de qualquer uso
+   real.
+5. **Cobertura de Application nos outros módulos** — `finance` tem 100 testes. O
    próximo que mais custa é `DecideOnRequest` em `approval`: BR-2, BR-4 e BR-6
    vivem lá e só têm cobertura caixa-preta.
-5. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
+6. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
    vendas a balcão saem com um marcador visível. Precisa de fonte primária.
+
+**Fechado a 2026-08-27:** o Swagger no ambiente publicado passou a ter
+interruptor próprio (ADR-038), o que refechou o **K8** — aberto sem se dar por
+isso quando o ambiente foi renomeado para `Development` — e deixou registados
+o **K17** e o **K18**.
 
 **Fechado a 2026-08-25:** Contabilidade & Fecho, Planeamento, **BR-8** (uma
 política com `RequiresBudgetCheck` deixou de recusar sempre e passou a

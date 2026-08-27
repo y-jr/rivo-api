@@ -1,6 +1,6 @@
 # Implementado
 
-_Última actualização: 2026-08-25._
+_Última actualização: 2026-08-27._
 
 Funcionalidade concluída e a funcionar, por módulo. Actualizar como parte de
 terminar uma funcionalidade (passo 8 do fluxo em [CLAUDE.md](../CLAUDE.md)).
@@ -179,7 +179,11 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
   desenvolvimento e CI; imagem multi-fase, utilizador não-root — 2026-08-10,
   revisto em 2026-08-20
 - `GET /health`, que verifica também o alcance da base de dados — 2026-08-10
-- OpenAPI e Swagger UI expostos **só em `Development`** — 2026-08-10
+- OpenAPI e Swagger UI, expostos por `OpenApi:Expose` — 2026-08-10, gate
+  revisto em 2026-08-27 — ADR-038. A omissão é `IsDevelopment()`; no ambiente
+  publicado abre-se com `EXPOSE_OPENAPI=true` no `.env`, **sem renomear o
+  ambiente** — renomeá-lo desliga os cabeçalhos reencaminhados (K8) e põe a
+  página de excepções de desenvolvimento à frente do pipeline
 - Workflow de CI em GitHub Actions, dois jobs — 2026-08-16 — ADR-023. A
   ressalva de então ("nunca executado, o repositório não está sob git") caducou
   no mesmo dia: está em `y-jr/rivo-api` e ambos os jobs correm
@@ -189,6 +193,11 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
   não houver domínio — K16
 - `Rivo.Fiscal`, `Rivo.Commercial` e `Rivo.Finance` acrescentados à solução e
   ao host — 2026-08-24 — ADR-036
+- Contrato HTTP escrito para quem consome a API de fora —
+  [API-FRONTEND.md](../../API-FRONTEND.md), 2026-08-27. As **119 rotas** (118
+  de módulo mais `/health`, 4 públicas) com permissão exigida, corpo de pedido
+  e código de sucesso. Verificado contra o código: a contagem bate, e as
+  permissões conferidas por amostragem — foi a conferir que apareceu o K18
 
 ## Verificação
 
@@ -208,6 +217,20 @@ todas re-executáveis.
 >
 > **Isto não está verificado ponta-a-ponta.** Fica por correr `verify-all` com o
 > container reconstruído — é o primeiro passo assim que houver Docker.
+>
+> **Continua por correr a 2026-08-27.** O motor do Docker Desktop não voltou:
+> `docker ps` responde que o named pipe `dockerDesktopLinuxEngine` não existe,
+> e o serviço privilegiado `com.docker.service` está parado — arrancá-lo exige
+> elevação, que não se obtém de dentro da sessão. Os 571 testes .NET correram
+> na mesma: **567 passam**, e os 4 que falham são os de Testcontainers, pela
+> mesma razão.
+>
+> ⚠ **O ADR-038 mexeu no `Program.cs` e no `docker-compose.yml`** e não foi
+> exercitado contra a stack. O que muda é o gate de `MapOpenApi`; o pipeline de
+> autenticação, autorização e persistência que as suites exercitam não foi
+> tocado. **Isto é uma expectativa, não uma verificação** — a corrida de
+> `verify-all` continua em dívida, e agora com uma alteração a mais para
+> confirmar.
 
 Eram seis suites e 66 casos em 2026-08-16. `verify-hr` cresceu 13 → 16 com as
 funcionalidades novas de `hr`; `verify-authorization` 8 → 9 ao distinguir os

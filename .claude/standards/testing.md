@@ -98,7 +98,9 @@ dotnet test
 
 ## Estado da cobertura
 
-_Contagens de 2026-08-25. **571 testes** em 14 projectos._
+_Contagens de 2026-08-27, executadas. **571 testes** em 14 projectos: **567
+passam**, e os 4 que faltam são os de Testcontainers, com o motor do Docker em
+baixo._
 
 | Camada | Estado |
 |---|---|

@@ -1,16 +1,16 @@
 # Problemas Conhecidos
 
-_Última actualização: 2026-08-25._
+_Última actualização: 2026-08-27._
 
 Este ficheiro regista duas coisas distintas, e a distinção importa:
 
 - **Lacunas de arquitectura (K1–K7)** — pontos assinalados em `docs/` e não
   resolvidos. Não são decisões em aberto; são buracos conhecidos no desenho.
-- **Defeitos (K8–K16)** — comportamento real do código implementado que não
+- **Defeitos (K8–K18)** — comportamento real do código implementado que não
   satisfaz um requisito. Seis módulos estão em produção de desenvolvimento,
   logo há defeitos de código a registar.
 
-  Fechados: K8, K9, K14, K15. Abertos: K10, K11, K12, K13, K16.
+  Fechados: K8, K9, K14, K15. Abertos: K10, K11, K12, K13, K16, K17, K18.
 
 Os anti-padrões do protótipo ficam listados à parte, porque a tentação de os
 repetir é real.
@@ -57,6 +57,13 @@ host, e o único caminho até ele é o reverse proxy, que reescreve
 
 **⚠ Publicar o porto 8080 no host reabre este defeito em silêncio**, e nada no
 código o detecta. A garantia é topológica, e a topologia é a do ADR-031.
+
+**⚠ Pôr `ASPNETCORE_ENVIRONMENT=Development` no ambiente publicado reabre-o
+também** — a condição é `if (!app.Environment.IsDevelopment())`. Aconteceu
+entre 2026-08-26 e 2026-08-27: o commit `0301ef5` fixou `Development` no
+`docker-compose.yml` para abrir o Swagger, e levou os cabeçalhos
+reencaminhados atrás. Refechado pelo **ADR-038**, que deu ao Swagger
+interruptor próprio e devolveu o nome do ambiente ao que era.
 
 <details><summary>Registo original</summary>
 
@@ -257,3 +264,52 @@ o volume `caddy-data` já está no compose precisamente para os guardar.
 **Nota:** o proxy vive fora do repositório do Rivo de propósito. É partilhado
 com os outros sistemas da organização (ADR-031), e uma aplicação não deve ser
 dona de infraestrutura partilhada.
+
+### K17 — A documentação da API está aberta num ambiente sem TLS
+
+**Detectado em 2026-08-27**, a auditar o commit `0301ef5`.
+
+O ambiente publicado serve `/swagger` e `/openapi/v1.json` — decisão
+deliberada de quem o opera, agora com interruptor próprio (ADR-038). O
+documento descreve **as 119 rotas, os corpos de pedido e as permissões
+exigidas**, e viaja em HTTP simples enquanto o K16 durar.
+
+**Consequência:** quem observe a rede não precisa de adivinhar a superfície da
+API — ela é-lhe entregue. Não é escalada de privilégio, é poupança de
+reconhecimento: continua a ser preciso um token válido para chamar seja o que
+for. Mas com o K16 aberto, o token também viaja em claro.
+
+**Contorno:** `EXPOSE_OPENAPI=false` no `.env` da VPS fecha-o sem tocar em
+código nem no nome do ambiente.
+
+**Seguimento:** fecha com o K16. Com TLS, o risco desce ao que o Swagger é em
+qualquer API interna — e a decisão de o deixar aberto deixa de ter custo.
+
+### K18 — Cancelar um pedido de aprovação exige permissão de leitura
+
+**Detectado em 2026-08-27**, a cruzar o `API-FRONTEND.md` com o código.
+
+`POST /approval/requests/{requestId}/cancellation` está protegido por
+`approval.requests.read` (`ApprovalModuleEndpoints.cs:36`). Todos os outros
+endpoints de escrita de `approval` exigem uma permissão de escrita:
+`approval.policies.write` para criar políticas, `approval.requests.decide`
+para decidir.
+
+**Impacto:** **quem consegue ver um pedido de aprovação consegue cancelá-lo.**
+`CancelRequest` não verifica quem submeteu — não há dono a comparar —, logo
+não é o caso de "cada um cancela o seu". Um pedido de pagamento em curso pode
+ser morto por qualquer titular de `approval.requests.read`, e o efeito é o
+mesmo de uma recusa sem que ninguém tenha decidido nada.
+
+`ApprovalPermissions` não tem hoje permissão de cancelamento: as quatro são
+`RequestsRead`, `RequestsDecide`, `PoliciesRead`, `PoliciesWrite`.
+
+**Contorno:** nenhum ao nível da configuração — a permissão é a que está no
+código. Nos perfis de acesso, `approval.requests.read` está atribuída a quem
+precisa de acompanhar processos.
+
+**Seguimento:** decidir qual é a regra antes de mudar o código — cancelar é
+acto de quem submeteu, de quem decide, ou permissão própria? A resposta muda o
+perfil de acesso e as suites que exercitam o cancelamento. **Não é correcção
+mecânica**; é a mesma pergunta de segregação de funções que BR-2 e BR-3 já
+responderam para os outros actos, e merece ser respondida do mesmo modo.
