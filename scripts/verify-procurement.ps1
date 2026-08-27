@@ -116,7 +116,17 @@ Invoke-RestMethod "$base/hr/employees/$aprovador/positions" -Method Post -Conten
 # política recusa, e isso só é verificável se não houver nenhuma. Uma corrida
 # anterior desta suite deixa a sua desactivada, mas uma interrompida a meio não
 # — e sem isto o caso passava ou falhava conforme o que ficou para trás.
-Invoke-Sql "update approval.policy set is_active = 0 where process_type = 'procurement.purchase_requisition'" | Out-Null
+#
+# **Pela rota, e já não por SQL** (2026-08-27). Enquanto não havia
+# `POST /approval/policies/{id}/deactivation`, a suite era obrigada a escrever
+# na base de dados por baixo da aplicação — e uma suite que se limpa por um
+# caminho que a aplicação não tem verifica menos do que parece.
+Invoke-RestMethod "$base/approval/policies" -Headers $adminHeaders |
+Where-Object { $_.processType -eq "procurement.purchase_requisition" -and $_.isActive } |
+ForEach-Object {
+    Invoke-RestMethod "$base/approval/policies/$($_.policyId)/deactivation" `
+        -Method Post -Headers $adminHeaders | Out-Null
+}
 
 Write-Host "`n=== Procurement: Fornecedor e Requisicao Interna ===`n"
 
@@ -382,8 +392,9 @@ Test-Case "15. Sem politica configurada, submeter recusa e diz porque" {
 }
 
 Test-Case "16. Com politica, submeter cria o processo em approval" {
-    Invoke-RestMethod "$base/approval/policies" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-        -Body (@{ processType = "procurement.purchase_requisition"; steps = @(@{ approverPositionId = $cargo }) } | ConvertTo-Json -Depth 5) | Out-Null
+    $politica = Invoke-RestMethod "$base/approval/policies" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+        -Body (@{ processType = "procurement.purchase_requisition"; steps = @(@{ approverPositionId = $cargo }) } | ConvertTo-Json -Depth 5)
+    $script:politicaId = $politica.policyId
 
     $r = Invoke-RestMethod "$base/procurement/requisitions/$($script:requisicaoId)/submission" -Method Post -Headers $managerHeaders
     $script:processoId = $r.approvalRequestId
@@ -1108,11 +1119,27 @@ Test-Case "55. A suite nao deixa politica de procurement activa atras de si" {
     # politica generica, e o caso 15 — que verifica a recusa quando nao ha
     # nenhuma — passaria a falhar a partir da segunda vez.
     #
-    # Nao ha rota para desactivar politicas, e por isso e SQL.
-    Invoke-Sql "update approval.policy set is_active = 0 where process_type = 'procurement.purchase_requisition'" | Out-Null
+    # **Pela rota, e ja nao por SQL** (2026-08-27). A limpeza passou a exercitar
+    # `POST /approval/policies/{id}/deactivation` — deixou de ser so arrumacao e
+    # passou a verificar tambem o endpoint que a torna possivel.
+    Invoke-RestMethod "$base/approval/policies" -Headers $adminHeaders |
+    Where-Object { $_.processType -eq "procurement.purchase_requisition" -and $_.isActive } |
+    ForEach-Object {
+        Invoke-RestMethod "$base/approval/policies/$($_.policyId)/deactivation" `
+            -Method Post -Headers $adminHeaders | Out-Null
+    }
 
+    # Confirmado na base de dados, e nao so pela resposta da rota: o 204 diz que
+    # a aplicacao aceitou, e a coluna diz que gravou.
     $activas = Invoke-Sql "select count(*) from approval.policy where process_type = 'procurement.purchase_requisition' and is_active = 1"
     if ($activas -ne "0") { throw "$activas politicas de procurement continuam activas" }
+
+    # Repetivel: desactivar uma politica ja desactivada devolve 204 na mesma.
+    $repetido = Get-StatusCode { Invoke-RestMethod "$base/approval/policies/$($script:politicaId)/deactivation" -Method Post -Headers $adminHeaders }
+    if ($repetido -ne 200) { throw "segunda desactivacao devia ser aceite, obtido $repetido" }
+
+    $inexistente = Get-StatusCode { Invoke-RestMethod "$base/approval/policies/$([guid]::NewGuid())/deactivation" -Method Post -Headers $adminHeaders }
+    if ($inexistente -ne 404) { throw "politica inexistente devia dar 404, obtido $inexistente" }
 
     "a politica desta corrida sai; a suite volta a poder correr do zero"
 }

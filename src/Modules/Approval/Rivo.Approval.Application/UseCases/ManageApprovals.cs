@@ -109,6 +109,78 @@ public sealed record PolicyResult(bool Succeeded, Guid? PolicyId, string? Error)
     public static PolicyResult Rejected(string reason) => new(false, null, reason);
 }
 
+/// <summary>
+/// Desactiva uma política de aprovação.
+///
+/// <para>
+/// <strong>Só desactivar, e não reactivar.</strong> A submissão escolhe a
+/// política mais específica que se aplica, e recusa quando duas empatam
+/// (ADR-034). Reactivar uma política antiga podia criar esse empate sem que
+/// quem reactiva o visse — e a recusa apareceria depois, numa submissão que
+/// não tem nada a ver com isso. Quem precisa da política outra vez cria-a, e
+/// vê o que está activo ao fazê-lo.
+/// </para>
+///
+/// <para>
+/// <strong>Os pedidos em curso não mudam.</strong> Cada um guarda a política
+/// que lhe foi aplicada e os aprovadores que dela resultaram, congelados na
+/// submissão (BR-6). Desactivar afecta o que vem a seguir, nunca o que já está
+/// a decorrer.
+/// </para>
+///
+/// <para>
+/// Existe também por uma razão prática: sem rota, as suites de verificação
+/// eram obrigadas a limpar-se por SQL directo contra a base de dados.
+/// </para>
+/// </summary>
+public sealed class DeactivateApprovalPolicy(IApprovalStore store, IAuditTrail audit)
+{
+    public async Task<DeactivatePolicyOutcome> ExecuteAsync(
+        Guid policyId,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        var politica = await store.FindPolicyAsync(policyId, cancellationToken);
+
+        if (politica is null)
+        {
+            return DeactivatePolicyOutcome.NotFound;
+        }
+
+        // Repetível sem erro: desactivar uma política já desactivada produz o
+        // estado pretendido na mesma. Sai antes de gravar e de auditar, para a
+        // trilha não encher de desactivações que não mudaram nada.
+        if (!politica.IsActive)
+        {
+            return DeactivatePolicyOutcome.AlreadyInactive;
+        }
+
+        politica.Deactivate();
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                ApprovalAuditActions.PolicyDeactivated,
+                ApprovalAuditEntityTypes.Policy,
+                politica.Id.ToString(),
+                context,
+                PreviousValue: $$"""{"processType":"{{politica.ProcessType}}","active":true}"""),
+            cancellationToken);
+
+        return DeactivatePolicyOutcome.Deactivated;
+    }
+}
+
+public enum DeactivatePolicyOutcome
+{
+    Deactivated,
+
+    /// <summary>Já estava desactivada. Não é erro — 204 na mesma.</summary>
+    AlreadyInactive,
+
+    NotFound,
+}
+
 public sealed class ListApprovalRequests(IApprovalStore store)
 {
     /// <param name="pendingForEmployeeId">

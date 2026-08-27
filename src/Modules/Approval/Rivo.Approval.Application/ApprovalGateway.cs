@@ -209,6 +209,13 @@ public static class ApprovalAuditActions
     public const string PolicyCreated = "approval.policy.created";
 
     /// <summary>
+    /// Uma política deixou de se aplicar a submissões novas. Auditada pela mesma
+    /// razão que a criação: altera quem aprova o quê, e é configuração
+    /// sensível.
+    /// </summary>
+    public const string PolicyDeactivated = "approval.policy.deactivated";
+
+    /// <summary>
     /// Tentativa recusada por BR-2 ou BR-4. Fica na trilha mesmo não tendo
     /// produzido efeito — é precisamente o padrão que interessa detectar.
     /// </summary>

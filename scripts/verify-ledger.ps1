@@ -921,12 +921,23 @@ Test-Case "44. A suite nao deixa politica de BR-8 activa atras de si" {
     # limite e a guarda de `verify-payables` — que procura a politica generica —
     # passaria a ter de a distinguir de dezenas.
     #
-    # Nao ha rota para desactivar politicas, e por isso e SQL. Enquanto nao
-    # houver, e a unica forma de a suite se limpar.
-    Invoke-Sql @"
-update approval.policy set is_active = 0
-where process_type = 'finance.payment_request' and department_id = '$($script:departamentoId)'
-"@ | Out-Null
+    # **Pela rota, e ja nao por SQL** (2026-08-27). Enquanto nao havia
+    # `POST /approval/policies/{id}/deactivation`, a suite escrevia na base de
+    # dados por baixo da aplicacao — e uma suite que se limpa por um caminho que
+    # a aplicacao nao tem verifica menos do que parece.
+    #
+    # Filtra pelo departamento desta corrida: a generica de `verify-payables`
+    # tem de ficar, e e isso que a assercao seguinte confirma.
+    Invoke-RestMethod "$base/approval/policies" -Headers $adminHeaders |
+    Where-Object {
+        $_.processType -eq "finance.payment_request" -and
+        $_.isActive -and
+        $_.departmentId -eq $script:departamentoId
+    } |
+    ForEach-Object {
+        Invoke-RestMethod "$base/approval/policies/$($_.policyId)/deactivation" `
+            -Method Post -Headers $adminHeaders | Out-Null
+    }
 
     $activas = Invoke-Sql "select count(*) from approval.policy where process_type='finance.payment_request' and is_active=1 and department_id='$($script:departamentoId)'"
     if ($activas -ne "0") { throw "$activas politicas ficaram activas" }

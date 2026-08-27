@@ -191,6 +191,23 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
   `git pull`, `compose up --build`, sonda de `/health`. Ambiente publicado em
   `http://187.77.178.242`, atrás de Caddy na rede `proxy`. **Sem TLS** enquanto
   não houver domínio — K16
+### Desactivar políticas de aprovação — 2026-08-27
+
+`POST /approval/policies/{id}/deactivation`. Um endpoint, e sem agregado novo:
+`ApprovalPolicy.Deactivate()` já existia no domínio e o store já devolvia a
+política rastreada — faltava só a via.
+
+- **Só desactivar, não reactivar.** A submissão recusa quando duas políticas
+  igualmente específicas empatam (ADR-034), e reactivar uma antiga podia criar
+  esse empate sem que quem reactiva o visse — a recusa apareceria depois, numa
+  submissão sem relação com isso
+- **Os pedidos em curso não mudam:** cada um guarda a política aplicada e os
+  aprovadores congelados na submissão (BR-6)
+- Repetível: desactivar uma já desactivada devolve `204` na mesma, e não enche
+  a trilha de desactivações que não mudaram nada
+
+**Tirou o SQL directo de duas suites**, que era a razão prática de o construir.
+
 ### Gestão de conta em `identity` — 2026-08-27
 
 Seis endpoints que faltavam a qualquer sistema com contas, e nenhum precisou de
@@ -683,6 +700,14 @@ guardam o que vigorava à data.
 
 - **`verify-procurement`, 55 casos** — 2026-08-27. Décima segunda suite, e
   `verify-all` em **246/246**
+
+**As duas limpezas deixaram de ser SQL** a 2026-08-27. `verify-ledger` e
+`verify-procurement` desactivavam as suas políticas escrevendo directamente na
+base de dados, porque não havia rota. Com
+`POST /approval/policies/{id}/deactivation`, a limpeza passou a exercitar o
+endpoint — deixou de ser só arrumação e passou a verificar também o caminho que
+a torna possível. Uma suite que se limpa por um caminho que a aplicação não tem
+verifica menos do que parece
 
 O caso que justifica a suite é o **12**: a requisição é relida da base com as
 duas linhas intactas. O mapeamento de uma colecção por campo de apoio é onde o

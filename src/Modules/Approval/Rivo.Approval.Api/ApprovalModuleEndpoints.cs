@@ -22,6 +22,12 @@ public static class ApprovalModuleEndpoints
         group.MapPost("/policies", CreatePolicyAsync)
             .RequireAuthorization(ApprovalPermissions.PoliciesWrite);
 
+        // Desactivar, nunca eliminar: os pedidos em curso guardam a política
+        // que lhes foi aplicada (BR-6), e apagá-la deixava-os a apontar para o
+        // nada.
+        group.MapPost("/policies/{policyId:guid}/deactivation", DeactivatePolicyAsync)
+            .RequireAuthorization(ApprovalPermissions.PoliciesWrite);
+
         group.MapGet("/requests", ListRequestsAsync)
             .RequireAuthorization(ApprovalPermissions.RequestsRead);
 
@@ -69,6 +75,30 @@ public static class ApprovalModuleEndpoints
             : Results.ValidationProblem(new Dictionary<string, string[]> { ["politica"] = [result.Error!] });
     }
 
+
+    private static async Task<IResult> DeactivatePolicyAsync(
+        Guid policyId,
+        DeactivateApprovalPolicy deactivatePolicy,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var outcome = await deactivatePolicy.ExecuteAsync(
+            policyId, BuildAuditContext(http), cancellationToken);
+
+        return outcome switch
+        {
+            // Já desactivada devolve o mesmo que desactivar agora: o estado
+            // pretendido verifica-se nos dois casos, e quem chama repete sem
+            // ter de distinguir.
+            DeactivatePolicyOutcome.Deactivated or DeactivatePolicyOutcome.AlreadyInactive =>
+                Results.NoContent(),
+
+            DeactivatePolicyOutcome.NotFound =>
+                Results.NotFound(new { erro = "Política de aprovação não encontrada." }),
+
+            _ => Results.Problem("Resultado inesperado ao desactivar a política."),
+        };
+    }
     private static async Task<IResult> ListRequestsAsync(
         ListApprovalRequests listRequests,
         string? processType,

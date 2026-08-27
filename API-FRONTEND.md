@@ -1,7 +1,7 @@
 # Rivo API - Guia para o Frontend
 
-Documento gerado a partir das rotas implementadas no backend. A API tem 144
-endpoints: 140 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
+Documento gerado a partir das rotas implementadas no backend. A API tem 145
+endpoints: 141 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
 
 ## Como ligar
 
@@ -362,6 +362,7 @@ ficar pendentes (`202`) enquanto aguardam aprovação.
 |---|---|---|---|---|
 | `GET /approval/policies` | `approval.policies.read` | Lista políticas de aprovação | Sem parâmetros | `200` |
 | `POST /approval/policies` | `approval.policies.write` | Cria política | `{ processType, departmentId?, minimumAmount?, maximumAmount?, requiresBudgetCheck?, steps? }`; step `{ approverPositionId, mode?, slaHours? }` | `201 { policyId }` |
+| `POST /approval/policies/{policyId}/deactivation` | `approval.policies.write` | Desactiva política | Sem corpo | `204` |
 | `GET /approval/requests` | `approval.requests.read` | Lista pedidos de aprovação | `processType?`, `pendingFor?` | `200` |
 | `GET /approval/requests/{requestId}` | `approval.requests.read` | Consulta estado do pedido | Path `requestId` | `200` estado |
 | `POST /approval/requests/{requestId}/decisions` | `approval.requests.decide` | Regista decisão | `{ decidedByEmployeeId, action, notes? }`; action `Approved`, `Rejected`, `ClarificationRequested` | `200` estado |
@@ -370,6 +371,15 @@ ficar pendentes (`202`) enquanto aguardam aprovação.
 Modo de step assume `AnyApprover`; `AllApprovers` também é suportado. Uma
 decisão incompatível com segregação devolve `403`; decisão rejeitada devolve
 `409`.
+
+**Desactivar uma política não afecta os pedidos em curso:** cada um guarda a
+política que lhe foi aplicada e os aprovadores que dela resultaram, congelados
+na submissão (BR-6). Desactivar decide o que vem a seguir.
+
+Desactivar uma política já desactivada devolve `204` na mesma. **Não há
+reactivação** — a submissão recusa quando duas políticas igualmente específicas
+empatam, e reactivar uma antiga podia criar esse empate sem que quem reactiva o
+visse. Quem precisa dela outra vez cria-a.
 
 ⚠ O cancelamento exige `approval.requests.read`, e não uma permissão de
 escrita — está registado como **K18** e a permissão pode mudar. Não construir
