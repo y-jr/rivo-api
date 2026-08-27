@@ -1,7 +1,7 @@
 # Rivo API - Guia para o Frontend
 
-Documento gerado a partir das rotas implementadas no backend. A API tem 146
-endpoints: 142 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
+Documento gerado a partir das rotas implementadas no backend. A API tem 147
+endpoints: 143 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
 
 ## Como ligar
 
@@ -411,9 +411,15 @@ trilha através de contrato interno.
 |---|---|---|---|---|
 | `GET /notifications/me` | JWT | Lista notificações do utilizador autenticado | `unreadOnly?` (default `false`), `limit` (default `50`) | `200` colecção |
 | `POST /notifications/{notificationId}/read` | JWT | Marca notificação como lida | Sem corpo | `204` |
+| `POST /notifications/read-all` | JWT | Marca todas as não lidas do próprio | Sem corpo | `200 { marcadas }` |
 
 O utilizador é obtido do token, nunca do request. Uma notificação inexistente
 ou de outro utilizador devolve `404`.
+
+`read-all` devolve **quantas ficaram marcadas** em vez de `204`: o cliente
+acabou de mostrar um contador de não lidas, e assim confirma-o sem voltar a
+pedir a lista. `{ "marcadas": 0 }` é resposta normal e não erro. Só toca nas do
+próprio.
 
 ## Health
 

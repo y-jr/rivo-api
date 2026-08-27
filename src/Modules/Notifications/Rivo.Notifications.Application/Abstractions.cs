@@ -14,6 +14,20 @@ public interface INotificationStore
         int limit,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Todas as não lidas de um destinatário, <strong>rastreadas</strong> e sem
+    /// tecto.
+    ///
+    /// <para>
+    /// Sem tecto de propósito, ao contrário da listagem: «marcar todas como
+    /// lidas» que deixasse algumas por marcar seria pior do que não existir —
+    /// quem carrega no botão fica a achar que ficou tudo tratado.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<Notification>> ListUnreadForRecipientAsync(
+        Guid recipientUserId,
+        CancellationToken cancellationToken);
+
     /// <summary>Notificações com entrega externa em atraso, para o worker.</summary>
     Task<IReadOnlyList<Notification>> ListDueForDeliveryAsync(
         DateTimeOffset now,

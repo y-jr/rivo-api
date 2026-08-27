@@ -18,6 +18,10 @@ public static class NotificationsModuleEndpoints
         group.MapGet("/me", ListMineAsync).RequireAuthorization();
         group.MapPost("/{notificationId:guid}/read", MarkAsReadAsync).RequireAuthorization();
 
+        // Rota propria em vez de um parametro no anterior: marcar uma e marcar
+        // todas sao actos diferentes, e a forma diz qual foi.
+        group.MapPost("/read-all", MarkAllAsReadAsync).RequireAuthorization();
+
         return endpoints;
     }
 
@@ -45,6 +49,25 @@ public static class NotificationsModuleEndpoints
         return userId is null
             ? Results.Unauthorized()
             : Results.Ok(await list.ExecuteAsync(userId.Value, unreadOnly, limit, cancellationToken));
+    }
+
+    private static async Task<IResult> MarkAllAsReadAsync(
+        MarkAllNotificationsAsRead markAllAsRead,
+        ClaimsPrincipal principal,
+        CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserId(principal);
+
+        if (userId is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var marcadas = await markAllAsRead.ExecuteAsync(userId.Value, cancellationToken);
+
+        // Devolve quantas ficaram marcadas em vez de 204: o cliente acabou de
+        // mostrar um contador, e assim confirma-o sem voltar a pedir a lista.
+        return Results.Ok(new { marcadas });
     }
 
     private static async Task<IResult> MarkAsReadAsync(

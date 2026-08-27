@@ -33,6 +33,15 @@ public sealed class NotificationStore(NotificationsDbContext context) : INotific
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<Notification>> ListUnreadForRecipientAsync(
+        Guid recipientUserId,
+        CancellationToken cancellationToken) =>
+        // Rastreadas, ao contrário da listagem: quem as procura assim vai
+        // alterá-las.
+        await context.Notifications
+            .Where(n => n.RecipientUserId == recipientUserId && n.ReadAt == null)
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<Notification>> ListDueForDeliveryAsync(
         DateTimeOffset now,
         int batchSize,

@@ -34,6 +34,7 @@ public static class NotificationsModuleExtensions
         services.AddScoped<INotifier, Notifier>();
         services.AddScoped<ListMyNotifications>();
         services.AddScoped<MarkNotificationAsRead>();
+        services.AddScoped<MarkAllNotificationsAsRead>();
         services.AddScoped<DispatchPendingNotifications>();
 
         services.AddSingleton<INotificationChannel, LoggingNotificationChannel>();

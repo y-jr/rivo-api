@@ -84,6 +84,47 @@ public sealed class MarkNotificationAsRead(INotificationStore store, TimeProvide
 }
 
 /// <summary>
+/// Marca todas as não lidas do utilizador como lidas.
+///
+/// <para>
+/// É o primeiro pedido que um cliente faz depois de mostrar um contador de não
+/// lidas — e sem esta rota, marcar cinquenta significava cinquenta chamadas.
+/// </para>
+///
+/// <para>
+/// <strong>Só as do próprio.</strong> O identificador vem do token e nunca do
+/// pedido, como no resto do módulo: se viesse do pedido, qualquer pessoa
+/// limpava as notificações de outra.
+/// </para>
+/// </summary>
+public sealed class MarkAllNotificationsAsRead(INotificationStore store, TimeProvider clock)
+{
+    /// <returns>Quantas ficaram marcadas. Zero é resultado normal, não erro.</returns>
+    public async Task<int> ExecuteAsync(Guid recipientUserId, CancellationToken cancellationToken)
+    {
+        var porLer = await store.ListUnreadForRecipientAsync(recipientUserId, cancellationToken);
+
+        if (porLer.Count == 0)
+        {
+            // Sem nada para marcar não se grava: uma gravação vazia incrementa
+            // contadores de concorrência sem que nada tenha mudado.
+            return 0;
+        }
+
+        var agora = clock.GetUtcNow();
+
+        foreach (var notificacao in porLer)
+        {
+            notificacao.MarkAsRead(agora);
+        }
+
+        await store.SaveChangesAsync(cancellationToken);
+
+        return porLer.Count;
+    }
+}
+
+/// <summary>
 /// Processa um lote de entregas em atraso.
 ///
 /// Chamado pelo worker de segundo plano. Isolado dele para poder ser testado

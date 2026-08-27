@@ -191,6 +191,23 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
   `git pull`, `compose up --build`, sonda de `/health`. Ambiente publicado em
   `http://187.77.178.242`, atrás de Caddy na rede `proxy`. **Sem TLS** enquanto
   não houver domínio — K16
+### `POST /notifications/read-all` — 2026-08-28
+
+Marca todas as não lidas do próprio como lidas. **É o primeiro pedido que um
+cliente faz** depois de mostrar um contador de não lidas — sem a rota, marcar
+cinquenta eram cinquenta chamadas.
+
+- **Devolve quantas ficaram marcadas**, e não `204`: o cliente acabou de mostrar
+  o contador, e assim confirma-o sem voltar a pedir a lista
+- **Zero é resultado normal.** Sem nada por ler não se grava nada — uma gravação
+  vazia incrementaria contadores de concorrência sem que nada tivesse mudado
+- **Sem tecto**, ao contrário da listagem: «marcar todas» que deixasse algumas
+  por marcar seria pior do que não existir
+- O identificador vem do token e nunca do pedido, como no resto do módulo
+
+4 casos novos em `verify-notifications` (17), e o caso do reinício passou para o
+fim, como nas outras suites.
+
 ### `GET /documents` — 2026-08-28
 
 Listagem do arquivo, com `category`, `from`, `to` e `limit`.
@@ -278,7 +295,7 @@ pré-existente, encontrado ao construir isto.
 
 ## Verificação
 
-**Doze suites** PowerShell caixa-preta contra a stack em Docker, **250 casos**,
+**Doze suites** PowerShell caixa-preta contra a stack em Docker, **254 casos**,
 todas re-executáveis.
 
 > ⚠ **Estado da verificação a 2026-08-25, ao fechar a postagem automática.**

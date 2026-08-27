@@ -53,6 +53,7 @@ foreach ($e in @($alvoEmail, $outroEmail)) {
     Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json" | Out-Null
 }
 $alvoId = Invoke-Sql "select id from [identity].app_user where email='$alvoEmail'"
+$outroId = Invoke-Sql "select id from [identity].app_user where email='$outroEmail'"
 
 Write-Host "`n=== Modulo notifications ===`n"
 
@@ -191,7 +192,67 @@ where ur.user_id = '$alvoId' and r.name = 'Finance'
     "perfil atribuido e auditado, com notificacao a parte"
 }
 
-Test-Case "13. Notificacoes sobrevivem ao reinicio da stack" {
+Test-Case "13. Marcar todas como lidas de uma vez" {
+    # **E o primeiro pedido que um cliente faz** depois de mostrar um contador
+    # de nao lidas. Sem esta rota, marcar cinquenta eram cinquenta chamadas.
+    $h = @{ Authorization = "Bearer " + (Get-Token $alvoEmail $pass) }
+
+    # Tres notificacoes novas, por atribuicoes de perfil.
+    foreach ($perfil in @("Manager", "Sales", "HR")) {
+        $b = @{ profile = $perfil } | ConvertTo-Json
+        Invoke-RestMethod "$base/identity/users/$alvoId/roles" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
+    }
+
+    $antes = Invoke-RestMethod "$base/notifications/me?unreadOnly=true" -Headers $h
+    if (@($antes).Count -lt 3) { throw "esperadas pelo menos 3 por ler, obtidas $(@($antes).Count)" }
+
+    $r = Invoke-RestMethod "$base/notifications/read-all" -Method Post -Headers $h
+    if ($r.marcadas -ne @($antes).Count) { throw "marcou $($r.marcadas) de $(@($antes).Count)" }
+
+    $depois = Invoke-RestMethod "$base/notifications/me?unreadOnly=true" -Headers $h
+    if (@($depois).Count -ne 0) { throw "ficaram $(@($depois).Count) por ler" }
+
+    "$($r.marcadas) marcadas; nao lidas a zero"
+}
+
+Test-Case "14. Marcar todas sem nada por ler devolve zero" {
+    # Zero e resultado normal, nao erro — e nao se grava nada, para nao
+    # incrementar contadores de concorrencia sem que nada tenha mudado.
+    $h = @{ Authorization = "Bearer " + (Get-Token $alvoEmail $pass) }
+
+    $r = Invoke-RestMethod "$base/notifications/read-all" -Method Post -Headers $h
+    if ($r.marcadas -ne 0) { throw "esperado 0, obtido $($r.marcadas)" }
+
+    "0 marcadas, sem erro"
+}
+
+Test-Case "15. Marcar todas so toca nas do proprio" {
+    # **A regra que mais custa se falhar.** O identificador vem do token e nunca
+    # do pedido: se viesse do pedido, uma pessoa limpava as notificacoes de
+    # outra.
+    $b = @{ profile = "Finance" } | ConvertTo-Json
+    Invoke-RestMethod "$base/identity/users/$outroId/roles" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    $doOutro = @{ Authorization = "Bearer " + (Get-Token $outroEmail $pass) }
+    $porLer = Invoke-RestMethod "$base/notifications/me?unreadOnly=true" -Headers $doOutro
+    if (@($porLer).Count -lt 1) { throw "o outro utilizador ficou sem notificacao para o teste" }
+
+    # O primeiro utilizador marca as suas — e as do outro nao podem mexer-se.
+    $h = @{ Authorization = "Bearer " + (Get-Token $alvoEmail $pass) }
+    Invoke-RestMethod "$base/notifications/read-all" -Method Post -Headers $h | Out-Null
+
+    $aindaPorLer = Invoke-RestMethod "$base/notifications/me?unreadOnly=true" -Headers $doOutro
+    if (@($aindaPorLer).Count -ne @($porLer).Count) { throw "as notificacoes do outro foram marcadas" }
+
+    "as do outro utilizador ficaram intactas"
+}
+
+Test-Case "16. Marcar todas sem autenticacao -> 401" {
+    $code = Get-StatusCode { Invoke-RestMethod "$base/notifications/read-all" -Method Post }
+    if ($code -ne 401) { throw "esperado 401, obtido $code" }
+    "HTTP 401"
+}
+Test-Case "17. Notificacoes sobrevivem ao reinicio da stack" {
     $before = Invoke-Sql "select count(*) from notifications.notification"
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
