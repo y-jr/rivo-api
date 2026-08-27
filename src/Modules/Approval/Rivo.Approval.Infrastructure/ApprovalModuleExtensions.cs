@@ -35,6 +35,7 @@ public static class ApprovalModuleExtensions
         services.AddScoped<ListApprovalPolicies>();
         services.AddScoped<CreateApprovalPolicy>();
         services.AddScoped<DeactivateApprovalPolicy>();
+        services.AddScoped<GetApprovalRequestHistory>();
         services.AddScoped<ListApprovalRequests>();
         services.AddScoped<DecideOnRequest>();
         services.AddScoped<CancelRequest>();

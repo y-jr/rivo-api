@@ -191,6 +191,23 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
   `git pull`, `compose up --build`, sonda de `/health`. Ambiente publicado em
   `http://187.77.178.242`, atrás de Caddy na rede `proxy`. **Sem TLS** enquanto
   não houver domínio — K16
+
+### `GET /approval/requests/{id}/history` — 2026-08-28
+
+Linha do tempo completa de um pedido: submissão, **todas** as atribuições
+congeladas por passo, e cada decisão.
+
+- **Difere do `GET` simples.** Esse devolve só `PendingAssignments` — quem falta
+  decidir agora, para um cliente que espera pela sua vez. Este devolve todas as
+  atribuições, incluídas as já decididas e as de passos futuros, mais os dados
+  da submissão (requisitante, valor, moeda) que o outro não expõe
+- Só leitura sobre o que já está gravado — não junta nada que `approval` não
+  tivesse guardado
+
+2 casos novos, dentro de `verify-hr` (18), a seguir ao cenário que já aprova uma
+atribuição de cargo com autoridade (BR-20): reaproveita o pedido em vez de
+montar outro.
+
 ### `POST /notifications/read-all` — 2026-08-28
 
 Marca todas as não lidas do próprio como lidas. **É o primeiro pedido que um
@@ -295,7 +312,7 @@ pré-existente, encontrado ao construir isto.
 
 ## Verificação
 
-**Doze suites** PowerShell caixa-preta contra a stack em Docker, **254 casos**,
+**Doze suites** PowerShell caixa-preta contra a stack em Docker, **256 casos**,
 todas re-executáveis.
 
 > ⚠ **Estado da verificação a 2026-08-25, ao fechar a postagem automática.**

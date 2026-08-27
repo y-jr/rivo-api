@@ -1,7 +1,7 @@
 # Rivo API - Guia para o Frontend
 
-Documento gerado a partir das rotas implementadas no backend. A API tem 147
-endpoints: 143 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
+Documento gerado a partir das rotas implementadas no backend. A API tem 148
+endpoints: 144 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
 
 ## Como ligar
 
@@ -376,12 +376,21 @@ ficar pendentes (`202`) enquanto aguardam aprovação.
 | `POST /approval/policies/{policyId}/deactivation` | `approval.policies.write` | Desactiva política | Sem corpo | `204` |
 | `GET /approval/requests` | `approval.requests.read` | Lista pedidos de aprovação | `processType?`, `pendingFor?` | `200` |
 | `GET /approval/requests/{requestId}` | `approval.requests.read` | Consulta estado do pedido | Path `requestId` | `200` estado |
+| `GET /approval/requests/{requestId}/history` | `approval.requests.read` | Linha do tempo completa do pedido | Path `requestId` | `200` histórico |
 | `POST /approval/requests/{requestId}/decisions` | `approval.requests.decide` | Regista decisão | `{ decidedByEmployeeId, action, notes? }`; action `Approved`, `Rejected`, `ClarificationRequested` | `200` estado |
 | `POST /approval/requests/{requestId}/cancellation` | `approval.requests.read` | Cancela pedido | Sem campos de body explicitamente declarados | `204` |
 
 Modo de step assume `AnyApprover`; `AllApprovers` também é suportado. Uma
 decisão incompatível com segregação devolve `403`; decisão rejeitada devolve
 `409`.
+
+**`history` difere do `GET` simples.** Esse devolve só `pendingApprovers` —
+quem falta decidir agora, para um cliente que espera pela sua vez. O
+histórico devolve **todas** as atribuições congeladas na submissão
+(`assignments`), incluídas as já decididas e as de passos futuros, mais os
+dados da própria submissão (`requestedByEmployeeId`, `amount`, `currency`,
+`submittedAt`, `closedAt`) que o outro não expõe. É para quem reconstrói o que
+aconteceu, não para quem opera o passo corrente.
 
 **Desactivar uma política não afecta os pedidos em curso:** cada um guarda a
 política que lhe foi aplicada e os aprovadores que dela resultaram, congelados

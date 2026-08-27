@@ -34,6 +34,11 @@ public static class ApprovalModuleEndpoints
         group.MapGet("/requests/{requestId:guid}", GetRequestAsync)
             .RequireAuthorization(ApprovalPermissions.RequestsRead);
 
+        // A linha do tempo completa, para quem reconstroi o que aconteceu — e
+        // nao so quem espera pela sua vez de decidir.
+        group.MapGet("/requests/{requestId:guid}/history", GetHistoryAsync)
+            .RequireAuthorization(ApprovalPermissions.RequestsRead);
+
         // Decidir. A permissão abre a porta; quem decide de facto é o domínio,
         // que verifica BR-2, BR-4 e a atribuição ao passo em curso.
         group.MapPost("/requests/{requestId:guid}/decisions", DecideAsync)
@@ -114,6 +119,16 @@ public static class ApprovalModuleEndpoints
         var status = await gateway.GetStatusAsync(requestId, cancellationToken);
 
         return status is null ? Results.NotFound() : Results.Ok(status);
+    }
+
+    private static async Task<IResult> GetHistoryAsync(
+        Guid requestId,
+        GetApprovalRequestHistory getHistory,
+        CancellationToken cancellationToken)
+    {
+        var historico = await getHistory.ExecuteAsync(requestId, cancellationToken);
+
+        return historico is null ? Results.NotFound() : Results.Ok(historico);
     }
 
     private static async Task<IResult> DecideAsync(

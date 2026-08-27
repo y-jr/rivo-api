@@ -204,6 +204,7 @@ Test-Case "12. Aprovado, o cargo passa a ser conferido" {
     # o que `Invoke-RestMethod` devolve — ver a nota no caso 11.
     $requestId = Invoke-Sql "select cast(id as varchar(36)) from approval.request where source_reference='$($script:pendingAssignmentId)'"
     if (-not $requestId) { throw "pedido de aprovacao nao encontrado para a atribuicao pendente" }
+    $script:pendingRequestId = $requestId
 
     Invoke-RestMethod "$base/approval/requests/$requestId/decisions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
         -Body (@{ decidedByEmployeeId = $script:pendingApprover; action = "Approved" } | ConvertTo-Json) | Out-Null
@@ -219,7 +220,34 @@ Test-Case "12. Aprovado, o cargo passa a ser conferido" {
     "decisao aplicada; cargo com autoridade conferido"
 }
 
-Test-Case "13. BR-2: quem submete nao decide sobre o proprio pedido" {
+Test-Case "13. Historico do pedido mostra a submissao e a decisao completas" {
+    # **Difere do GET simples**: esse devolve so quem falta decidir agora
+    # (PendingAssignments), util para quem espera pela sua vez. Aqui vem tudo —
+    # incluidas as atribuicoes ja decididas — para quem reconstroi o que
+    # aconteceu.
+    $h = Invoke-RestMethod "$base/approval/requests/$($script:pendingRequestId)/history" -Headers $adminHeaders
+
+    if ($h.status -ne "Approved") { throw "estado '$($h.status)', esperado Approved" }
+    if ($h.requestedByEmployeeId -ne $script:pendingTarget) { throw "requisitante errado no historico" }
+    if (@($h.decisions).Count -ne 1) { throw "esperada 1 decisao, obtidas $(@($h.decisions).Count)" }
+    if ($h.decisions[0].decidedByEmployeeId -ne $script:pendingApprover) { throw "decisor errado no historico" }
+    if ($h.decisions[0].action -ne "Approved") { throw "accao '$($h.decisions[0].action)', esperada Approved" }
+
+    # A atribuicao continua no historico depois de decidida — e o que o
+    # separa do GET simples, que so mostra quem falta.
+    if (@($h.assignments).Count -eq 0) { throw "atribuicoes ausentes do historico" }
+    if ($h.assignments[0].approverEmployeeId -ne $script:pendingApprover) { throw "aprovador ausente das atribuicoes" }
+
+    "submissao, atribuicao congelada e decisao, todas presentes"
+}
+
+Test-Case "14. Historico de pedido inexistente -> 404" {
+    $code = Get-StatusCode { Invoke-RestMethod "$base/approval/requests/$([Guid]::NewGuid())/history" -Headers $adminHeaders }
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+    "HTTP 404"
+}
+
+Test-Case "15. BR-2: quem submete nao decide sobre o proprio pedido" {
     $alvo = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $hrHeaders `
         -Body (@{ fullName = "Alvo BR2" } | ConvertTo-Json)).employeeId
 
@@ -242,7 +270,7 @@ Test-Case "13. BR-2: quem submete nao decide sobre o proprio pedido" {
     "HTTP 403 e atribuicao continua Pending"
 }
 
-Test-Case "14. Acoes de hr auditadas" {
+Test-Case "16. Acoes de hr auditadas" {
     $hired = Invoke-Sql "select count(*) from audit.audit_event where action='hr.employee.hired' and entity_id='$($script:employeeId)'"
     if ($hired -ne "1") { throw "admissao nao auditada" }
     $assigned = Invoke-Sql "select count(*) from audit.audit_event where action='hr.position.assigned' and entity_id='$($script:employeeId)'"
@@ -253,7 +281,7 @@ Test-Case "14. Acoes de hr auditadas" {
     "admissao, atribuicao e criacao de cargo com marca"
 }
 
-Test-Case "15. Sem autenticacao -> 401; sem permissao -> 403" {
+Test-Case "17. Sem autenticacao -> 401; sem permissao -> 403" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/hr/employees" }
     if ($code -ne 401) { throw "esperado 401, obtido $code" }
 
@@ -267,7 +295,7 @@ Test-Case "15. Sem autenticacao -> 401; sem permissao -> 403" {
     "401 e 403 correctos"
 }
 
-Test-Case "16. Dados sobrevivem ao reinicio da stack" {
+Test-Case "18. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)

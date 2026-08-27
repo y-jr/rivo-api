@@ -133,6 +133,84 @@ public sealed record PolicyResult(bool Succeeded, Guid? PolicyId, string? Error)
 /// eram obrigadas a limpar-se por SQL directo contra a base de dados.
 /// </para>
 /// </summary>
+/// <summary>
+/// A linha do tempo completa de um pedido: submissão, aprovadores congelados
+/// por passo, e cada decisão registada.
+///
+/// <para>
+/// <strong>Difere de <c>GetStatusAsync</c> em duas coisas.</strong> Esse
+/// devolve só <c>PendingAssignments</c> — quem falta decidir agora, para um
+/// cliente que espera pela sua vez. Esta rota devolve <strong>todas</strong> as
+/// atribuições, incluídas as já decididas e as de passos futuros: é para quem
+/// quer reconstruir o que aconteceu, não para quem quer saber o que falta.
+/// A submissão também vem completa aqui — requisitante, valor, moeda — que o
+/// outro não expõe.
+/// </para>
+///
+/// <para>
+/// Só leitura sobre o que já está gravado: não junta nada que `approval` não
+/// tivesse guardado.
+/// </para>
+/// </summary>
+public sealed class GetApprovalRequestHistory(IApprovalStore store)
+{
+    public async Task<ApprovalHistoryView?> ExecuteAsync(Guid requestId, CancellationToken cancellationToken)
+    {
+        var pedido = await store.FindRequestAsync(requestId, cancellationToken);
+
+        return pedido is null ? null : ToView(pedido);
+    }
+
+    private static ApprovalHistoryView ToView(ApprovalRequest pedido) =>
+        new(
+            pedido.Id,
+            pedido.ProcessType,
+            pedido.SourceModule,
+            pedido.SourceReference,
+            pedido.RequestedByEmployeeId,
+            pedido.Amount,
+            pedido.Currency,
+            pedido.DepartmentId,
+            pedido.Status.ToString(),
+            pedido.SubmittedAt,
+            pedido.ClosedAt,
+            pedido.CurrentStep,
+            pedido.TotalSteps,
+            [.. pedido.Assignments
+                .OrderBy(a => a.Step)
+                .Select(a => new ApprovalAssignmentView(
+                    a.Step, a.Mode.ToString(), a.ApproverEmployeeId, a.SlaHours))],
+            [.. pedido.Decisions
+                .OrderBy(d => d.DecidedAt)
+                .Select(d => new ApprovalDecisionView(
+                    d.DecidedByEmployeeId, d.Action.ToString(), d.DecidedAt, d.Step, d.Notes))]);
+}
+
+/// <param name="Assignments">
+/// Todos os aprovadores congelados na submissão, por passo — não só os que
+/// ainda faltam decidir (BR-6, BR-19).
+/// </param>
+/// <param name="Decisions">Por ordem em que foram tomadas.</param>
+public sealed record ApprovalHistoryView(
+    Guid RequestId,
+    string ProcessType,
+    string SourceModule,
+    string SourceReference,
+    Guid RequestedByEmployeeId,
+    decimal? Amount,
+    string? Currency,
+    Guid? DepartmentId,
+    string Status,
+    DateTimeOffset SubmittedAt,
+    DateTimeOffset? ClosedAt,
+    int CurrentStep,
+    int TotalSteps,
+    IReadOnlyList<ApprovalAssignmentView> Assignments,
+    IReadOnlyList<ApprovalDecisionView> Decisions);
+
+public sealed record ApprovalAssignmentView(int Step, string Mode, Guid ApproverEmployeeId, int? SlaHours);
+
+
 public sealed class DeactivateApprovalPolicy(IApprovalStore store, IAuditTrail audit)
 {
     public async Task<DeactivatePolicyOutcome> ExecuteAsync(
