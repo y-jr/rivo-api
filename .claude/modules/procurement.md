@@ -77,8 +77,7 @@ não módulo novo.
 
 ## Estado
 
-**Os quatro agregados feitos** — 2026-08-27. Falta o 3-way match, que precisa
-do terceiro lado: a factura de compra, que é de `finance`.
+**Os quatro agregados feitos, e o 3-way match fecha** — 2026-08-28.
 
 O que existe:
 
@@ -86,9 +85,15 @@ O que existe:
 |---|---|
 | Fornecedor | Feito. Nome, NIF único, IBAN verificado por ISO 13616, contactos, activação/desactivação. Publicado por `ISupplierDirectory` |
 | Requisição Interna | Feita. Rascunho com linhas, submissão a `approval`, aplicação da decisão, cancelamento |
-| Ordem de Compra | Feita. Só nasce de requisição aprovada, ao preço acordado, e o total encomendado não passa o aprovado |
+| Ordem de Compra | Feita. Só nasce de requisição aprovada, ao preço acordado, e o total encomendado não passa o aprovado. Publicada por `IPurchaseOrderDirectory` |
 | Recepção de Mercadoria | Feita. Parcial, acumulada por linha da ordem, e nunca acima do encomendado. Anulável por engano de registo |
-| 3-way match | ⚠ Por fazer. **Dois dos três lados existem** — encomendado e recebido, linha a linha, na vista da ordem. Falta a factura de compra, que é de `finance` |
+| 3-way match | Feito, do lado de `finance`. A factura liga-se à Ordem por `PurchaseOrderId` (opcional, tem de ser do mesmo fornecedor); `GET /finance/purchase-invoices/{id}/match` lê `IPurchaseOrderDirectory` para pôr encomendado, recebido e facturado lado a lado. **Não bloqueia divergência** — informa, não impede |
+
+O terceiro lado do match — a factura — não podia viver aqui: é `finance` que
+a possui. `IPurchaseOrderDirectory` segue o mesmo desenho de
+`ISupplierDirectory`: a Ordem de Compra é publicada por identificador,
+`finance` lê-a, e a comparação em si — o match — corre do lado de quem tem os
+três números, não do lado de quem só tem dois.
 
 ### Decisões tomadas ao construir
 

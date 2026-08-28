@@ -44,7 +44,8 @@ bancária.
 
 ## Depende de
 
-`procurement` (fornecedor, factura de compra), `commercial` (cliente),
+`procurement` (fornecedor e Ordem de Compra, para o 3-way match da factura de
+compra), `commercial` (cliente),
 `hr` (`ReferenciaColaborador` para responsável de centro de custo),
 `approval` (decisões), `fiscal` (determinações e relatórios),
 `documents` (comprovativos), `audit`, `notifications`.
@@ -291,9 +292,27 @@ O que restava do módulo, e é onde **BR-1, BR-3, BR-5 e BR-17** se encontram.
 | Peça | O que impõe |
 |---|---|
 | `BankAccount` | Disponibilidade de tesouraria. O saldo é **o ponto de contenção do sistema** — duas execuções simultâneas competem por ele, e o contador de concorrência faz uma perder com `409`. É o caso concreto que BR-17 nomeia |
-| `PurchaseInvoice` | O que se deve. **O número é do fornecedor, não nosso** — ao contrário da factura de venda, esta chega já numerada |
+| `PurchaseInvoice` | O que se deve. **O número é do fornecedor, não nosso** — ao contrário da factura de venda, esta chega já numerada. `PurchaseOrderId` opcional liga-a à Ordem de Compra de `procurement` (2026-08-28), do mesmo fornecedor — fecha o 3-way match, ver abaixo |
 | `PaymentRequest` | Pedido de pagamento. **Sem passos de aprovação**, e é o ponto todo |
 | `ExecutePayment` | Onde a dupla barreira de BR-5 se monta |
+
+### 3-way match (2026-08-28)
+
+`GET /finance/purchase-invoices/{id}/match` lê `IPurchaseOrderDirectory` — o
+contrato que `procurement` publica para a Ordem de Compra, no mesmo desenho de
+`ISupplierDirectory` — e devolve encomendado, recebido e facturado lado a
+lado. O terceiro lado vive aqui porque a factura é de `finance`; os outros
+dois vêm de `procurement`, por identificador.
+
+**Liga-se por opção, não por obrigação.** `PurchaseOrderId` é nulo para
+despesas sem ordem por trás — uma factura de electricidade não tem Ordem de
+Compra para acertar. Quando indicado, tem de ser do mesmo fornecedor da
+factura; doutro modo, é recusado com `400` antes de gravar.
+
+**Mostra, não bloqueia.** Facturar um valor diferente do recebido regista-se
+na mesma — a divergência fica visível no match, e é quem decide o pagamento
+que julga se importa. É informação, não regra: nada em `finance` nem em
+`procurement` impede o registo por causa de um número que não bate.
 
 ### O anti-padrão do protótipo está fechado
 
@@ -361,6 +380,7 @@ permissões, antes de o domínio a impor.**
 | GET | `/finance/accounts/{id}/statement?from=&to=` | `finance.payables.read` |
 | GET/POST | `/finance/purchase-invoices` | `finance.payables.read` / `.write` |
 | GET | `/finance/purchase-invoices/{id}` | `finance.payables.read` |
+| GET | `/finance/purchase-invoices/{id}/match` | `finance.payables.read` — 3-way match: encomendado, recebido e facturado lado a lado (2026-08-28) |
 | GET | `/finance/payment-requests?purchaseInvoiceId=` | `finance.payables.read` |
 | GET | `/finance/payment-requests/{id}` | `finance.payables.read` |
 | POST | `/finance/payment-requests` | `finance.payments.request` |

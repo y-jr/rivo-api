@@ -337,7 +337,7 @@ pré-existente, encontrado ao construir isto.
 
 ## Verificação
 
-**Doze suites** PowerShell caixa-preta contra a stack em Docker, **264 casos**,
+**Doze suites** PowerShell caixa-preta contra a stack em Docker, **267 casos**,
 todas re-executáveis.
 
 > ⚠ **Estado da verificação a 2026-08-25, ao fechar a postagem automática.**
@@ -396,6 +396,45 @@ todas re-executáveis.
 > posterior, já com o Docker estável. Fica registado como investigação em
 > aberto, não como defeito fechado nem como causa atribuída: **se reaparecer,
 > reabrir a suspeita de defeito de aplicação em vez de assumir ambiente.**
+>
+> **Continuado a 2026-08-28, sessão seguinte, a correr as verificações
+> pendentes do trabalho por commitar do 3-way match.**
+>
+> Antes de a stack sequer arrancar: um **impasse de arranque num volume
+> novo**, distinto de tudo o que está registado acima — a API nunca chegava a
+> `/health`, num ciclo de tentativas e reinícios sem fim. **Corrigido**, com
+> três arranques limpos consecutivos a prová-lo. Detalhe em
+> [known-issues.md, K19](known-issues.md) — resolvido no mesmo dia em que foi
+> encontrado.
+>
+> Com a stack de pé, `verify-procurement` cresceu de 55 para **58 casos** — a
+> limpeza que a nota acima chama "caso 55" passou a caso 58, empurrada pelos
+> três novos: o 3-way match (`GET /finance/purchase-invoices/{id}/match`) —
+> encomendado, recebido e facturado lado a lado, recusa ligar a uma ordem
+> doutro fornecedor, e regista divergência de valor sem bloquear. **Três casos
+> novos falharam na primeira corrida** (54, 55, 56) — não por defeito da
+> aplicação:
+> a suite usava `$financeHeaders` para registar a factura, e é `Manager` quem
+> tem `PayablesWrite` — `Finance` é tesouraria, e "quem desfaz não faz"
+> também quer dizer que não emite (`AccessProfiles.cs`). Corrigido nos três
+> casos; confirmados numa corrida limpa a seguir, **265 de 267**.
+>
+> **A falha intermitente da limpeza de política — os casos 44 acima e o novo
+> 58 — reapareceu: terceira vez, mesma conclusão.** Investigada de novo, desta
+> vez com uma teoria concreta e
+> testável: `implemented.md` já registava, noutro contexto, que
+> `Invoke-RestMethod` por vezes entrega uma lista ao pipeline como um só item,
+> e o `Where-Object` seguinte deixa passar tudo. O padrão dos dois casos
+> batia certo com essa descrição. Aplicada a correcção (`@(...)` a forçar
+> array) aos dois pontos — **e o 404 continuou a acontecer, com a correcção
+> no lugar.** A protecção fica, por ser válida noutro sentido; a causa
+> continua sem se confirmar. Promovido a **K20** em
+> [known-issues.md](known-issues.md), com as três investigações resumidas
+> num sítio só.
+>
+> Corrida final, limpa, a partir de `docker compose down -v`: **265 de 267,
+> as doze suites** — os dois casos de K20 são a única falha conhecida por
+> resolver.
 
 Eram seis suites e 66 casos em 2026-08-16. `verify-hr` cresceu 13 → 16 com as
 funcionalidades novas de `hr`; `verify-authorization` 8 → 9 ao distinguir os
@@ -415,14 +454,20 @@ três módulos do ADR-036 tinham deixado.
 | `verify-bootstrap` | 9 |
 | `verify-authorization` | 9 |
 | `verify-audit` | 10 |
-| `verify-hr` | 16 |
-| `verify-documents` | 13 |
-| `verify-notifications` | 13 |
+| `verify-hr` | 18 |
+| `verify-documents` | 17 |
+| `verify-notifications` | 17 |
 | `verify-fiscal` | 13 |
 | `verify-commercial` | 12 |
 | `verify-finance` | 29 |
-| `verify-payables` | 22 |
+| `verify-payables` | 30 |
 | `verify-ledger` | 45 |
+| `verify-procurement` | 58 |
+
+**267 casos ao todo** — contagem directa de `Test-Case` em cada script, e não
+soma acumulada de entradas anteriores desta tabela, que tinha ficado para trás
+em `verify-documents`, `verify-hr` e `verify-notifications`, e nunca chegara a
+incluir `verify-procurement`.
 
 `verify-finance` corre por último e **monta os seus pré-requisitos pelas rotas
 de `fiscal` e `commercial`** — taxa, vigências e cliente. Não há atalho por SQL

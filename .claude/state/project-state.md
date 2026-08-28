@@ -45,7 +45,7 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `fiscal` | ⚠ **Fatia mínima** (ADR-036). Taxa com vigência e determinação. Não é o motor fiscal |
 | `commercial` | ⚠ **Reduzido ao Cliente** (ADR-036). Sem funil comercial |
 | `finance` | **Os cinco contextos existem, e os documentos lançam.** Venda (factura, nota de crédito, recibo, saldo), Contas a Pagar, Tesouraria com extracto append-only, Contabilidade & Fecho com postagem automática, Planeamento. **BR-1, BR-3, BR-5 e BR-8 impostas.** ⚠ Contabilidade vazia até alguém carregar o plano; a anulação não estorna; activos fixos bloqueados por K1 |
-| `procurement` | **Os quatro agregados.** Fornecedor com IBAN verificado (ISO 13616) e publicado a `finance` — **e `finance` já o consome** desde 2026-08-28, ligando a factura de compra por identificador; requisição com linhas e decisão de `approval`; Ordem de Compra, que só nasce de requisição aprovada e não deixa encomendar acima do aprovado; Recepção parcial, acumulada por linha e nunca acima do encomendado. ⚠ **3-way match por fazer** — a ligação ao Fornecedor está feita, falta comparar Ordem, Recepção e factura |
+| `procurement` | **Os quatro agregados, e o 3-way match fecha.** Fornecedor com IBAN verificado (ISO 13616) e publicado a `finance`; requisição com linhas e decisão de `approval`; Ordem de Compra, que só nasce de requisição aprovada e não deixa encomendar acima do aprovado; Recepção parcial, acumulada por linha e nunca acima do encomendado. A factura liga-se à Ordem (`PurchaseOrderId`, opcional) e `GET .../match` mostra encomendado, recebido e facturado lado a lado — recusa ligar a uma ordem de outro fornecedor, mas **não bloqueia** divergência de valor: fica visível, não impede o registo |
 | `payroll`, `projects`, `inventory`, `fleet` | Sem código. Definidos em [modules/](../modules/) |
 
 Detalhe com datas e ressalvas em [implemented.md](implemented.md).
@@ -77,11 +77,11 @@ superfície inteira é legível por quem estiver a ouvir.
 
 | Área | Estado |
 |---|---|
-| Código | 10 módulos, 50 projectos em `src/`, 237 ficheiros `.cs` |
-| Superfície HTTP | 150 endpoints em 10 grupos de rota, mais `/health` |
+| Código | 10 módulos, 50 projectos em `src/`, 241 ficheiros `.cs` |
+| Superfície HTTP | 151 endpoints em 10 grupos de rota, mais `/health` |
 | ADRs | 38, aceites |
-| Testes | **698** em 15 projectos — 532 de domínio, 132 de Application, 21 de arquitectura, 9 da API do host, 4 de integração. **694 passam**; os 4 de integração exigem Docker, e o motor caiu a 2026-08-27 depois de a suite ter passado inteira |
-| Verificação end-to-end | **12 suites** PowerShell, **264 casos**. Última corrida completa e limpa: **262/262 a 2026-08-28** (261 mais um caso de diagnóstico temporário, entretanto revertido) — os 3 casos novos da ligação ao Fornecedor confirmados à parte, em `verify-payables` (30/30). ⚠ Falha intermitente não resolvida numa corrida anterior — [implemented.md](implemented.md#verificação) |
+| Testes | **705** em 15 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers), confirmados de novo a 2026-08-28: o motor do Docker que tinha caído a 2026-08-27 está estável |
+| Verificação end-to-end | **12 suites** PowerShell, **267 casos**. Última corrida completa e limpa, a partir de `docker compose down -v`: **265/267 a 2026-08-28**. Os 2 que faltam são a mesma falha intermitente, sem causa de código confirmada em três investigações — **K20** em [known-issues.md](known-issues.md) |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
@@ -108,9 +108,11 @@ superfície inteira é legível por quem estiver a ouvir.
   > decisão foi dele, isto é um facto observado, não uma decisão ratificada.**
 - **Frontend.** React + Tailwind decidido; sem código. A pasta `front/` é
   trabalho de outra sessão. O contrato HTTP que esse trabalho consome está
-  escrito em [API-FRONTEND.md](../../API-FRONTEND.md), na raiz do repositório
-  — 119 rotas com permissão, corpo e código de sucesso, verificadas contra o
-  código a 2026-08-27.
+  escrito em [API-FRONTEND.md](../../API-FRONTEND.md), na raiz do
+  repositório — 119 rotas com permissão, corpo e código de sucesso,
+  verificadas contra o código a 2026-08-27. **Actualizado a 2026-08-28** com o
+  `GET .../purchase-invoices/{id}/match` e o `purchaseOrderId` do 3-way match
+  — a contagem de rotas não foi reconfirmada por inteiro, só a entrada nova.
 - **`SharedKernel`.** O [CLAUDE.md](../CLAUDE.md) refere-o e manda mantê-lo
   mínimo; nunca chegou a ser criado. O ADR-035 considerou criá-lo e decidiu
   contra — ver a alternativa B desse ADR.
@@ -147,7 +149,8 @@ superfície inteira é legível por quem estiver a ouvir.
 
 **Riscos fechados:** as decisões de stack sem ADR (2026-08-15, ADR-018 a 021);
 o K14 (2026-08-16, ADR-025); a ausência de testes de arquitectura (2026-08-16,
-ADR-024); o K15 (2026-08-24, ADR-035).
+ADR-024); o K15 (2026-08-24, ADR-035); o K19 (2026-08-28, mesmo dia em que foi
+encontrado — impasse de arranque num volume novo).
 
 ## Próximos passos
 
@@ -157,31 +160,25 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    falta para a contabilidade deixar de estar vazia — e **precisa do
    contabilista, não de código**. Enquanto não houver, todo o resto da
    Contabilidade está de pé e sem uso.
-2. **Fechar o 3-way match.** A cadeia `requisição → OC → recepção → factura`
-   está completa do lado de `procurement`, e a vista da ordem já dá dois dos
-   três lados — encomendado e recebido, linha a linha. **A ligação ao
-   Fornecedor está feita** (2026-08-28): `RegisterPurchaseInvoice` liga por
-   identificador, indicado directamente ou encontrado pelo NIF, usando
-   `ISupplierDirectory` — a direcção `finance → procurement` já estava
-   pré-aprovada em [dependency-rules.md](../architecture/dependency-rules.md)
-   e não precisou de ADR novo, só de ser ligada. Falta comparar as
-   **quantidades e os valores** de Ordem, Recepção e factura — essa
-   comparação em si é que fecha o match.
-3. **Decidir quem cancela um pedido de aprovação (K18).** Hoje basta
+2. **Decidir quem cancela um pedido de aprovação (K18).** Hoje basta
    `approval.requests.read`, o que faz de uma permissão de leitura um poder de
    veto. A correcção é de uma linha; **a decisão não é** — é a mesma pergunta
    de segregação que BR-2 e BR-3 já responderam para decidir e para pagar.
-4. **Estorno automático.** Anular uma factura, uma nota de crédito ou um recibo
+3. **Estorno automático.** Anular uma factura, uma nota de crédito ou um recibo
    **não gera lançamento inverso** — o original fica e corrige-se à mão. É a
    lacuna mais visível da postagem.
-5. **Domínio e TLS** — fecha o K16 **e o K17** (com a documentação da API
+4. **Domínio e TLS** — fecha o K16 **e o K17** (com a documentação da API
    aberta, a superfície viaja em claro), e é pré-requisito de qualquer uso
    real.
-6. **Cobertura de Application nos outros módulos** — `finance` tem 132 testes. O
+5. **Cobertura de Application nos outros módulos** — `finance` tem 132 testes. O
    próximo que mais custa é `DecideOnRequest` em `approval`: BR-2, BR-4 e BR-6
    vivem lá e só têm cobertura caixa-preta.
-7. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
+6. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
    vendas a balcão saem com um marcador visível. Precisa de fonte primária.
+7. **A falha intermitente de limpeza de política, K20.** Três investigações,
+   sem causa de código confirmada. O próximo passo é instrumentar do lado do
+   servidor, não do script — ver o seguimento em
+   [known-issues.md](known-issues.md).
 
 **Fechado a 2026-08-28 (Fornecedor):** `finance` passou a consumir
 `ISupplierDirectory` de `procurement` em `RegisterPurchaseInvoice` — liga por
@@ -190,6 +187,17 @@ tenta ligar automaticamente pelo NIF quando não indicado. Não é retroactivo:
 as facturas já emitidas guardam o retrato que vigorava à data (BR-18). 4
 testes de Application novos, 3 casos novos em `verify-payables` (30/30).
 Detalhe em [implemented.md](implemented.md).
+
+**Fechado a 2026-08-28 (3-way match):** a cadeia `requisição → OC → recepção →
+factura` fecha. A factura liga-se à Ordem por `PurchaseOrderId` (opcional, tem
+de ser do mesmo fornecedor), e `GET /finance/purchase-invoices/{id}/match`
+mostra encomendado, recebido e facturado lado a lado. **Não bloqueia
+divergência de valor** — decisão deliberada: é informação para quem decide,
+não regra que impede o registo. Migração gerada
+(`LigaFacturaDeCompraAOrdemDeCompra`); `PurchaseOrderDirectory` publica a
+Ordem de `procurement` a `finance`, na mesma direcção já aprovada do
+Fornecedor. 3 casos novos em `verify-procurement` (58/58, depois de corrigido
+o perfil usado para os registar — ver [implemented.md](implemented.md)).
 
 **Fechado a 2026-08-28 (verificação):** as seis dívidas de verificação pendentes desde
 2026-08-27 — correcção do `password-reset`, desactivação de políticas de

@@ -313,3 +313,94 @@ acto de quem submeteu, de quem decide, ou permissão própria? A resposta muda o
 perfil de acesso e as suites que exercitam o cancelamento. **Não é correcção
 mecânica**; é a mesma pergunta de segregação de funções que BR-2 e BR-3 já
 responderam para os outros actos, e merece ser respondida do mesmo modo.
+
+### ~~K19 — Arranque preso num volume novo, à espera de uma base que só a migração criaria~~ — **RESOLVIDO 2026-08-28**
+
+- **Módulo:** plataforma (`Rivo.Api/Program.cs`)
+- **Impacto:** o ADR-030 corre a migração no arranque, atrás de uma sonda que
+  espera uma ligação real antes de a disparar — acrescentada em `c3dd29d`
+  (2026-08-25) para fechar uma corrida de `docker compose restart` (o SQL
+  Server ainda a recuperar `rivo`, o EF a concluir que a base não existe, e
+  `CREATE DATABASE` a rebentar com o erro 1801). Essa sonda abria ligação
+  **já apontada ao nome da base**, e isso resolvia o caso do reinício e
+  **impedia sempre o primeiro arranque**: contra um volume genuinamente novo, a
+  base não existe mesmo, o SQL Server recusa sempre esse login (mesmo sintoma
+  do caso de recuperação), e nada além da própria migração — que ficava presa
+  atrás da sonda — a criaria. Impasse, não demora: **139 tentativas sem
+  avançar, reinício do container, e o mesmo ciclo outra vez, para sempre.**
+- **Como não foi apanhado antes:** o CI recria o ambiente do zero a cada
+  corrida (deveria ter apanhado isto desde 2026-08-25), mas este ramo nunca
+  chegou a correr lá — está por publicar. Em desenvolvimento local, um `docker
+  compose down -v` completo é raro; o normal é reiniciar sobre um volume que já
+  tem `rivo`, onde a sonda sempre funcionou.
+- **Detectado em 2026-08-28**, ao tentar correr as verificações end-to-end
+  pendentes a partir de `docker compose down -v` — precisamente o caminho que
+  ninguém tinha percorrido desde a correcção de 25/08.
+- **Corrigido por:** a sonda passou a perguntar a `master` — que existe
+  sempre — pelo `state_desc` da base alvo em `sys.databases`, e distingue as
+  três respostas: sem linha (nunca existiu — segue para a migração, que a
+  cria), `ONLINE` (segue), qualquer outro estado (`RECOVERING`, ... — espera,
+  que é o caso original). Ver `EsperarBaseAlvoOuInexistenteAsync` em
+  `Program.cs`.
+- **Verificado:** três arranques consecutivos a partir de `docker compose down
+  -v`, todos prontos em segundos.
+
+### K20 — Limpar uma política por rota, no fim de uma suite, falha de forma intermitente
+
+- **Módulo:** verificação end-to-end (`scripts/verify-ledger.ps1` caso 44,
+  `scripts/verify-procurement.ps1` caso 58) — não se confirmou defeito na
+  aplicação, em duas investigações separadas.
+- **Impacto:** as duas suites terminam a desactivar, pela rota
+  `POST /approval/policies/{id}/deactivation`, a política de
+  `finance.payment_request` que a própria corrida criou — para que a próxima
+  corrida não a encontre ainda activa. A chamada devolve por vezes **404**,
+  apesar de o identificador vir directamente da listagem imediatamente
+  anterior. A suite falha; a política não é sempre correctamente desactivada —
+  o que, repetido, acumula políticas activas e pode um dia interferir com o
+  caso que verifica "sem política nenhuma, a submissão é recusada".
+- **Encontrado e investigado duas vezes, com o mesmo veredicto.** Primeira vez
+  a 2026-08-28 (ver histórico em
+  [implemented.md §Verificação](implemented.md#verificação)): descartada a
+  teoria de duplicação de linhas pelo `Include` sem `AsSplitQuery` em
+  `ApprovalStore.ListPoliciesAsync`/`ListPoliciesForProcessAsync` — leitura
+  instrumentada sem duplicados, mesmo logo a seguir a um reinício; descartada a
+  proximidade a um reinício — o caso 44 nunca corre perto de um e falhou na
+  mesma. **Promovida a este ficheiro depois de reaparecer numa segunda
+  investigação, no mesmo dia**, que chegou às mesmas conclusões por outro
+  caminho:
+  - O filtro (`departmentId -eq $script:departamentoId`) foi testado
+    isoladamente contra dados reais da base, incluindo o caso `$null` da
+    política genérica — discrimina sempre correctamente.
+  - `DeactivateApprovalPolicy` só devolve `NotFound` quando `FindPolicyAsync`
+    não encontra a linha; `ApprovalStore` não tem cache nem estado partilhado
+    entre pedidos.
+  - Uma repetição manual da mesma chamada, com o mesmo identificador, momentos
+    depois, teve sempre sucesso.
+  - Uma corrida fortemente instrumentada, com uma chamada extra antes da real,
+    não reproduziu a falha — sugestivo de janela de tempo, não conclusivo.
+- **Terceira investigação, mesmo veredicto — e uma teoria concreta afastada
+  com prova.** `implemented.md` já documentava, noutro contexto (um falso
+  `409` em `verify-hr`), que `Invoke-RestMethod` **por vezes entrega a lista
+  inteira ao pipeline como um só item** — nesse caso, `$_.campo -eq $valor`
+  compara uma colecção com um escalar, devolve o subconjunto que bate, e
+  sendo não-vazio é *verdadeiro*: o `Where-Object` deixa passar tudo. Era a
+  explicação com a forma certa — `verify-ledger.ps1` caso 44 e
+  `verify-procurement.ps1` caso 58 usam exactamente este padrão — e foi
+  aplicada a correcção idiomática (`@(...)` a forçar array) aos dois
+  pontos. **Testada contra o 404 real, numa corrida completa a partir de
+  volume novo, e não o resolveu:** os mesmos dois casos falharam da mesma
+  forma, com a correcção no lugar. A protecção fica — é defesa válida por si
+  só, documentada, e não faz mal nenhum — mas **esta não é a causa do K20**.
+- **Três investigações independentes, sem causa de código encontrada em
+  nenhuma, é o que torna isto um defeito registado e não uma suspeita.** Não é
+  "um dia mau do Docker": reapareceu depois do motor estabilizar, voltou a
+  reaparecer numa sessão posterior inteiramente nova, e resistiu à correcção
+  do modo de falha mais plausível já documentado no projecto.
+- **Contorno:** nenhum a nível de configuração. Corrida a corrida, a política
+  por limpar acumula-se; não compromete o resto da suite, só o caso da
+  limpeza.
+- **Seguimento:** reproduzir com instrumentação do lado do servidor (não só do
+  script) antes de tentar corrigir de novo — um `Thread.Sleep`/nova tentativa
+  no script esconderia o sintoma sem provar a causa. Vale a pena capturar os
+  logs do `rivo-api` no instante exacto da falha, já que três tentativas de
+  isolar a causa do lado do PowerShell/HTTP não encontraram nada.
