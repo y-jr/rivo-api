@@ -145,18 +145,34 @@ if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
     //
     // Observado a 2026-08-25 numa corrida de `verify-payables`: 28 tentativas
     // seguidas de "Database 'rivo' already exists".
+    //
+    // **A sonda original abria a ligação já apontada ao nome da base, e isso
+    // confundia duas causas com a mesma superfície.** "A base existe e está a
+    // recuperar" é o caso acima, e passa sozinho — mas "a base nunca existiu"
+    // tem o mesmo sintoma (login recusado) e **não passa nunca**: o SQL Server
+    // recusa sempre abrir uma ligação cujo catálogo inicial não existe,
+    // independentemente de quanto se espere. A sonda ficava presa mesmo antes
+    // do passo que teria criado a base — que é a própria migração, mais abaixo.
+    //
+    // Observado a 2026-08-28 num volume novo, sem `rivo` nenhum: 139 tentativas
+    // sem avançar, reinício do container, e o mesmo ciclo outra vez — para
+    // sempre, porque nada além da migração cria a base, e a migração nunca
+    // chegava a correr.
+    //
+    // A sonda passa a perguntar a `master` — que existe sempre — pelo estado
+    // registado da base alvo, e distingue as três respostas possíveis:
+    //
+    //   - Sem linha nenhuma: a base nunca existiu. Segue-se para a migração,
+    //     que a cria — não há nada aqui para esperar.
+    //   - `ONLINE`: pronta. Segue-se.
+    //   - Qualquer outro estado (`RECOVERING`, `RECOVERY_PENDING`, ...): ainda
+    //     não — é o caso original que motivou a sonda. Repete-se.
     await AteABaseEstarProntaAsync(app, limite, async () =>
     {
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<RivoIdentityDbContext>();
 
-        if (!await db.Database.CanConnectAsync())
-        {
-            // Excepção e não `return`: é a repetição que faz a espera, e um
-            // regresso silencioso deixaria a migração arrancar cega.
-            throw new InvalidOperationException(
-                "A base de dados ainda não aceita ligações.");
-        }
+        await EsperarBaseAlvoOuInexistenteAsync(db.Database.GetConnectionString()!);
     });
 
     await AteABaseEstarProntaAsync(
@@ -292,12 +308,15 @@ app.Run();
 /// </para>
 ///
 /// <para>
-/// <strong>Repete-se a migração inteira, e não uma sondagem prévia.</strong>
-/// Sondar a ligação antes de migrar parece mais simples e não é: num ambiente
-/// novo a base de dados ainda não existe — quem a cria é a primeira migração —
-/// e qualquer sonda que lhe toque bate no erro 4060, que o EF Core considera
-/// transitório e repete até desistir. A sonda passaria a lutar contra a
-/// estratégia de repetição do próprio EF Core.
+/// <strong>Repete-se a migração inteira, e não uma sondagem contra o nome da
+/// base.</strong> Uma sondagem que abra ligação já apontada ao nome
+/// configurado bate no erro 4060 sempre que a base ainda não existe, e nesse
+/// caso não há repetição que resolva — só a migração cria a base. Por isso a
+/// sondagem que precede este passo (<see cref="EsperarBaseAlvoOuInexistenteAsync"/>)
+/// pergunta a <c>master</c>, que existe sempre, e distingue "não existe ainda"
+/// (segue-se, é a migração que a cria) de "existe mas está a recuperar"
+/// (espera-se). Historial da distinção em <c>c3dd29d</c> e na correcção que se
+/// lhe seguiu.
 /// </para>
 ///
 /// <para>
@@ -315,6 +334,63 @@ app.Run();
 /// de saudável.
 /// </para>
 /// </summary>
+/// <summary>
+/// Lança enquanto a base configurada existir mas ainda não estiver
+/// <c>ONLINE</c>. Regressa em silêncio quando está pronta, e também quando
+/// ainda não existe de todo — nesse caso é a migração, e não esta sonda, que a
+/// cria (ver o comentário acima de <see cref="AteABaseEstarProntaAsync"/>).
+///
+/// <para>
+/// Pergunta-se a <c>master</c> em vez de abrir ligação directamente à base
+/// alvo, porque <c>master</c> existe sempre. Uma ligação directa ao nome
+/// configurado falha exactamente da mesma forma nos dois casos — "existe e
+/// está a recuperar" e "nunca existiu" — e só o primeiro passa sozinho, por
+/// definição. Distinguir os dois é o que evita o impasse: sem isto, a sonda
+/// esperava para sempre por uma base que só a migração, três linhas abaixo,
+/// teria criado.
+/// </para>
+/// </summary>
+static async Task EsperarBaseAlvoOuInexistenteAsync(string connectionString)
+{
+    var alvo = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connectionString);
+    var nomeDaBase = alvo.InitialCatalog;
+
+    // A mesma ligação, salvo o catálogo inicial: credenciais e o resto da
+    // configuração de rede continuam a ser os da base real.
+    alvo.InitialCatalog = "master";
+
+    try
+    {
+        await using var ligacao = new Microsoft.Data.SqlClient.SqlConnection(alvo.ConnectionString);
+        await ligacao.OpenAsync();
+
+        await using var comando = ligacao.CreateCommand();
+        comando.CommandText = "SELECT state_desc FROM sys.databases WHERE name = @nome";
+        comando.Parameters.AddWithValue("@nome", nomeDaBase);
+
+        var estado = await comando.ExecuteScalarAsync() as string;
+
+        // `null`: sem linha nenhuma — a base nunca existiu. Não há nada aqui
+        // para esperar; regressa-se e segue-se para a migração.
+        if (estado is not null && !string.Equals(estado, "ONLINE", StringComparison.Ordinal))
+        {
+            // Excepção e não `return`: é a repetição de AteABaseEstarProntaAsync
+            // que faz a espera, e um regresso silencioso deixaria a migração
+            // arrancar contra uma base ainda a recuperar.
+            throw new InvalidOperationException(
+                $"A base de dados ainda não aceita ligações (estado: {estado}).");
+        }
+    }
+    catch (Exception excepcao) when (excepcao is not InvalidOperationException)
+    {
+        // O próprio `master` ainda não atende — o servidor está a arrancar.
+        // Mesma condição, mensagem igual à que a sonda original lançava, para
+        // que `VaiPassarSozinho` continue a classificá-la sem mudanças.
+        throw new InvalidOperationException(
+            "A base de dados ainda não aceita ligações.", excepcao);
+    }
+}
+
 static async Task AteABaseEstarProntaAsync(WebApplication app, TimeSpan limite, Func<Task> operacao)
 {
     var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Rivo.Arranque");
