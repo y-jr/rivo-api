@@ -13,8 +13,8 @@ namespace Rivo.Procurement.Contracts;
 /// </para>
 ///
 /// <para>
-/// Ordem de Compra e Recepção virão a publicar-se, para o 3-way match. Ainda
-/// não existem.
+/// Ordem de Compra publica-se abaixo, em <see cref="IPurchaseOrderDirectory"/>,
+/// para o 3-way match.
 /// </para>
 /// </summary>
 public interface ISupplierDirectory
@@ -59,6 +59,50 @@ public enum SupplierStatus
 {
     Active,
     Inactive,
+}
+
+/// <summary>
+/// A Ordem de Compra e a Recepção, publicadas juntas — é o segundo e o
+/// terceiro lado do 3-way match. O primeiro é o próprio pedido de pagamento; o
+/// terceiro fica de fora daqui porque a factura de compra é de `finance`, e é
+/// lá que os três se encontram (`GetPurchaseInvoiceMatch`).
+/// </summary>
+public interface IPurchaseOrderDirectory
+{
+    /// <summary>
+    /// Os consumidores guardam o identificador da ordem, nunca as suas linhas.
+    /// Lêem-nas por aqui, sempre à leitura mais recente — a quantidade
+    /// recebida muda a cada recepção registada.
+    /// </summary>
+    Task<PurchaseOrderReference?> FindAsync(Guid purchaseOrderId, CancellationToken cancellationToken);
+}
+
+/// <param name="Total">Soma das linhas ao preço acordado. Sem imposto — a ordem não o tem.</param>
+public sealed record PurchaseOrderReference(
+    Guid PurchaseOrderId,
+    Guid SupplierId,
+    string Currency,
+    decimal Total,
+    PurchaseOrderReferenceStatus Status,
+    IReadOnlyList<PurchaseOrderLineReference> Lines);
+
+/// <param name="QuantityReceived">
+/// Acumulado de todas as recepções em vigor contra esta linha, à leitura mais
+/// recente. É o segundo lado do 3-way match — o primeiro é
+/// <paramref name="QuantityOrdered"/>.
+/// </param>
+public sealed record PurchaseOrderLineReference(
+    Guid LineId,
+    string Description,
+    decimal QuantityOrdered,
+    decimal QuantityReceived,
+    decimal UnitPrice,
+    decimal LineTotal);
+
+public enum PurchaseOrderReferenceStatus
+{
+    Issued,
+    Cancelled,
 }
 
 /// <summary>

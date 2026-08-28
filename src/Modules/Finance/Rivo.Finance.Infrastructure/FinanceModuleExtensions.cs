@@ -63,6 +63,7 @@ public static class FinanceModuleExtensions
         services.AddScoped<RegisterPurchaseInvoice>();
         services.AddScoped<ListPurchaseInvoices>();
         services.AddScoped<GetPurchaseInvoice>();
+        services.AddScoped<GetPurchaseInvoiceMatch>();
         services.AddScoped<CreatePaymentRequest>();
         services.AddScoped<ListPaymentRequests>();
         services.AddScoped<GetPaymentRequest>();

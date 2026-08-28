@@ -421,6 +421,12 @@ internal sealed class FakeSupplierDirectory(SupplierReference? supplier = null) 
                 : null);
 }
 
+internal sealed class FakePurchaseOrderDirectory(PurchaseOrderReference? order = null) : IPurchaseOrderDirectory
+{
+    public Task<PurchaseOrderReference?> FindAsync(Guid purchaseOrderId, CancellationToken cancellationToken) =>
+        Task.FromResult(order is not null && order.PurchaseOrderId == purchaseOrderId ? order : null);
+}
+
 /// <summary>
 /// Determinação fiscal com resposta fixa — mas <strong>guarda a data por que
 /// foi perguntada</strong>. É essa data que o ADR-011 §3 fixa, e o único modo

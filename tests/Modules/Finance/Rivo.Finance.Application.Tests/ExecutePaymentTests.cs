@@ -36,7 +36,7 @@ public class ExecutePaymentTests
 
     private static PurchaseInvoice Compra(string moeda = "AOA") =>
         PurchaseInvoice.Register(
-            "FT 661054", null, new PayeeParty("Sonangol Distribuidora", "5401234567"),
+            "FT 661054", null, null, new PayeeParty("Sonangol Distribuidora", "5401234567"),
             Hoje.AddDays(-5), Hoje.AddDays(25), moeda, 100_000m, 14_000m, "Combustível");
 
     private static PaymentRequest Pedido(

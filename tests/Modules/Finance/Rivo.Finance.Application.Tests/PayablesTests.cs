@@ -19,7 +19,7 @@ public class PayablesTests
 
     private static PurchaseInvoice Compra(decimal liquido = 100_000m, decimal imposto = 14_000m) =>
         PurchaseInvoice.Register(
-            "FT 661054", null, new PayeeParty("Sonangol Distribuidora", "5401234567"),
+            "FT 661054", null, null, new PayeeParty("Sonangol Distribuidora", "5401234567"),
             Hoje.AddDays(-5), Hoje.AddDays(25), "AOA", liquido, imposto, "Combustível");
 
     private static CreatePaymentRequest Pedir(
@@ -30,8 +30,9 @@ public class PayablesTests
 
     // ---- Registar factura de compra: ligação ao Fornecedor ----
 
-    private static RegisterPurchaseInvoice Registar(FakePayablesStore store, SupplierReference? fornecedor = null) =>
-        new(store, new FakeSupplierDirectory(fornecedor), new FakeAuditTrail(),
+    private static RegisterPurchaseInvoice Registar(
+        FakePayablesStore store, SupplierReference? fornecedor = null, PurchaseOrderReference? ordem = null) =>
+        new(store, new FakeSupplierDirectory(fornecedor), new FakePurchaseOrderDirectory(ordem), new FakeAuditTrail(),
             new PostDocument(new FakeLedgerStore()), new RelogioFixo(Agora));
 
     [Fact]
@@ -42,7 +43,7 @@ public class PayablesTests
         var store = new FakePayablesStore();
 
         var resultado = await Registar(store, fornecedor).ExecuteAsync(
-            "FT 661054", fornecedor.SupplierId, fornecedor.Name, fornecedor.TaxId,
+            "FT 661054", fornecedor.SupplierId, null, fornecedor.Name, fornecedor.TaxId,
             Hoje, Hoje.AddDays(30), "AOA", 100_000m, 14_000m, null,
             Contexto, CancellationToken.None);
 
@@ -62,7 +63,7 @@ public class PayablesTests
         var store = new FakePayablesStore();
 
         var resultado = await Registar(store).ExecuteAsync(
-            "FT 661054", Guid.CreateVersion7(), "Sonangol Distribuidora", "5401234567",
+            "FT 661054", Guid.CreateVersion7(), null, "Sonangol Distribuidora", "5401234567",
             Hoje, Hoje.AddDays(30), "AOA", 100_000m, 14_000m, null,
             Contexto, CancellationToken.None);
 
@@ -83,7 +84,7 @@ public class PayablesTests
         var store = new FakePayablesStore();
 
         var resultado = await Registar(store, fornecedor).ExecuteAsync(
-            "FT 661054", supplierId: null, fornecedor.Name, fornecedor.TaxId,
+            "FT 661054", supplierId: null, null, fornecedor.Name, fornecedor.TaxId,
             Hoje, Hoje.AddDays(30), "AOA", 100_000m, 14_000m, null,
             Contexto, CancellationToken.None);
 
@@ -104,7 +105,7 @@ public class PayablesTests
         var store = new FakePayablesStore();
 
         var resultado = await Registar(store).ExecuteAsync(
-            "FT 8821", supplierId: null, "ENDE - Distribuição de Electricidade", "5417654321",
+            "FT 8821", supplierId: null, null, "ENDE - Distribuição de Electricidade", "5417654321",
             Hoje, Hoje.AddDays(30), "AOA", 40_000m, 5_600m, null,
             Contexto, CancellationToken.None);
 
@@ -112,6 +113,160 @@ public class PayablesTests
 
         var compra = await store.FindPurchaseInvoiceAsync(resultado.PurchaseInvoiceId!.Value, CancellationToken.None);
         Assert.Null(compra!.SupplierId);
+    }
+
+    // ---- Registar factura de compra: ligação à Ordem de Compra (3-way match) ----
+
+    private static PurchaseOrderReference Ordem(Guid supplierId, params (decimal Encomendado, decimal Recebido, decimal Preco)[] linhas) =>
+        new(
+            Guid.CreateVersion7(), supplierId, "AOA",
+            linhas.Sum(l => l.Encomendado * l.Preco),
+            PurchaseOrderReferenceStatus.Issued,
+            [.. linhas.Select(l => new PurchaseOrderLineReference(
+                Guid.CreateVersion7(), "Cadeiras", l.Encomendado, l.Recebido, l.Preco, l.Encomendado * l.Preco))]);
+
+    [Fact]
+    public async Task PurchaseOrderIdIndicado_EDoMesmoFornecedor_LigaAOrdem()
+    {
+        var fornecedor = new SupplierReference(
+            Guid.CreateVersion7(), "Angoferragens", "5402123456", null, SupplierStatus.Active);
+        var ordem = Ordem(fornecedor.SupplierId, (10m, 10m, 9000m));
+        var store = new FakePayablesStore();
+
+        var resultado = await Registar(store, fornecedor, ordem).ExecuteAsync(
+            "FT 9001", fornecedor.SupplierId, ordem.PurchaseOrderId, fornecedor.Name, fornecedor.TaxId,
+            Hoje, Hoje.AddDays(30), "AOA", 90_000m, 0m, null,
+            Contexto, CancellationToken.None);
+
+        Assert.Equal(RegisterPurchaseInvoiceOutcome.Registered, resultado.Outcome);
+
+        var compra = await store.FindPurchaseInvoiceAsync(resultado.PurchaseInvoiceId!.Value, CancellationToken.None);
+        Assert.Equal(ordem.PurchaseOrderId, compra!.PurchaseOrderId);
+    }
+
+    /// <summary>
+    /// Sem fornecedor indicado nem ligável pelo NIF, mas a ordem sabe-o com
+    /// certeza — herda-o dela em vez de deixar a factura por ligar.
+    /// </summary>
+    [Fact]
+    public async Task PurchaseOrderIdIndicado_SemFornecedorConhecido_HerdaOFornecedorDaOrdem()
+    {
+        var fornecedorId = Guid.CreateVersion7();
+        var ordem = Ordem(fornecedorId, (10m, 10m, 9000m));
+        var store = new FakePayablesStore();
+
+        var resultado = await Registar(store, fornecedor: null, ordem).ExecuteAsync(
+            "FT 9001", supplierId: null, ordem.PurchaseOrderId, "Angoferragens", "5402123456",
+            Hoje, Hoje.AddDays(30), "AOA", 90_000m, 0m, null,
+            Contexto, CancellationToken.None);
+
+        Assert.Equal(RegisterPurchaseInvoiceOutcome.Registered, resultado.Outcome);
+
+        var compra = await store.FindPurchaseInvoiceAsync(resultado.PurchaseInvoiceId!.Value, CancellationToken.None);
+        Assert.Equal(fornecedorId, compra!.SupplierId);
+    }
+
+    [Fact]
+    public async Task PurchaseOrderIdIndicado_NaoExisteEmProcurement_ERecusado()
+    {
+        var store = new FakePayablesStore();
+
+        var resultado = await Registar(store).ExecuteAsync(
+            "FT 9001", null, Guid.CreateVersion7(), "Angoferragens", "5402123456",
+            Hoje, Hoje.AddDays(30), "AOA", 90_000m, 0m, null,
+            Contexto, CancellationToken.None);
+
+        Assert.Equal(RegisterPurchaseInvoiceOutcome.Rejected, resultado.Outcome);
+        Assert.Equal(0, store.SaveCount);
+    }
+
+    /// <summary>
+    /// A ordem existe, mas é de outro fornecedor — uma factura não pode
+    /// acertar uma encomenda que não é dela.
+    /// </summary>
+    [Fact]
+    public async Task PurchaseOrderIdIndicado_DeOutroFornecedor_ERecusado()
+    {
+        var fornecedor = new SupplierReference(
+            Guid.CreateVersion7(), "Angoferragens", "5402123456", null, SupplierStatus.Active);
+        var ordem = Ordem(Guid.CreateVersion7(), (10m, 10m, 9000m));
+        var store = new FakePayablesStore();
+
+        var resultado = await Registar(store, fornecedor, ordem).ExecuteAsync(
+            "FT 9001", fornecedor.SupplierId, ordem.PurchaseOrderId, fornecedor.Name, fornecedor.TaxId,
+            Hoje, Hoje.AddDays(30), "AOA", 90_000m, 0m, null,
+            Contexto, CancellationToken.None);
+
+        Assert.Equal(RegisterPurchaseInvoiceOutcome.Rejected, resultado.Outcome);
+        Assert.Equal(0, store.SaveCount);
+    }
+
+    // ---- O 3-way match: só os totais lado a lado, sem decidir se "bate" ----
+
+    private static GetPurchaseInvoiceMatch Comparar(FakePayablesStore store, PurchaseOrderReference? ordem = null) =>
+        new(store, new FakePurchaseOrderDirectory(ordem));
+
+    [Fact]
+    public async Task FacturaSemOrdemLigada_DevolveSoOFacturado()
+    {
+        var compra = Compra();
+        var store = new FakePayablesStore().With(compra);
+
+        var vista = await Comparar(store).ExecuteAsync(compra.Id, CancellationToken.None);
+
+        Assert.Null(vista!.PurchaseOrderId);
+        Assert.Null(vista.OrderedTotal);
+        Assert.Null(vista.ReceivedTotal);
+        Assert.Equal(compra.NetTotal, vista.InvoicedNetTotal);
+        Assert.Empty(vista.Lines);
+    }
+
+    /// <summary>
+    /// O caso que dá nome à suite: os três números lado a lado. Aqui batem —
+    /// mas o caso de uso não afirma isso, só devolve os números; é quem olha
+    /// que decide se bate.
+    /// </summary>
+    [Fact]
+    public async Task FacturaComOrdemLigada_DevolveEncomendadoRecebidoEFacturado()
+    {
+        var fornecedorId = Guid.CreateVersion7();
+        var ordem = Ordem(fornecedorId, (10m, 10m, 9000m));
+        var compra = PurchaseInvoice.Register(
+            "FT 9001", fornecedorId, ordem.PurchaseOrderId, new PayeeParty("Angoferragens", "5402123456"),
+            Hoje, Hoje.AddDays(30), "AOA", 90_000m, 0m);
+        var store = new FakePayablesStore().With(compra);
+
+        var vista = await Comparar(store, ordem).ExecuteAsync(compra.Id, CancellationToken.None);
+
+        Assert.Equal(ordem.PurchaseOrderId, vista!.PurchaseOrderId);
+        Assert.Equal(90_000m, vista.OrderedTotal);
+        Assert.Equal(90_000m, vista.ReceivedTotal);
+        Assert.Equal(90_000m, vista.InvoicedNetTotal);
+        Assert.Single(vista.Lines);
+    }
+
+    /// <summary>
+    /// Recebido a menos do que facturado — o caso que o 3-way match existe
+    /// para apanhar. Não é recusado: fica visível nos números, não bloqueado.
+    /// </summary>
+    [Fact]
+    public async Task FacturaAcimaDoRecebido_NaoEBloqueada_MasFicaVisivelNoMatch()
+    {
+        var fornecedorId = Guid.CreateVersion7();
+        var ordem = Ordem(fornecedorId, (10m, 6m, 9000m));
+        var store = new FakePayablesStore();
+
+        var resultado = await Registar(store, ordem: ordem).ExecuteAsync(
+            "FT 9001", supplierId: null, ordem.PurchaseOrderId, "Angoferragens", "5402123456",
+            Hoje, Hoje.AddDays(30), "AOA", 90_000m, 0m, null,
+            Contexto, CancellationToken.None);
+        Assert.Equal(RegisterPurchaseInvoiceOutcome.Registered, resultado.Outcome);
+
+        var vista = await Comparar(store, ordem).ExecuteAsync(resultado.PurchaseInvoiceId!.Value, CancellationToken.None);
+
+        Assert.Equal(90_000m, vista!.OrderedTotal);
+        Assert.Equal(54_000m, vista.ReceivedTotal);
+        Assert.Equal(90_000m, vista.InvoicedNetTotal);
     }
 
     // ---- BR-1 na criação: sem governança não há pedido ----

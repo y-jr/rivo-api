@@ -56,6 +56,11 @@ public static class PayablesEndpoints
         group.MapGet("/purchase-invoices/{purchaseInvoiceId:guid}", GetPurchaseInvoiceAsync)
             .RequireAuthorization(FinancePermissions.PayablesRead);
 
+        // O 3-way match: encomendado, recebido e facturado, lado a lado. Só
+        // leitura — não recusa nada, é quem decide que compara.
+        group.MapGet("/purchase-invoices/{purchaseInvoiceId:guid}/match", GetPurchaseInvoiceMatchAsync)
+            .RequireAuthorization(FinancePermissions.PayablesRead);
+
         group.MapPost("/purchase-invoices", RegisterPurchaseInvoiceAsync)
             .RequireAuthorization(FinancePermissions.PayablesWrite);
 
@@ -229,6 +234,18 @@ public static class PayablesEndpoints
             : Results.Ok(compra);
     }
 
+    private static async Task<IResult> GetPurchaseInvoiceMatchAsync(
+        Guid purchaseInvoiceId,
+        GetPurchaseInvoiceMatch getMatch,
+        CancellationToken cancellationToken)
+    {
+        var vista = await getMatch.ExecuteAsync(purchaseInvoiceId, cancellationToken);
+
+        return vista is null
+            ? Results.NotFound(new { erro = "Factura de compra não encontrada." })
+            : Results.Ok(vista);
+    }
+
     private static async Task<IResult> RegisterPurchaseInvoiceAsync(
         RegisterPurchaseInvoiceRequest request,
         RegisterPurchaseInvoice registerInvoice,
@@ -240,6 +257,7 @@ public static class PayablesEndpoints
         var result = await registerInvoice.ExecuteAsync(
             request.SupplierInvoiceNumber,
             request.SupplierId,
+            request.PurchaseOrderId,
             request.SupplierName,
             request.SupplierTaxId,
             request.IssuedOn ?? hoje,
@@ -450,9 +468,15 @@ public sealed record SetAccountStatusRequest(string Reason);
 /// directamente — e um identificador que não existe é recusado. Sem ele,
 /// tenta-se ligar automaticamente pelo NIF; não encontrar não é erro.
 /// </param>
+/// <param name="PurchaseOrderId">
+/// Opcional. A ordem de compra que esta factura acerta — indicada, tem de
+/// existir e ser do mesmo fornecedor. Alimenta o 3-way match em
+/// `GET .../match`, e não bloqueia nada por si só.
+/// </param>
 public sealed record RegisterPurchaseInvoiceRequest(
     string SupplierInvoiceNumber,
     Guid? SupplierId,
+    Guid? PurchaseOrderId,
     string SupplierName,
     string SupplierTaxId,
     DateOnly? IssuedOn,

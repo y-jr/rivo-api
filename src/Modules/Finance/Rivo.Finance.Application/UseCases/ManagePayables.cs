@@ -367,6 +367,7 @@ public sealed record BankMovementView(
 public sealed class RegisterPurchaseInvoice(
     IPayablesStore store,
     ISupplierDirectory suppliers,
+    IPurchaseOrderDirectory orders,
     IAuditTrail audit,
     PostDocument posting,
     TimeProvider clock)
@@ -384,9 +385,16 @@ public sealed class RegisterPurchaseInvoice(
     /// `procurement` (uma factura de electricidade, por exemplo).
     /// </para>
     /// </param>
+    /// <param name="purchaseOrderId">
+    /// A Ordem de Compra que esta factura acerta. Opcional — nem toda a
+    /// factura tem uma. Indicada, tem de existir e ser do mesmo fornecedor;
+    /// discrepância de quantidade ou valor não é recusada aqui — fica visível
+    /// em <c>GetPurchaseInvoiceMatch</c>, para quem decide olhar.
+    /// </param>
     public async Task<RegisterPurchaseInvoiceResult> ExecuteAsync(
         string supplierInvoiceNumber,
         Guid? supplierId,
+        Guid? purchaseOrderId,
         string supplierName,
         string supplierTaxId,
         DateOnly issuedOn,
@@ -415,6 +423,27 @@ public sealed class RegisterPurchaseInvoice(
             fornecedorLigado = (await suppliers.FindByTaxIdAsync(supplierTaxId, cancellationToken))?.SupplierId;
         }
 
+        if (purchaseOrderId is Guid idOrdem)
+        {
+            var ordem = await orders.FindAsync(idOrdem, cancellationToken);
+
+            if (ordem is null)
+            {
+                return RegisterPurchaseInvoiceResult.Rejected(
+                    "A ordem de compra indicada não existe em procurement.");
+            }
+
+            if (fornecedorLigado is Guid ligado && ligado != ordem.SupplierId)
+            {
+                return RegisterPurchaseInvoiceResult.Rejected(
+                    "A ordem de compra indicada não é deste fornecedor.");
+            }
+
+            // A ordem sabe o fornecedor com certeza — se a factura ainda não
+            // estava ligada a nenhum, herda-o daqui.
+            fornecedorLigado ??= ordem.SupplierId;
+        }
+
         PurchaseInvoice compra;
 
         try
@@ -422,6 +451,7 @@ public sealed class RegisterPurchaseInvoice(
             compra = PurchaseInvoice.Register(
                 supplierInvoiceNumber,
                 fornecedorLigado,
+                purchaseOrderId,
                 new PayeeParty(supplierName, supplierTaxId),
                 issuedOn, dueOn, currency, netTotal, taxTotal, description);
         }
@@ -528,6 +558,7 @@ public sealed class ListPurchaseInvoices(IPayablesStore store)
             compra.Id,
             compra.SupplierInvoiceNumber,
             compra.SupplierId,
+            compra.PurchaseOrderId,
             compra.SupplierName,
             compra.SupplierTaxId,
             compra.IssuedOn,
@@ -546,6 +577,7 @@ public sealed record PurchaseInvoiceView(
     Guid PurchaseInvoiceId,
     string SupplierInvoiceNumber,
     Guid? SupplierId,
+    Guid? PurchaseOrderId,
     string SupplierName,
     string SupplierTaxId,
     DateOnly IssuedOn,
@@ -568,6 +600,84 @@ public sealed class GetPurchaseInvoice(IPayablesStore store)
         return compra is null ? null : ListPurchaseInvoices.ToView(compra);
     }
 }
+
+/// <summary>
+/// O 3-way match, só do lado que se pode comparar sem inventar regra: os
+/// totais lado a lado. <strong>Não recusa nada e não decide se "bate"</strong>
+/// — a tolerância de desvio é decisão de negócio sem fonte neste repositório
+/// (mesma ressalva do desvio sobre a alçada em `procurement`), e um limiar
+/// escolhido aqui seria inventá-la.
+/// </summary>
+public sealed class GetPurchaseInvoiceMatch(IPayablesStore store, IPurchaseOrderDirectory orders)
+{
+    public async Task<PurchaseInvoiceMatchView?> ExecuteAsync(Guid purchaseInvoiceId, CancellationToken cancellationToken)
+    {
+        var compra = await store.FindPurchaseInvoiceAsync(purchaseInvoiceId, cancellationToken);
+
+        if (compra is null)
+        {
+            return null;
+        }
+
+        if (compra.PurchaseOrderId is not Guid idOrdem)
+        {
+            return new PurchaseInvoiceMatchView(
+                compra.Id, null, null, null, compra.NetTotal, compra.GrossTotal, []);
+        }
+
+        var ordem = await orders.FindAsync(idOrdem, cancellationToken);
+
+        // Não devia acontecer — uma ordem nunca se elimina (BR-14) —, mas ler
+        // o que veio em vez de assumir que está lá é sempre mais seguro.
+        if (ordem is null)
+        {
+            return new PurchaseInvoiceMatchView(
+                compra.Id, idOrdem, null, null, compra.NetTotal, compra.GrossTotal, []);
+        }
+
+        var linhas = ordem.Lines
+            .Select(l => new PurchaseOrderMatchLine(
+                l.LineId, l.Description, l.QuantityOrdered, l.QuantityReceived, l.UnitPrice, l.LineTotal))
+            .ToList();
+
+        return new PurchaseInvoiceMatchView(
+            compra.Id,
+            ordem.PurchaseOrderId,
+            ordem.Total,
+            linhas.Sum(l => l.UnitPrice * l.QuantityReceived),
+            compra.NetTotal,
+            compra.GrossTotal,
+            linhas);
+    }
+}
+
+/// <param name="OrderedTotal">
+/// Soma das linhas da ordem ao preço acordado. Nulo sem ordem ligada.
+/// </param>
+/// <param name="ReceivedTotal">
+/// Quantidade recebida valorizada ao preço acordado — o segundo lado do
+/// match. Nulo sem ordem ligada.
+/// </param>
+/// <param name="InvoicedNetTotal">
+/// O que a factura diz, sem imposto — compara-se com <see cref="OrderedTotal"/>
+/// e <see cref="ReceivedTotal"/>, que também não o têm.
+/// </param>
+public sealed record PurchaseInvoiceMatchView(
+    Guid PurchaseInvoiceId,
+    Guid? PurchaseOrderId,
+    decimal? OrderedTotal,
+    decimal? ReceivedTotal,
+    decimal InvoicedNetTotal,
+    decimal InvoicedGrossTotal,
+    IReadOnlyList<PurchaseOrderMatchLine> Lines);
+
+public sealed record PurchaseOrderMatchLine(
+    Guid LineId,
+    string Description,
+    decimal QuantityOrdered,
+    decimal QuantityReceived,
+    decimal UnitPrice,
+    decimal LineTotal);
 
 // ---------- Pedidos de pagamento ----------
 

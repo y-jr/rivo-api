@@ -18,6 +18,12 @@ namespace Rivo.Finance.Domain;
 /// (`ISupplierDirectory`); fica nulo para despesas que nunca passam por lá —
 /// uma factura de electricidade não tem Fornecedor para qualificar.
 /// </para>
+///
+/// <para>
+/// A Ordem de Compra segue o mesmo desenho: opcional, porque nem toda a
+/// factura acerta uma ordem, e é ela — com a Recepção, do lado de
+/// `procurement` — que fecha o 3-way match contra esta factura.
+/// </para>
 /// </summary>
 public sealed class PurchaseInvoice
 {
@@ -25,6 +31,7 @@ public sealed class PurchaseInvoice
         Guid id,
         string supplierInvoiceNumber,
         Guid? supplierId,
+        Guid? purchaseOrderId,
         string supplierName,
         string supplierTaxId,
         DateOnly issuedOn,
@@ -37,6 +44,7 @@ public sealed class PurchaseInvoice
         Id = id;
         SupplierInvoiceNumber = supplierInvoiceNumber;
         SupplierId = supplierId;
+        PurchaseOrderId = purchaseOrderId;
         SupplierName = supplierName;
         SupplierTaxId = supplierTaxId;
         IssuedOn = issuedOn;
@@ -65,6 +73,13 @@ public sealed class PurchaseInvoice
 
     /// <summary>Nulo quando o fornecedor não está qualificado em `procurement`.</summary>
     public Guid? SupplierId { get; private set; }
+
+    /// <summary>
+    /// A Ordem de Compra que esta factura acerta. Nulo para despesas sem ordem
+    /// — nem toda a factura de compra tem uma por trás. É o que fecha o
+    /// terceiro lado do 3-way match, junto com <see cref="SupplierId"/>.
+    /// </summary>
+    public Guid? PurchaseOrderId { get; private set; }
 
     public string SupplierName { get; private set; }
 
@@ -101,6 +116,7 @@ public sealed class PurchaseInvoice
     public static PurchaseInvoice Register(
         string supplierInvoiceNumber,
         Guid? supplierId,
+        Guid? purchaseOrderId,
         PayeeParty supplier,
         DateOnly issuedOn,
         DateOnly dueOn,
@@ -146,6 +162,7 @@ public sealed class PurchaseInvoice
             Guid.CreateVersion7(),
             supplierInvoiceNumber.Trim().ToUpperInvariant(),
             supplierId,
+            purchaseOrderId,
             // Achatado em duas colunas em vez de tipo owned, e por uma razão
             // concreta: a garantia contra registar a mesma factura do mesmo
             // fornecedor duas vezes é um índice único sobre (NIF, número), e o

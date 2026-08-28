@@ -121,7 +121,13 @@ Invoke-RestMethod "$base/hr/employees/$aprovador/positions" -Method Post -Conten
 # `POST /approval/policies/{id}/deactivation`, a suite era obrigada a escrever
 # na base de dados por baixo da aplicação — e uma suite que se limpa por um
 # caminho que a aplicação não tem verifica menos do que parece.
-Invoke-RestMethod "$base/approval/policies" -Headers $adminHeaders |
+#
+# `@(...)` a forcar array: e defesa documentada contra um modo de falha real
+# do PowerShell nesta suite (nota "Filtrar respostas JSON..." em
+# implemented.md), onde Invoke-RestMethod por vezes entrega a lista inteira
+# ao pipeline como um so item. Mantido por seguranca -- nao resolveu, por si
+# so, a falha intermitente registada em K20 (known-issues.md).
+@(Invoke-RestMethod "$base/approval/policies" -Headers $adminHeaders) |
 Where-Object { $_.processType -eq "procurement.purchase_requisition" -and $_.isActive } |
 ForEach-Object {
     Invoke-RestMethod "$base/approval/policies/$($_.policyId)/deactivation" `
@@ -1093,7 +1099,60 @@ Test-Case "53. Recepcoes ficam na trilha, com a ordem e quem recebeu" {
 
     "registo com a ordem e anulacao na trilha, ambos com actor"
 }
-Test-Case "54. Dados sobrevivem ao reinicio da stack" {
+
+# ---- 3-way match: a factura de compra e de finance, mas liga-se pela ordem (2026-08-28) ----
+
+Test-Case "54. Registar a factura contra a ordem, e o match mostra os tres numeros" {
+    # ordemC (caso 50): 10 Cadeiras a 9000, recebidas por inteiro -- 90000 dos
+    # dois lados de procurement. A factura fecha o terceiro.
+    $body = @{
+        supplierInvoiceNumber = "FT ORD $curto"; supplierId = $script:fornecedorId; purchaseOrderId = $script:ordemC
+        supplierName = "Angoferragens $curto"; supplierTaxId = "5417$curto"
+        netTotal = 90000; taxTotal = 0; dueOn = "2026-12-31"
+    } | ConvertTo-Json
+    # Manager regista a factura -- ForPayables: quem compra regista e pede
+    # que se pague. Finance so le o resultado: "quem desfaz nao faz" tambem
+    # quer dizer que nao emite (AccessProfiles.cs).
+    $f = Invoke-RestMethod "$base/finance/purchase-invoices" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+    $script:facturaOrdemC = $f.purchaseInvoiceId
+
+    $match = Invoke-RestMethod "$base/finance/purchase-invoices/$($script:facturaOrdemC)/match" -Headers $financeHeaders
+    if ($match.purchaseOrderId -ne $script:ordemC) { throw "match sem a ordem: $($match.purchaseOrderId)" }
+    if ([decimal]$match.orderedTotal -ne 90000) { throw "encomendado $($match.orderedTotal), esperado 90000" }
+    if ([decimal]$match.receivedTotal -ne 90000) { throw "recebido $($match.receivedTotal), esperado 90000" }
+    if ([decimal]$match.invoicedNetTotal -ne 90000) { throw "facturado $($match.invoicedNetTotal), esperado 90000" }
+    "encomendado, recebido e facturado batem em 90000"
+}
+
+Test-Case "55. Ligar a factura a uma ordem de outro fornecedor e recusado" {
+    $body = @{
+        supplierInvoiceNumber = "FT ERR $curto"; supplierId = $script:estrangeiroId; purchaseOrderId = $script:ordemC
+        supplierName = "Fornecedor errado"; supplierTaxId = "0000000000"
+        netTotal = 1000; taxTotal = 0; dueOn = "2026-12-31"
+    } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/purchase-invoices" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "a ordem e do fornecedor original, nao do indicado"
+}
+
+Test-Case "56. Facturar diferente do recebido nao bloqueia, so fica visivel no match" {
+    # Mesma ordem, outra factura, valor propositadamente diferente do
+    # recebido -- e o caso que o 3-way match existe para apanhar, e a decisao
+    # tomada foi so mostrar os numeros, nunca recusar (informacao, nao regra).
+    $body = @{
+        supplierInvoiceNumber = "FT DIV $curto"; supplierId = $script:fornecedorId; purchaseOrderId = $script:ordemC
+        supplierName = "Angoferragens $curto"; supplierTaxId = "5417$curto"
+        netTotal = 95000; taxTotal = 0; dueOn = "2026-12-31"
+    } | ConvertTo-Json
+    $f = Invoke-RestMethod "$base/finance/purchase-invoices" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+
+    $match = Invoke-RestMethod "$base/finance/purchase-invoices/$($f.purchaseInvoiceId)/match" -Headers $financeHeaders
+    if ([decimal]$match.receivedTotal -ne 90000) { throw "recebido $($match.receivedTotal), esperado 90000" }
+    if ([decimal]$match.invoicedNetTotal -ne 95000) { throw "facturado $($match.invoicedNetTotal), esperado 95000" }
+    "95000 facturados contra 90000 recebidos -- registado na mesma, a divergencia fica so visivel"
+}
+
+Test-Case "57. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
@@ -1114,7 +1173,7 @@ Test-Case "54. Dados sobrevivem ao reinicio da stack" {
     "requisicao, ordem, linhas de ambas e IBAN intactos apos restart"
 }
 
-Test-Case "55. A suite nao deixa politica de procurement activa atras de si" {
+Test-Case "58. A suite nao deixa politica de procurement activa atras de si" {
     # **Independencia entre suites.** Sem isto, cada corrida deixaria mais uma
     # politica generica, e o caso 15 — que verifica a recusa quando nao ha
     # nenhuma — passaria a falhar a partir da segunda vez.
@@ -1122,7 +1181,12 @@ Test-Case "55. A suite nao deixa politica de procurement activa atras de si" {
     # **Pela rota, e ja nao por SQL** (2026-08-27). A limpeza passou a exercitar
     # `POST /approval/policies/{id}/deactivation` — deixou de ser so arrumacao e
     # passou a verificar tambem o endpoint que a torna possivel.
-    Invoke-RestMethod "$base/approval/policies" -Headers $adminHeaders |
+    #
+    # `@(...)` a forcar array: e defesa documentada contra um modo de falha
+    # real do PowerShell nesta suite (nota "Filtrar respostas JSON..." em
+    # implemented.md). Mantido por seguranca -- nao resolveu, por si so, o 404
+    # intermitente registado em K20 (known-issues.md), que continua aberto.
+    @(Invoke-RestMethod "$base/approval/policies" -Headers $adminHeaders) |
     Where-Object { $_.processType -eq "procurement.purchase_requisition" -and $_.isActive } |
     ForEach-Object {
         Invoke-RestMethod "$base/approval/policies/$($_.policyId)/deactivation" `

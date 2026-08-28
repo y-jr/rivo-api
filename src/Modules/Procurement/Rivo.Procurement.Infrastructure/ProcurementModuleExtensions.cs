@@ -31,6 +31,9 @@ public static class ProcurementModuleExtensions
         // O contrato publicado. `finance` lê o fornecedor por aqui.
         services.AddScoped<ISupplierDirectory, SupplierDirectory>();
 
+        // E a ordem de compra, para o 3-way match.
+        services.AddScoped<IPurchaseOrderDirectory, PurchaseOrderDirectory>();
+
         services.AddScoped<ListSuppliers>();
         services.AddScoped<GetSupplier>();
         services.AddScoped<RegisterSupplier>();

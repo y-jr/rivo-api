@@ -14,7 +14,7 @@ public class PayablesTests
 
     private static PurchaseInvoice Compra(decimal liquido = 100_000m, decimal imposto = 14_000m) =>
         PurchaseInvoice.Register(
-            "FT 2026/8891", null, Fornecedor(), Hoje.AddDays(-5), Hoje.AddDays(25),
+            "FT 2026/8891", null, null, Fornecedor(), Hoje.AddDays(-5), Hoje.AddDays(25),
             "AOA", liquido, imposto, "Combustivel");
 
     private static BankAccount Conta(decimal saldo = 500_000m)
@@ -167,7 +167,7 @@ public class PayablesTests
     public void FacturaDeCompraSemNumeroDoFornecedor_ERecusada()
     {
         Assert.Throws<ArgumentException>(() =>
-            PurchaseInvoice.Register("  ", null, Fornecedor(), Hoje, Hoje, "AOA", 100m, 0m));
+            PurchaseInvoice.Register("  ", null, null, Fornecedor(), Hoje, Hoje, "AOA", 100m, 0m));
     }
 
     [Fact]
@@ -183,7 +183,7 @@ public class PayablesTests
     {
         Assert.Throws<ArgumentException>(() =>
             PurchaseInvoice.Register(
-                "FT 1", null, Fornecedor(), Hoje, Hoje.AddDays(-1), "AOA", 100m, 0m));
+                "FT 1", null, null, Fornecedor(), Hoje, Hoje.AddDays(-1), "AOA", 100m, 0m));
     }
 
     [Fact]
