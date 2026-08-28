@@ -12,7 +12,7 @@ using Rivo.Procurement.Infrastructure;
 using Rivo.Audit.Infrastructure;
 using Rivo.Documents.Api;
 using Rivo.Documents.Infrastructure;
-using Rivo.Finance.Api;
+using Rivo.Finance.Api; 
 using Rivo.Finance.Infrastructure;
 using Rivo.Fiscal.Api;
 using Rivo.Fiscal.Infrastructure;
