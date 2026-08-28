@@ -928,7 +928,14 @@ Test-Case "44. A suite nao deixa politica de BR-8 activa atras de si" {
     #
     # Filtra pelo departamento desta corrida: a generica de `verify-payables`
     # tem de ficar, e e isso que a assercao seguinte confirma.
-    Invoke-RestMethod "$base/approval/policies" -Headers $adminHeaders |
+    #
+    # `@(...)` a forcar array: e defesa documentada contra um modo de falha
+    # real do PowerShell nesta suite (nota mais abaixo, "Filtrar respostas
+    # JSON..."), onde Invoke-RestMethod por vezes entrega a lista inteira ao
+    # pipeline como um so item. Mantido por seguranca -- **mas nao e a causa
+    # do K20**: testado isoladamente contra o 404 intermitente que se segue, e
+    # o 404 continuou a acontecer com isto no lugar. K20 continua aberto.
+    @(Invoke-RestMethod "$base/approval/policies" -Headers $adminHeaders) |
     Where-Object {
         $_.processType -eq "finance.payment_request" -and
         $_.isActive -and
