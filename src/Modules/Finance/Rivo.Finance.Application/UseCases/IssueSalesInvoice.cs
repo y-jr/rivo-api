@@ -294,6 +294,16 @@ public static class FinanceAuditActions
     public const string AccountOpened = "finance.bank_account.opened";
     public const string AccountDeposited = "finance.bank_account.deposited";
 
+    /// <summary>
+    /// Saída de conta que não é pagamento a fornecedor — comissões, transferências
+    /// entre contas. O pagamento propriamente dito tem a acção própria
+    /// <see cref="PaymentExecuted"/>; esta é para o resto do que sai.
+    /// </summary>
+    public const string AccountWithdrawn = "finance.bank_account.withdrawn";
+
+    public const string AccountClosed = "finance.bank_account.closed";
+    public const string AccountReopened = "finance.bank_account.reopened";
+
     public const string PurchaseInvoiceRegistered = "finance.purchase_invoice.registered";
 
     public const string PaymentRequested = "finance.payment_request.created";

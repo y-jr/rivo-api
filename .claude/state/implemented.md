@@ -192,6 +192,31 @@ não existe. Ver K13 em [known-issues.md](known-issues.md).
   `http://187.77.178.242`, atrás de Caddy na rede `proxy`. **Sem TLS** enquanto
   não houver domínio — K16
 
+### Levantamento e fecho de conta bancária — 2026-08-28
+
+`POST /finance/accounts/{id}/withdrawals`, `.../closure`, `.../reopening`. Os
+dois primeiros já existiam no domínio — `BankAccount.Withdraw` e `.Close` —,
+faltava a via.
+
+- **`withdrawals` não é o pagamento a fornecedor.** Esse continua a passar por
+  `ExecutePayment`, com a dupla barreira de BR-5. É para o resto do que sai de
+  uma conta sem decisão de aprovação — comissões, transferências entre contas
+- **Fechar passou a exigir saldo zero, e é regra nova no domínio.** Sem ela,
+  fechar uma conta com dinheiro dentro escondia esse dinheiro atrás de uma
+  conta que diz não estar em uso. É invariante de uma conta só, por isso vive
+  em `BankAccount.Close()` e não na camada Application
+- Reabrir não repõe saldo nenhum — devolve só o uso
+- Levantar acima do saldo e fechar com saldo diferente de zero devolvem os
+  dois `409`: é o estado da conta a impedir, não o corpo do pedido
+
+A regra nova partiu um teste existente (`ContaFechada_NaoMovimenta`, que
+fechava uma conta com 500.000 dentro) — corrigido para fechar com saldo zero, e
+acrescentados os três cenários que a regra cria: não fecha com saldo, fecha e
+reabre com saldo zero, esvazia e só depois fecha.
+
+5 casos novos em `verify-payables` (27, com o caso do reinício movido para o
+fim).
+
 ### `GET /approval/requests/{id}/history` — 2026-08-28
 
 Linha do tempo completa de um pedido: submissão, **todas** as atribuições
@@ -312,7 +337,7 @@ pré-existente, encontrado ao construir isto.
 
 ## Verificação
 
-**Doze suites** PowerShell caixa-preta contra a stack em Docker, **256 casos**,
+**Doze suites** PowerShell caixa-preta contra a stack em Docker, **261 casos**,
 todas re-executáveis.
 
 > ⚠ **Estado da verificação a 2026-08-25, ao fechar a postagem automática.**

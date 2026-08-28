@@ -56,6 +56,8 @@ public static class FinanceModuleExtensions
         services.AddScoped<IPayablesStore, PayablesStore>();
         services.AddScoped<OpenBankAccount>();
         services.AddScoped<DepositToAccount>();
+        services.AddScoped<WithdrawFromAccount>();
+        services.AddScoped<SetBankAccountStatus>();
         services.AddScoped<ListBankAccounts>();
         services.AddScoped<GetAccountStatement>();
         services.AddScoped<RegisterPurchaseInvoice>();

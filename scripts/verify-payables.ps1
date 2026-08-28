@@ -418,7 +418,93 @@ where a.balance <> isnull((
     "nenhuma conta diverge do proprio extracto"
 }
 
-Test-Case "22. Dados sobrevivem ao reinicio da stack" {
+Test-Case "22. Levantamento que nao e pagamento a fornecedor" {
+    # Conta propria, para nao mexer no saldo que o caso 27 vai verificar apos
+    # o reinicio da stack.
+    $body = @{ name = "Secundaria $curto"; bank = "BFA"; currency = "AOA" } | ConvertTo-Json
+    $c = Invoke-RestMethod "$base/finance/accounts" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+    $script:contaSecundariaId = $c.accountId
+
+    $body = @{ amount = 50000; reference = "Carregamento" } | ConvertTo-Json
+    Invoke-RestMethod "$base/finance/accounts/$($script:contaSecundariaId)/deposits" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders | Out-Null
+
+    $body = @{ amount = 3000; description = "Comissao bancaria mensal" } | ConvertTo-Json
+    Invoke-RestMethod "$base/finance/accounts/$($script:contaSecundariaId)/withdrawals" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders | Out-Null
+
+    $saldo = Invoke-Sql "select balance from finance.bank_account where id='$($script:contaSecundariaId)'"
+    if ([decimal]$saldo -ne 47000) { throw "saldo $saldo, esperado 47000" }
+
+    # Ao contrario do pagamento executado, este movimento nao vem de documento
+    # nenhum: sourceType e sourceId ficam nulos.
+    $comOrigem = Invoke-Sql "select count(*) from finance.bank_movement where bank_account_id='$($script:contaSecundariaId)' and direction='Debit' and source_type is not null"
+    if ($comOrigem -ne "0") { throw "o levantamento avulso ficou com origem, e nao devia" }
+
+    "50000 - 3000 = 47000; sem origem de documento"
+}
+
+Test-Case "23. Levantar acima do saldo e recusado" {
+    $body = @{ amount = 999999; description = "Impossivel" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/accounts/$($script:contaSecundariaId)/withdrawals" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+
+    $saldo = Invoke-Sql "select balance from finance.bank_account where id='$($script:contaSecundariaId)'"
+    if ([decimal]$saldo -ne 47000) { throw "saldo mudou apesar do 409: $saldo" }
+    "409, saldo intacto"
+}
+
+Test-Case "24. Fechar conta com saldo diferente de zero e recusado" {
+    # Fechar uma conta com dinheiro dentro esconderia esse dinheiro atras de
+    # uma conta que diz nao estar em uso.
+    $body = @{ reason = "Tentativa de fecho." } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/accounts/$($script:contaSecundariaId)/closure" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+
+    $activa = Invoke-Sql "select is_active from finance.bank_account where id='$($script:contaSecundariaId)'"
+    if ($activa -ne "1") { throw "a conta fechou apesar do saldo" }
+    "409, conta continua aberta"
+}
+
+Test-Case "25. Esvaziar e fechar; fechada nao movimenta; reabrir devolve o uso" {
+    Invoke-RestMethod "$base/finance/accounts/$($script:contaSecundariaId)/withdrawals" -Method Post -ContentType "application/json" -Headers $managerHeaders `
+        -Body (@{ amount = 47000; description = "Encerramento da conta" } | ConvertTo-Json) | Out-Null
+
+    $body = @{ reason = "Conta secundaria de ensaio, ja nao e precisa." } | ConvertTo-Json
+    Invoke-RestMethod "$base/finance/accounts/$($script:contaSecundariaId)/closure" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders | Out-Null
+
+    $activa = Invoke-Sql "select is_active from finance.bank_account where id='$($script:contaSecundariaId)'"
+    if ($activa -ne "0") { throw "a conta nao fechou com saldo zero" }
+
+    $razao = Invoke-Sql "select new_value from audit.audit_event where action='finance.bank_account.closed' and entity_id='$($script:contaSecundariaId)'"
+    if ($razao -notmatch "ja nao e precisa") { throw "a razao nao ficou na trilha: $razao" }
+
+    # Fechada, nao aceita deposito.
+    $body = @{ amount = 1; reference = "Nao devia entrar" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/accounts/$($script:contaSecundariaId)/deposits" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($code -ne 400) { throw "deposito em conta fechada: esperado 400, obtido $code" }
+
+    # Reabrir devolve o uso, sem repor saldo nenhum.
+    Invoke-RestMethod "$base/finance/accounts/$($script:contaSecundariaId)/reopening" -Method Post -Headers $managerHeaders | Out-Null
+    $activa = Invoke-Sql "select is_active from finance.bank_account where id='$($script:contaSecundariaId)'"
+    if ($activa -ne "1") { throw "a conta nao reabriu" }
+
+    $saldo = Invoke-Sql "select balance from finance.bank_account where id='$($script:contaSecundariaId)'"
+    if ([decimal]$saldo -ne 0) { throw "reabrir alterou o saldo: $saldo" }
+
+    "fecho com razao na trilha; deposito recusado fechada; reabertura sem repor saldo"
+}
+
+Test-Case "26. Levantamento e fecho: 401 sem token, 404 em conta inexistente" {
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/accounts/$($script:contaSecundariaId)/withdrawals" -Method Post -ContentType "application/json" -Body (@{ amount = 1; description = "x" } | ConvertTo-Json) }
+    if ($code -ne 401) { throw "sem token: esperado 401, obtido $code" }
+
+    $inexistente = [Guid]::NewGuid()
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/accounts/$inexistente/closure" -Method Post -ContentType "application/json" -Headers $managerHeaders -Body (@{ reason = "x" } | ConvertTo-Json) }
+    if ($code -ne 404) { throw "conta inexistente: esperado 404, obtido $code" }
+
+    "401 sem token; 404 em conta que nao existe"
+}
+
+Test-Case "27. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)

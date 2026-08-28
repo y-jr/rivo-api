@@ -88,11 +88,49 @@ public class PayablesTests
     [Fact]
     public void ContaFechada_NaoMovimenta()
     {
-        var conta = Conta();
+        // So se fecha com saldo zero (ver ContaComSaldo_NaoFecha) — por isso o
+        // cenario aqui e uma conta sem dinheiro dentro.
+        var conta = Conta(saldo: 0);
         conta.Close();
 
         Assert.Throws<InvalidOperationException>(() => conta.Withdraw(1m, Instante, "Pagamento"));
         Assert.Throws<InvalidOperationException>(() => conta.Deposit(1m, Instante, null));
+    }
+
+    [Fact]
+    public void ContaComSaldo_NaoFecha()
+    {
+        // Fechar uma conta com dinheiro dentro esconderia esse dinheiro atras
+        // de uma conta que diz nao estar em uso.
+        var conta = Conta();
+
+        Assert.Throws<InvalidOperationException>(() => conta.Close());
+        Assert.True(conta.IsActive);
+    }
+
+    [Fact]
+    public void ContaFechada_ComSaldoZero_Reabre()
+    {
+        var conta = Conta(saldo: 0);
+        conta.Close();
+
+        conta.Reopen();
+
+        Assert.True(conta.IsActive);
+        conta.Deposit(1m, Instante, null);
+        Assert.Equal(1m, conta.Balance);
+    }
+
+    [Fact]
+    public void LevantarSaldoAteZero_DepoisFecha()
+    {
+        // O caminho real: esvaziar a conta e so depois fecha-la.
+        var conta = Conta();
+        conta.Withdraw(conta.Balance, Instante, "Transferencia de encerramento");
+
+        conta.Close();
+
+        Assert.False(conta.IsActive);
     }
 
     [Theory]

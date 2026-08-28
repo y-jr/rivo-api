@@ -98,20 +98,20 @@ dotnet test
 
 ## Estado da cobertura
 
-_Contagens de 2026-08-27, executadas. **691 testes** em 15 projectos, e
-**687 passam** — os 4 de Testcontainers falham desde que o motor do Docker
-voltou a cair, na mesma tarde em que a suite tinha passado inteira._
+_Contagens de 2026-08-28, executadas. **694 testes** em 15 projectos, e
+**690 passam** — os 4 de Testcontainers falham desde que o motor do Docker
+caiu a 2026-08-27, na mesma tarde em que a suite tinha passado inteira._
 
 | Camada | Estado |
 |---|---|
-| Domain | **529 testes**, 10 módulos — `finance` 190, `hr` 129, `procurement` 100, `commercial` 20, `notifications` 20, `fiscal` 18, `approval` 17, `documents` 16, `audit` 10, `identity` 9 |
+| Domain | **532 testes**, 10 módulos — `finance` 193, `hr` 129, `procurement` 100, `commercial` 20, `notifications` 20, `fiscal` 18, `approval` 17, `documents` 16, `audit` 10, `identity` 9 |
 | Application | **128 testes** — `finance` 100, `identity` 28. Os restantes oito módulos por cobrir, `procurement` incluído |
 | Infrastructure | **4 testes** em `notifications`, SQL Server real (ADR-026, ADR-029). Restantes oito módulos por cobrir |
 | API do host | **9 testes** em `tests/Rivo.Api.Tests` — tradução de excepções em códigos HTTP (ADR-035). Nasceu porque isto não é testável em nenhuma das outras camadas: as de domínio não conhecem HTTP, as de arquitectura verificam forma e não comportamento |
 | API de módulo | Nenhum (as suites PowerShell tocam-lhe indirectamente) |
 | Arquitectura | **21 testes** (ADR-024, ADR-025) |
 
-As doze suites PowerShell (**256 casos**) continuam a valer como smoke
+As doze suites PowerShell (**261 casos**) continuam a valer como smoke
 end-to-end. Não substituem teste de domínio, nem o inverso.
 
 `verify-procurement` (55 casos) nasceu a 2026-08-27 por uma razão que as outras

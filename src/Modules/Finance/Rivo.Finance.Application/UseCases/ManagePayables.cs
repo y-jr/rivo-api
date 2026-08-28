@@ -106,6 +106,132 @@ public enum AccountMovementOutcome
     Rejected,
 }
 
+/// <summary>
+/// Saída de conta que <strong>não</strong> é pagamento a fornecedor —
+/// comissões bancárias, transferências entre contas.
+///
+/// <para>
+/// O pagamento propriamente dito passa por <c>ExecutePayment</c>, que impõe a
+/// dupla barreira de BR-5. Esta rota é para o resto do que sai de uma conta
+/// sem ter passado por uma decisão de aprovação — e não substitui nem contorna
+/// aquela.
+/// </para>
+/// </summary>
+public sealed class WithdrawFromAccount(IPayablesStore store, IAuditTrail audit, TimeProvider clock)
+{
+    public async Task<AccountMovementOutcome> ExecuteAsync(
+        Guid accountId,
+        decimal amount,
+        string description,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        var conta = await store.FindAccountForUpdateAsync(accountId, cancellationToken);
+
+        if (conta is null)
+        {
+            return AccountMovementOutcome.NotFound;
+        }
+
+        try
+        {
+            // Sem `sourceType`/`sourceId`: não vem de documento nenhum, ao
+            // contrário do que `ExecutePayment` regista.
+            conta.Withdraw(amount, clock.GetUtcNow(), description);
+        }
+        catch (Exception error)
+            when (error is ArgumentException or ArgumentOutOfRangeException
+                or InsufficientFundsException or InvalidOperationException)
+        {
+            return AccountMovementOutcome.Rejected;
+        }
+
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                FinanceAuditActions.AccountWithdrawn,
+                FinanceAuditEntityTypes.BankAccount,
+                conta.Id.ToString(),
+                context,
+                NewValue: $$"""{"amount":{{amount}},"balance":{{conta.Balance}},"description":"{{description}}"}"""),
+            cancellationToken);
+
+        return AccountMovementOutcome.Done;
+    }
+}
+
+/// <summary>
+/// Fecha ou reabre uma conta bancária. Nunca elimina — BR-14.
+/// </summary>
+public sealed class SetBankAccountStatus(IPayablesStore store, IAuditTrail audit)
+{
+    public async Task<SetBankAccountStatusResult> ExecuteAsync(
+        Guid accountId,
+        bool active,
+        string? reason,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        var conta = await store.FindAccountForUpdateAsync(accountId, cancellationToken);
+
+        if (conta is null)
+        {
+            return SetBankAccountStatusResult.NotFound();
+        }
+
+        if (active)
+        {
+            conta.Reopen();
+        }
+        else
+        {
+            // A recusa por saldo diferente de zero é do domínio — é invariante
+            // de uma conta só, e não desta camada.
+            try
+            {
+                conta.Close();
+            }
+            catch (InvalidOperationException error)
+            {
+                return SetBankAccountStatusResult.Rejected(error.Message);
+            }
+        }
+
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                active ? FinanceAuditActions.AccountReopened : FinanceAuditActions.AccountClosed,
+                FinanceAuditEntityTypes.BankAccount,
+                conta.Id.ToString(),
+                context,
+                NewValue: $$"""{"reason":"{{reason}}"}"""),
+            cancellationToken);
+
+        return SetBankAccountStatusResult.Changed();
+    }
+}
+
+public sealed record SetBankAccountStatusResult(BankAccountStatusOutcome Outcome, string? Error)
+{
+    public static SetBankAccountStatusResult Changed() => new(BankAccountStatusOutcome.Changed, null);
+
+    public static SetBankAccountStatusResult NotFound() => new(BankAccountStatusOutcome.NotFound, null);
+
+    public static SetBankAccountStatusResult Rejected(string error) =>
+        new(BankAccountStatusOutcome.Rejected, error);
+}
+
+public enum BankAccountStatusOutcome
+{
+    Changed,
+    NotFound,
+
+    /// <summary>Fechar com saldo diferente de zero. 409.</summary>
+    Rejected,
+}
+
 public sealed class ListBankAccounts(IPayablesStore store)
 {
     public async Task<IReadOnlyList<BankAccountView>> ExecuteAsync(

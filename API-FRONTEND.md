@@ -1,7 +1,7 @@
 # Rivo API - Guia para o Frontend
 
-Documento gerado a partir das rotas implementadas no backend. A API tem 148
-endpoints: 144 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
+Documento gerado a partir das rotas implementadas no backend. A API tem 151
+endpoints: 147 protegidos por JWT e 4 públicos. A contagem inclui `/health`.
 
 ## Como ligar
 
@@ -179,6 +179,9 @@ catálogo devolve `501`.
 | `GET /finance/accounts` | `finance.payables.read` | Lista contas bancárias | `includeClosed?` (default `false`) | `200` |
 | `POST /finance/accounts` | `finance.payables.write` | Abre conta bancária | `{ name, bank, iban?, currency? }` | `201 { accountId }` |
 | `POST /finance/accounts/{accountId}/deposits` | `finance.payables.write` | Regista depósito | `{ amount, reference? }` | `204` |
+| `POST /finance/accounts/{accountId}/withdrawals` | `finance.payables.write` | Saída que não é pagamento a fornecedor | `{ amount, description }` | `204` |
+| `POST /finance/accounts/{accountId}/closure` | `finance.payables.write` | Fecha conta | `{ reason }` | `204` |
+| `POST /finance/accounts/{accountId}/reopening` | `finance.payables.write` | Reabre conta | Sem corpo | `204` |
 | `GET /finance/accounts/{accountId}/statement` | `finance.payables.read` | Consulta extracto | `from?`, `to?` | `200` extracto |
 | `GET /finance/purchase-invoices` | `finance.payables.read` | Lista facturas de compra | `dueBefore?` | `200` |
 | `GET /finance/purchase-invoices/{purchaseInvoiceId}` | `finance.payables.read` | Consulta factura de compra | Path `purchaseInvoiceId` | `200` factura |
@@ -191,6 +194,17 @@ catálogo devolve `501`.
 
 `202` significa `estado: "PendenteAprovacao"`. Executar sem aprovação,
 sem fundos ou violando segregação devolve `409` ou `403`, respectivamente.
+
+**`withdrawals` não é o pagamento a fornecedor** — esse passa por
+`payment-requests/{id}/execution`, com a dupla barreira de BR-5. É para o
+resto do que sai de uma conta sem decisão de aprovação: comissões, transferências
+entre contas. Levantar acima do saldo devolve `409`.
+
+**Fechar só com saldo zero** (`409` caso contrário) — fechar uma conta com
+dinheiro dentro escondê-lo-ia atrás de uma conta que diz não estar em uso.
+Fechada, não aceita depósitos (`400`) nem levantamentos (`409` — é o mesmo
+código de saldo insuficiente, porque os dois são o estado da conta a impedir,
+não o corpo do pedido). Reabrir não repõe saldo nenhum: devolve apenas o uso.
 
 ## Finance: contabilidade
 

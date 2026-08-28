@@ -78,10 +78,10 @@ superfície inteira é legível por quem estiver a ouvir.
 | Área | Estado |
 |---|---|
 | Código | 10 módulos, 50 projectos em `src/`, 237 ficheiros `.cs` |
-| Superfície HTTP | 147 endpoints em 10 grupos de rota, mais `/health` |
+| Superfície HTTP | 150 endpoints em 10 grupos de rota, mais `/health` |
 | ADRs | 38, aceites |
-| Testes | **691** em 15 projectos — 529 de domínio, 128 de Application, 21 de arquitectura, 9 da API do host, 4 de integração. **687 passam**; os 4 de integração exigem Docker, e o motor caiu a 2026-08-27 depois de a suite ter passado inteira |
-| Verificação end-to-end | **12 suites** PowerShell, **256 casos**. ⚠ Última corrida completa: **246/246 a 2026-08-27**. Os 10 casos novos e as alterações a quatro suites estão por correr — o Docker caiu |
+| Testes | **694** em 15 projectos — 532 de domínio, 128 de Application, 21 de arquitectura, 9 da API do host, 4 de integração. **690 passam**; os 4 de integração exigem Docker, e o motor caiu a 2026-08-27 depois de a suite ter passado inteira |
+| Verificação end-to-end | **12 suites** PowerShell, **261 casos**. ⚠ Última corrida completa: **246/246 a 2026-08-27**. Os 15 casos novos e as alterações a cinco suites estão por correr — o Docker caiu |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
@@ -159,12 +159,13 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    providers do ASP.NET Core Identity. A correcção — `AddDefaultTokenProviders()`
    — está aplicada e compila, **e não foi exercitada**: o motor do Docker caiu
    durante a reconstrução. É o primeiro `curl` a fazer quando ele voltar.
-2. **Correr `verify-all` e fechar cinco dívidas de uma vez.** Estão por
+2. **Correr `verify-all` e fechar seis dívidas de uma vez.** Estão por
    exercitar: a correcção do `password-reset`, a desactivação de políticas de
-   `approval`, a listagem de documentos, o `read-all` de notificações, e o
-   histórico de pedidos de aprovação. Nenhuma foi verificada contra a stack —
-   **o Docker está em baixo desde 2026-08-27**. São 256 casos, e arrancar o
-   motor precisa de `Start-Service com.docker.service` numa consola elevada.
+   `approval`, a listagem de documentos, o `read-all` de notificações, o
+   histórico de pedidos de aprovação, e o levantamento/fecho de conta bancária.
+   Nenhuma foi verificada contra a stack — **o Docker está em baixo desde
+   2026-08-27**, e nem `Start-Service` nem relançar o processo directamente
+   destravaram o motor. São 261 casos.
 3. **Carregar um plano de contas real e definir as regras de postagem.** É o que
    falta para a contabilidade deixar de estar vazia — e **precisa do
    contabilista, não de código**. Enquanto não houver, todo o resto da

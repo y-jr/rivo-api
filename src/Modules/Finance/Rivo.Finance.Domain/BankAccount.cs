@@ -166,9 +166,23 @@ public sealed class BankAccount
     /// <summary>
     /// Fecha a conta. Não elimina: os pagamentos executados por ela continuam a
     /// referenciá-la, e o histórico tem de continuar legível (BR-14).
+    ///
+    /// <para>
+    /// <strong>Só com saldo zero.</strong> Fechar uma conta com dinheiro dentro
+    /// esconderia esse dinheiro atrás de uma conta que diz não estar em uso — e
+    /// é invariante de uma conta só, por isso vive aqui e não na camada
+    /// Application. Reabrir não move saldo nenhum; é só o que estava lá.
+    /// </para>
     /// </summary>
     public void Close()
     {
+        if (Balance != 0m)
+        {
+            throw new InvalidOperationException(
+                $"A conta {Name} tem saldo de {Balance:N2} {Currency}. Só se fecha com saldo zero — " +
+                "transfira ou levante o que resta primeiro.");
+        }
+
         IsActive = false;
     }
 

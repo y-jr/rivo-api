@@ -31,6 +31,19 @@ public static class PayablesEndpoints
         group.MapPost("/accounts/{accountId:guid}/deposits", DepositAsync)
             .RequireAuthorization(FinancePermissions.PayablesWrite);
 
+        // Saída que não é pagamento a fornecedor — comissões, transferências
+        // entre contas. O pagamento propriamente dito passa por
+        // `/payment-requests/{id}/execution`, com a dupla barreira de BR-5.
+        group.MapPost("/accounts/{accountId:guid}/withdrawals", WithdrawAsync)
+            .RequireAuthorization(FinancePermissions.PayablesWrite);
+
+        // Fechar e reabrir. Nunca eliminar — BR-14.
+        group.MapPost("/accounts/{accountId:guid}/closure", CloseAccountAsync)
+            .RequireAuthorization(FinancePermissions.PayablesWrite);
+
+        group.MapPost("/accounts/{accountId:guid}/reopening", ReopenAccountAsync)
+            .RequireAuthorization(FinancePermissions.PayablesWrite);
+
         // O extracto. Leitura, e por isso a mesma permissão de consultar
         // contas — ver o que se moveu não é poder mover.
         group.MapGet("/accounts/{accountId:guid}/statement", GetStatementAsync)
@@ -107,6 +120,72 @@ public static class PayablesEndpoints
             {
                 ["deposito"] = ["O valor tem de ser maior que zero e a conta tem de estar aberta."],
             }),
+        };
+    }
+
+    private static async Task<IResult> WithdrawAsync(
+        Guid accountId,
+        WithdrawalRequest request,
+        WithdrawFromAccount withdraw,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var outcome = await withdraw.ExecuteAsync(
+            accountId, request.Amount, request.Description, BuildAuditContext(http), cancellationToken);
+
+        return outcome switch
+        {
+            AccountMovementOutcome.Done => Results.NoContent(),
+            AccountMovementOutcome.NotFound => Results.NotFound(new { erro = "Conta não encontrada." }),
+
+            // 409 e não 400: quando a recusa é por saldo insuficiente ou conta
+            // fechada, é o estado que impede — o mesmo critério de
+            // ExecutePayment.
+            _ => Results.Conflict(new
+            {
+                erro = "O valor tem de ser maior que zero, a conta tem de estar aberta, " +
+                    "e tem de ter saldo suficiente.",
+            }),
+        };
+    }
+
+    private static async Task<IResult> CloseAccountAsync(
+        Guid accountId,
+        SetAccountStatusRequest request,
+        SetBankAccountStatus setStatus,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var resultado = await setStatus.ExecuteAsync(
+            accountId, active: false, request.Reason, BuildAuditContext(http), cancellationToken);
+
+        return resultado.Outcome switch
+        {
+            BankAccountStatusOutcome.Changed => Results.NoContent(),
+            BankAccountStatusOutcome.NotFound => Results.NotFound(new { erro = "Conta não encontrada." }),
+
+            // 409: é o saldo — o estado da conta — que impede, e não o corpo
+            // do pedido.
+            BankAccountStatusOutcome.Rejected => Results.Conflict(new { erro = resultado.Error }),
+
+            _ => Results.Problem("Resultado inesperado ao fechar a conta."),
+        };
+    }
+
+    private static async Task<IResult> ReopenAccountAsync(
+        Guid accountId,
+        SetBankAccountStatus setStatus,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var resultado = await setStatus.ExecuteAsync(
+            accountId, active: true, reason: null, BuildAuditContext(http), cancellationToken);
+
+        return resultado.Outcome switch
+        {
+            BankAccountStatusOutcome.Changed => Results.NoContent(),
+            BankAccountStatusOutcome.NotFound => Results.NotFound(new { erro = "Conta não encontrada." }),
+            _ => Results.Problem("Resultado inesperado ao reabrir a conta."),
         };
     }
 
@@ -352,6 +431,14 @@ public static class PayablesEndpoints
 public sealed record OpenAccountRequest(string Name, string Bank, string? Iban, string? Currency);
 
 public sealed record DepositRequest(decimal Amount, string? Reference);
+
+public sealed record WithdrawalRequest(decimal Amount, string Description);
+
+/// <param name="Reason">
+/// Só usada ao fechar. Fica na trilha — quem consulta o histórico da conta
+/// tem de saber porquê.
+/// </param>
+public sealed record SetAccountStatusRequest(string Reason);
 
 /// <param name="SupplierInvoiceNumber">
 /// O número que o **fornecedor** pôs no documento dele. O Rivo não numera
