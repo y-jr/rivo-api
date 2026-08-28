@@ -235,8 +235,13 @@ Test-Case "13. Historico do pedido mostra a submissao e a decisao completas" {
 
     # A atribuicao continua no historico depois de decidida — e o que o
     # separa do GET simples, que so mostra quem falta.
+    #
+    # **Nao assumir posicao no array:** o cargo pode ter mais do que um
+    # ocupante, e todos ficam congelados como atribuicoes do mesmo passo
+    # (AnyApprover) — a ordem entre eles nao e garantida. O que importa e que
+    # o aprovador que decidiu esteja algures na lista.
     if (@($h.assignments).Count -eq 0) { throw "atribuicoes ausentes do historico" }
-    if ($h.assignments[0].approverEmployeeId -ne $script:pendingApprover) { throw "aprovador ausente das atribuicoes" }
+    if ($h.assignments.approverEmployeeId -notcontains $script:pendingApprover) { throw "aprovador ausente das atribuicoes" }
 
     "submissao, atribuicao congelada e decisao, todas presentes"
 }

@@ -1,6 +1,6 @@
 # Implementado
 
-_Última actualização: 2026-08-27._
+_Última actualização: 2026-08-28._
 
 Funcionalidade concluída e a funcionar, por módulo. Actualizar como parte de
 terminar uma funcionalidade (passo 8 do fluxo em [CLAUDE.md](../CLAUDE.md)).
@@ -314,13 +314,13 @@ Nova permissão `identity.users.write`, separada de `roles.assign`: quem atribui
 perfis decide o que uma pessoa pode fazer; quem repõe passwords decide **quem
 ela é**.
 
-**20 testes de Application novos** (28 no módulo). Cinco dos seis endpoints
-foram exercitados contra a stack.
+**20 testes de Application novos** (28 no módulo). **Os seis endpoints,
+exercitados contra a stack** — o sexto só a 2026-08-28.
 
-⚠ **O sexto não.** `password-reset` rebentou com 500 — faltavam os token
-providers do Identity, que `GeneratePasswordResetTokenAsync` exige. A correcção
-(`AddDefaultTokenProviders()`) está aplicada e compila, **e não foi
-exercitada**: o motor do Docker caiu durante a reconstrução.
+`password-reset` tinha rebentado com 500 — faltavam os token providers do
+Identity, que `GeneratePasswordResetTokenAsync` exige. A correcção
+(`AddDefaultTokenProviders()`) foi confirmada: o endpoint responde como
+esperado numa corrida completa e limpa.
 
 ⚠ **O bloqueio por tentativas falhadas continua inactivo.** As opções estão
 configuradas (5 tentativas, 15 minutos), mas quem as aplica é o `SignInManager`,
@@ -360,6 +360,42 @@ todas re-executáveis.
 > limpa a si própria — cria a política de que precisa e desactiva-a no fim.
 >
 > Os 629 testes .NET passam todos, os 4 de Testcontainers incluídos.
+>
+> **Fechado a 2026-08-28.** As seis funcionalidades novas desse dia —
+> correcção do `password-reset`, desactivação de políticas de `approval`,
+> listagem de documentos, `read-all` de notificações, histórico de pedidos de
+> aprovação, e levantamento/fecho de conta bancária — foram confirmadas contra
+> a stack numa corrida completa e limpa, **262 de 262 casos, as doze suites**.
+> `verify-hr` trazia também uma correcção de suite (caso 13: assumia que quem
+> decide está sempre em `assignments[0]`, o que falha quando o Cargo tem mais
+> do que um ocupante — corrigido para verificar pertença, não posição).
+>
+> **Falha intermitente encontrada e não resolvida, sem relação com nenhuma das
+> seis.** Em corridas separadas da mesma cadeia completa, o passo que lista as
+> políticas activas de um tipo e as desactiva uma a uma — presente em três
+> sítios: `verify-ledger` caso 44, e duas vezes em `verify-procurement` (a
+> limpeza inicial e o caso 55) — devolve por vezes um `404` inesperado numa
+> política que a listagem, momentos antes, mostrava activa.
+>
+> Investigado a fundo, com instrumentação directa em cada um dos três sítios:
+> a teoria de duplicação de linhas pelo `Include` sem `AsSplitQuery` do EF Core
+> em `ApprovalStore.ListPoliciesAsync`/`ListPoliciesForProcessAsync` foi
+> **descartada duas vezes com prova directa** — leitura instrumentada sem
+> duplicados, incluindo logo a seguir a um reinício da API; a proximidade a um
+> reinício também foi descartada, porque o caso 44 nunca corre perto de um e
+> falhou na mesma. A lógica do endpoint e do caso de uso (`DeactivatePolicy`)
+> está correcta — só devolve `404` quando a política genuinamente não existe.
+> Não há processo concorrente a interferir na mesma base de dados, e
+> `Restart-RivoStack`, por omissão, nunca reinicia a base de dados (só a API).
+>
+> **Sem causa de código confirmada.** A leitura mais provável é a base de
+> dados partilhada de desenvolvimento ter acumulado estado de um dia com
+> vários crashes do motor Docker e tarefas mortas a meio da corrida — mas duas
+> corridas limpas consecutivas depois de o Docker estabilizar não bastam para
+> o provar, e nesta mesma sessão o defeito voltou a aparecer numa corrida
+> posterior, já com o Docker estável. Fica registado como investigação em
+> aberto, não como defeito fechado nem como causa atribuída: **se reaparecer,
+> reabrir a suspeita de defeito de aplicação em vez de assumir ambiente.**
 
 Eram seis suites e 66 casos em 2026-08-16. `verify-hr` cresceu 13 → 16 com as
 funcionalidades novas de `hr`; `verify-authorization` 8 → 9 ao distinguir os
