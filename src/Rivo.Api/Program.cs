@@ -86,7 +86,7 @@ builder.Services.AddScoped<IPaymentApproval, FinancePaymentApproval>();
 // Ver Composition/ProcurementApprovalSubmission.
 builder.Services.AddScoped<IProcurementApprovalSubmission, ProcurementApprovalSubmission>();
 
-var app = builder.Build();
+var app = builder.Build(); 
 
 // Documentação e interface da API, por interruptor explícito — ADR-038.
 //
