@@ -59,10 +59,15 @@ public class ProjectReferenceTests
         // `fiscal` dá a taxa à data do facto gerador, e `finance` possui o
         // documento (ADR-036). Nenhum lê as tabelas do outro.
         //
-        // As direcções que `modules/finance.md` lista e que faltam —
-        // `procurement`, `hr`, `approval` — pertencem a Contas a Pagar,
-        // Tesouraria e à execução de pagamento, que não estão feitas.
-        ["Finance"] = ["Audit", "Fiscal", "Commercial"],
+        // `procurement` — 2026-08-28. `ISupplierDirectory` é por onde a
+        // factura de compra liga ao Fornecedor, em vez de o guardar só como
+        // retrato em texto. Mesma forma de `ICustomerDirectory` em cima.
+        //
+        // As direcções que `modules/finance.md` lista e que ainda faltam —
+        // `hr`, `approval` — não precisam de referência directa: quem executa
+        // um pagamento e quem o aprova chegam por identificador simples e por
+        // `IPaymentApproval` invertido, sem resolver atributos do outro lado.
+        ["Finance"] = ["Audit", "Fiscal", "Commercial", "Procurement"],
 
         // `procurement` é dono do Fornecedor e da Requisição Interna. Duas
         // direcções, e nenhuma delas é `approval`:

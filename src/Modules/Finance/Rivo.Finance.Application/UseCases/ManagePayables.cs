@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
+using Rivo.Procurement.Contracts;
 
 namespace Rivo.Finance.Application.UseCases;
 
@@ -365,12 +366,27 @@ public sealed record BankMovementView(
 
 public sealed class RegisterPurchaseInvoice(
     IPayablesStore store,
+    ISupplierDirectory suppliers,
     IAuditTrail audit,
     PostDocument posting,
     TimeProvider clock)
 {
+    /// <param name="supplierId">
+    /// Quando quem regista já sabe o fornecedor (escolhido numa lista), liga
+    /// directamente — e um identificador que não existe em `procurement` é
+    /// recusado, porque quem chama afirmou uma ligação que não é verdade.
+    ///
+    /// <para>
+    /// <strong>Nulo é o caso comum.</strong> Quem tem a factura em papel não
+    /// tem o identificador, só o NIF — tenta-se ligar por
+    /// <see cref="ISupplierDirectory.FindByTaxIdAsync"/>, e não encontrar não é
+    /// erro: nem toda a despesa passa por um Fornecedor qualificado em
+    /// `procurement` (uma factura de electricidade, por exemplo).
+    /// </para>
+    /// </param>
     public async Task<RegisterPurchaseInvoiceResult> ExecuteAsync(
         string supplierInvoiceNumber,
+        Guid? supplierId,
         string supplierName,
         string supplierTaxId,
         DateOnly issuedOn,
@@ -382,15 +398,30 @@ public sealed class RegisterPurchaseInvoice(
         AuditContext context,
         CancellationToken cancellationToken)
     {
+        Guid? fornecedorLigado;
+
+        if (supplierId is Guid idIndicado)
+        {
+            if (await suppliers.FindAsync(idIndicado, cancellationToken) is null)
+            {
+                return RegisterPurchaseInvoiceResult.Rejected(
+                    "O fornecedor indicado não existe em procurement.");
+            }
+
+            fornecedorLigado = idIndicado;
+        }
+        else
+        {
+            fornecedorLigado = (await suppliers.FindByTaxIdAsync(supplierTaxId, cancellationToken))?.SupplierId;
+        }
+
         PurchaseInvoice compra;
 
         try
         {
             compra = PurchaseInvoice.Register(
                 supplierInvoiceNumber,
-                // Nulo enquanto `procurement` não existir. Quando existir, é
-                // este identificador que passa a apontar ao fornecedor.
-                supplierId: null,
+                fornecedorLigado,
                 new PayeeParty(supplierName, supplierTaxId),
                 issuedOn, dueOn, currency, netTotal, taxTotal, description);
         }
@@ -496,6 +527,7 @@ public sealed class ListPurchaseInvoices(IPayablesStore store)
         new(
             compra.Id,
             compra.SupplierInvoiceNumber,
+            compra.SupplierId,
             compra.SupplierName,
             compra.SupplierTaxId,
             compra.IssuedOn,
@@ -513,6 +545,7 @@ public sealed class ListPurchaseInvoices(IPayablesStore store)
 public sealed record PurchaseInvoiceView(
     Guid PurchaseInvoiceId,
     string SupplierInvoiceNumber,
+    Guid? SupplierId,
     string SupplierName,
     string SupplierTaxId,
     DateOnly IssuedOn,

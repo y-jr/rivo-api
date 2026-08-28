@@ -4,6 +4,7 @@ using Rivo.Commercial.Contracts;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
 using Rivo.Fiscal.Contracts;
+using Rivo.Procurement.Contracts;
 
 namespace Rivo.Finance.Application.Tests;
 
@@ -406,6 +407,18 @@ internal sealed class FakeCustomerDirectory(CustomerReference? customer = null) 
 {
     public Task<CustomerReference?> FindAsync(Guid customerId, CancellationToken cancellationToken) =>
         Task.FromResult(customer is not null && customer.CustomerId == customerId ? customer : null);
+}
+
+internal sealed class FakeSupplierDirectory(SupplierReference? supplier = null) : ISupplierDirectory
+{
+    public Task<SupplierReference?> FindAsync(Guid supplierId, CancellationToken cancellationToken) =>
+        Task.FromResult(supplier is not null && supplier.SupplierId == supplierId ? supplier : null);
+
+    public Task<SupplierReference?> FindByTaxIdAsync(string taxId, CancellationToken cancellationToken) =>
+        Task.FromResult(
+            supplier is not null && string.Equals(supplier.TaxId, taxId, StringComparison.OrdinalIgnoreCase)
+                ? supplier
+                : null);
 }
 
 /// <summary>

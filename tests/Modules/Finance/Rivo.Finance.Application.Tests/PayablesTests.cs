@@ -2,6 +2,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Application.UseCases;
 using Rivo.Finance.Domain;
+using Rivo.Procurement.Contracts;
 
 namespace Rivo.Finance.Application.Tests;
 
@@ -26,6 +27,92 @@ public class PayablesTests
         FakePaymentApproval approval,
         FakePlanningStore? planning = null) =>
         new(store, planning ?? new FakePlanningStore(), approval, new FakeAuditTrail());
+
+    // ---- Registar factura de compra: ligação ao Fornecedor ----
+
+    private static RegisterPurchaseInvoice Registar(FakePayablesStore store, SupplierReference? fornecedor = null) =>
+        new(store, new FakeSupplierDirectory(fornecedor), new FakeAuditTrail(),
+            new PostDocument(new FakeLedgerStore()), new RelogioFixo(Agora));
+
+    [Fact]
+    public async Task SupplierIdIndicado_EEncontrado_LigaAFactura()
+    {
+        var fornecedor = new SupplierReference(
+            Guid.CreateVersion7(), "Sonangol Distribuidora", "5401234567", null, SupplierStatus.Active);
+        var store = new FakePayablesStore();
+
+        var resultado = await Registar(store, fornecedor).ExecuteAsync(
+            "FT 661054", fornecedor.SupplierId, fornecedor.Name, fornecedor.TaxId,
+            Hoje, Hoje.AddDays(30), "AOA", 100_000m, 14_000m, null,
+            Contexto, CancellationToken.None);
+
+        Assert.Equal(RegisterPurchaseInvoiceOutcome.Registered, resultado.Outcome);
+
+        var compra = await store.FindPurchaseInvoiceAsync(resultado.PurchaseInvoiceId!.Value, CancellationToken.None);
+        Assert.Equal(fornecedor.SupplierId, compra!.SupplierId);
+    }
+
+    /// <summary>
+    /// Quem chama afirmou uma ligação que não existe — não é estado a ignorar
+    /// em silêncio, é a factura a apontar para um fornecedor inventado.
+    /// </summary>
+    [Fact]
+    public async Task SupplierIdIndicado_NaoExisteEmProcurement_ERecusado()
+    {
+        var store = new FakePayablesStore();
+
+        var resultado = await Registar(store).ExecuteAsync(
+            "FT 661054", Guid.CreateVersion7(), "Sonangol Distribuidora", "5401234567",
+            Hoje, Hoje.AddDays(30), "AOA", 100_000m, 14_000m, null,
+            Contexto, CancellationToken.None);
+
+        Assert.Equal(RegisterPurchaseInvoiceOutcome.Rejected, resultado.Outcome);
+        Assert.Equal(0, store.SaveCount);
+    }
+
+    /// <summary>
+    /// O caso comum: quem regista tem a factura em papel, não o identificador
+    /// — só o NIF. <see cref="ISupplierDirectory.FindByTaxIdAsync"/> existe
+    /// para isto.
+    /// </summary>
+    [Fact]
+    public async Task SemSupplierId_NifCoincideComFornecedorQualificado_LigaAutomaticamente()
+    {
+        var fornecedor = new SupplierReference(
+            Guid.CreateVersion7(), "Sonangol Distribuidora", "5401234567", null, SupplierStatus.Active);
+        var store = new FakePayablesStore();
+
+        var resultado = await Registar(store, fornecedor).ExecuteAsync(
+            "FT 661054", supplierId: null, fornecedor.Name, fornecedor.TaxId,
+            Hoje, Hoje.AddDays(30), "AOA", 100_000m, 14_000m, null,
+            Contexto, CancellationToken.None);
+
+        Assert.Equal(RegisterPurchaseInvoiceOutcome.Registered, resultado.Outcome);
+
+        var compra = await store.FindPurchaseInvoiceAsync(resultado.PurchaseInvoiceId!.Value, CancellationToken.None);
+        Assert.Equal(fornecedor.SupplierId, compra!.SupplierId);
+    }
+
+    /// <summary>
+    /// Nem toda a despesa passa por um Fornecedor qualificado em `procurement`
+    /// — uma factura de electricidade não tem quem qualificar. Não encontrar
+    /// não é erro.
+    /// </summary>
+    [Fact]
+    public async Task SemSupplierId_NifSemCorrespondencia_RegistaSemLigacao()
+    {
+        var store = new FakePayablesStore();
+
+        var resultado = await Registar(store).ExecuteAsync(
+            "FT 8821", supplierId: null, "ENDE - Distribuição de Electricidade", "5417654321",
+            Hoje, Hoje.AddDays(30), "AOA", 40_000m, 5_600m, null,
+            Contexto, CancellationToken.None);
+
+        Assert.Equal(RegisterPurchaseInvoiceOutcome.Registered, resultado.Outcome);
+
+        var compra = await store.FindPurchaseInvoiceAsync(resultado.PurchaseInvoiceId!.Value, CancellationToken.None);
+        Assert.Null(compra!.SupplierId);
+    }
 
     // ---- BR-1 na criação: sem governança não há pedido ----
 

@@ -168,7 +168,50 @@ Test-Case "4. A mesma factura do mesmo fornecedor duas vezes e recusada" {
     "409 no caso de uso, e indice unico como segunda linha"
 }
 
-Test-Case "5. Pedido de pagamento devolve 202, nao 201" {
+# ---- Ligacao ao Fornecedor de procurement (2026-08-28) ----
+
+Test-Case "5. Ligar o fornecedor pelo identificador, indicado directamente" {
+    $body = @{ name = "Angoferragens Payables $curto"; taxId = "5402$curto" } | ConvertTo-Json
+    $s = Invoke-RestMethod "$base/procurement/suppliers" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
+    $script:fornecedorLigadoId = $s.supplierId
+
+    $body = @{
+        supplierInvoiceNumber = "FT LIG $curto"; supplierId = $script:fornecedorLigadoId
+        supplierName = "Angoferragens Payables $curto"; supplierTaxId = "5402$curto"
+        netTotal = 50000; taxTotal = 7000; dueOn = "2026-12-31"
+    } | ConvertTo-Json
+    $f = Invoke-RestMethod "$base/finance/purchase-invoices" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+
+    $compra = Invoke-RestMethod "$base/finance/purchase-invoices/$($f.purchaseInvoiceId)" -Headers $managerHeaders
+    if ($compra.supplierId -ne $script:fornecedorLigadoId) { throw "fornecedor nao ligado: $($compra.supplierId)" }
+    "factura ligada ao fornecedor $($script:fornecedorLigadoId)"
+}
+
+Test-Case "6. Sem identificador, a factura liga-se sozinha pelo NIF" {
+    $body = @{
+        supplierInvoiceNumber = "FT AUTO $curto"
+        supplierName = "Angoferragens Payables $curto"; supplierTaxId = "5402 $curto"
+        netTotal = 1000; taxTotal = 140; dueOn = "2026-12-31"
+    } | ConvertTo-Json
+    $f = Invoke-RestMethod "$base/finance/purchase-invoices" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+
+    $compra = Invoke-RestMethod "$base/finance/purchase-invoices/$($f.purchaseInvoiceId)" -Headers $managerHeaders
+    if ($compra.supplierId -ne $script:fornecedorLigadoId) { throw "nao ligou pelo NIF: $($compra.supplierId)" }
+    "o NIF com espacos encontra o mesmo fornecedor, normalizado"
+}
+
+Test-Case "7. Identificador de fornecedor inexistente em procurement e recusado" {
+    $body = @{
+        supplierInvoiceNumber = "FT FALSO $curto"; supplierId = [guid]::NewGuid()
+        supplierName = "Fornecedor Inventado"; supplierTaxId = "0000000000"
+        netTotal = 1000; taxTotal = 0; dueOn = "2026-12-31"
+    } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/purchase-invoices" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "quem chama afirmou uma ligacao que nao existe"
+}
+
+Test-Case "8. Pedido de pagamento devolve 202, nao 201" {
     $body = @{
         purchaseInvoiceId = $script:compraId; amount = 114000; requestedByEmployeeId = $requisitante
     } | ConvertTo-Json
@@ -184,7 +227,7 @@ Test-Case "5. Pedido de pagamento devolve 202, nao 201" {
     "202: existe e ainda nao e pagavel"
 }
 
-Test-Case "6. O pedido nao guarda estado de aprovacao (anti-padrao do prototipo)" {
+Test-Case "9. O pedido nao guarda estado de aprovacao (anti-padrao do prototipo)" {
     # `payment_requests` do prototipo tinha o workflow na propria tabela. Aqui
     # os estados sao dois, e o do processo vive em `approval`.
     $colunas = Invoke-Sql @"
@@ -199,7 +242,7 @@ where table_schema='finance' and table_name='payment_request'
     "so um ponteiro para `approval`, sem copia do estado"
 }
 
-Test-Case "7. BR-1: sem decisao aprovada nao se paga" {
+Test-Case "10. BR-1: sem decisao aprovada nao se paga" {
     $body = @{ bankAccountId = $script:contaId; executedByEmployeeId = $tesoureiro; method = "TB" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
@@ -209,7 +252,7 @@ Test-Case "7. BR-1: sem decisao aprovada nao se paga" {
     "409 e o dinheiro nao saiu"
 }
 
-Test-Case "8. BR-3: quem aprova nao paga" {
+Test-Case "11. BR-3: quem aprova nao paga" {
     $body = @{ decidedByEmployeeId = $aprovador; action = "Approved" } | ConvertTo-Json
     Invoke-RestMethod "$base/approval/requests/$($script:processoId)/decisions" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
 
@@ -229,7 +272,7 @@ Test-Case "8. BR-3: quem aprova nao paga" {
     "403, dinheiro intacto, e a tentativa na trilha"
 }
 
-Test-Case "9. BR-5 (saldo): conta sem fundos recusa" {
+Test-Case "12. BR-5 (saldo): conta sem fundos recusa" {
     $body = @{ name = "Sem fundos $curto"; bank = "BFA"; currency = "AOA" } | ConvertTo-Json
     $pobre = (Invoke-RestMethod "$base/finance/accounts" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders).accountId
 
@@ -245,7 +288,7 @@ Test-Case "9. BR-5 (saldo): conta sem fundos recusa" {
     "409 com a decisao aprovada mas sem dinheiro"
 }
 
-Test-Case "10. Moeda do pedido e da conta tem de coincidir" {
+Test-Case "13. Moeda do pedido e da conta tem de coincidir" {
     $body = @{ name = "Dolares $curto"; bank = "BFA"; currency = "USD" } | ConvertTo-Json
     $usd = (Invoke-RestMethod "$base/finance/accounts" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders).accountId
 
@@ -258,7 +301,7 @@ Test-Case "10. Moeda do pedido e da conta tem de coincidir" {
     "sem conversao automatica: o cambio e uma decisao"
 }
 
-Test-Case "11. Executar: dinheiro sai e o pedido fica executado" {
+Test-Case "14. Executar: dinheiro sai e o pedido fica executado" {
     $body = @{
         bankAccountId = $script:contaId; executedByEmployeeId = $tesoureiro
         method = "TB"; reference = "TRF-$curto"
@@ -275,7 +318,7 @@ Test-Case "11. Executar: dinheiro sai e o pedido fica executado" {
     "200000 - 114000 = 86000; quem pagou fica registado"
 }
 
-Test-Case "12. Pagar duas vezes recusa com a razao certa" {
+Test-Case "15. Pagar duas vezes recusa com a razao certa" {
     $body = @{ bankAccountId = $script:contaId; executedByEmployeeId = $tesoureiro; method = "TB" } | ConvertTo-Json
     try {
         Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders | Out-Null
@@ -296,14 +339,14 @@ Test-Case "12. Pagar duas vezes recusa com a razao certa" {
     "409 por 'ja executado', nao por saldo; dinheiro intacto"
 }
 
-Test-Case "13. Um pedido executado nao se cancela" {
+Test-Case "16. Um pedido executado nao se cancela" {
     $body = @{ reason = "Arrependimento" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "o dinheiro saiu; desfazer e outro movimento"
 }
 
-Test-Case "14. Pedidos nao ultrapassam o total da factura" {
+Test-Case "17. Pedidos nao ultrapassam o total da factura" {
     # A factura de 114000 ja tem um pedido de 114000. Mais um nao cabe.
     $body = @{ purchaseInvoiceId = $script:compraId; amount = 1; requestedByEmployeeId = $requisitante } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
@@ -311,7 +354,7 @@ Test-Case "14. Pedidos nao ultrapassam o total da factura" {
     "tres pedidos de metade cada passariam um a um; juntos pagavam a mais"
 }
 
-Test-Case "15. Autorizacao: 401 sem token, 403 na funcao errada" {
+Test-Case "18. Autorizacao: 401 sem token, 403 na funcao errada" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/finance/accounts" }
     if ($code -ne 401) { throw "sem token: esperado 401, obtido $code" }
 
@@ -328,7 +371,7 @@ Test-Case "15. Autorizacao: 401 sem token, 403 na funcao errada" {
     "401 e 403 nas duas direccoes da segregacao"
 }
 
-Test-Case "16. Execucao e auditada, com quem pagou e o processo" {
+Test-Case "19. Execucao e auditada, com quem pagou e o processo" {
     $n = Invoke-Sql "select count(*) from audit.audit_event where action='finance.payment_request.executed' and entity_id='$($script:pedidoId)'"
     if ($n -ne "1") { throw "esperado 1 registo, obtido $n" }
 
@@ -337,7 +380,7 @@ Test-Case "16. Execucao e auditada, com quem pagou e o processo" {
     "1 registo, com quem pagou e o processo que o autorizou"
 }
 
-Test-Case "17. Extracto: cada movimento de saldo deixa linha, com a origem" {
+Test-Case "20. Extracto: cada movimento de saldo deixa linha, com a origem" {
     $extracto = Invoke-RestMethod "$base/finance/accounts/$($script:contaId)/statement" -Headers $managerHeaders
 
     # Um carregamento de 200000 e um pagamento de 114000.
@@ -355,7 +398,7 @@ Test-Case "17. Extracto: cada movimento de saldo deixa linha, com a origem" {
     "2 movimentos; a saida aponta ao pedido que a causou"
 }
 
-Test-Case "18. Extracto ate hoje reconcilia com o saldo da conta" {
+Test-Case "21. Extracto ate hoje reconcilia com o saldo da conta" {
     $extracto = Invoke-RestMethod "$base/finance/accounts/$($script:contaId)/statement" -Headers $managerHeaders
 
     if ($extracto.reconciles -ne $true) { throw "extracto nao reconcilia com o saldo" }
@@ -370,7 +413,7 @@ Test-Case "18. Extracto ate hoje reconcilia com o saldo da conta" {
     "0 + 200000 - 114000 = 86000, e bate com a conta"
 }
 
-Test-Case "19. Janela fechada nao afirma reconciliacao" {
+Test-Case "22. Janela fechada nao afirma reconciliacao" {
     # Uma janela que acaba no passado nao deve bater com o saldo de hoje —
     # dizer que nao reconcilia seria mentir ao contrario.
     $extracto = Invoke-RestMethod "$base/finance/accounts/$($script:contaId)/statement?from=2020-01-01&to=2020-12-31" -Headers $managerHeaders
@@ -384,7 +427,7 @@ Test-Case "19. Janela fechada nao afirma reconciliacao" {
     "janela fechada nao responde a pergunta; datas invertidas dao 400"
 }
 
-Test-Case "20. Extracto e append-only, imposto pela base de dados" {
+Test-Case "23. Extracto e append-only, imposto pela base de dados" {
     $id = Invoke-Sql "select top 1 cast(id as nvarchar(50)) from finance.bank_movement where bank_account_id='$($script:contaId)'"
     if (-not $id) { throw "sem movimentos para testar" }
 
@@ -406,7 +449,7 @@ Test-Case "20. Extracto e append-only, imposto pela base de dados" {
     "UPDATE, DELETE e TRUNCATE recusados; o movimento continua la"
 }
 
-Test-Case "21. Saldo da conta bate com a soma dos movimentos" {
+Test-Case "24. Saldo da conta bate com a soma dos movimentos" {
     # A invariante que o extracto existe para tornar verificavel.
     $divergentes = Invoke-Sql @"
 select count(*) from finance.bank_account a
@@ -418,8 +461,8 @@ where a.balance <> isnull((
     "nenhuma conta diverge do proprio extracto"
 }
 
-Test-Case "22. Levantamento que nao e pagamento a fornecedor" {
-    # Conta propria, para nao mexer no saldo que o caso 27 vai verificar apos
+Test-Case "25. Levantamento que nao e pagamento a fornecedor" {
+    # Conta propria, para nao mexer no saldo que o caso 30 vai verificar apos
     # o reinicio da stack.
     $body = @{ name = "Secundaria $curto"; bank = "BFA"; currency = "AOA" } | ConvertTo-Json
     $c = Invoke-RestMethod "$base/finance/accounts" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
@@ -442,7 +485,7 @@ Test-Case "22. Levantamento que nao e pagamento a fornecedor" {
     "50000 - 3000 = 47000; sem origem de documento"
 }
 
-Test-Case "23. Levantar acima do saldo e recusado" {
+Test-Case "26. Levantar acima do saldo e recusado" {
     $body = @{ amount = 999999; description = "Impossivel" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/finance/accounts/$($script:contaSecundariaId)/withdrawals" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
@@ -452,7 +495,7 @@ Test-Case "23. Levantar acima do saldo e recusado" {
     "409, saldo intacto"
 }
 
-Test-Case "24. Fechar conta com saldo diferente de zero e recusado" {
+Test-Case "27. Fechar conta com saldo diferente de zero e recusado" {
     # Fechar uma conta com dinheiro dentro esconderia esse dinheiro atras de
     # uma conta que diz nao estar em uso.
     $body = @{ reason = "Tentativa de fecho." } | ConvertTo-Json
@@ -464,7 +507,7 @@ Test-Case "24. Fechar conta com saldo diferente de zero e recusado" {
     "409, conta continua aberta"
 }
 
-Test-Case "25. Esvaziar e fechar; fechada nao movimenta; reabrir devolve o uso" {
+Test-Case "28. Esvaziar e fechar; fechada nao movimenta; reabrir devolve o uso" {
     Invoke-RestMethod "$base/finance/accounts/$($script:contaSecundariaId)/withdrawals" -Method Post -ContentType "application/json" -Headers $managerHeaders `
         -Body (@{ amount = 47000; description = "Encerramento da conta" } | ConvertTo-Json) | Out-Null
 
@@ -493,7 +536,7 @@ Test-Case "25. Esvaziar e fechar; fechada nao movimenta; reabrir devolve o uso" 
     "fecho com razao na trilha; deposito recusado fechada; reabertura sem repor saldo"
 }
 
-Test-Case "26. Levantamento e fecho: 401 sem token, 404 em conta inexistente" {
+Test-Case "29. Levantamento e fecho: 401 sem token, 404 em conta inexistente" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/finance/accounts/$($script:contaSecundariaId)/withdrawals" -Method Post -ContentType "application/json" -Body (@{ amount = 1; description = "x" } | ConvertTo-Json) }
     if ($code -ne 401) { throw "sem token: esperado 401, obtido $code" }
 
@@ -504,7 +547,7 @@ Test-Case "26. Levantamento e fecho: 401 sem token, 404 em conta inexistente" {
     "401 sem token; 404 em conta que nao existe"
 }
 
-Test-Case "27. Dados sobrevivem ao reinicio da stack" {
+Test-Case "30. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)

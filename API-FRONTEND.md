@@ -185,7 +185,7 @@ catálogo devolve `501`.
 | `GET /finance/accounts/{accountId}/statement` | `finance.payables.read` | Consulta extracto | `from?`, `to?` | `200` extracto |
 | `GET /finance/purchase-invoices` | `finance.payables.read` | Lista facturas de compra | `dueBefore?` | `200` |
 | `GET /finance/purchase-invoices/{purchaseInvoiceId}` | `finance.payables.read` | Consulta factura de compra | Path `purchaseInvoiceId` | `200` factura |
-| `POST /finance/purchase-invoices` | `finance.payables.write` | Regista factura de fornecedor | `{ supplierInvoiceNumber, supplierName, supplierTaxId, issuedOn?, dueOn?, currency?, netTotal, taxTotal, description? }` | `201 { purchaseInvoiceId }` |
+| `POST /finance/purchase-invoices` | `finance.payables.write` | Regista factura de fornecedor | `{ supplierInvoiceNumber, supplierId?, supplierName, supplierTaxId, issuedOn?, dueOn?, currency?, netTotal, taxTotal, description? }` | `201 { purchaseInvoiceId }` |
 | `GET /finance/payment-requests` | `finance.payables.read` | Lista pedidos de pagamento | `purchaseInvoiceId?` | `200` |
 | `GET /finance/payment-requests/{paymentRequestId}` | `finance.payables.read` | Consulta pedido | Path `paymentRequestId` | `200` pedido |
 | `POST /finance/payment-requests` | `finance.payments.request` | Cria pedido sujeito a aprovação | `{ purchaseInvoiceId, amount, requestedByEmployeeId, requestedOn?, costCentreId?, notes? }` | `202 { paymentRequestId, approvalRequestId, estado }` |
@@ -194,6 +194,13 @@ catálogo devolve `501`.
 
 `202` significa `estado: "PendenteAprovacao"`. Executar sem aprovação,
 sem fundos ou violando segregação devolve `409` ou `403`, respectivamente.
+
+**`supplierId` em `purchase-invoices` é opcional.** Indicado, tem de existir
+em `procurement` — senão `400`. Omitido, tenta ligar-se sozinho pelo NIF; não
+encontrar não é erro, porque nem toda a despesa tem Fornecedor qualificado
+(uma factura de electricidade, por exemplo). `supplierName`/`supplierTaxId`
+continuam obrigatórios em ambos os casos — são o retrato congelado do
+documento, não substituídos pelo que `procurement` tiver guardado.
 
 **`withdrawals` não é o pagamento a fornecedor** — esse passa por
 `payment-requests/{id}/execution`, com a dupla barreira de BR-5. É para o

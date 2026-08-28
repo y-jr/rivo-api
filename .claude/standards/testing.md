@@ -111,7 +111,7 @@ caiu a 2026-08-27, na mesma tarde em que a suite tinha passado inteira._
 | API de módulo | Nenhum (as suites PowerShell tocam-lhe indirectamente) |
 | Arquitectura | **21 testes** (ADR-024, ADR-025) |
 
-As doze suites PowerShell (**261 casos**) continuam a valer como smoke
+As doze suites PowerShell (**264 casos**) continuam a valer como smoke
 end-to-end. Não substituem teste de domínio, nem o inverso.
 
 `verify-procurement` (55 casos) nasceu a 2026-08-27 por uma razão que as outras

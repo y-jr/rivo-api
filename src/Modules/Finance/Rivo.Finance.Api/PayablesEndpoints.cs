@@ -239,6 +239,7 @@ public static class PayablesEndpoints
 
         var result = await registerInvoice.ExecuteAsync(
             request.SupplierInvoiceNumber,
+            request.SupplierId,
             request.SupplierName,
             request.SupplierTaxId,
             request.IssuedOn ?? hoje,
@@ -444,8 +445,14 @@ public sealed record SetAccountStatusRequest(string Reason);
 /// O número que o **fornecedor** pôs no documento dele. O Rivo não numera
 /// facturas de compra.
 /// </param>
+/// <param name="SupplierId">
+/// Opcional. Quando quem regista já sabe o fornecedor de `procurement`, liga
+/// directamente — e um identificador que não existe é recusado. Sem ele,
+/// tenta-se ligar automaticamente pelo NIF; não encontrar não é erro.
+/// </param>
 public sealed record RegisterPurchaseInvoiceRequest(
     string SupplierInvoiceNumber,
+    Guid? SupplierId,
     string SupplierName,
     string SupplierTaxId,
     DateOnly? IssuedOn,

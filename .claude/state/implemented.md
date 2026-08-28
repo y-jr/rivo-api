@@ -337,7 +337,7 @@ pré-existente, encontrado ao construir isto.
 
 ## Verificação
 
-**Doze suites** PowerShell caixa-preta contra a stack em Docker, **261 casos**,
+**Doze suites** PowerShell caixa-preta contra a stack em Docker, **264 casos**,
 todas re-executáveis.
 
 > ⚠ **Estado da verificação a 2026-08-25, ao fechar a postagem automática.**
@@ -729,6 +729,37 @@ o original fica, e corrige-se por regularização, à mão. É a lacuna mais vis
 **K1**), adiantamentos, nota de débito, câmbio, e a reconciliação bancária
 propriamente dita.
 
+### Factura de compra ligada ao Fornecedor — 2026-08-28
+
+`RegisterPurchaseInvoice` passou a consumir `ISupplierDirectory`, publicado
+por `procurement` desde a Ordem de Compra existir e até agora sem consumidor.
+O domínio já aceitava `SupplierId` opcional — faltava só a via.
+
+- **Indicado directamente, tem de existir.** Quem regista já sabe o
+  fornecedor (escolhido numa lista) e passa o identificador; se não existir em
+  `procurement`, é recusado com `400` — quem chama afirmou uma ligação que não
+  é verdade, e ignorá-la em silêncio esconderia um erro do próprio cliente
+- **Sem identificador, tenta-se ligar pelo NIF.** É o caso comum: quem tem a
+  factura em papel não tem o identificador. Não encontrar não é erro — nem
+  toda a despesa passa por um Fornecedor qualificado (uma factura de
+  electricidade, por exemplo)
+- **`supplierName`/`supplierTaxId` continuam obrigatórios em ambos os casos, e
+  não são substituídos pelo que `procurement` tiver guardado.** O documento é
+  facto histórico (BR-18) — o retrato é o que veio no papel, a ligação é só
+  para saber a quem se deve, não para reescrever o que a factura diz
+- **Não é retroactivo.** As facturas já registadas continuam com
+  `SupplierId` nulo; a ligação só se aplica ao que se regista daqui para a
+  frente
+
+Direcção `finance → procurement` activada em
+`ProjectReferenceTests.DependenciasDeclaradas` — já estava pré-aprovada em
+`architecture/dependency-rules.md`, só não estava ligada. Sem ADR novo: a
+decisão arquitectural já tinha sido tomada, isto foi aplicá-la.
+
+4 testes de Application novos (132 no módulo), 3 casos novos em
+`verify-payables` (30, casos 5 a 7, a seguir ao que já cobria o número do
+fornecedor e o índice único).
+
 ## procurement
 
 _2026-08-27 — **os quatro agregados**. A cadeia pára no 3-way match._
@@ -798,9 +829,10 @@ enquanto `inventory` não existir, ninguém o consome.
 ⚠ **A devolução ao fornecedor não existe.** É outro facto — sai material que
 entrou, e do lado do dinheiro dá nota de crédito.
 
-⚠ **O 3-way match não existe.** Faltam-lhe as duas pontas juntas: a factura de
-compra é de `finance`, e ligá-la traz a direcção `finance → procurement`, que é
-decisão arquitectural.
+⚠ **O 3-way match não existe.** A ligação ao Fornecedor está feita
+(2026-08-28, ver `finance`) — falta comparar **quantidades e valores** entre
+Ordem, Recepção e a factura de compra, que é a comparação que dá nome à
+prática.
 
 ⚠ **A ordem não tem número próprio.** Escolher o formato — prefixo, reinício
 anual, se admite saltos — é decisão de negócio sem fonte neste repositório.
@@ -809,9 +841,8 @@ anual, se admite saltos — é decisão de negócio sem fonte neste repositório
 decisão de negócio, e inventá-lo seria abrir a alçada por um número escolhido
 aqui. É o ponto de configuração a preencher.
 
-⚠ **`finance` ainda não consome o Fornecedor.** A factura de compra continua a
-guardar nome e NIF em texto — e as já emitidas devem continuar assim, porque
-guardam o que vigorava à data.
+~~⚠ `finance` ainda não consome o Fornecedor.~~ **Fechado a 2026-08-28** — ver
+`finance`, "Factura de compra ligada ao Fornecedor".
 
 - **`verify-procurement`, 55 casos** — 2026-08-27. Décima segunda suite, e
   `verify-all` em **246/246**

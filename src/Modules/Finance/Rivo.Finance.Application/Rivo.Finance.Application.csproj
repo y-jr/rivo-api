@@ -14,6 +14,9 @@
     <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
     <ProjectReference Include="..\..\Fiscal\Rivo.Fiscal.Contracts\Rivo.Fiscal.Contracts.csproj" />
     <ProjectReference Include="..\..\Commercial\Rivo.Commercial.Contracts\Rivo.Commercial.Contracts.csproj" />
+    <!-- ISupplierDirectory: é por aqui que a factura de compra liga ao
+         Fornecedor, em vez de o guardar só como retrato em texto. -->
+    <ProjectReference Include="..\..\Procurement\Rivo.Procurement.Contracts\Rivo.Procurement.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

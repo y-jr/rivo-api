@@ -11,10 +11,12 @@ namespace Rivo.Finance.Domain;
 /// </para>
 ///
 /// <para>
-/// O fornecedor pertence a `procurement`, que não tem código. Até ter, guarda-se
-/// o retrato — nome e NIF — como se faz com o cliente na factura de venda, e o
-/// identificador fica nulo. Quando `procurement` existir, é o identificador que
-/// passa a apontar.
+/// O fornecedor pertence a `procurement`. Guarda-se sempre o retrato — nome e
+/// NIF — como se faz com o cliente na factura de venda, porque o documento é
+/// facto histórico e o retrato é o que vigorava à data (BR-18). O identificador
+/// acompanha quando o fornecedor está qualificado em `procurement`
+/// (`ISupplierDirectory`); fica nulo para despesas que nunca passam por lá —
+/// uma factura de electricidade não tem Fornecedor para qualificar.
 /// </para>
 /// </summary>
 public sealed class PurchaseInvoice
@@ -61,7 +63,7 @@ public sealed class PurchaseInvoice
     /// <summary>O número que o fornecedor pôs no documento dele.</summary>
     public string SupplierInvoiceNumber { get; private set; }
 
-    /// <summary>Nulo enquanto `procurement` não existir.</summary>
+    /// <summary>Nulo quando o fornecedor não está qualificado em `procurement`.</summary>
     public Guid? SupplierId { get; private set; }
 
     public string SupplierName { get; private set; }
