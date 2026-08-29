@@ -704,6 +704,7 @@ Test-Case "34. Emitir passa a lancar, na mesma transaccao" {
 
     $numero = $r.number
     $script:facturaPostada = $numero
+    $script:facturaPostadaId = $r.invoiceId
 
     $depois = Invoke-Sql "select count(*) from finance.journal_entry"
     if ([int]$depois -ne [int]$antes + 1) { throw "esperado 1 lancamento novo, obtidos $([int]$depois - [int]$antes)" }
@@ -915,7 +916,51 @@ Test-Case "43. Regras de postagem sao auditadas" {
     "definir e desactivar na trilha — decidem como tudo lanca"
 }
 
-Test-Case "44. A suite nao deixa politica de BR-8 activa atras de si" {
+Test-Case "44. Anular a factura estorna o lancamento -- nao o altera nem o elimina" {
+    # Continua o cenario dos casos 32-37: $script:facturaPostada/Id ja lancou
+    # contra a regra "Facturacao" ($cliente2/$proveito/$ivaLiq).
+    $arquivoOriginal = $script:facturaPostada.Replace(" ", "-").Replace("/", "-")
+    $originalId = Invoke-Sql "select id from finance.journal_entry where archival_number='$arquivoOriginal'"
+
+    $antes = Invoke-Sql "select count(*) from finance.journal_entry"
+
+    Invoke-RestMethod "$base/finance/sales-invoices/$($script:facturaPostadaId)/cancellation" -Method Post `
+        -Body (@{ reason = "Emitida por engano (estorno automatico)." } | ConvertTo-Json) `
+        -ContentType "application/json" -Headers $financeHeaders | Out-Null
+
+    $depois = Invoke-Sql "select count(*) from finance.journal_entry"
+    if ([int]$depois -ne [int]$antes + 1) { throw "esperado 1 lancamento novo (o estorno), obtidos $([int]$depois - [int]$antes)" }
+
+    # O original continua la, com as mesmas linhas -- BR-14. E a soma dos dois
+    # lancamentos que o cancela, nao a alteracao de um deles.
+    $original = Invoke-Sql "select is_voided from finance.journal_entry where id='$originalId'"
+    if ($original -ne "0") { throw "o lancamento original foi alterado: is_voided=$original" }
+
+    # A chave do estorno e deterministica: os ultimos 16 hexadecimais do Id do
+    # lancamento original, maiusculas (`DocumentPosting.KeyFor`).
+    $sufixo = $originalId.Replace("-", "").ToUpperInvariant().Substring(16, 16)
+    $arquivoEstorno = "EST-$sufixo"
+
+    $estorno = Invoke-Sql "select count(*) from finance.journal_entry where archival_number='$arquivoEstorno'"
+    if ($estorno -ne "1") { throw "estorno nao encontrado por '$arquivoEstorno'" }
+
+    # O lado troca em cada linha; a conta e o valor sao os mesmos -- e por
+    # isso os dois lancamentos, somados por conta, ficam a zero.
+    foreach ($conta in @($cliente2, $proveito, $ivaLiq)) {
+        $liquido = Invoke-Sql @"
+select isnull(sum(case when l.side = 'Debit' then l.amount else -l.amount end), 0)
+from finance.journal_entry_line l
+join finance.journal_entry e on e.id = l.journal_entry_id
+where l.account_code = '$conta'
+and e.archival_number in ('$arquivoOriginal', '$arquivoEstorno')
+"@
+        if ([decimal]$liquido -ne 0) { throw "conta $conta nao voltou a zero: $liquido" }
+    }
+
+    "factura anulada, estorno lancado ($arquivoEstorno), original intacto, saldo liquido zero"
+}
+
+Test-Case "45. A suite nao deixa politica de BR-8 activa atras de si" {
     # **Independencia entre suites.** A politica desta corrida e especifica de um
     # departamento novo, e cada corrida criaria mais uma: a tabela cresceria sem
     # limite e a guarda de `verify-payables` — que procura a politica generica —
@@ -955,7 +1000,7 @@ Test-Case "44. A suite nao deixa politica de BR-8 activa atras de si" {
     "a generica fica; a desta corrida sai"
 }
 
-Test-Case "45. Dados sobrevivem ao reinicio da stack" {
+Test-Case "46. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)

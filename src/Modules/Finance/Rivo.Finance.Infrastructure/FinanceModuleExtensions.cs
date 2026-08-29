@@ -84,6 +84,7 @@ public static class FinanceModuleExtensions
         services.AddScoped<ManageAccountingPeriods>();
         services.AddScoped<GetTrialBalance>();
         services.AddScoped<PostDocument>();
+        services.AddScoped<ReverseDocumentPosting>();
         services.AddScoped<DefinePostingRule>();
         services.AddScoped<ListPostingRules>();
         services.AddScoped<DeactivatePostingRule>();

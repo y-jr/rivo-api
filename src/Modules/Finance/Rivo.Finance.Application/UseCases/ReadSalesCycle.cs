@@ -205,8 +205,16 @@ public sealed class GetReceipt(ISalesInvoiceStore store)
     }
 }
 
-/// <summary>Anula uma nota de crédito — o crédito deixa de contar para o saldo.</summary>
-public sealed class CancelCreditNote(ISalesInvoiceStore store, IAuditTrail audit, TimeProvider clock)
+/// <summary>
+/// Anula uma nota de crédito — o crédito deixa de contar para o saldo.
+///
+/// <para>
+/// Estorna na mesma unidade de trabalho, mesma disciplina de
+/// <see cref="CancelSalesInvoice"/> — ver ali o comentário completo.
+/// </para>
+/// </summary>
+public sealed class CancelCreditNote(
+    ISalesInvoiceStore store, ReverseDocumentPosting reverse, IAuditTrail audit, TimeProvider clock)
 {
     public async Task<CancelInvoiceResult> ExecuteAsync(
         Guid creditNoteId,
@@ -221,13 +229,27 @@ public sealed class CancelCreditNote(ISalesInvoiceStore store, IAuditTrail audit
             return CancelInvoiceResult.NotFound();
         }
 
+        var agora = clock.GetUtcNow();
+
         try
         {
-            nota.Cancel(reason, clock.GetUtcNow());
+            nota.Cancel(reason, agora);
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException)
         {
             return CancelInvoiceResult.Rejected(error.Message);
+        }
+
+        var estorno = await reverse.ReverseAsync(
+            nota.Number.Formatted,
+            $"Estorno de {nota.Number.Formatted}",
+            DateOnly.FromDateTime(agora.UtcDateTime),
+            agora,
+            cancellationToken);
+
+        if (estorno.Outcome is DocumentPostingOutcome.PeriodClosed or DocumentPostingOutcome.Failed)
+        {
+            return CancelInvoiceResult.Rejected(estorno.Error!);
         }
 
         await store.SaveChangesAsync(cancellationToken);
@@ -249,8 +271,16 @@ public sealed class CancelCreditNote(ISalesInvoiceStore store, IAuditTrail audit
 /// <summary>
 /// Estorna um recebimento. A dívida volta a existir — é o que acontece quando um
 /// cheque volta.
+///
+/// <para>
+/// E estorna também na contabilidade, na mesma unidade de trabalho — mesma
+/// disciplina de <see cref="CancelSalesInvoice"/>. Duas coisas chamadas
+/// "estorno" aqui: a do documento (a dívida do cliente volta a existir) e a
+/// do lançamento (o inverso do que o recebimento tinha posto nos livros).
+/// </para>
 /// </summary>
-public sealed class CancelReceipt(ISalesInvoiceStore store, IAuditTrail audit, TimeProvider clock)
+public sealed class CancelReceipt(
+    ISalesInvoiceStore store, ReverseDocumentPosting reverse, IAuditTrail audit, TimeProvider clock)
 {
     public async Task<CancelInvoiceResult> ExecuteAsync(
         Guid receiptId,
@@ -265,13 +295,27 @@ public sealed class CancelReceipt(ISalesInvoiceStore store, IAuditTrail audit, T
             return CancelInvoiceResult.NotFound();
         }
 
+        var agora = clock.GetUtcNow();
+
         try
         {
-            recibo.Cancel(reason, clock.GetUtcNow());
+            recibo.Cancel(reason, agora);
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException)
         {
             return CancelInvoiceResult.Rejected(error.Message);
+        }
+
+        var estorno = await reverse.ReverseAsync(
+            recibo.Number.Formatted,
+            $"Estorno de {recibo.Number.Formatted}",
+            DateOnly.FromDateTime(agora.UtcDateTime),
+            agora,
+            cancellationToken);
+
+        if (estorno.Outcome is DocumentPostingOutcome.PeriodClosed or DocumentPostingOutcome.Failed)
+        {
+            return CancelInvoiceResult.Rejected(estorno.Error!);
         }
 
         await store.SaveChangesAsync(cancellationToken);

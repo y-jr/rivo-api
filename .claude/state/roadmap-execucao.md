@@ -32,7 +32,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 1 | Aterrar em produção — VPS | **Quase fechada** — publicado em 2026-08-23; 59 de 66 verificações passam. K16 (sem TLS) aberto |
 | 2 | `approval` — governança de decisões | **Critério de saída cumprido** em 2026-08-24 |
 | 3 | `fiscal` — o que não está bloqueado | **Reduzida a fatia mínima** em 2026-08-24 (ADR-036) |
-| 4 | `finance` — o núcleo | ✅ **Critério de saída cumprido** em 2026-08-25 — os cinco contextos internos, BR-1/3/5/8 impostas, e os documentos a lançar nos livros. Em dívida: o plano de contas (é do contabilista) e o estorno automático |
+| 4 | `finance` — o núcleo | ✅ **Critério de saída cumprido** em 2026-08-25 — os cinco contextos internos, BR-1/3/5/8 impostas, os documentos a lançar nos livros e (2026-08-29) a anular a estornar. Em dívida: o plano de contas, que é do contabilista |
 | 5 | `procurement` e `commercial` | `commercial` reduzido ao Cliente e feito; `procurement` por iniciar |
 | 6 | `payroll` | Por iniciar |
 | 7 | `projects`, `inventory`, `fleet` | Por iniciar |
@@ -301,7 +301,8 @@ revalidação, a correr em staging.
 > - **A contabilidade está de pé e vazia.** O plano de contas carrega-se e as
 >   regras de postagem definem-se — o Rivo fixa a estrutura do SAF-T e recusa-se
 >   a inventar o PGC angolano. **Precisa do contabilista, não de código.**
-> - **A anulação não estorna.** Anular um documento não gera lançamento inverso.
+> - ~~A anulação não estorna.~~ **Fechado a 2026-08-29** — anular gera o
+>   lançamento inverso, na mesma unidade de trabalho.
 > - **K1 continua aberto**, e com ele os activos fixos e a depreciação.
 > - **PGC, câmbio (BNA) e reconciliação bancária** continuam por fazer, os três
 >   à espera de decisões que não são de engenharia.

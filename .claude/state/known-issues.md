@@ -359,9 +359,11 @@ lacuna de verificação end-to-end é anterior a esta correcção e continua.
 
 ### K20 — Limpar uma política por rota, no fim de uma suite, falha de forma intermitente
 
-- **Módulo:** verificação end-to-end (`scripts/verify-ledger.ps1` caso 44,
-  `scripts/verify-procurement.ps1` caso 58, `scripts/verify-payroll.ps1` caso
-  15) — não se confirmou defeito na aplicação, em nenhuma das investigações.
+- **Módulo:** verificação end-to-end (`scripts/verify-ledger.ps1` caso 45 —
+  era o caso 44 até 2026-08-29, quando o estorno automático (ver abaixo)
+  acrescentou um caso novo antes deste; `scripts/verify-procurement.ps1` caso
+  58, `scripts/verify-payroll.ps1` caso 15) — não se confirmou defeito na
+  aplicação, em nenhuma das investigações.
 - **Impacto:** as duas suites terminam a desactivar, pela rota
   `POST /approval/policies/{id}/deactivation`, a política de
   `finance.payment_request` que a própria corrida criou — para que a próxima
@@ -433,7 +435,7 @@ lacuna de verificação end-to-end é anterior a esta correcção e continua.
   (`verify-payroll`, `verify-approval`, `verify-procurement` — `verify-ledger`
   não precisa, porque a sua política é sempre específica de um departamento
   novo por corrida e nunca colide). **Os casos dedicados de limpeza final
-  (caso 15 de `verify-payroll`, caso 58 de `verify-procurement`, caso 44 de
+  (caso 15 de `verify-payroll`, caso 58 de `verify-procurement`, caso 45 de
   `verify-ledger`) ficaram como estavam** — de propósito, continuam a
   expressar o K20 como a falha conhecida e não escondem o sintoma atrás de
   uma repetição. Confirmado ao vivo: `verify-payroll` caso 15 falhou (K20),

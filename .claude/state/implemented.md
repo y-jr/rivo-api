@@ -339,7 +339,7 @@ pré-existente, encontrado ao construir isto.
 
 ## Verificação
 
-**Dezassete suites** PowerShell caixa-preta contra a stack em Docker, **335
+**Dezassete suites** PowerShell caixa-preta contra a stack em Docker, **336
 casos**, todas re-executáveis.
 
 > ⚠ **Estado da verificação a 2026-08-25, ao fechar a postagem automática.**
@@ -449,6 +449,16 @@ casos**, todas re-executáveis.
 > contra o ambiente publicado — os 3 que faltam são o K20, agora em três
 > sítios (`verify-ledger`, `verify-procurement`, `verify-payroll`), não dois.
 > `verify-all.ps1` cresceu de doze para dezassete suites.
+>
+> **Estorno automático, mesmo dia.** `verify-ledger.ps1` ganhou o caso 44
+> (`ReverseDocumentPosting`), empurrando os dois casos finais para 45 e 46 —
+> o de limpeza (K20) e o de persistência. `known-issues.md` actualizado com o
+> renumerar. Corrida isolada, a seguir a `verify-payables.ps1` (de quem
+> depende a política genérica de `finance.payment_request`): **46 de 46**,
+> zero falhas — desta vez nem o caso 45 apanhou o K20. As dezassete suites
+> somam agora **336 casos** (era 335); numa corrida completa continuam a
+> esperar-se até 3 K20 conhecidos (ledger #45, procurement #58, payroll #15),
+> não uma garantia de zero.
 
 Eram seis suites e 66 casos em 2026-08-16. `verify-hr` cresceu 13 → 16 com as
 funcionalidades novas de `hr`; `verify-authorization` 8 → 9 ao distinguir os
@@ -475,7 +485,7 @@ três módulos do ADR-036 tinham deixado.
 | `verify-commercial` | 12 |
 | `verify-finance` | 29 |
 | `verify-payables` | 30 |
-| `verify-ledger` | 45 |
+| `verify-ledger` | 46 |
 | `verify-payroll` | 16 |
 | `verify-approval` | 10 |
 | `verify-procurement` | 58 |
@@ -483,7 +493,7 @@ três módulos do ADR-036 tinham deixado.
 | `verify-inventory` | 13 |
 | `verify-fleet` | 15 |
 
-**335 casos ao todo** — contagem directa de `Test-Case` em cada script, e não
+**336 casos ao todo** — contagem directa de `Test-Case` em cada script, e não
 soma acumulada de entradas anteriores desta tabela, que tinha ficado para trás
 em `verify-documents`, `verify-hr` e `verify-notifications`, e nunca chegara a
 incluir `verify-procurement`. As cinco últimas linhas nasceram a 2026-08-29.
@@ -792,12 +802,32 @@ pedido.
 semântica que a postagem obrigou. A linha regista um *fecho*, não dá licença;
 exigi-la faria a facturação parar no dia 1 de cada mês.
 
-⚠ **A anulação não estorna.** Anular um documento não gera lançamento inverso —
-o original fica, e corrige-se por regularização, à mão. É a lacuna mais visível.
+**Fora:** activos fixos e depreciação (bloqueados por **K1**), adiantamentos,
+nota de débito, câmbio, e a reconciliação bancária propriamente dita.
 
-**Fora:** estorno automático, activos fixos e depreciação (bloqueados por
-**K1**), adiantamentos, nota de débito, câmbio, e a reconciliação bancária
-propriamente dita.
+### Estorno automático — 2026-08-29
+
+Anular uma factura, uma nota de crédito ou um recibo passou a gerar o
+lançamento inverso, na mesma unidade de trabalho da anulação —
+`ReverseDocumentPosting` (`Rivo.Finance.Application/UseCases/PostDocument.cs`),
+registado em `modules/finance.md`. Detalhe completo lá; aqui só o essencial:
+
+- Inverte as linhas do lançamento **original** (mesma conta, mesmo valor,
+  lado trocado) — não as da regra de postagem actual, que pode ter mudado
+  entretanto.
+- Lança com a data de **hoje**, num período próprio, nunca no período do
+  documento original — funciona mesmo que esse período já tenha fechado.
+- O original fica intacto (BR-14); é a soma dos dois lançamentos que cancela
+  o efeito, não a alteração de um deles.
+- Sem lançamento original (documento emitido antes de haver plano de contas),
+  não há nada a estornar, e isso não bloqueia a anulação.
+- Se o estorno não se consegue lançar (período de hoje fechado, diário
+  desactivado), a anulação também não se grava — mesma disciplina que
+  `PostDocument` já impunha à emissão.
+
+8 testes de Application novos (`ReverseDocumentPostingTests.cs`), mais um caso
+de verificação end-to-end (`verify-ledger.ps1` caso 44 — os dois que fecham a
+suite passaram a 45 e 46, ver known-issues.md).
 
 ### Factura de compra ligada ao Fornecedor — 2026-08-28
 

@@ -713,11 +713,28 @@ aceita.
 os documentos futuros lançam. Fica com quem responde pelos livros, não com quem
 lança um a um.
 
+#### Anular estorna (2026-08-29)
+
+Anular uma factura, uma nota de crédito ou um recibo gera o lançamento
+inverso — `ReverseDocumentPosting`, na mesma unidade de trabalho que a
+anulação: se o estorno não se consegue lançar (período fechado, diário
+desactivado), a anulação também não se grava, mesma disciplina de
+`PostDocument` na emissão.
+
+**Inverte as linhas do lançamento original, não as da regra actual** — a
+regra pode ter mudado entretanto, e reconstruir a partir dela desequilibraria
+exactamente o que se quer corrigir. **Lançado com a data de hoje, num período
+próprio** — nunca no período do documento original, que pode já estar
+fechado; é a distinção que já existia entre `JournalEntry.Void` (só serve num
+período aberto) e um estorno (outro lançamento, funciona sempre). O original
+fica intacto, sem `IsVoided` — o que cancela o efeito é a soma dos dois
+lançamentos, não a alteração de um deles (BR-14).
+
+Sem lançamento original — documento emitido antes de haver plano de contas,
+por exemplo — não há nada a estornar, e isso não bloqueia a anulação.
+
 #### O que fica por fazer
 
-- **A anulação não estorna.** Anular uma factura, uma nota de crédito ou um
-  recibo não gera lançamento inverso — o lançamento original fica. Corrigir
-  faz-se à mão, por regularização.
 - **`SourceID` é `rivo-auto`**, não a pessoa. É informação (não houve mão
   humana na tradução) e também necessidade: o campo admite 30 caracteres e um
   `Guid` ocupa 36.

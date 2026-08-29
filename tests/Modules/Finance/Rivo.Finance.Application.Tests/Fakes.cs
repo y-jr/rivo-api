@@ -614,6 +614,10 @@ internal sealed class FakeLedgerStore : ILedgerStore
     public Task<JournalEntry?> FindEntryForUpdateAsync(Guid entryId, CancellationToken cancellationToken) =>
         FindEntryAsync(entryId, cancellationToken);
 
+    public Task<JournalEntry?> FindEntryByArchivalNumberAsync(
+        string archivalNumber, CancellationToken cancellationToken) =>
+        Task.FromResult(_entries.FirstOrDefault(e => e.ArchivalNumber == archivalNumber));
+
     public Task<IReadOnlyList<JournalEntry>> ListEntriesAsync(
         Guid? journalId, int? fiscalYear, int? period, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<JournalEntry>>([.. _entries]);

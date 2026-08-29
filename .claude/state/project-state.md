@@ -48,7 +48,7 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `approval` | Completo para o âmbito fixado. Políticas (criar e desactivar), pedidos, decisões, BR-2/4/6/17, worker de reconciliação, cancelamento restrito a quem submeteu (K18) |
 | `fiscal` | ⚠ **Fatia mínima** (ADR-036). Taxa com vigência e determinação. Não é o motor fiscal |
 | `commercial` | ⚠ **Reduzido ao Cliente** (ADR-036). Sem funil comercial |
-| `finance` | **Os cinco contextos existem, e os documentos lançam.** Venda (factura, nota de crédito, recibo, saldo), Contas a Pagar, Tesouraria com extracto append-only, Contabilidade & Fecho com postagem automática, Planeamento. **BR-1, BR-3, BR-5 e BR-8 impostas.** ⚠ Contabilidade vazia até alguém carregar o plano; a anulação não estorna; activos fixos bloqueados por K1 |
+| `finance` | **Os cinco contextos existem, e os documentos lançam.** Venda (factura, nota de crédito, recibo, saldo), Contas a Pagar, Tesouraria com extracto append-only, Contabilidade & Fecho com postagem automática, Planeamento. **BR-1, BR-3, BR-5 e BR-8 impostas.** Anular uma factura, nota de crédito ou recibo estorna o lançamento (2026-08-29). ⚠ Contabilidade vazia até alguém carregar o plano; activos fixos bloqueados por K1 |
 | `procurement` | **Os quatro agregados, e o 3-way match fecha.** Fornecedor com IBAN verificado (ISO 13616) e publicado a `finance`; requisição com linhas e decisão de `approval`; Ordem de Compra, que só nasce de requisição aprovada e não deixa encomendar acima do aprovado; Recepção parcial, acumulada por linha e nunca acima do encomendado. A factura liga-se à Ordem (`PurchaseOrderId`, opcional) e `GET .../match` mostra encomendado, recebido e facturado lado a lado — recusa ligar a uma ordem de outro fornecedor, mas **não bloqueia** divergência de valor: fica visível, não impede o registo |
 | `payroll` | ⚠⚠ **Esqueleto** (2026-08-29). Folha e itens, CRUD, ligado a `approval` (submete pelo bruto, aprova/recusa aplicado deste lado). **Sem cálculo de IRT/INSS** — os campos existem, ficam sempre nulos; os escalões dependem de `fiscal`, que não tem tabela angolana carregada, e `CLAUDE.md` proíbe implementar a partir do levantamento não verificado |
 | `projects`, `inventory`, `fleet` | ⚠⚠ **Esqueletos** (2026-08-29). CRUD simples — Projecto; Item com SKU único; Viatura com matrícula única. Sem nenhuma das regras que `modules/*.md` descreve |
@@ -91,8 +91,8 @@ superfície inteira é legível por quem estiver a ouvir.
 | Código | 14 módulos, 70 projectos em `src/`, 287 ficheiros `.cs` |
 | Superfície HTTP | 169 endpoints em 14 grupos de rota, mais `/health` |
 | ADRs | 38, aceites |
-| Testes | **706** em 15 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). **Zero** nos quatro módulos esqueleto (`payroll`, `projects`, `inventory`, `fleet`) — nenhum projecto de teste existe para eles ainda |
-| Verificação end-to-end | **17 suites** PowerShell, **335 casos** — as 4 dos esqueletos e `verify-approval` (cancelamento, K18) escritas e corridas a 2026-08-29. Última corrida de cada, isolada: `verify-projects` 14/14, `verify-inventory` 13/13, `verify-fleet` 15/15, `verify-approval` 10/10, `verify-payroll` 15/16. O único caso que falha em cada corrida (2 antes, 3 agora) é a mesma falha intermitente na limpeza final de uma política, sem causa de código confirmada em quatro investigações — **K20** em [known-issues.md](known-issues.md) |
+| Testes | **714** em 15 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). +8 a 2026-08-29 (`ReverseDocumentPostingTests`, estorno automático). **Zero** nos quatro módulos esqueleto (`payroll`, `projects`, `inventory`, `fleet`) — nenhum projecto de teste existe para eles ainda |
+| Verificação end-to-end | **17 suites** PowerShell, **336 casos** — as 4 dos esqueletos e `verify-approval` (cancelamento, K18) escritas a 2026-08-29; `verify-ledger` ganhou o caso do estorno automático no mesmo dia. Última corrida de cada, isolada: `verify-projects` 14/14, `verify-inventory` 13/13, `verify-fleet` 15/15, `verify-approval` 10/10, `verify-ledger` 46/46, `verify-payroll` 15/16. O único caso que costuma falhar em cada corrida é a mesma falha intermitente na limpeza final de uma política, sem causa de código confirmada em quatro investigações — **K20** em [known-issues.md](known-issues.md) |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
@@ -184,9 +184,10 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    falta para a contabilidade deixar de estar vazia — e **precisa do
    contabilista, não de código**. Enquanto não houver, todo o resto da
    Contabilidade está de pé e sem uso.
-2. **Estorno automático.** Anular uma factura, uma nota de crédito ou um recibo
-   **não gera lançamento inverso** — o original fica e corrige-se à mão. É a
-   lacuna mais visível da postagem.
+2. ~~Estorno automático.~~ **Fechado a 2026-08-29.** Anular uma factura, uma
+   nota de crédito ou um recibo gera o lançamento inverso na mesma unidade de
+   trabalho (`ReverseDocumentPosting`) — o original fica intacto (BR-14), e é
+   a soma dos dois que cancela o efeito. Detalhe em `modules/finance.md`.
 3. **Domínio e TLS** — fecha o K16 **e o K17** (com a documentação da API
    aberta, a superfície viaja em claro), e é pré-requisito de qualquer uso
    real.

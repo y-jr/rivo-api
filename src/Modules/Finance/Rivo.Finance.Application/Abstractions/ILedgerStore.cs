@@ -58,6 +58,16 @@ public interface ILedgerStore
 
     Task<JournalEntry?> FindEntryForUpdateAsync(Guid entryId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// O lançamento que um documento produziu, pelo número de arquivo — a
+    /// mesma chave que <see cref="EntryExistsAsync"/> usa para a idempotência
+    /// da postagem (`PostDocument`). É como o estorno automático encontra o
+    /// que tem de inverter: o número do documento é único por construção
+    /// (série), e é ele que vira <c>ArchivalNumber</c> na postagem.
+    /// </summary>
+    Task<JournalEntry?> FindEntryByArchivalNumberAsync(
+        string archivalNumber, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<JournalEntry>> ListEntriesAsync(
         Guid? journalId,
         int? fiscalYear,

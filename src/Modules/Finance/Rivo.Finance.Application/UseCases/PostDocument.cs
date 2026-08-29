@@ -200,6 +200,150 @@ public sealed class PostDocument(ILedgerStore store)
 }
 
 /// <summary>
+/// Estorna a postagem de um documento — o lançamento inverso do original, e
+/// não a sua eliminação (BR-14) nem a sua anulação (<c>JournalEntry.Void</c>,
+/// que só serve num período aberto).
+///
+/// <para>
+/// <strong>Inverte as linhas do lançamento original, não as da regra
+/// actual.</strong> A regra pode ter mudado desde que o documento foi
+/// emitido — outra conta, outro diário — e reconstruir o estorno a partir
+/// dela desequilibraria exactamente o que se quer corrigir: um estorno
+/// existe para anular o que foi lançado, não o que a configuração de hoje
+/// lançaria.
+/// </para>
+///
+/// <para>
+/// <strong>Lançado com a data de hoje, num período próprio — nunca no
+/// período do original.</strong> É a distinção que a `JournalEntry.Void`
+/// já documentava: anular muda um balancete já fechado sem deixar rasto no
+/// período onde aconteceu; estornar é outro lançamento, visível no período
+/// em que a anulação de facto ocorreu, e por isso funciona mesmo quando o
+/// período original já fechou.
+/// </para>
+///
+/// <para>
+/// <strong>Sem lançamento original, não há nada a estornar — e isso não é
+/// erro.</strong> Um documento emitido antes de haver plano de contas, ou
+/// sem regra activa nesse momento, nunca lançou. Bloquear a anulação por
+/// causa disso obrigaria a contabilidade retroactivamente, o que o resto
+/// deste módulo recusa de propósito (ver `PostDocument`).
+/// </para>
+/// </summary>
+public sealed class ReverseDocumentPosting(ILedgerStore store)
+{
+    /// <param name="documentNumber">
+    /// O número do documento tal como o documento o conhece (ex.:
+    /// <c>"FT S001/42"</c>) — <strong>não</strong> o número de arquivo.
+    /// Normaliza-se aqui pela mesma regra de <see cref="PostDocument.TryArchivalNumber"/>,
+    /// porque foi essa a chave sob a qual o lançamento original ficou gravado.
+    /// Passar o número já normalizado falharia a encontrar o original em
+    /// qualquer documento cujo número tenha espaço ou barra.
+    /// </param>
+    public async Task<DocumentPostingResult> ReverseAsync(
+        string documentNumber,
+        string description,
+        DateOnly date,
+        DateTimeOffset at,
+        CancellationToken cancellationToken)
+    {
+        if (!PostDocument.TryArchivalNumber(documentNumber, out var archivalNumber, out _))
+        {
+            // Um documento cujo próprio número não caiba na chave de arquivo
+            // nunca teria sido postado (PostDocument recusa-o na emissão) —
+            // não há original para encontrar, e isso não é erro aqui.
+            return DocumentPostingResult.NoRule();
+        }
+
+        var original = await store.FindEntryByArchivalNumberAsync(archivalNumber, cancellationToken);
+
+        if (original is null || original.IsVoided)
+        {
+            return DocumentPostingResult.NoRule();
+        }
+
+        var diario = await store.FindJournalAsync(original.JournalId, cancellationToken);
+
+        if (diario is null || !diario.IsActive)
+        {
+            return DocumentPostingResult.Failed(
+                $"O diário do lançamento original ({original.JournalCode}) não existe ou " +
+                "está desactivado, e o estorno lança nele.");
+        }
+
+        var periodo = date.Month;
+
+        var contabilistico = await store.FindPeriodAsync(date.Year, periodo, cancellationToken);
+
+        if (contabilistico is not null && !contabilistico.AcceptsPostings)
+        {
+            return DocumentPostingResult.PeriodClosed(
+                $"O período {date.Year}/{periodo:00} está fechado, e é nele que o estorno " +
+                "de hoje lançaria.");
+        }
+
+        if (contabilistico is null)
+        {
+            await store.AddPeriodAsync(AccountingPeriod.Open(date.Year, periodo), cancellationToken);
+        }
+
+        // O lado troca; a conta, o valor e o centro de custo são exactamente
+        // os do original — é isso que faz um estorno, e não uma postagem nova.
+        var linhas = original.Lines
+            .OrderBy(l => l.RecordNumber)
+            .Select(l => new NewJournalLine(
+                l.AccountId,
+                l.AccountCode,
+                l.Side is EntrySide.Debit ? EntrySide.Credit : EntrySide.Debit,
+                l.Amount,
+                l.Description,
+                l.CostCentreId,
+                l.SourceDocumentId))
+            .ToList();
+
+        // Chave própria, e não a do original: o TransactionID tem de ser
+        // único, e o estorno é outro documento (comentário da classe). Os
+        // últimos 16 hexadecimais do lançamento original, e não do documento
+        // de origem — é o lançamento que se está a inverter, e dois
+        // documentos diferentes nunca produzem lançamentos com o mesmo Id.
+        var arquivoEstorno = DocumentPosting.KeyFor("EST", original.Id);
+
+        JournalEntry lancamento;
+
+        try
+        {
+            lancamento = JournalEntry.Post(
+                diario,
+                arquivoEstorno,
+                date,
+                periodo,
+                description,
+                TransactionType.N,
+                PostingSources.Automatic,
+                linhas,
+                at);
+        }
+        catch (UnbalancedEntryException error)
+        {
+            // Não devia acontecer: trocar o lado de todas as linhas preserva
+            // a igualdade simetricamente. Se chegar aqui, é o original que já
+            // estava desequilibrado — e vale mais dizê-lo do que estornar
+            // torto.
+            return DocumentPostingResult.Failed(
+                $"O estorno do lançamento {original.TransactionId} não equilibra: {error.Message}");
+        }
+        catch (Exception error) when (error is ArgumentException or ArgumentOutOfRangeException or InvalidOperationException)
+        {
+            return DocumentPostingResult.Failed(error.Message);
+        }
+
+        await store.AddEntryAsync(lancamento, cancellationToken);
+
+        return DocumentPostingResult.Posted(lancamento.Id, lancamento.TransactionId);
+    }
+}
+
+/// <summary>
 /// Quem consta como autor de um lançamento automático.
 /// </summary>
 public static class PostingSources

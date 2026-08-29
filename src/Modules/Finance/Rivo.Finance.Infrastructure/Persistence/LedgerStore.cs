@@ -101,6 +101,12 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
         await context.JournalEntries
             .FirstOrDefaultAsync(e => e.Id == entryId, cancellationToken);
 
+    public async Task<JournalEntry?> FindEntryByArchivalNumberAsync(
+        string archivalNumber, CancellationToken cancellationToken) =>
+        await context.JournalEntries
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.ArchivalNumber == archivalNumber, cancellationToken);
+
     public async Task<IReadOnlyList<JournalEntry>> ListEntriesAsync(
         Guid? journalId,
         int? fiscalYear,

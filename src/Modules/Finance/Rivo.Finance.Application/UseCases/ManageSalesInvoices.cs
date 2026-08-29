@@ -123,8 +123,19 @@ public sealed record SalesInvoiceLineView(
 /// <summary>
 /// Anula uma factura emitida. É a única alteração possível a um documento
 /// fiscal — não há eliminação (BR-14).
+///
+/// <para>
+/// <strong>Estorna na mesma unidade de trabalho.</strong> Uma factura que
+/// lançou ao ser emitida e não lança o inverso ao ser anulada deixaria as
+/// contas a mentir sobre uma dívida que já não existe — o original fica e
+/// corrige-se à mão era exactamente a lacuna que isto fecha. Sem
+/// lançamento original — emitida antes de haver plano de contas, por
+/// exemplo — não há nada a estornar, e isso não bloqueia a anulação
+/// (<see cref="ReverseDocumentPosting"/>).
+/// </para>
 /// </summary>
-public sealed class CancelSalesInvoice(ISalesInvoiceStore store, IAuditTrail audit, TimeProvider clock)
+public sealed class CancelSalesInvoice(
+    ISalesInvoiceStore store, ReverseDocumentPosting reverse, IAuditTrail audit, TimeProvider clock)
 {
     public async Task<CancelInvoiceResult> ExecuteAsync(
         Guid invoiceId,
@@ -139,13 +150,30 @@ public sealed class CancelSalesInvoice(ISalesInvoiceStore store, IAuditTrail aud
             return CancelInvoiceResult.NotFound();
         }
 
+        var agora = clock.GetUtcNow();
+
         try
         {
-            factura.Cancel(reason, clock.GetUtcNow());
+            factura.Cancel(reason, agora);
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException)
         {
             return CancelInvoiceResult.Rejected(error.Message);
+        }
+
+        var estorno = await reverse.ReverseAsync(
+            factura.Number.Formatted,
+            $"Estorno de {factura.Number.Formatted}",
+            DateOnly.FromDateTime(agora.UtcDateTime),
+            agora,
+            cancellationToken);
+
+        // Mesma disciplina da emissão (`IssueSalesInvoice`): se o estorno não
+        // se consegue lançar, a anulação não se grava — um documento anulado
+        // sem o inverso lançado seria o mesmo buraco nos livros, ao contrário.
+        if (estorno.Outcome is DocumentPostingOutcome.PeriodClosed or DocumentPostingOutcome.Failed)
+        {
+            return CancelInvoiceResult.Rejected(estorno.Error!);
         }
 
         await store.SaveChangesAsync(cancellationToken);
