@@ -37,6 +37,14 @@
     <ProjectReference Include="..\Modules\Documents\Rivo.Documents.Infrastructure\Rivo.Documents.Infrastructure.csproj" />
     <ProjectReference Include="..\Modules\Notifications\Rivo.Notifications.Api\Rivo.Notifications.Api.csproj" />
     <ProjectReference Include="..\Modules\Notifications\Rivo.Notifications.Infrastructure\Rivo.Notifications.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Payroll\Rivo.Payroll.Api\Rivo.Payroll.Api.csproj" />
+    <ProjectReference Include="..\Modules\Payroll\Rivo.Payroll.Infrastructure\Rivo.Payroll.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Projects\Rivo.Projects.Api\Rivo.Projects.Api.csproj" />
+    <ProjectReference Include="..\Modules\Projects\Rivo.Projects.Infrastructure\Rivo.Projects.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Inventory\Rivo.Inventory.Api\Rivo.Inventory.Api.csproj" />
+    <ProjectReference Include="..\Modules\Inventory\Rivo.Inventory.Infrastructure\Rivo.Inventory.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Fleet\Rivo.Fleet.Api\Rivo.Fleet.Api.csproj" />
+    <ProjectReference Include="..\Modules\Fleet\Rivo.Fleet.Infrastructure\Rivo.Fleet.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

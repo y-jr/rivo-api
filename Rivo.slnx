@@ -72,6 +72,34 @@
     <Project Path="src/Modules/Notifications/Rivo.Notifications.Domain/Rivo.Notifications.Domain.csproj" />
     <Project Path="src/Modules/Notifications/Rivo.Notifications.Infrastructure/Rivo.Notifications.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Payroll/">
+    <Project Path="src/Modules/Payroll/Rivo.Payroll.Api/Rivo.Payroll.Api.csproj" />
+    <Project Path="src/Modules/Payroll/Rivo.Payroll.Application/Rivo.Payroll.Application.csproj" />
+    <Project Path="src/Modules/Payroll/Rivo.Payroll.Contracts/Rivo.Payroll.Contracts.csproj" />
+    <Project Path="src/Modules/Payroll/Rivo.Payroll.Domain/Rivo.Payroll.Domain.csproj" />
+    <Project Path="src/Modules/Payroll/Rivo.Payroll.Infrastructure/Rivo.Payroll.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Projects/">
+    <Project Path="src/Modules/Projects/Rivo.Projects.Api/Rivo.Projects.Api.csproj" />
+    <Project Path="src/Modules/Projects/Rivo.Projects.Application/Rivo.Projects.Application.csproj" />
+    <Project Path="src/Modules/Projects/Rivo.Projects.Contracts/Rivo.Projects.Contracts.csproj" />
+    <Project Path="src/Modules/Projects/Rivo.Projects.Domain/Rivo.Projects.Domain.csproj" />
+    <Project Path="src/Modules/Projects/Rivo.Projects.Infrastructure/Rivo.Projects.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Inventory/">
+    <Project Path="src/Modules/Inventory/Rivo.Inventory.Api/Rivo.Inventory.Api.csproj" />
+    <Project Path="src/Modules/Inventory/Rivo.Inventory.Application/Rivo.Inventory.Application.csproj" />
+    <Project Path="src/Modules/Inventory/Rivo.Inventory.Contracts/Rivo.Inventory.Contracts.csproj" />
+    <Project Path="src/Modules/Inventory/Rivo.Inventory.Domain/Rivo.Inventory.Domain.csproj" />
+    <Project Path="src/Modules/Inventory/Rivo.Inventory.Infrastructure/Rivo.Inventory.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Fleet/">
+    <Project Path="src/Modules/Fleet/Rivo.Fleet.Api/Rivo.Fleet.Api.csproj" />
+    <Project Path="src/Modules/Fleet/Rivo.Fleet.Application/Rivo.Fleet.Application.csproj" />
+    <Project Path="src/Modules/Fleet/Rivo.Fleet.Contracts/Rivo.Fleet.Contracts.csproj" />
+    <Project Path="src/Modules/Fleet/Rivo.Fleet.Domain/Rivo.Fleet.Domain.csproj" />
+    <Project Path="src/Modules/Fleet/Rivo.Fleet.Infrastructure/Rivo.Fleet.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rivo.Api.Tests/Rivo.Api.Tests.csproj" />
     <Project Path="tests/Rivo.Architecture.Tests/Rivo.Architecture.Tests.csproj" />

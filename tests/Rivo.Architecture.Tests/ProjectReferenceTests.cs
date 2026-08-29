@@ -93,10 +93,21 @@ public class ProjectReferenceTests
 
         ["Documents"] = ["Audit"],
         ["Hr"] = ["Audit", "Documents"],
+
+        // Esqueletos (ver `modules/payroll.md`, `projects.md`, `inventory.md`,
+        // `fleet.md`) — 2026-08-29. Só o catálogo de permissões publicado e
+        // `audit`, como qualquer módulo novo. Sem regra de negócio ainda, e
+        // sem as dependências que os `.md` listam a mais: essas chegam com as
+        // funcionalidades que as justificam.
+        ["Payroll"] = ["Audit"],
+        ["Projects"] = ["Audit"],
+        ["Inventory"] = ["Audit"],
+        ["Fleet"] = ["Audit"],
+
         // `identity` compõe o catálogo de permissões a partir do que cada
         // módulo declara — cada um diz que permissões existem, `identity`
         // decide que perfis as recebem (ADR-005).
-        ["Identity"] = ["Audit", "Hr", "Documents", "Notifications", "Approval", "Fiscal", "Commercial", "Finance", "Procurement"],
+        ["Identity"] = ["Audit", "Hr", "Documents", "Notifications", "Approval", "Fiscal", "Commercial", "Finance", "Procurement", "Payroll", "Projects", "Inventory", "Fleet"],
 
         // `approval` resolve aprovadores por Cargo, que é de `hr` (ADR-034).
         //

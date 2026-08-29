@@ -11,6 +11,10 @@
     <ProjectReference Include="..\..\Procurement\Rivo.Procurement.Contracts\Rivo.Procurement.Contracts.csproj" />
     <ProjectReference Include="..\..\Documents\Rivo.Documents.Contracts\Rivo.Documents.Contracts.csproj" />
     <ProjectReference Include="..\..\Notifications\Rivo.Notifications.Contracts\Rivo.Notifications.Contracts.csproj" />
+    <ProjectReference Include="..\..\Payroll\Rivo.Payroll.Contracts\Rivo.Payroll.Contracts.csproj" />
+    <ProjectReference Include="..\..\Projects\Rivo.Projects.Contracts\Rivo.Projects.Contracts.csproj" />
+    <ProjectReference Include="..\..\Inventory\Rivo.Inventory.Contracts\Rivo.Inventory.Contracts.csproj" />
+    <ProjectReference Include="..\..\Fleet\Rivo.Fleet.Contracts\Rivo.Fleet.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

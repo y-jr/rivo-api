@@ -211,8 +211,15 @@ public static class ApprovalProcessTypes
     /// </summary>
     public const string PurchaseRequisition = "procurement.purchase_requisition";
 
+    /// <summary>
+    /// Aprovação da Folha de Pagamento (`payroll`, esqueleto — ver
+    /// `modules/payroll.md`). O valor é o total bruto do período; sem cálculo
+    /// de IRT/INSS ainda, é o único número que o módulo tem para oferecer.
+    /// </summary>
+    public const string PayrollRun = "payroll.payroll_run";
+
     public static readonly IReadOnlyList<string> All =
-        [PositionAssignment, LeaveRequest, PaymentRequest, PurchaseRequisition];
+        [PositionAssignment, LeaveRequest, PaymentRequest, PurchaseRequisition, PayrollRun];
 }
 
 /// <summary>Catálogo de permissões de `approval`, declarado pelo próprio módulo.</summary>

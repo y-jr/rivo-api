@@ -28,6 +28,15 @@ using Rivo.Notifications.Api;
 using Rivo.Notifications.Infrastructure;
 using Rivo.Identity.Infrastructure;
 using Rivo.Identity.Infrastructure.Persistence;
+using Rivo.Payroll.Api;
+using Rivo.Payroll.Application.Abstractions;
+using Rivo.Payroll.Infrastructure;
+using Rivo.Projects.Api;
+using Rivo.Projects.Infrastructure;
+using Rivo.Inventory.Api;
+using Rivo.Inventory.Infrastructure;
+using Rivo.Fleet.Api;
+using Rivo.Fleet.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -65,6 +74,10 @@ builder.Services.AddProcurementModule(builder.Configuration);
 builder.Services.AddFinanceModule(builder.Configuration);
 builder.Services.AddHrModule(builder.Configuration);
 builder.Services.AddApprovalModule(builder.Configuration);
+builder.Services.AddPayrollModule(builder.Configuration);
+builder.Services.AddProjectsModule(builder.Configuration);
+builder.Services.AddInventoryModule(builder.Configuration);
+builder.Services.AddFleetModule(builder.Configuration);
 builder.Services.AddIdentityModule(builder.Configuration);
 
 // Apresenta `hr` a `approval`, sem que nenhum dos dois conheça o outro.
@@ -86,7 +99,11 @@ builder.Services.AddScoped<IPaymentApproval, FinancePaymentApproval>();
 // Ver Composition/ProcurementApprovalSubmission.
 builder.Services.AddScoped<IProcurementApprovalSubmission, ProcurementApprovalSubmission>();
 
-var app = builder.Build(); 
+// E `payroll`, mesmo desenho — ver Composition/PayrollApprovalSubmission.
+// Esqueleto: sem cálculo de IRT/INSS, a folha submete-se pelo total bruto.
+builder.Services.AddScoped<IPayrollApprovalSubmission, PayrollApprovalSubmission>();
+
+var app = builder.Build();
 
 // Documentação e interface da API, por interruptor explícito — ADR-038.
 //
@@ -189,6 +206,10 @@ if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
             await app.Services.MigrateFinanceModuleAsync();
             await app.Services.MigrateHrModuleAsync();
             await app.Services.MigrateApprovalModuleAsync();
+            await app.Services.MigratePayrollModuleAsync();
+            await app.Services.MigrateProjectsModuleAsync();
+            await app.Services.MigrateInventoryModuleAsync();
+            await app.Services.MigrateFleetModuleAsync();
             await app.Services.MigrateIdentityModuleAsync();
         });
 }
@@ -275,6 +296,10 @@ app.MapPayables();
 app.MapLedger();
 app.MapHrModule();
 app.MapApprovalModule();
+app.MapPayrollModule();
+app.MapProjectsModule();
+app.MapInventoryModule();
+app.MapFleetModule();
 app.MapNotificationsModule();
 
 // Verifica que a aplicação está viva e que alcança a base de dados.

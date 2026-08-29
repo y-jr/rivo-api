@@ -6,6 +6,10 @@ using Rivo.Finance.Contracts;
 using Rivo.Fiscal.Contracts;
 using Rivo.Hr.Contracts;
 using Rivo.Procurement.Contracts;
+using Rivo.Payroll.Contracts;
+using Rivo.Projects.Contracts;
+using Rivo.Inventory.Contracts;
+using Rivo.Fleet.Contracts;
 
 namespace Rivo.Identity.Application.Authorization;
 
@@ -52,7 +56,11 @@ public static class AccessProfiles
                 .. FiscalPermissions.All,
                 .. FinancePermissions.All,
                 .. CommercialPermissions.All,
-                .. ProcurementPermissions.All],
+                .. ProcurementPermissions.All,
+                .. PayrollPermissions.All,
+                .. ProjectsPermissions.All,
+                .. InventoryPermissions.All,
+                .. FleetPermissions.All],
 
             // `Manager` decide sobre pedidos de aprovação — incluindo pedidos de
             // pagamento — e regista facturas de compra e pede que sejam pagas.
@@ -117,7 +125,14 @@ public static class AccessProfiles
             // mas não decide quais existem nem quais conferem autoridade de
             // aprovação. Essa separação é o que fecha a escalada de
             // privilégios de ADR-015.
-            [HumanResources] = [.. HrPermissions.ForHumanResources, .. DocumentPermissions.All],
+            //
+            // `payroll` (esqueleto, `modules/payroll.md`) fica com RH: é onde
+            // a folha nasce hoje, por não haver ainda um perfil próprio de
+            // compensação.
+            [HumanResources] = [
+                .. HrPermissions.ForHumanResources,
+                .. DocumentPermissions.All,
+                .. PayrollPermissions.All],
 
             // `Sales` deixa de estar vazio: clientes e emissão de facturas
             // (ADR-036).
@@ -141,12 +156,23 @@ public static class AccessProfiles
             // **Recebe e não encomenda**, e é a segregação que dá valor ao
             // 3-way match: se quem encomenda fosse quem regista a chegada, uma
             // entrega a menos podia ser dada como completa sem mais ninguém ver.
+            //
+            // `inventory` e `fleet` (esqueletos, sem regra de negócio ainda)
+            // ficam com `AssetManager` pela mesma razão de fundo: são as
+            // duas outras existências que a organização gere — stock e
+            // viaturas.
             [AssetManager] = [
                 ProcurementPermissions.SuppliersRead,
                 ProcurementPermissions.OrdersRead,
                 ProcurementPermissions.ReceiptsRead,
-                ProcurementPermissions.ReceiptsWrite],
-            [ProjectManager] = [],
+                ProcurementPermissions.ReceiptsWrite,
+                .. InventoryPermissions.All,
+                .. FleetPermissions.All],
+
+            // `ProjectManager` deixa de estar vazio: `projects` (esqueleto,
+            // `modules/projects.md`) é literalmente o módulo que este perfil
+            // nomeia.
+            [ProjectManager] = [.. ProjectsPermissions.All],
         };
 }
 
