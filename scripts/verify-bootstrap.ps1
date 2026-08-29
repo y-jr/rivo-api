@@ -88,26 +88,28 @@ where r.name = 'HR' and c.claim_value = 'hr.positions.write'
 "@
     if ($hrHasCatalogue -ne "0") { throw "HR tem hr.positions.write, contra ADR-015" }
 
-    # Perfis ainda sem modulos de negocio que os justifiquem.
-    #
-    # A lista encolheu tres vezes, e cada saida foi um modulo a nascer:
-    # `Manager` e `Finance` em 2026-08-23 (ADR-034), quando decidir sobre
-    # pedidos passou a existir; `Sales` em 2026-08-24 (ADR-036), com clientes
-    # e emissao de facturas; `AssetManager` em 2026-08-27, com a recepcao de
-    # mercadoria.
+    # A lista de perfis vazios encolheu quatro vezes, e cada saida foi um
+    # modulo a nascer: `Manager` e `Finance` em 2026-08-23 (ADR-034), quando
+    # decidir sobre pedidos passou a existir; `Sales` em 2026-08-24 (ADR-036),
+    # com clientes e emissao de facturas; `AssetManager` em 2026-08-27, com a
+    # recepcao de mercadoria; `ProjectManager` em 2026-08-29, com o esqueleto
+    # de `projects`. **Nenhum dos sete perfis continua vazio.**
     #
     # A saida do `AssetManager` nao e adivinhacao: a recepcao e a porta de
     # entrada do stock, e `modules/procurement.md` diz que `procurement` publica
     # o facto da recepcao para `inventory` o consumir. Quem gere activos e
     # existencias e quem conta o que chega.
     #
-    # So `ProjectManager` continua vazio, porque `projects` nao tem codigo.
-    $shouldBeEmpty = Invoke-Sql @"
+    # `ProjectManager` fica com exactamente as permissoes de `projects` — o
+    # modulo que este perfil nomeia, e nenhum outro: e esqueleto sem regra de
+    # segregacao ainda, por isso nao ha mais nada para verificar aqui alem de
+    # que a atribuicao aconteceu.
+    $projectManagerPerms = Invoke-Sql @"
 select count(*) from [identity].app_role_claim c
 join [identity].app_role r on r.id = c.role_id
-where r.name = 'ProjectManager'
+where r.name = 'ProjectManager' and c.claim_value like 'projects.%'
 "@
-    if ($shouldBeEmpty -ne "0") { throw "ProjectManager tem $shouldBeEmpty permissoes sem modulo que as justifique" }
+    if ($projectManagerPerms -ne "2") { throw "ProjectManager esperava 2 permissoes de projects, tem $projectManagerPerms" }
 
     # **`AssetManager` recebe e nao encomenda.** E a segregacao que da valor ao
     # 3-way match: se quem encomenda registasse a chegada, uma entrega a menos
