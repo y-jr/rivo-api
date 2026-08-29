@@ -577,10 +577,16 @@ _2026-08-23 — ADR-034._
 - `PositionApprovalReconciliationWorker` aplica decisões por sondagem (60 s por
   omissão); a promoção automática fica na trilha com **actor nulo**
 - `Manager` e `Finance` deixaram de ser perfis vazios
+- **Cancelar exige ser quem submeteu** — 2026-08-29, fecha o K18. Mesma família
+  de excepção de BR-2/BR-4 (`SegregationOfDutiesException`), mesmo `403` e não
+  `409`. A permissão do endpoint mantém-se `approval.requests.read` — a regra
+  é do domínio, não da permissão
 
 **Por satisfazer:** SLA e escalonamento (o passo guarda o prazo, nada o faz
 cumprir), Delegação (modelada em `docs`, sem código), BR-7 e BR-8 e metade de
-BR-3 — todos dependem de `finance` ter Planeamento e Tesouraria.
+BR-3 — todos dependem de `finance` ter Planeamento e Tesouraria. Verificação
+end-to-end do cancelamento — não existe `verify-approval.ps1`, e é o único
+caminho de escrita do módulo sem cobertura caixa-preta nenhuma.
 
 ## fiscal
 

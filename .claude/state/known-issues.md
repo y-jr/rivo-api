@@ -285,34 +285,46 @@ código nem no nome do ambiente.
 **Seguimento:** fecha com o K16. Com TLS, o risco desce ao que o Swagger é em
 qualquer API interna — e a decisão de o deixar aberto deixa de ter custo.
 
-### K18 — Cancelar um pedido de aprovação exige permissão de leitura
+### ~~K18 — Cancelar um pedido de aprovação exige permissão de leitura~~ — **RESOLVIDO 2026-08-29**
 
 **Detectado em 2026-08-27**, a cruzar o `API-FRONTEND.md` com o código.
 
-`POST /approval/requests/{requestId}/cancellation` está protegido por
-`approval.requests.read` (`ApprovalModuleEndpoints.cs:36`). Todos os outros
-endpoints de escrita de `approval` exigem uma permissão de escrita:
-`approval.policies.write` para criar políticas, `approval.requests.decide`
-para decidir.
+`POST /approval/requests/{requestId}/cancellation` estava protegido só por
+`approval.requests.read`. Todos os outros endpoints de escrita de `approval`
+exigem uma permissão de escrita: `approval.policies.write` para criar
+políticas, `approval.requests.decide` para decidir.
 
-**Impacto:** **quem consegue ver um pedido de aprovação consegue cancelá-lo.**
-`CancelRequest` não verifica quem submeteu — não há dono a comparar —, logo
-não é o caso de "cada um cancela o seu". Um pedido de pagamento em curso pode
-ser morto por qualquer titular de `approval.requests.read`, e o efeito é o
-mesmo de uma recusa sem que ninguém tenha decidido nada.
+**Impacto:** quem conseguia ver um pedido de aprovação conseguia cancelá-lo.
+`CancelRequest` não verificava quem submeteu — não havia dono a comparar.
 
-`ApprovalPermissions` não tem hoje permissão de cancelamento: as quatro são
-`RequestsRead`, `RequestsDecide`, `PoliciesRead`, `PoliciesWrite`.
+**Decisão tomada:** cancelar é acto de quem submeteu — a mesma pergunta que
+BR-2 e BR-3 já tinham respondido para decidir e para pagar, respondida do
+mesmo modo. `ApprovalRequest.Cancel` já tinha o comentário desta intenção
+("só o requisitante... o faz"), nunca implementado; ficou implementado
+tal como o comentário sempre disse, com uma excepção — sem o carve-out para
+"quem administra" que o comentário também mencionava, nunca confirmado como
+requisito e por isso não incluído.
 
-**Contorno:** nenhum ao nível da configuração — a permissão é a que está no
-código. Nos perfis de acesso, `approval.requests.read` está atribuída a quem
-precisa de acompanhar processos.
+**Corrigido por:** `ApprovalRequest.Cancel(cancelledByEmployeeId, at)` recusa
+com `SegregationOfDutiesException` quando o chamador não é
+`RequestedByEmployeeId` — mesma família de excepção de BR-2/BR-4.
+`CancelRequest` (Application) apanha-a e audita a tentativa
+(`SegregationViolationAttempted`), como já acontecia para decisões. O
+endpoint devolve `403`, não `409` — não é o estado do pedido que impede, é
+esta pessoa. A permissão do endpoint mantém-se `approval.requests.read`: abre
+a porta a quem tem visibilidade sobre o pedido; a regra real é do domínio.
 
-**Seguimento:** decidir qual é a regra antes de mudar o código — cancelar é
-acto de quem submeteu, de quem decide, ou permissão própria? A resposta muda o
-perfil de acesso e as suites que exercitam o cancelamento. **Não é correcção
-mecânica**; é a mesma pergunta de segregação de funções que BR-2 e BR-3 já
-responderam para os outros actos, e merece ser respondida do mesmo modo.
+O corpo do pedido passa a exigir `cancelledByEmployeeId` — quebra de
+contrato para quem já integrasse contra este endpoint. Actualizado em
+`API-FRONTEND.md`.
+
+**Por verificar:** nenhuma suite caixa-preta exercita
+`POST /approval/requests/{id}/cancellation` directamente — não há
+`verify-approval.ps1`, e nenhuma das suites de `hr`/`finance`/`procurement`
+que passam por `approval` chega a testar o cancelamento. A regra está coberta
+por 2 testes de domínio novos (`Cancel_ByTheRequester_...`,
+`Cancel_ByAnyoneOtherThanTheRequester_...`), no mesmo padrão de BR-2 — mas a
+lacuna de verificação end-to-end é anterior a esta correcção e continua.
 
 ### ~~K19 — Arranque preso num volume novo, à espera de uma base que só a migração criaria~~ — **RESOLVIDO 2026-08-28**
 

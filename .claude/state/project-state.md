@@ -41,7 +41,7 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `documents` | Completo. Upload/download, listagem do arquivo, hash de integridade, ligação a `hr` por FK entre schemas |
 | `notifications` | Completo menos a entrega real. Fila com estado, worker, leitura e marcação (uma a uma ou todas) — **sem envio de e-mail** (K13) |
 | `hr` | Completo. Colaborador, Departamento, Cargo, Contrato, Assiduidade, Férias, Benefícios, Recrutamento, Onboarding/Offboarding |
-| `approval` | Completo para o âmbito fixado. Políticas (criar e desactivar), pedidos, decisões, BR-2/4/6/17, worker de reconciliação. ⚠ **K18**: cancelar um pedido exige só permissão de leitura |
+| `approval` | Completo para o âmbito fixado. Políticas (criar e desactivar), pedidos, decisões, BR-2/4/6/17, worker de reconciliação, cancelamento restrito a quem submeteu (K18) |
 | `fiscal` | ⚠ **Fatia mínima** (ADR-036). Taxa com vigência e determinação. Não é o motor fiscal |
 | `commercial` | ⚠ **Reduzido ao Cliente** (ADR-036). Sem funil comercial |
 | `finance` | **Os cinco contextos existem, e os documentos lançam.** Venda (factura, nota de crédito, recibo, saldo), Contas a Pagar, Tesouraria com extracto append-only, Contabilidade & Fecho com postagem automática, Planeamento. **BR-1, BR-3, BR-5 e BR-8 impostas.** ⚠ Contabilidade vazia até alguém carregar o plano; a anulação não estorna; activos fixos bloqueados por K1 |
@@ -140,17 +140,15 @@ superfície inteira é legível por quem estiver a ouvir.
 4. **K16 — sem TLS.** Credenciais e token em claro no ambiente publicado. Com
    a documentação da API agora aberta (K17), a superfície inteira viaja no
    mesmo canal.
-5. **K18 — cancelar um pedido de aprovação exige só permissão de leitura.**
-   Quem acompanha processos pode matá-los. Não é escalada de privilégio; é
-   segregação de funções por definir para um acto que já existe.
-6. **`hr.Colaborador` como ponto de acoplamento** — mitigado por ADR-010 e
+5. **`hr.Colaborador` como ponto de acoplamento** — mitigado por ADR-010 e
    respeitado no código, mas exige vigilância à medida que os consumidores
    aparecem.
 
 **Riscos fechados:** as decisões de stack sem ADR (2026-08-15, ADR-018 a 021);
 o K14 (2026-08-16, ADR-025); a ausência de testes de arquitectura (2026-08-16,
 ADR-024); o K15 (2026-08-24, ADR-035); o K19 (2026-08-28, mesmo dia em que foi
-encontrado — impasse de arranque num volume novo).
+encontrado — impasse de arranque num volume novo); o K18 (2026-08-29 —
+cancelar um pedido de aprovação passa a exigir ser quem submeteu).
 
 ## Próximos passos
 
@@ -160,25 +158,26 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    falta para a contabilidade deixar de estar vazia — e **precisa do
    contabilista, não de código**. Enquanto não houver, todo o resto da
    Contabilidade está de pé e sem uso.
-2. **Decidir quem cancela um pedido de aprovação (K18).** Hoje basta
-   `approval.requests.read`, o que faz de uma permissão de leitura um poder de
-   veto. A correcção é de uma linha; **a decisão não é** — é a mesma pergunta
-   de segregação que BR-2 e BR-3 já responderam para decidir e para pagar.
-3. **Estorno automático.** Anular uma factura, uma nota de crédito ou um recibo
+2. **Estorno automático.** Anular uma factura, uma nota de crédito ou um recibo
    **não gera lançamento inverso** — o original fica e corrige-se à mão. É a
    lacuna mais visível da postagem.
-4. **Domínio e TLS** — fecha o K16 **e o K17** (com a documentação da API
+3. **Domínio e TLS** — fecha o K16 **e o K17** (com a documentação da API
    aberta, a superfície viaja em claro), e é pré-requisito de qualquer uso
    real.
-5. **Cobertura de Application nos outros módulos** — `finance` tem 132 testes. O
+4. **Cobertura de Application nos outros módulos** — `finance` tem 132 testes. O
    próximo que mais custa é `DecideOnRequest` em `approval`: BR-2, BR-4 e BR-6
    vivem lá e só têm cobertura caixa-preta.
-6. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
+5. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
    vendas a balcão saem com um marcador visível. Precisa de fonte primária.
-7. **A falha intermitente de limpeza de política, K20.** Três investigações,
+6. **A falha intermitente de limpeza de política, K20.** Três investigações,
    sem causa de código confirmada. O próximo passo é instrumentar do lado do
    servidor, não do script — ver o seguimento em
    [known-issues.md](known-issues.md).
+7. **Verificação end-to-end do cancelamento de pedidos de aprovação.** Não há
+   `verify-approval.ps1`, e nenhuma suite exercita
+   `POST /approval/requests/{id}/cancellation` — nem antes nem depois do K18.
+   A regra está coberta por teste de domínio; falta o caminho HTTP completo,
+   com permissão real e trilha de auditoria.
 
 **Fechado a 2026-08-28 (Fornecedor):** `finance` passou a consumir
 `ISupplierDirectory` de `procurement` em `RegisterPurchaseInvoice` — liga por
@@ -198,6 +197,15 @@ não regra que impede o registo. Migração gerada
 Ordem de `procurement` a `finance`, na mesma direcção já aprovada do
 Fornecedor. 3 casos novos em `verify-procurement` (58/58, depois de corrigido
 o perfil usado para os registar — ver [implemented.md](implemented.md)).
+
+**Fechado a 2026-08-29 (K18):** cancelar um pedido de aprovação passa a exigir
+ser quem o submeteu — `ApprovalRequest.Cancel` recusa com a mesma família de
+excepção de BR-2/BR-4 quando `cancelledByEmployeeId` não bate com
+`RequestedByEmployeeId`, e o endpoint devolve `403`. A permissão mantém-se
+`approval.requests.read`: abre a porta, a regra é do domínio. 2 testes de
+domínio novos. **Sem verificação end-to-end** — não existe `verify-approval.ps1`
+e nenhuma outra suite chega a exercitar este endpoint, antes ou depois da
+correcção.
 
 **Fechado a 2026-08-28 (verificação):** as seis dívidas de verificação pendentes desde
 2026-08-27 — correcção do `password-reset`, desactivação de políticas de

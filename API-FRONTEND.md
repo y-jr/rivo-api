@@ -407,11 +407,17 @@ ficar pendentes (`202`) enquanto aguardam aprovação.
 | `GET /approval/requests/{requestId}` | `approval.requests.read` | Consulta estado do pedido | Path `requestId` | `200` estado |
 | `GET /approval/requests/{requestId}/history` | `approval.requests.read` | Linha do tempo completa do pedido | Path `requestId` | `200` histórico |
 | `POST /approval/requests/{requestId}/decisions` | `approval.requests.decide` | Regista decisão | `{ decidedByEmployeeId, action, notes? }`; action `Approved`, `Rejected`, `ClarificationRequested` | `200` estado |
-| `POST /approval/requests/{requestId}/cancellation` | `approval.requests.read` | Cancela pedido | Sem campos de body explicitamente declarados | `204` |
+| `POST /approval/requests/{requestId}/cancellation` | `approval.requests.read` | Cancela pedido | `{ cancelledByEmployeeId }` | `204` |
 
 Modo de step assume `AnyApprover`; `AllApprovers` também é suportado. Uma
 decisão incompatível com segregação devolve `403`; decisão rejeitada devolve
 `409`.
+
+**Cancelar exige ser quem submeteu (K18, fechado a 2026-08-29).** A permissão
+`approval.requests.read` abre a porta — basta para saber que o pedido é seu —
+mas quem decide de facto é o domínio: se `cancelledByEmployeeId` não for
+igual a `requestedByEmployeeId`, devolve `403`, pela mesma razão de uma
+decisão em violação de segregação.
 
 **`history` difere do `GET` simples.** Esse devolve só `pendingApprovers` —
 quem falta decidir agora, para um cliente que espera pela sua vez. O
