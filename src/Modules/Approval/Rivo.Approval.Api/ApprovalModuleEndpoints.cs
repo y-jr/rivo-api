@@ -166,16 +166,24 @@ public static class ApprovalModuleEndpoints
 
     private static async Task<IResult> CancelAsync(
         Guid requestId,
+        CancelRequestBody request,
         CancelRequest cancel,
         HttpContext http,
         CancellationToken cancellationToken)
     {
-        var result = await cancel.ExecuteAsync(requestId, BuildAuditContext(http), cancellationToken);
+        var result = await cancel.ExecuteAsync(
+            requestId, request.CancelledByEmployeeId, BuildAuditContext(http), cancellationToken);
 
         return result.Outcome switch
         {
             DecisionOutcome.Recorded => Results.NoContent(),
             DecisionOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+
+            // 403 e não 409, pela mesma razão da decisão: não é o estado do
+            // pedido que impede, é esta pessoa que não pode cancelá-lo (K18).
+            DecisionOutcome.SegregationViolation =>
+                Results.Problem(result.Error, statusCode: StatusCodes.Status403Forbidden),
+
             DecisionOutcome.Rejected => Results.Conflict(new { erro = result.Error }),
             _ => Results.Problem("Resultado inesperado ao cancelar o pedido."),
         };
@@ -218,3 +226,10 @@ public sealed record PolicyStepRequest(Guid ApproverPositionId, string? Mode, in
 /// </param>
 /// <param name="Action">Approved, Rejected ou ClarificationRequested.</param>
 public sealed record DecideRequest(Guid DecidedByEmployeeId, string Action, string? Notes);
+
+/// <param name="CancelledByEmployeeId">
+/// Quem pede o cancelamento. Só é aceite se for o mesmo Colaborador que
+/// submeteu o pedido (K18) — indicado à parte, como em <see cref="DecideRequest"/>,
+/// pela mesma razão: nem todo o utilizador é colaborador (ADR-004).
+/// </param>
+public sealed record CancelRequestBody(Guid CancelledByEmployeeId);

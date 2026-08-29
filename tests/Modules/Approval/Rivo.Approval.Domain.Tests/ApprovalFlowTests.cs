@@ -156,14 +156,29 @@ public class ApprovalFlowTests
     }
 
     [Fact]
-    public void Cancel_ClosesAnOpenRequest()
+    public void Cancel_ByTheRequester_ClosesAnOpenRequest()
     {
         var request = Build(Step(1, StepMode.AnyApprover, A));
 
-        request.Cancel(Now);
+        request.Cancel(Requester, Now);
 
         Assert.Equal(ApprovalStatus.Cancelled, request.Status);
-        Assert.Throws<InvalidOperationException>(() => request.Cancel(Now));
+        Assert.Throws<InvalidOperationException>(() => request.Cancel(Requester, Now));
+    }
+
+    /// <summary>
+    /// <strong>K18.</strong> Até esta correcção, cancelar não verificava
+    /// quem pedia — qualquer titular de permissão de leitura conseguia matar
+    /// o pedido de outra pessoa. É a mesma família de BR-2: quem não é dono
+    /// do pedido não o desfaz.
+    /// </summary>
+    [Fact]
+    public void Cancel_ByAnyoneOtherThanTheRequester_IsSegregationViolation()
+    {
+        var request = Build(Step(1, StepMode.AnyApprover, A));
+
+        Assert.Throws<SegregationOfDutiesException>(() => request.Cancel(A, Now));
+        Assert.Equal(ApprovalStatus.InProgress, request.Status);
     }
 
     [Fact]
@@ -172,7 +187,7 @@ public class ApprovalFlowTests
         var request = Build(Step(1, StepMode.AnyApprover, A));
         request.Decide(A, DecisionAction.Approved, Now);
 
-        Assert.Throws<InvalidOperationException>(() => request.Cancel(Now));
+        Assert.Throws<InvalidOperationException>(() => request.Cancel(Requester, Now));
     }
 
     /// <summary>

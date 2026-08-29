@@ -253,15 +253,26 @@ public sealed class ApprovalRequest
     }
 
     /// <summary>
-    /// Cancela o processo. Só o requisitante ou quem administra o faz — quem
+    /// Cancela o processo. <strong>Só o requisitante o faz</strong> — quem
     /// decide, não: um aprovador que quisesse travar um processo rejeita-o, e
-    /// a rejeição fica registada com autor.
+    /// a rejeição fica registada com autor. Fechado o K18: até aqui não havia
+    /// verificação nenhuma, e qualquer titular de permissão de leitura
+    /// conseguia cancelar o pedido de outra pessoa.
     /// </summary>
-    public void Cancel(DateTimeOffset at)
+    public void Cancel(Guid cancelledByEmployeeId, DateTimeOffset at)
     {
         if (Status is ApprovalStatus.Approved or ApprovalStatus.Rejected or ApprovalStatus.Cancelled)
         {
             throw new InvalidOperationException("Este processo já está fechado.");
+        }
+
+        // Mesma família de BR-2/BR-4: quem não é dono do pedido não o desfaz.
+        // Ao contrário de Decide(), aqui não há segunda pessoa nem passo em
+        // curso a verificar — só esta comparação.
+        if (cancelledByEmployeeId != RequestedByEmployeeId)
+        {
+            throw new SegregationOfDutiesException(
+                "Só quem submeteu o pedido pode cancelá-lo (K18).");
         }
 
         Status = ApprovalStatus.Cancelled;

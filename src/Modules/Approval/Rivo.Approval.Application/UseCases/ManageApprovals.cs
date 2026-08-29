@@ -380,6 +380,7 @@ public sealed class CancelRequest(IApprovalStore store, IAuditTrail audit, TimeP
 {
     public async Task<DecisionResult> ExecuteAsync(
         Guid requestId,
+        Guid cancelledByEmployeeId,
         AuditContext context,
         CancellationToken cancellationToken)
     {
@@ -392,7 +393,24 @@ public sealed class CancelRequest(IApprovalStore store, IAuditTrail audit, TimeP
 
         try
         {
-            request.Cancel(clock.GetUtcNow());
+            request.Cancel(cancelledByEmployeeId, clock.GetUtcNow());
+        }
+        catch (SegregationOfDutiesException error)
+        {
+            // Mesma razão do caminho equivalente em DecideOnRequest: a
+            // tentativa não produziu efeito, e vai para a trilha na mesma —
+            // uma sequência destas contra o mesmo pedido é o padrão que
+            // interessa detectar (K18).
+            await audit.RecordAsync(
+                new AuditRecord(
+                    ApprovalAuditActions.SegregationViolationAttempted,
+                    ApprovalAuditEntityTypes.Request,
+                    requestId.ToString(),
+                    context,
+                    NewValue: $$"""{"attemptedBy":"{{cancelledByEmployeeId}}","reason":"{{error.Message}}"}"""),
+                cancellationToken);
+
+            return DecisionResult.SegregationViolation(error.Message);
         }
         catch (InvalidOperationException error)
         {
