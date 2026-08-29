@@ -411,18 +411,34 @@ lacuna de verificação end-to-end é anterior a esta correcção e continua.
 - **Contorno:** nenhum a nível de configuração. Corrida a corrida, a política
   por limpar acumula-se; não compromete o resto da suite, só o caso da
   limpeza.
-- **O risco de acumulação, previsto acima, aconteceu.** Ao escrever
-  `verify-approval.ps1` (2026-08-29), duas políticas de `payroll.payroll_run`
-  tinham ficado activas de corridas anteriores de `verify-payroll.ps1` que o
-  K20 tinha interrompido a meio da limpeza. A submissão seguinte recusou com
-  "2 políticas igualmente específicas correspondem a este pedido" — não é
-  defeito novo, é ADR-034 a funcionar correctamente perante duplicação real.
-  Resolvido a mão (`update approval.policy set is_active=0 ...`) antes de
-  correr a suite nova. **Não é urgente enquanto for raro**, mas se o K20
-  passar a ser frequente, uma política de arranque que desactiva tudo o que
-  sobrou de `payroll.payroll_run`/`procurement.purchase_requisition`/
-  `finance.payment_request` antes de qualquer suite (não só a sua) evita
-  precisar de intervenção manual.
+- **O risco de acumulação, previsto acima, aconteceu — duas vezes no mesmo
+  dia.** Primeiro ao escrever `verify-approval.ps1` localmente: duas
+  políticas de `payroll.payroll_run` tinham ficado activas de corridas
+  anteriores de `verify-payroll.ps1` interrompidas pelo K20, e a submissão
+  seguinte recusou com "2 políticas igualmente específicas correspondem a
+  este pedido" — não é defeito novo, é ADR-034 a funcionar correctamente
+  perante duplicação real. Resolvido a mão nessa altura
+  (`update approval.policy set is_active=0 ...`).
+  **Depois em CI, na primeira corrida completa com `verify-approval` dentro
+  de `verify-all.ps1`**: `verify-payroll` caso 15 falhou com o K20 (esperado),
+  deixou a sua política activa, e `verify-approval` — que corre logo a
+  seguir — **rebentou sem produzir um único caso**, porque a sua limpeza
+  inicial só tentava uma vez e engolia o 404 sem confirmar que a política
+  tinha mesmo saído.
+- **Mitigado a 2026-08-29 com `Clear-RivoApprovalPolicies`
+  (`scripts/_ambiente.ps1`).** Repete a desactivação até confirmar **por
+  SQL** — de propósito, e não pela API: se a API negar o que a base já tem, é
+  o próprio K20 a impedir também a confirmação, não só a limpeza. Aplicado
+  aos três blocos de pré-arranque que criam uma política nova a seguir
+  (`verify-payroll`, `verify-approval`, `verify-procurement` — `verify-ledger`
+  não precisa, porque a sua política é sempre específica de um departamento
+  novo por corrida e nunca colide). **Os casos dedicados de limpeza final
+  (caso 15 de `verify-payroll`, caso 58 de `verify-procurement`, caso 44 de
+  `verify-ledger`) ficaram como estavam** — de propósito, continuam a
+  expressar o K20 como a falha conhecida e não escondem o sintoma atrás de
+  uma repetição. Confirmado ao vivo: `verify-payroll` caso 15 falhou (K20),
+  deixou a política activa, e a corrida seguinte de `verify-approval` limpou-a
+  no pré-arranque e passou 10/10 sem intervenção manual.
 - **Quarta ocorrência, 2026-08-29, em `verify-payroll.ps1` — decisão de não
   reabrir a investigação.** A suite nova reproduziu o mesmo padrão exacto no
   seu próprio bloco de limpeza inicial (a lista de políticas activas de

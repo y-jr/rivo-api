@@ -257,3 +257,58 @@ function Get-RivoDescricao {
     if (Test-RivoLocal) { return "local (Docker) em $($script:BaseUrl)" }
     return "remoto em $($script:BaseUrl)"
 }
+
+<#
+.SYNOPSIS
+    Garante zero politicas activas de um tipo de processo, tolerando o K20.
+.DESCRIPTION
+    K20 (known-issues.md): `POST /approval/policies/{id}/deactivation` falha
+    por vezes com 404 contra uma politica que a listagem, momentos antes,
+    mostrava activa - sem causa de codigo confirmada em quatro investigacoes.
+    Uma tentativa isolada que engole o erro (como havia antes em cada suite)
+    tolera a falha da propria suite, mas deixa a politica activa para tras -
+    e isso e o que fez `verify-approval.ps1` rebentar sem produzir nenhum
+    caso: a submissao seguinte encontrou duas politicas igualmente
+    especificas e recusou por ambiguidade (ADR-034 a funcionar
+    correctamente perante duplicacao real).
+
+    Esta funcao repete a desactivacao ate a base confirmar zero activas -
+    a confirmacao e por SQL de proposito, e nao pela API: se a API negar o
+    que a base ja tem, e o proprio K20 a impedir tambem a confirmacao, nao
+    so a limpeza.
+.PARAMETER ProcessType
+    O `processType` da politica a limpar (ex.: "payroll.payroll_run").
+.PARAMETER Headers
+    Cabecalhos de autorizacao com `approval.policies.write`.
+#>
+function Clear-RivoApprovalPolicies {
+    param(
+        [Parameter(Mandatory)][string]$ProcessType,
+        [Parameter(Mandatory)][hashtable]$Headers,
+        [int]$MaxAttempts = 5
+    )
+
+    for ($tentativa = 1; $tentativa -le $MaxAttempts; $tentativa++) {
+        $activas = @(Invoke-RestMethod "$($script:BaseUrl)/approval/policies" -Headers $Headers) |
+            Where-Object { $_.processType -eq $ProcessType -and $_.isActive }
+
+        if ($activas.Count -eq 0) { return }
+
+        foreach ($politica in $activas) {
+            try {
+                Invoke-RestMethod "$($script:BaseUrl)/approval/policies/$($politica.policyId)/deactivation" `
+                    -Method Post -Headers $Headers | Out-Null
+            }
+            catch {
+                # K20: tentativa seguinte trata.
+            }
+        }
+
+        Start-Sleep -Milliseconds 500
+    }
+
+    $restantes = Invoke-RivoSql "select count(*) from approval.policy where process_type = '$ProcessType' and is_active = 1"
+    if ($restantes -ne "0") {
+        throw "Nao foi possivel garantir zero politicas activas de '$ProcessType' apos $MaxAttempts tentativas (K20) - $restantes continuam activas."
+    }
+}

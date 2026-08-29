@@ -95,22 +95,12 @@ Invoke-RestMethod "$base/hr/employees/$aprovador/positions" -Method Post -Conten
 # `@(...)` a forcar array: defesa documentada contra um modo de falha real
 # do Invoke-RestMethod nesta suite (nota "Filtrar respostas JSON..." em
 # implemented.md).
-# Envolvido em try/catch, e nao deixado a rebentar o arranque do script: um
-# 404 aqui e o K20 (known-issues.md) -- falha intermitente ja investigada tres
-# vezes, sem causa de codigo confirmada, que reaparece neste mesmo padrao em
-# verify-ledger e verify-procurement. Um crash aqui perderia a suite inteira
-# por uma falha de arrumacao, nao de payroll.
-try {
-    @(Invoke-RestMethod "$base/approval/policies" -Headers $adminHeaders) |
-    Where-Object { $_.processType -eq "payroll.payroll_run" -and $_.isActive } |
-    ForEach-Object {
-        Invoke-RestMethod "$base/approval/policies/$($_.policyId)/deactivation" `
-            -Method Post -Headers $adminHeaders | Out-Null
-    }
-}
-catch {
-    Write-Host "  AVISO  limpeza inicial de politica falhou (K20): $($_.Exception.Message)" -ForegroundColor Yellow
-}
+# Clear-RivoApprovalPolicies (_ambiente.ps1) repete ate confirmar por SQL: uma
+# unica tentativa tolerava o K20 (known-issues.md) na propria suite, mas
+# deixava a politica activa para tras -- e a submissao do caso 8 recusaria por
+# ambiguidade (duas politicas igualmente especificas) se uma corrida anterior
+# tivesse ficado exactamente assim.
+Clear-RivoApprovalPolicies -ProcessType "payroll.payroll_run" -Headers $adminHeaders
 
 Write-Host "`n=== Modulo payroll (esqueleto) ===`n"
 

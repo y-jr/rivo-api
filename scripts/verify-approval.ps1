@@ -89,20 +89,13 @@ $cargo = (Invoke-RestMethod "$base/hr/positions" -Method Post -ContentType "appl
 Invoke-RestMethod "$base/hr/employees/$aprovador/positions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
     -Body (@{ positionId = $cargo } | ConvertTo-Json) | Out-Null
 
-# Envolvido em try/catch: um 404 aqui e o K20 (known-issues.md), ja
-# documentado em verify-ledger, verify-procurement e verify-payroll -- nao se
-# deixa a limpeza inicial abortar a suite inteira.
-try {
-    @(Invoke-RestMethod "$base/approval/policies" -Headers $adminHeaders) |
-    Where-Object { $_.processType -eq "payroll.payroll_run" -and $_.isActive } |
-    ForEach-Object {
-        Invoke-RestMethod "$base/approval/policies/$($_.policyId)/deactivation" `
-            -Method Post -Headers $adminHeaders | Out-Null
-    }
-}
-catch {
-    Write-Host "  AVISO  limpeza inicial de politica falhou (K20): $($_.Exception.Message)" -ForegroundColor Yellow
-}
+# Clear-RivoApprovalPolicies (_ambiente.ps1) repete ate confirmar por SQL: uma
+# unica tentativa tolerava o K20 (known-issues.md) na propria suite, mas
+# deixava a politica activa para tras -- e foi exactamente isso que fez esta
+# suite rebentar sem produzir nenhum caso, na primeira corrida em CI a seguir
+# a verify-payroll: a submissao (mais abaixo) encontrou duas politicas
+# igualmente especificas e recusou por ambiguidade.
+Clear-RivoApprovalPolicies -ProcessType "payroll.payroll_run" -Headers $adminHeaders
 
 $politica = Invoke-RestMethod "$base/approval/policies" -Method Post -ContentType "application/json" -Headers $adminHeaders `
     -Body (@{ processType = "payroll.payroll_run"; steps = @(@{ approverPositionId = $cargo }) } | ConvertTo-Json -Depth 5)

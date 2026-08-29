@@ -122,17 +122,12 @@ Invoke-RestMethod "$base/hr/employees/$aprovador/positions" -Method Post -Conten
 # na base de dados por baixo da aplicação — e uma suite que se limpa por um
 # caminho que a aplicação não tem verifica menos do que parece.
 #
-# `@(...)` a forcar array: e defesa documentada contra um modo de falha real
-# do PowerShell nesta suite (nota "Filtrar respostas JSON..." em
-# implemented.md), onde Invoke-RestMethod por vezes entrega a lista inteira
-# ao pipeline como um so item. Mantido por seguranca -- nao resolveu, por si
-# so, a falha intermitente registada em K20 (known-issues.md).
-@(Invoke-RestMethod "$base/approval/policies" -Headers $adminHeaders) |
-Where-Object { $_.processType -eq "procurement.purchase_requisition" -and $_.isActive } |
-ForEach-Object {
-    Invoke-RestMethod "$base/approval/policies/$($_.policyId)/deactivation" `
-        -Method Post -Headers $adminHeaders | Out-Null
-}
+# Clear-RivoApprovalPolicies (_ambiente.ps1, 2026-08-29) repete ate confirmar
+# por SQL: uma unica tentativa tolerava o K20 (known-issues.md) sem rebentar a
+# suite, mas deixava a politica activa para tras -- e uma corrida futura, ou
+# outra suite que use o mesmo tipo de processo, colidia com ela por
+# ambiguidade (visto em `verify-approval.ps1`, primeira corrida em CI).
+Clear-RivoApprovalPolicies -ProcessType "procurement.purchase_requisition" -Headers $adminHeaders
 
 Write-Host "`n=== Procurement: Fornecedor e Requisicao Interna ===`n"
 
