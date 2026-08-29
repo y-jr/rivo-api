@@ -38,8 +38,12 @@ $suites = @(
 
     # `payroll` e `procurement` fecham: ambos montam o seu cenario por `hr` e
     # por `approval`, e ambos terminam a desactivar pela rota a politica que
-    # criaram -- o caso conhecido de K20 (known-issues.md).
+    # criaram -- o caso conhecido de K20 (known-issues.md). `verify-approval`
+    # corre logo a seguir a `verify-payroll`, mesmo veiculo (folha submetida)
+    # para exercitar o cancelamento de `approval` que nenhuma suite cobria
+    # (K18, "Proximos passos" #7 em project-state.md).
     "verify-payroll",
+    "verify-approval",
     "verify-procurement"
 )
 

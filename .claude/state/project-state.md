@@ -92,7 +92,7 @@ superfície inteira é legível por quem estiver a ouvir.
 | Superfície HTTP | 169 endpoints em 14 grupos de rota, mais `/health` |
 | ADRs | 38, aceites |
 | Testes | **706** em 15 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). **Zero** nos quatro módulos esqueleto (`payroll`, `projects`, `inventory`, `fleet`) — nenhum projecto de teste existe para eles ainda |
-| Verificação end-to-end | **16 suites** PowerShell, **325 casos** — as 4 novas (`payroll`, `projects`, `inventory`, `fleet`) escritas e corridas a 2026-08-29. Última corrida de cada, isolada: `verify-projects` 14/14, `verify-inventory` 13/13, `verify-fleet` 15/15, `verify-payroll` 15/16. O único caso que falha em cada corrida (2 antes, 3 agora — `payroll` reproduziu o mesmo padrão) é a mesma falha intermitente na limpeza final de uma política, sem causa de código confirmada em quatro investigações — **K20** em [known-issues.md](known-issues.md) |
+| Verificação end-to-end | **17 suites** PowerShell, **335 casos** — as 4 dos esqueletos e `verify-approval` (cancelamento, K18) escritas e corridas a 2026-08-29. Última corrida de cada, isolada: `verify-projects` 14/14, `verify-inventory` 13/13, `verify-fleet` 15/15, `verify-approval` 10/10, `verify-payroll` 15/16. O único caso que falha em cada corrida (2 antes, 3 agora) é a mesma falha intermitente na limpeza final de uma política, sem causa de código confirmada em quatro investigações — **K20** em [known-issues.md](known-issues.md) |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
@@ -199,17 +199,20 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    sem causa de código confirmada. O próximo passo é instrumentar do lado do
    servidor, não do script — ver o seguimento em
    [known-issues.md](known-issues.md).
-7. **Verificação end-to-end do cancelamento de pedidos de aprovação.** Não há
-   `verify-approval.ps1`, e nenhuma suite exercita
-   `POST /approval/requests/{id}/cancellation` — nem antes nem depois do K18.
-   A regra está coberta por teste de domínio; falta o caminho HTTP completo,
-   com permissão real e trilha de auditoria.
+7. ~~Verificação end-to-end do cancelamento de pedidos de aprovação.~~
+   **Fechado a 2026-08-29.** `scripts/verify-approval.ps1` (10 casos, usa
+   `payroll` como veículo para ter um pedido pendente) exercita
+   `POST /approval/requests/{id}/cancellation`: quem não submeteu não cancela
+   (K18, 403), pedido inexistente (404), 401/403 de permissão, cancelamento
+   válido, segundo cancelamento recusado (409), trilha com actor para os dois
+   casos, e que `payroll` só trata `Cancelled` como recusa quando pergunta.
 8. **Dar regra de negócio real aos quatro esqueletos, ou decidir que ficam
    CRUD por agora.** `payroll` precisa de Recibo e da ligação a `fiscal`
    quando houver tabela real; `projects` precisa de Marco, Tarefa e Orçamento;
    `inventory` precisa de Movimento — sem ele `QuantityOnHand` nunca sai de
-   zero; `fleet` precisa de Manutenção e Atribuição. Nenhum tem teste de
-   domínio nem suite end-to-end. Ver o "Seguimento" em cada `modules/*.md`.
+   zero; `fleet` precisa de Manutenção e Atribuição. Têm suite end-to-end
+   desde 2026-08-29 (confirma o CRUD, não regra que não existe); continuam
+   sem teste de domínio. Ver o "Seguimento" em cada `modules/*.md`.
 
 **Fechado a 2026-08-29 (esqueletos):** `payroll`, `projects`, `inventory` e
 `fleet` ganharam código — os catorze módulos têm-no agora. Decisão explícita

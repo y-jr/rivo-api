@@ -339,8 +339,8 @@ pré-existente, encontrado ao construir isto.
 
 ## Verificação
 
-**Doze suites** PowerShell caixa-preta contra a stack em Docker, **267 casos**,
-todas re-executáveis.
+**Dezassete suites** PowerShell caixa-preta contra a stack em Docker, **335
+casos**, todas re-executáveis.
 
 > ⚠ **Estado da verificação a 2026-08-25, ao fechar a postagem automática.**
 >
@@ -437,6 +437,18 @@ todas re-executáveis.
 > Corrida final, limpa, a partir de `docker compose down -v`: **265 de 267,
 > as doze suites** — os dois casos de K20 são a única falha conhecida por
 > resolver.
+>
+> **Continuado a 2026-08-29.** Quatro suites novas para os módulos esqueleto
+> — `verify-payroll` (16), `verify-projects` (14), `verify-inventory` (13),
+> `verify-fleet` (15) — e uma quinta, `verify-approval` (10), a fechar a
+> lacuna do cancelamento de pedidos (K18) que nenhuma suite exercitava pela
+> rota. Escrevê-las apanhou três defeitos reais (`Vehicle.Deactivate()` sem
+> rota, as quatro entidades a sair directas na resposta HTTP, `payroll` a
+> devolver 500 em vez de 400) — ver `payroll, projects, inventory, fleet`
+> acima para o detalhe. **332 de 335**, cada suite nova corrida isolada
+> contra o ambiente publicado — os 3 que faltam são o K20, agora em três
+> sítios (`verify-ledger`, `verify-procurement`, `verify-payroll`), não dois.
+> `verify-all.ps1` cresceu de doze para dezassete suites.
 
 Eram seis suites e 66 casos em 2026-08-16. `verify-hr` cresceu 13 → 16 com as
 funcionalidades novas de `hr`; `verify-authorization` 8 → 9 ao distinguir os
@@ -464,12 +476,17 @@ três módulos do ADR-036 tinham deixado.
 | `verify-finance` | 29 |
 | `verify-payables` | 30 |
 | `verify-ledger` | 45 |
+| `verify-payroll` | 16 |
+| `verify-approval` | 10 |
 | `verify-procurement` | 58 |
+| `verify-projects` | 14 |
+| `verify-inventory` | 13 |
+| `verify-fleet` | 15 |
 
-**267 casos ao todo** — contagem directa de `Test-Case` em cada script, e não
+**335 casos ao todo** — contagem directa de `Test-Case` em cada script, e não
 soma acumulada de entradas anteriores desta tabela, que tinha ficado para trás
 em `verify-documents`, `verify-hr` e `verify-notifications`, e nunca chegara a
-incluir `verify-procurement`.
+incluir `verify-procurement`. As cinco últimas linhas nasceram a 2026-08-29.
 
 `verify-finance` corre por último e **monta os seus pré-requisitos pelas rotas
 de `fiscal` e `commercial`** — taxa, vigências e cliente. Não há atalho por SQL
