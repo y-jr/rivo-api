@@ -18,14 +18,23 @@ public sealed class GetPayrollRun(IPayrollRunStore store)
 
 public sealed class OpenPayrollRun(IPayrollRunStore store, IAuditTrail audit)
 {
-    public async Task<Guid> ExecuteAsync(
+    public async Task<OpenRunResult> ExecuteAsync(
         int year,
         int month,
         Guid openedByEmployeeId,
         AuditContext context,
         CancellationToken cancellationToken)
     {
-        var folha = PayrollRun.Open(year, month, openedByEmployeeId);
+        PayrollRun folha;
+
+        try
+        {
+            folha = PayrollRun.Open(year, month, openedByEmployeeId);
+        }
+        catch (ArgumentOutOfRangeException error)
+        {
+            return OpenRunResult.Rejected(error.Message);
+        }
 
         await store.AddAsync(folha, cancellationToken);
         await store.SaveChangesAsync(cancellationToken);
@@ -39,8 +48,15 @@ public sealed class OpenPayrollRun(IPayrollRunStore store, IAuditTrail audit)
                 NewValue: $$"""{"year":{{folha.Year}},"month":{{folha.Month}}}"""),
             cancellationToken);
 
-        return folha.Id;
+        return OpenRunResult.Success(folha.Id);
     }
+}
+
+public sealed record OpenRunResult(bool Succeeded, Guid? RunId, string? Error)
+{
+    public static OpenRunResult Success(Guid runId) => new(true, runId, null);
+
+    public static OpenRunResult Rejected(string error) => new(false, null, error);
 }
 
 public sealed class AddPayrollItem(IPayrollRunStore store, IAuditTrail audit)

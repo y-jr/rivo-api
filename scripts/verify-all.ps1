@@ -29,7 +29,17 @@ $suites = @(
     "verify-payables",
     "verify-ledger",
 
-    # `procurement` fecha: monta o seu cenario por `hr` e por `approval`.
+    # Os quatro esqueletos (project-state.md) nao dependem uns dos outros nem
+    # de `hr`/`approval` -- excepto `payroll`, colocado a seguir, junto de
+    # `procurement`, pela mesma razao.
+    "verify-projects",
+    "verify-inventory",
+    "verify-fleet",
+
+    # `payroll` e `procurement` fecham: ambos montam o seu cenario por `hr` e
+    # por `approval`, e ambos terminam a desactivar pela rota a politica que
+    # criaram -- o caso conhecido de K20 (known-issues.md).
+    "verify-payroll",
     "verify-procurement"
 )
 

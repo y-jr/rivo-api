@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Rivo.Audit.Contracts;
 using Rivo.Payroll.Application.UseCases;
 using Rivo.Payroll.Contracts;
+using Rivo.Payroll.Domain;
 
 namespace Rivo.Payroll.Api;
 
@@ -39,8 +40,11 @@ public static class PayrollModuleEndpoints
     }
 
     private static async Task<IResult> ListAsync(
-        ListPayrollRuns listRuns, CancellationToken cancellationToken) =>
-        Results.Ok(await listRuns.ExecuteAsync(cancellationToken));
+        ListPayrollRuns listRuns, CancellationToken cancellationToken)
+    {
+        var folhas = await listRuns.ExecuteAsync(cancellationToken);
+        return Results.Ok(folhas.Select(ToView));
+    }
 
     private static async Task<IResult> GetAsync(
         Guid runId, GetPayrollRun getRun, CancellationToken cancellationToken)
@@ -49,8 +53,20 @@ public static class PayrollModuleEndpoints
 
         return folha is null
             ? Results.NotFound(new { erro = "Folha não encontrada." })
-            : Results.Ok(folha);
+            : Results.Ok(ToView(folha));
     }
+
+    // A entidade de domínio nunca é exposta como modelo de transporte
+    // (architecture/dependency-rules.md) — sem isto, Status sairia como o
+    // inteiro subjacente do enum, e não como "Draft"/"PendingApproval".
+    private static PayrollRunView ToView(PayrollRun folha) => new(
+        folha.Id, folha.Year, folha.Month, folha.Status.ToString(),
+        folha.ApprovalRequestId, folha.SubmittedAt, folha.ClosedAt,
+        [.. folha.Items.Select(ToView)]);
+
+    private static PayrollItemView ToView(PayrollItem item) => new(
+        item.Id, item.EmployeeId, item.GrossSalary,
+        item.NetSalary, item.WithholdingTax, item.SocialSecurityContribution);
 
     private static async Task<IResult> OpenAsync(
         OpenRunRequest request,
@@ -58,11 +74,13 @@ public static class PayrollModuleEndpoints
         HttpContext http,
         CancellationToken cancellationToken)
     {
-        var runId = await openRun.ExecuteAsync(
+        var result = await openRun.ExecuteAsync(
             request.Year, request.Month, request.OpenedByEmployeeId,
             BuildAuditContext(http), cancellationToken);
 
-        return Results.Created($"/payroll/runs/{runId}", new { runId });
+        return result.Succeeded
+            ? Results.Created($"/payroll/runs/{result.RunId}", new { runId = result.RunId })
+            : Results.ValidationProblem(new Dictionary<string, string[]> { ["folha"] = [result.Error!] });
     }
 
     private static async Task<IResult> AddItemAsync(
@@ -138,3 +156,21 @@ public static class PayrollModuleEndpoints
 public sealed record OpenRunRequest(int Year, int Month, Guid OpenedByEmployeeId);
 
 public sealed record AddItemRequest(Guid EmployeeId, decimal GrossSalary);
+
+public sealed record PayrollRunView(
+    Guid RunId,
+    int Year,
+    int Month,
+    string Status,
+    Guid? ApprovalRequestId,
+    DateTimeOffset? SubmittedAt,
+    DateTimeOffset? ClosedAt,
+    IReadOnlyList<PayrollItemView> Items);
+
+public sealed record PayrollItemView(
+    Guid ItemId,
+    Guid EmployeeId,
+    decimal GrossSalary,
+    decimal? NetSalary,
+    decimal? WithholdingTax,
+    decimal? SocialSecurityContribution);

@@ -937,10 +937,38 @@ _2026-08-29 — **esqueletos**, sob prazo de apresentação. Decisão explícita
 registada aqui e em cada `modules/*.md`, não descoberta depois._
 
 Os catorze módulos passam a ter código. Cada um: cinco camadas, um schema
-próprio, migração inicial, CRUD por permissão de `identity`. **Zero testes,
-zero regra de negócio além da que o próprio CRUD impõe, zero suite
-end-to-end.** Confirmado a responder contra o ambiente publicado — criar,
-listar — e nada além disso foi verificado.
+próprio, migração inicial, CRUD por permissão de `identity`. **Zero testes de
+domínio, zero regra de negócio além da que o próprio CRUD impõe.**
+
+**Verificação end-to-end escrita e corrida a 2026-08-29** —
+`scripts/verify-payroll.ps1` (16 casos), `verify-projects.ps1` (14),
+`verify-inventory.ps1` (13), `verify-fleet.ps1` (15), mesmo padrão das outras
+dez suites (schema isolado, permissão por perfil, CRUD, 401/403, trilha de
+auditoria, persistência ao reiniciar). Confirmam o contrato HTTP, não regra de
+negócio — não há regra a confirmar.
+
+Escrever as suites apanhou três defeitos reais, nenhum cosmético:
+
+- **`Vehicle.Deactivate()` sem rota.** Existia no domínio, não tinha
+  endpoint — só se descobriu ao tentar verificar o caso "desactivar esconde
+  da listagem". Acrescentado `POST /fleet/vehicles/{id}/deactivation`.
+- **As quatro entidades de domínio saíam directas na resposta HTTP**,
+  violando a regra de `architecture/dependency-rules.md` — `Status` (enum)
+  serializava como o inteiro subjacente (`0`/`1`), não como `"Active"`.
+  Corrigido com `View` (DTO) e `ToView(...)` em cada endpoint de listagem e
+  consulta, nos quatro módulos.
+- **`payroll`: mês fora de 1–12 devolvia 500, não 400.**
+  `PayrollRun.Open()` lança `ArgumentOutOfRangeException`; `OpenPayrollRun`
+  não a apanhava. `OpenPayrollRun.ExecuteAsync` passou a devolver
+  `OpenRunResult` (sucesso ou rejeição com mensagem), e o endpoint mapeia a
+  rejeição para `Results.ValidationProblem` (400).
+
+**K20 reapareceu uma quarta vez**, no bloco de limpeza inicial de
+`verify-payroll.ps1` — mesmo padrão exacto das outras duas suites (ver
+`known-issues.md`). Não se reabriu a investigação; esse bloco (só ele, por
+correr fora de `Test-Case`, antes do caso 1) foi envolvido em `try/catch`
+para não abortar a suite inteira por um 404 já conhecido e sem causa de
+código confirmada.
 
 - **`payroll`** — `PayrollRun` (ano/mês, estado) e `PayrollItem`
   (colaborador, salário bruto). Submete-se a `approval` pelo total bruto,

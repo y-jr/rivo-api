@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Rivo.Audit.Contracts;
 using Rivo.Projects.Application.UseCases;
 using Rivo.Projects.Contracts;
+using Rivo.Projects.Domain;
 
 namespace Rivo.Projects.Api;
 
@@ -34,8 +35,11 @@ public static class ProjectsModuleEndpoints
     private static async Task<IResult> ListAsync(
         ListProjects listProjects,
         bool? includeClosed,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listProjects.ExecuteAsync(includeClosed ?? false, cancellationToken));
+        CancellationToken cancellationToken)
+    {
+        var projectos = await listProjects.ExecuteAsync(includeClosed ?? false, cancellationToken);
+        return Results.Ok(projectos.Select(ToView));
+    }
 
     private static async Task<IResult> GetAsync(
         Guid projectId,
@@ -46,8 +50,15 @@ public static class ProjectsModuleEndpoints
 
         return projecto is null
             ? Results.NotFound(new { erro = "Projecto não encontrado." })
-            : Results.Ok(projecto);
+            : Results.Ok(ToView(projecto));
     }
+
+    // A entidade de domínio nunca é exposta como modelo de transporte
+    // (architecture/dependency-rules.md) — e é isto, e não só princípio, que
+    // faz `Status` sair como texto ("Active") em vez do inteiro subjacente
+    // que o System.Text.Json usaria por omissão sobre o enum cru.
+    private static ProjectView ToView(Project projecto) => new(
+        projecto.Id, projecto.Name, projecto.Status.ToString(), projecto.StartDate, projecto.EndDate);
 
     private static async Task<IResult> OpenAsync(
         OpenProjectRequest request,
@@ -97,3 +108,5 @@ public static class ProjectsModuleEndpoints
 public sealed record OpenProjectRequest(string Name, DateOnly StartDate);
 
 public sealed record CloseProjectRequest(DateOnly EndDate);
+
+public sealed record ProjectView(Guid ProjectId, string Name, string Status, DateOnly StartDate, DateOnly? EndDate);

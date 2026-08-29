@@ -58,8 +58,12 @@ Detalhe com datas e ressalvas em [implemented.md](implemented.md).
 **Os três marcados com uma ⚠ são fatias deliberadas do produto** (ADR-036,
 com o custo do que falta registado em cada `modules/*.md`). **Os quatro
 marcados com ⚠⚠ são esqueletos de prazo** — categoria diferente: sem regra de
-negócio, sem testes, sem verificação end-to-end, feitos para "existir e
-responder", não para estarem correctos. Não confundir os dois.
+negócio, sem testes de domínio, feitos para "existir e responder", não para
+estarem correctos. Não confundir os dois. **Têm, desde 2026-08-29, verificação
+end-to-end** (`scripts/verify-payroll.ps1`, `verify-projects.ps1`,
+`verify-inventory.ps1`, `verify-fleet.ps1`) — o que confirmam é o CRUD e a
+sua superfície HTTP (contrato, permissão, auditoria, persistência), nunca
+regra de negócio que não existe.
 
 ## Ambiente publicado
 
@@ -88,17 +92,17 @@ superfície inteira é legível por quem estiver a ouvir.
 | Superfície HTTP | 169 endpoints em 14 grupos de rota, mais `/health` |
 | ADRs | 38, aceites |
 | Testes | **706** em 15 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). **Zero** nos quatro módulos esqueleto (`payroll`, `projects`, `inventory`, `fleet`) — nenhum projecto de teste existe para eles ainda |
-| Verificação end-to-end | **12 suites** PowerShell, **267 casos** — nenhuma cobre `payroll`, `projects`, `inventory` ou `fleet`. Última corrida completa e limpa, a partir de `docker compose down -v`: **265/267 a 2026-08-29**. Os 2 que faltam são a mesma falha intermitente, sem causa de código confirmada em três investigações — **K20** em [known-issues.md](known-issues.md) |
+| Verificação end-to-end | **16 suites** PowerShell, **325 casos** — as 4 novas (`payroll`, `projects`, `inventory`, `fleet`) escritas e corridas a 2026-08-29. Última corrida de cada, isolada: `verify-projects` 14/14, `verify-inventory` 13/13, `verify-fleet` 15/15, `verify-payroll` 15/16. O único caso que falha em cada corrida (2 antes, 3 agora — `payroll` reproduziu o mesmo padrão) é a mesma falha intermitente na limpeza final de uma política, sem causa de código confirmada em quatro investigações — **K20** em [known-issues.md](known-issues.md) |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
 
 ## O que não existe
 
-- **Qualquer teste, verificação ou regra de negócio nos quatro módulos
-  esqueleto** (`payroll`, `projects`, `inventory`, `fleet`, 2026-08-29). São
-  CRUD que compila, passa nos testes de arquitectura, e responde contra um
-  ambiente real — nada disso é o mesmo que estar correcto. Ver a nota ⚠⚠ na
+- **Teste de domínio ou regra de negócio nos quatro módulos esqueleto**
+  (`payroll`, `projects`, `inventory`, `fleet`). Têm, desde 2026-08-29,
+  verificação end-to-end (ver Números) — o que confirma é o CRUD e a sua
+  superfície HTTP, nunca regra de negócio que não existe. Ver a nota ⚠⚠ na
   secção Módulos e o "Seguimento" que cada `modules/*.md` regista.
 - **Cobertura de Application em sete dos nove módulos com código de
   domínio.** `finance` (100) e `identity` (8) têm-na; os outros não. 429

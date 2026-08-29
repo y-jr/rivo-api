@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Rivo.Audit.Contracts;
 using Rivo.Inventory.Application.UseCases;
 using Rivo.Inventory.Contracts;
+using Rivo.Inventory.Domain;
 
 namespace Rivo.Inventory.Api;
 
@@ -34,8 +35,11 @@ public static class InventoryModuleEndpoints
     private static async Task<IResult> ListAsync(
         ListInventoryItems listItems,
         bool? includeInactive,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listItems.ExecuteAsync(includeInactive ?? false, cancellationToken));
+        CancellationToken cancellationToken)
+    {
+        var itens = await listItems.ExecuteAsync(includeInactive ?? false, cancellationToken);
+        return Results.Ok(itens.Select(ToView));
+    }
 
     private static async Task<IResult> GetAsync(
         Guid itemId,
@@ -46,8 +50,14 @@ public static class InventoryModuleEndpoints
 
         return item is null
             ? Results.NotFound(new { erro = "Item não encontrado." })
-            : Results.Ok(item);
+            : Results.Ok(ToView(item));
     }
+
+    // A entidade de domínio nunca é exposta como modelo de transporte
+    // (architecture/dependency-rules.md) — sem isto, Status sairia como o
+    // inteiro subjacente do enum, e não como "Active".
+    private static InventoryItemView ToView(InventoryItem item) => new(
+        item.Id, item.Sku, item.Name, item.Unit, item.QuantityOnHand, item.Status.ToString());
 
     private static async Task<IResult> RegisterAsync(
         RegisterItemRequest request,
@@ -98,3 +108,6 @@ public static class InventoryModuleEndpoints
 public sealed record RegisterItemRequest(string Sku, string Name, string Unit);
 
 public sealed record SetItemStatusRequest(bool Active);
+
+public sealed record InventoryItemView(
+    Guid ItemId, string Sku, string Name, string Unit, decimal QuantityOnHand, string Status);

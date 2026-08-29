@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Rivo.Audit.Contracts;
 using Rivo.Fleet.Application.UseCases;
 using Rivo.Fleet.Contracts;
+using Rivo.Fleet.Domain;
 
 namespace Rivo.Fleet.Api;
 
@@ -27,14 +28,21 @@ public static class FleetModuleEndpoints
         group.MapPost("/vehicles/{vehicleId:guid}/maintenance", SetMaintenanceAsync)
             .RequireAuthorization(FleetPermissions.VehiclesWrite);
 
+        // Nunca eliminar — desactivar é o que existe.
+        group.MapPost("/vehicles/{vehicleId:guid}/deactivation", DeactivateAsync)
+            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+
         return endpoints;
     }
 
     private static async Task<IResult> ListAsync(
         ListVehicles listVehicles,
         bool? includeInactive,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listVehicles.ExecuteAsync(includeInactive ?? false, cancellationToken));
+        CancellationToken cancellationToken)
+    {
+        var veiculos = await listVehicles.ExecuteAsync(includeInactive ?? false, cancellationToken);
+        return Results.Ok(veiculos.Select(ToView));
+    }
 
     private static async Task<IResult> GetAsync(
         Guid vehicleId,
@@ -45,8 +53,14 @@ public static class FleetModuleEndpoints
 
         return veiculo is null
             ? Results.NotFound(new { erro = "Viatura não encontrada." })
-            : Results.Ok(veiculo);
+            : Results.Ok(ToView(veiculo));
     }
+
+    // A entidade de domínio nunca é exposta como modelo de transporte
+    // (architecture/dependency-rules.md) — sem isto, Status sairia como o
+    // inteiro subjacente do enum, e não como "Active"/"InMaintenance".
+    private static VehicleView ToView(Vehicle veiculo) => new(
+        veiculo.Id, veiculo.PlateNumber, veiculo.Model, veiculo.Status.ToString());
 
     private static async Task<IResult> RegisterAsync(
         RegisterVehicleRequest request,
@@ -86,6 +100,19 @@ public static class FleetModuleEndpoints
         };
     }
 
+    private static async Task<IResult> DeactivateAsync(
+        Guid vehicleId,
+        DeactivateVehicle deactivateVehicle,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var encontrada = await deactivateVehicle.ExecuteAsync(vehicleId, BuildAuditContext(http), cancellationToken);
+
+        return encontrada
+            ? Results.NoContent()
+            : Results.NotFound(new { erro = "Viatura não encontrada." });
+    }
+
     private static AuditContext BuildAuditContext(HttpContext http)
     {
         var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
@@ -101,3 +128,5 @@ public static class FleetModuleEndpoints
 public sealed record RegisterVehicleRequest(string PlateNumber, string Model);
 
 public sealed record SetMaintenanceRequest(bool InMaintenance);
+
+public sealed record VehicleView(Guid VehicleId, string PlateNumber, string Model, string Status);

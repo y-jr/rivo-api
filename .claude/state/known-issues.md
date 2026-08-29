@@ -360,8 +360,8 @@ lacuna de verificação end-to-end é anterior a esta correcção e continua.
 ### K20 — Limpar uma política por rota, no fim de uma suite, falha de forma intermitente
 
 - **Módulo:** verificação end-to-end (`scripts/verify-ledger.ps1` caso 44,
-  `scripts/verify-procurement.ps1` caso 58) — não se confirmou defeito na
-  aplicação, em duas investigações separadas.
+  `scripts/verify-procurement.ps1` caso 58, `scripts/verify-payroll.ps1` caso
+  15) — não se confirmou defeito na aplicação, em nenhuma das investigações.
 - **Impacto:** as duas suites terminam a desactivar, pela rota
   `POST /approval/policies/{id}/deactivation`, a política de
   `finance.payment_request` que a própria corrida criou — para que a próxima
@@ -411,8 +411,23 @@ lacuna de verificação end-to-end é anterior a esta correcção e continua.
 - **Contorno:** nenhum a nível de configuração. Corrida a corrida, a política
   por limpar acumula-se; não compromete o resto da suite, só o caso da
   limpeza.
+- **Quarta ocorrência, 2026-08-29, em `verify-payroll.ps1` — decisão de não
+  reabrir a investigação.** A suite nova reproduziu o mesmo padrão exacto no
+  seu próprio bloco de limpeza inicial (a lista de políticas activas de
+  `payroll.payroll_run`, corrida antes do caso 1, fora de qualquer
+  `Test-Case`): confirmado ao vivo que a mesma chamada, repetida manualmente
+  segundos depois, teve sucesso, e que a coluna `is_active` já estava a `0` na
+  base apesar do 404. Com três investigações anteriores já sem causa de
+  código, não se abriu uma quarta — em vez disso, esse bloco (só ele, por
+  correr fora de `Test-Case` e por isso capaz de abortar a suite inteira antes
+  do caso 1) foi envolvido em `try/catch`, para que um 404 aí seja avisado e
+  tolerado em vez de fatal. **O caso 15** (`Test-Case` dedicado, que verifica
+  a limpeza final) **não foi alterado** — continua sem protecção, tal como os
+  equivalentes em `verify-ledger.ps1`/`verify-procurement.ps1`, precisamente
+  para que uma corrida limpa continue a distinguir "só o K20 conhecido" de uma
+  regressão nova.
 - **Seguimento:** reproduzir com instrumentação do lado do servidor (não só do
   script) antes de tentar corrigir de novo — um `Thread.Sleep`/nova tentativa
   no script esconderia o sintoma sem provar a causa. Vale a pena capturar os
-  logs do `rivo-api` no instante exacto da falha, já que três tentativas de
+  logs do `rivo-api` no instante exacto da falha, já que quatro tentativas de
   isolar a causa do lado do PowerShell/HTTP não encontraram nada.

@@ -17,6 +17,36 @@ public sealed class GetVehicle(IVehicleStore store)
         store.FindAsync(vehicleId, cancellationToken);
 }
 
+/// <summary>
+/// Desactiva uma viatura. Nunca elimina — o histórico da viatura fica.
+/// </summary>
+public sealed class DeactivateVehicle(IVehicleStore store, IAuditTrail audit)
+{
+    public async Task<bool> ExecuteAsync(Guid vehicleId, AuditContext context, CancellationToken cancellationToken)
+    {
+        var veiculo = await store.FindForUpdateAsync(vehicleId, cancellationToken);
+
+        if (veiculo is null)
+        {
+            return false;
+        }
+
+        veiculo.Deactivate();
+
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                FleetAuditActions.VehicleDeactivated,
+                FleetAuditEntityTypes.Vehicle,
+                veiculo.Id.ToString(),
+                context),
+            cancellationToken);
+
+        return true;
+    }
+}
+
 public sealed class RegisterVehicle(IVehicleStore store, IAuditTrail audit)
 {
     public async Task<RegisterVehicleResult> ExecuteAsync(
@@ -121,6 +151,7 @@ public static class FleetAuditActions
     public const string VehicleRegistered = "fleet.vehicle.registered";
     public const string VehicleSentToMaintenance = "fleet.vehicle.sent_to_maintenance";
     public const string VehicleReturnedFromMaintenance = "fleet.vehicle.returned_from_maintenance";
+    public const string VehicleDeactivated = "fleet.vehicle.deactivated";
 }
 
 public static class FleetAuditEntityTypes

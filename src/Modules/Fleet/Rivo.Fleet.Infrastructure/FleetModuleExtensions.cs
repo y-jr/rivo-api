@@ -34,6 +34,7 @@ public static class FleetModuleExtensions
         services.AddScoped<GetVehicle>();
         services.AddScoped<RegisterVehicle>();
         services.AddScoped<SetVehicleMaintenance>();
+        services.AddScoped<DeactivateVehicle>();
 
         services.AddAuthorization(options =>
         {
