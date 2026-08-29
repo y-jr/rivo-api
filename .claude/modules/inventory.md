@@ -74,4 +74,8 @@ Enquanto não for resolvida, não assumir nenhum dos lados como dono.
 
 ## Estado
 
-Não iniciado.
+⚠ **Esqueleto** — 2026-08-29. `InventoryItem` (SKU único, nome, unidade),
+CRUD. **Sem movimento nenhum** — `QuantityOnHand` nasce e fica a zero até
+`Movimento` existir. Sem Armazém, Transferência, Contagem, valorização de
+stock — sem testes, sem verificação end-to-end. Permissões atribuídas a
+`AssetManager`.

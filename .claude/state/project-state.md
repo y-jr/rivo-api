@@ -1,10 +1,14 @@
 # Estado do Projecto
 
-_Última actualização: 2026-08-28_
+_Última actualização: 2026-08-29_
 
 ## Fase actual
 
-**Dez dos catorze módulos têm código, e há um ambiente publicado.**
+**Os catorze módulos têm código, e há um ambiente publicado.** Dez estão
+completos ou em fatia deliberada; os quatro últimos — `payroll`, `projects`,
+`inventory`, `fleet` — nasceram a 2026-08-29 como **esqueletos**: CRUD sem
+regra de negócio, sob prazo de apresentação, decisão explícita e registada,
+não descoberta depois. Detalhe na secção Módulos.
 
 As quatro capacidades transversais estão feitas — `audit`, `documents`,
 `notifications` e `approval`. A partir daí, o objectivo do produto mudou: o
@@ -46,13 +50,16 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `commercial` | ⚠ **Reduzido ao Cliente** (ADR-036). Sem funil comercial |
 | `finance` | **Os cinco contextos existem, e os documentos lançam.** Venda (factura, nota de crédito, recibo, saldo), Contas a Pagar, Tesouraria com extracto append-only, Contabilidade & Fecho com postagem automática, Planeamento. **BR-1, BR-3, BR-5 e BR-8 impostas.** ⚠ Contabilidade vazia até alguém carregar o plano; a anulação não estorna; activos fixos bloqueados por K1 |
 | `procurement` | **Os quatro agregados, e o 3-way match fecha.** Fornecedor com IBAN verificado (ISO 13616) e publicado a `finance`; requisição com linhas e decisão de `approval`; Ordem de Compra, que só nasce de requisição aprovada e não deixa encomendar acima do aprovado; Recepção parcial, acumulada por linha e nunca acima do encomendado. A factura liga-se à Ordem (`PurchaseOrderId`, opcional) e `GET .../match` mostra encomendado, recebido e facturado lado a lado — recusa ligar a uma ordem de outro fornecedor, mas **não bloqueia** divergência de valor: fica visível, não impede o registo |
-| `payroll`, `projects`, `inventory`, `fleet` | Sem código. Definidos em [modules/](../modules/) |
+| `payroll` | ⚠⚠ **Esqueleto** (2026-08-29). Folha e itens, CRUD, ligado a `approval` (submete pelo bruto, aprova/recusa aplicado deste lado). **Sem cálculo de IRT/INSS** — os campos existem, ficam sempre nulos; os escalões dependem de `fiscal`, que não tem tabela angolana carregada, e `CLAUDE.md` proíbe implementar a partir do levantamento não verificado |
+| `projects`, `inventory`, `fleet` | ⚠⚠ **Esqueletos** (2026-08-29). CRUD simples — Projecto; Item com SKU único; Viatura com matrícula única. Sem nenhuma das regras que `modules/*.md` descreve |
 
 Detalhe com datas e ressalvas em [implemented.md](implemented.md).
 
-**Os três marcados com ⚠ são fatias deliberadas, não módulos por acabar.** O
-que ficou de fora está listado em cada `modules/*.md` e no ADR-036, com o custo
-de o fazer depois.
+**Os três marcados com uma ⚠ são fatias deliberadas do produto** (ADR-036,
+com o custo do que falta registado em cada `modules/*.md`). **Os quatro
+marcados com ⚠⚠ são esqueletos de prazo** — categoria diferente: sem regra de
+negócio, sem testes, sem verificação end-to-end, feitos para "existir e
+responder", não para estarem correctos. Não confundir os dois.
 
 ## Ambiente publicado
 
@@ -77,21 +84,27 @@ superfície inteira é legível por quem estiver a ouvir.
 
 | Área | Estado |
 |---|---|
-| Código | 10 módulos, 50 projectos em `src/`, 241 ficheiros `.cs` |
-| Superfície HTTP | 151 endpoints em 10 grupos de rota, mais `/health` |
+| Código | 14 módulos, 70 projectos em `src/`, 287 ficheiros `.cs` |
+| Superfície HTTP | 169 endpoints em 14 grupos de rota, mais `/health` |
 | ADRs | 38, aceites |
-| Testes | **705** em 15 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers), confirmados de novo a 2026-08-28: o motor do Docker que tinha caído a 2026-08-27 está estável |
-| Verificação end-to-end | **12 suites** PowerShell, **267 casos**. Última corrida completa e limpa, a partir de `docker compose down -v`: **265/267 a 2026-08-28**. Os 2 que faltam são a mesma falha intermitente, sem causa de código confirmada em três investigações — **K20** em [known-issues.md](known-issues.md) |
+| Testes | **706** em 15 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). **Zero** nos quatro módulos esqueleto (`payroll`, `projects`, `inventory`, `fleet`) — nenhum projecto de teste existe para eles ainda |
+| Verificação end-to-end | **12 suites** PowerShell, **267 casos** — nenhuma cobre `payroll`, `projects`, `inventory` ou `fleet`. Última corrida completa e limpa, a partir de `docker compose down -v`: **265/267 a 2026-08-29**. Os 2 que faltam são a mesma falha intermitente, sem causa de código confirmada em três investigações — **K20** em [known-issues.md](known-issues.md) |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
 
 ## O que não existe
 
-- **Cobertura de Application em sete dos nove módulos.** `finance` (100) e
-  `identity` (8) têm-na; os outros não. 429 testes de domínio contra 108 de
-  Application e 4 de Infrastructure.
-- **Testes de integração** em oito dos nove módulos. Só `notifications` os tem.
+- **Qualquer teste, verificação ou regra de negócio nos quatro módulos
+  esqueleto** (`payroll`, `projects`, `inventory`, `fleet`, 2026-08-29). São
+  CRUD que compila, passa nos testes de arquitectura, e responde contra um
+  ambiente real — nada disso é o mesmo que estar correcto. Ver a nota ⚠⚠ na
+  secção Módulos e o "Seguimento" que cada `modules/*.md` regista.
+- **Cobertura de Application em sete dos nove módulos com código de
+  domínio.** `finance` (100) e `identity` (8) têm-na; os outros não. 429
+  testes de domínio contra 108 de Application e 4 de Infrastructure.
+- **Testes de integração** em oito dos nove módulos com código de domínio.
+  Só `notifications` os tem.
 - **Observabilidade.** Com o Azure fora de cena (ADR-031), o diagnóstico em
   produção é `docker compose logs` numa máquina. **Regressão assumida.**
 - **Revisão humana dos pull requests.** O ruleset exige PR e CI verde, mas
@@ -137,10 +150,19 @@ superfície inteira é legível por quem estiver a ouvir.
    e `finance` respondem a HTTP e têm testes, o que é fácil de confundir com
    estarem feitos. Uma factura do Rivo tem número, série e ar de factura, e não
    é documento fiscal. Mitigação: ⚠ em cada `modules/*.md`, no ADR-036 e aqui.
-4. **K16 — sem TLS.** Credenciais e token em claro no ambiente publicado. Com
+4. **Quatro módulos são CRUD sem regra nenhuma, e respondem tão bem quanto os
+   feitos.** `payroll`, `projects`, `inventory`, `fleet` (2026-08-29) — sob
+   prazo de apresentação, decisão explícita. Ao contrário do risco 3, aqui não
+   há sequer uma regra reduzida por trás: `POST /fleet/vehicles` aceita
+   qualquer matrícula, `POST /payroll/runs/{id}/items` aceita qualquer
+   salário, nada verifica quem pode ver o quê para além da permissão de
+   entrada. **O maior risco concreto é apresentar isto como mais do que é.**
+   Mitigação: ⚠⚠ em cada `modules/*.md` e na secção Módulos acima, distinta da
+   ⚠ dos três reduzidos de propósito.
+5. **K16 — sem TLS.** Credenciais e token em claro no ambiente publicado. Com
    a documentação da API agora aberta (K17), a superfície inteira viaja no
    mesmo canal.
-5. **`hr.Colaborador` como ponto de acoplamento** — mitigado por ADR-010 e
+6. **`hr.Colaborador` como ponto de acoplamento** — mitigado por ADR-010 e
    respeitado no código, mas exige vigilância à medida que os consumidores
    aparecem.
 
@@ -178,6 +200,23 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    `POST /approval/requests/{id}/cancellation` — nem antes nem depois do K18.
    A regra está coberta por teste de domínio; falta o caminho HTTP completo,
    com permissão real e trilha de auditoria.
+8. **Dar regra de negócio real aos quatro esqueletos, ou decidir que ficam
+   CRUD por agora.** `payroll` precisa de Recibo e da ligação a `fiscal`
+   quando houver tabela real; `projects` precisa de Marco, Tarefa e Orçamento;
+   `inventory` precisa de Movimento — sem ele `QuantityOnHand` nunca sai de
+   zero; `fleet` precisa de Manutenção e Atribuição. Nenhum tem teste de
+   domínio nem suite end-to-end. Ver o "Seguimento" em cada `modules/*.md`.
+
+**Fechado a 2026-08-29 (esqueletos):** `payroll`, `projects`, `inventory` e
+`fleet` ganharam código — os catorze módulos têm-no agora. Decisão explícita
+sob prazo de apresentação: CRUD sem regra de negócio, sem testes, sem
+verificação end-to-end (⚠⚠, distinto dos três reduzidos de propósito do
+ADR-036). `payroll` liga-se a `approval` pelo mesmo desenho de
+`IProcurementApprovalSubmission` — submete pelo total bruto, sem cálculo de
+IRT/INSS: os campos existem no modelo e ficam sempre nulos, porque
+`CLAUDE.md` proíbe implementar regras fiscais a partir do levantamento não
+verificado. Confirmado contra o ambiente publicado: os quatro respondem de
+verdade. Detalhe em [implemented.md](implemented.md).
 
 **Fechado a 2026-08-28 (Fornecedor):** `finance` passou a consumir
 `ISupplierDirectory` de `procurement` em `RegisterPurchaseInvoice` — liga por

@@ -61,4 +61,7 @@ viatura), `documents`, `approval`, `audit`, `notifications`.
 
 ## Estado
 
-Não iniciado.
+⚠ **Esqueleto** — 2026-08-29. `Project` (nome, datas, estado), CRUD simples.
+Sem Marco, Tarefa, Orçamento de Projecto, Alocação de Recursos — sem regra de
+negócio nenhuma, sem testes, sem verificação end-to-end. Permissões
+atribuídas a `ProjectManager`, que deixou de estar vazio.

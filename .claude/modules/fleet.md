@@ -58,4 +58,7 @@ viatura).
 
 ## Estado
 
-Não iniciado.
+⚠ **Esqueleto** — 2026-08-29. `Vehicle` (matrícula única, modelo, estado —
+Activa/Manutenção/Inactiva), CRUD. Sem Manutenção, Plano de Manutenção,
+Atribuição, Registo de Viagem, Despesa de Frota, Seguros — sem testes, sem
+verificação end-to-end. Permissões atribuídas a `AssetManager`.

@@ -99,4 +99,12 @@ ninguém as "corrija".
 
 ## Estado
 
-Não iniciado.
+⚠ **Esqueleto** — 2026-08-29. `PayrollRun` e `PayrollItem`, CRUD, ligado a
+`approval` (submete-se pelo total bruto, aprova/recusa aplicado deste lado).
+**Sem cálculo de IRT/INSS**: os campos existem no modelo (`NetSalary`,
+`WithholdingTax`, `SocialSecurityContribution`), ficam sempre nulos — a ordem
+do IRT está confirmada em lei, mas os escalões dependem de `fiscal`, que não
+tem tabela angolana carregada, e `CLAUDE.md` proíbe implementar a partir do
+levantamento não verificado. Sem regras de negócio (BR-1/BR-5/BR-15/BR-17
+listadas acima não impostas), sem testes, sem verificação end-to-end.
+Permissões atribuídas a `HR`.

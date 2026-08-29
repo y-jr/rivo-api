@@ -1,14 +1,16 @@
 # Implementado
 
-_Última actualização: 2026-08-28._
+_Última actualização: 2026-08-29._
 
 Funcionalidade concluída e a funcionar, por módulo. Actualizar como parte de
 terminar uma funcionalidade (passo 8 do fluxo em [CLAUDE.md](../CLAUDE.md)).
 
-**Nove dos catorze módulos têm código:** `identity`, `audit`, `hr`,
-`documents`, `notifications`, `approval`, `fiscal`, `commercial`, `finance`.
-Os restantes cinco — `procurement`, `payroll`, `projects`, `inventory`,
-`fleet` — estão definidos em [modules/](../modules/) e não têm código.
+**Os catorze módulos têm código.** Dez estão completos ou em fatia
+deliberada: `identity`, `audit`, `hr`, `documents`, `notifications`,
+`approval`, `fiscal`, `commercial`, `finance`, `procurement`. Os últimos
+quatro — `payroll`, `projects`, `inventory`, `fleet` — nasceram a 2026-08-29
+como **esqueletos** sob prazo de apresentação: CRUD sem regra de negócio, sem
+testes, sem verificação end-to-end. Ver a secção própria mais abaixo.
 
 ⚠ **Dois estão reduzidos ao mínimo pelo ADR-036**, e não implementados por
 inteiro: `fiscal` (só taxa com vigência e determinação) e `commercial` (só
@@ -928,4 +930,57 @@ e anular devolve a quantidade a "por receber" deixando o registo do erro.
 
 ⚠ **A cobertura de Application continua a ser nenhuma**, como nos outros sete
 módulos.
+
+## payroll, projects, inventory, fleet
+
+_2026-08-29 — **esqueletos**, sob prazo de apresentação. Decisão explícita,
+registada aqui e em cada `modules/*.md`, não descoberta depois._
+
+Os catorze módulos passam a ter código. Cada um: cinco camadas, um schema
+próprio, migração inicial, CRUD por permissão de `identity`. **Zero testes,
+zero regra de negócio além da que o próprio CRUD impõe, zero suite
+end-to-end.** Confirmado a responder contra o ambiente publicado — criar,
+listar — e nada além disso foi verificado.
+
+- **`payroll`** — `PayrollRun` (ano/mês, estado) e `PayrollItem`
+  (colaborador, salário bruto). Submete-se a `approval` pelo total bruto,
+  mesmo desenho de `IProcurementApprovalSubmission`: sem ciclo a quebrar,
+  composition root a traduzir. Aprovar/recusar aplica-se deste lado
+  (`MarkApproved`/`MarkRefused`) quando `payroll` pergunta — `approval` nunca
+  altera dados de negócio de origem.
+
+  **Os campos de cálculo existem e ficam sempre nulos** —
+  `NetSalary`, `WithholdingTax`, `SocialSecurityContribution`. A ordem do
+  cálculo do IRT está confirmada em lei (artigo 7.º do Código do IRT, Lei
+  n.º 18/14), mas os escalões concretos vêm de `fiscal`, que não tem tabela
+  angolana carregada, e `CLAUDE.md` proíbe implementar a partir do
+  levantamento não verificado. Um número calculado sem regra real por trás
+  mentiria pior do que a ausência do campo — decisão tomada em sessão, não
+  suposta.
+
+  Confirmado: abrir folha, acrescentar item, submeter devolve `409` sem
+  política configurada para `payroll.payroll_run` — mesmo comportamento que
+  `procurement` tem sem política, não falha nova.
+
+- **`projects`** — `Project` (nome, datas, estado Active/Closed). Sem Marco,
+  Tarefa, Orçamento de Projecto, Alocação de Recursos.
+
+- **`inventory`** — `InventoryItem` (SKU único, nome, unidade). **Sem
+  movimento nenhum** — `QuantityOnHand` nasce e fica a zero até `Movimento`
+  existir. Sem Armazém, Transferência, Contagem, valorização de stock.
+
+- **`fleet`** — `Vehicle` (matrícula única, modelo, estado
+  Active/InMaintenance/Inactive). Sem Manutenção, Plano de Manutenção,
+  Atribuição, Registo de Viagem, Despesa de Frota, Seguros.
+
+Permissões atribuídas aos perfis que já esperavam por módulos de negócio:
+`ProjectManager` (estava vazio) fica com `projects`; `AssetManager` ("gere
+activos e existências") fica também com `inventory` e `fleet`;
+`HumanResources` fica com `payroll`, por ser onde a folha nasce hoje. Nenhum
+dos sete Perfis de Acesso continua vazio — `verify-bootstrap` caso 2
+verifica isto e foi corrigido no mesmo dia: assumia `ProjectManager` sempre
+vazio, deixou de ser verdade.
+
+Testes de arquitectura ajustados: `ProjectReferenceTests.DependenciasDeclaradas`
+precisava dos quatro módulos novos e de `Identity` a apontar para eles. 21/21.
 
