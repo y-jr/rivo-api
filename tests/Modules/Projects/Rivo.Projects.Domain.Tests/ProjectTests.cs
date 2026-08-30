@@ -289,4 +289,87 @@ public class ProjectTests
 
         Assert.Throws<InvalidOperationException>(() => projecto.AssignTask(tarefa.Id, Guid.CreateVersion7()));
     }
+
+    // --- Orçamento ---------------------------------------------------------
+
+    private static readonly DateTimeOffset Agora = new(2026, 8, 30, 10, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void SetBudget_FirstTime_CreatesIt()
+    {
+        var projecto = Aberto();
+
+        var orcamento = projecto.SetBudget(500_000m, "aoa", Agora);
+
+        Assert.Equal(projecto.Id, orcamento.ProjectId);
+        Assert.Equal(500_000m, orcamento.Amount);
+        Assert.Equal("AOA", orcamento.Currency);
+        Assert.Equal(Agora, orcamento.SetAt);
+        Assert.Same(orcamento, projecto.Budget);
+    }
+
+    [Fact]
+    public void SetBudget_Again_RevisesTheSameInstance()
+    {
+        var projecto = Aberto();
+        var original = projecto.SetBudget(500_000m, "AOA", Agora);
+        var revisao = Agora.AddDays(10);
+
+        projecto.SetBudget(650_000m, "AOA", revisao);
+
+        Assert.Same(original, projecto.Budget);
+        Assert.Equal(650_000m, projecto.Budget!.Amount);
+        Assert.Equal(revisao, projecto.Budget.SetAt);
+    }
+
+    [Fact]
+    public void SetBudget_RevisionWithDifferentCurrency_Throws()
+    {
+        var projecto = Aberto();
+        projecto.SetBudget(500_000m, "AOA", Agora);
+
+        Assert.Throws<InvalidOperationException>(() => projecto.SetBudget(1_000m, "USD", Agora.AddDays(1)));
+
+        // A revisão recusada não mexe no orçamento existente.
+        Assert.Equal(500_000m, projecto.Budget!.Amount);
+        Assert.Equal("AOA", projecto.Budget.Currency);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void SetBudget_NonPositiveAmount_Throws(decimal amount)
+    {
+        var projecto = Aberto();
+
+        Assert.Throws<ArgumentException>(() => projecto.SetBudget(amount, "AOA", Agora));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("AO")]
+    [InlineData("KWANZA")]
+    public void SetBudget_MalformedCurrency_Throws(string currency)
+    {
+        var projecto = Aberto();
+
+        Assert.Throws<ArgumentException>(() => projecto.SetBudget(1000m, currency, Agora));
+    }
+
+    [Fact]
+    public void SetBudget_OnClosedProject_Throws()
+    {
+        var projecto = Aberto();
+        projecto.Close(Inicio.AddDays(5));
+
+        Assert.Throws<InvalidOperationException>(() => projecto.SetBudget(1000m, "AOA", Agora));
+    }
+
+    [Fact]
+    public void Budget_IsNullBeforeSet()
+    {
+        var projecto = Aberto();
+
+        Assert.Null(projecto.Budget);
+    }
 }

@@ -4,18 +4,20 @@ namespace Rivo.Projects.Domain;
 /// Projecto — agregado raiz de `projects` (ver `modules/projects.md`).
 ///
 /// <para>
-/// <strong>Marco e Tarefa vivem aqui dentro</strong> (§Possui): nascem sempre
-/// por este agregado (<see cref="AddMilestone"/>, <see cref="AddTask"/>), e é
-/// ele que impõe a única invariante comum às duas — nada se acrescenta nem se
-/// altera depois de o projecto fechar (<see cref="EnsureActive"/>). Orçamento
-/// de Projecto e Alocação de Recursos continuam por fazer — ver "Perguntas em
-/// aberto" em `modules/projects.md`.
+/// <strong>Marco, Tarefa e Orçamento vivem aqui dentro</strong> (§Possui):
+/// nascem sempre por este agregado (<see cref="AddMilestone"/>,
+/// <see cref="AddTask"/>, <see cref="SetBudget"/>), e é ele que impõe a
+/// invariante comum a Marco e Tarefa — nada se acrescenta nem se altera
+/// depois de o projecto fechar (<see cref="EnsureActive"/>). Alocação de
+/// Recursos continua por fazer — ver "Perguntas em aberto" em
+/// `modules/projects.md`.
 /// </para>
 /// </summary>
 public sealed class Project
 {
     private readonly List<Milestone> _milestones = [];
     private readonly List<ProjectTask> _tasks = [];
+    private ProjectBudget? _budget;
 
     private Project(Guid id, string name, DateOnly startDate)
     {
@@ -44,6 +46,9 @@ public sealed class Project
     public IReadOnlyList<Milestone> Milestones => _milestones;
 
     public IReadOnlyList<ProjectTask> Tasks => _tasks;
+
+    /// <summary>Nulo até <see cref="SetBudget"/> ser chamado a primeira vez.</summary>
+    public ProjectBudget? Budget => _budget;
 
     /// <summary>Concorrência optimista (ADR-025). O domínio nunca lhe toca.</summary>
     public int Version { get; private set; }
@@ -154,6 +159,49 @@ public sealed class Project
     {
         EnsureActive("cancelar tarefas");
         FindTask(taskId).Cancel();
+    }
+
+    /// <summary>
+    /// Define o orçamento do projecto, ou revê-o se já existir.
+    ///
+    /// <para>
+    /// <strong>A moeda fixa-se na primeira vez.</strong> Uma revisão para
+    /// outra moeda é recusada — não porque a conversão seja impossível, mas
+    /// porque decidir a taxa de câmbio não é decisão deste método.
+    /// </para>
+    /// </summary>
+    public ProjectBudget SetBudget(decimal amount, string currency, DateTimeOffset at)
+    {
+        EnsureActive("definir o orçamento");
+
+        if (amount <= 0)
+        {
+            throw new ArgumentException("O orçamento tem de ser positivo.", nameof(amount));
+        }
+
+        if (string.IsNullOrWhiteSpace(currency) || currency.Trim().Length != 3)
+        {
+            throw new ArgumentException("A moeda é o código ISO 4217, com três letras.", nameof(currency));
+        }
+
+        var moeda = currency.Trim().ToUpperInvariant();
+
+        if (_budget is null)
+        {
+            _budget = new ProjectBudget(Guid.CreateVersion7(), Id, amount, moeda, at);
+        }
+        else
+        {
+            if (_budget.Currency != moeda)
+            {
+                throw new InvalidOperationException(
+                    $"Este projecto já tem orçamento em {_budget.Currency} — uma revisão não muda a moeda.");
+            }
+
+            _budget.Revise(amount, at);
+        }
+
+        return _budget;
     }
 
     private Milestone FindMilestone(Guid milestoneId) =>

@@ -46,6 +46,15 @@ public sealed class ProjectsDbContext(DbContextOptions<ProjectsDbContext> option
                 .OnDelete(DeleteBehavior.Cascade);
 
             project.Navigation(p => p.Tasks).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            // Zero ou um por projecto, ao contrário de Marco e Tarefa — mesma
+            // cascata, porque continua a ser parte do agregado.
+            project.HasOne(p => p.Budget)
+                .WithOne()
+                .HasForeignKey<ProjectBudget>(b => b.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            project.Navigation(p => p.Budget).UsePropertyAccessMode(PropertyAccessMode.Field);
         });
 
         builder.Entity<Milestone>(milestone =>
@@ -78,6 +87,19 @@ public sealed class ProjectsDbContext(DbContextOptions<ProjectsDbContext> option
             // (ADR-010). Índice sim — é por aqui que se listam as tarefas de
             // uma pessoa.
             task.HasIndex(t => t.AssignedEmployeeId);
+        });
+
+        builder.Entity<ProjectBudget>(budget =>
+        {
+            budget.ToTable("project_budget");
+            budget.HasKey(b => b.Id);
+
+            budget.Property(b => b.Version).IsConcurrencyToken();
+
+            budget.Property(b => b.Amount).HasPrecision(18, 2);
+            budget.Property(b => b.Currency).HasMaxLength(3).IsRequired();
+
+            budget.HasIndex(b => b.ProjectId).IsUnique();
         });
 
         // As chaves são geradas pelo domínio (Guid.CreateVersion7), nunca pela

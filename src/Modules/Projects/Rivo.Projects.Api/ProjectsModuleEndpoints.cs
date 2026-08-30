@@ -47,6 +47,10 @@ public static class ProjectsModuleEndpoints
         group.MapPost("/{projectId:guid}/tasks/{taskId:guid}/cancellation", CancelTaskAsync)
             .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
 
+        // Define ou revê o orçamento — o mesmo endpoint serve os dois casos.
+        group.MapPost("/{projectId:guid}/budget", SetBudgetAsync)
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+
         return endpoints;
     }
 
@@ -217,6 +221,25 @@ public static class ProjectsModuleEndpoints
         _ => Results.Problem($"Resultado inesperado ao {acto} a tarefa."),
     };
 
+    private static async Task<IResult> SetBudgetAsync(
+        Guid projectId,
+        SetBudgetRequest request,
+        SetProjectBudget setBudget,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await setBudget.ExecuteAsync(
+            projectId, request.Amount, request.Currency, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            SetProjectBudgetOutcome.Set => Results.NoContent(),
+            SetProjectBudgetOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            SetProjectBudgetOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
+            _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["orcamento"] = [result.Error!] }),
+        };
+    }
+
     private static AuditContext BuildAuditContext(HttpContext http)
     {
         var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
@@ -240,3 +263,5 @@ public sealed record ReachMilestoneRequest(DateOnly ReachedOn);
 public sealed record AddTaskRequest(string Title, DateOnly? DueDate, Guid? AssignedEmployeeId);
 
 public sealed record AssignTaskRequest(Guid? EmployeeId);
+
+public sealed record SetBudgetRequest(decimal Amount, string Currency);

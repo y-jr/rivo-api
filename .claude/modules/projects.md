@@ -28,11 +28,12 @@ atribuição de custo ao nível do projecto.
 
 `hr` (`ReferenciaColaborador` para alocação — **ligado**, 2026-08-30: a
 atribuição de Tarefa verifica que o Colaborador existe antes de gravar),
-`finance` (centro de custo, custo real), `commercial` (facturação de
-projecto), `fleet` (alocação de viatura), `documents`, `approval`, `audit`,
-`notifications`. As direcções por ligar pertencem a Orçamento de Projecto e
-Alocação de Recursos (pessoas além da atribuição de Tarefa, viaturas,
-custos), que ainda não estão feitos.
+`finance` (centro de custo, custo real — **Orçamento de Projecto não liga a
+`finance` ainda**, ver ADR-040: a relação existe por decisão, o mecanismo
+fica por desenhar), `commercial` (facturação de projecto), `fleet` (alocação
+de viatura), `documents`, `approval`, `audit`, `notifications`. As direcções
+por ligar pertencem a Alocação de Recursos (pessoas além da atribuição de
+Tarefa, viaturas, custos), que ainda não está feita.
 
 ## Consumido por
 
@@ -69,6 +70,14 @@ custos), que ainda não estão feitos.
 - Uma Tarefa concluída ou cancelada não se reabre, não se reatribui, nem se
   cancela ou conclui outra vez — são estados finais.
 - Cancelar uma Tarefa nunca a elimina (BR-14): fica como facto histórico.
+- Orçamento pertence ao agregado Projecto, **zero ou um por projecto** — ao
+  contrário de Marco e Tarefa, não há "vários orçamentos", há um, revisto ao
+  longo do tempo.
+- A moeda do Orçamento fixa-se na primeira vez que se define — uma revisão
+  para outra moeda é recusada, não convertida: decidir a taxa de câmbio não
+  é decisão deste método.
+- Nem definir nem rever o Orçamento é possível depois de o Projecto fechar
+  (mesma leitura de Marco e Tarefa).
 
 ## Perguntas em aberto
 
@@ -84,18 +93,17 @@ desenhar quando o Orçamento de Projecto tiver código. Detalhe em
 
 ## Estado
 
-**Marco e Tarefa, com regra de negócio real — 2026-08-30.** `Project`
-(nome, datas, estado) nasceu esqueleto a 2026-08-29; ganhou Marco (data alvo,
-alcançar uma vez) e Tarefa (título, prazo, atribuição a Colaborador
-verificada contra `hr`, concluir/cancelar sem reabrir) como parte do mesmo
-agregado — nascem, alteram-se e desaparecem só com o Projecto, e nada se
-acrescenta depois de fechado. 29 testes de domínio
-(`Rivo.Projects.Domain.Tests`); verificação end-to-end em
-`scripts/verify-projects.ps1` — **28/28 confirmados contra a stack local a
+**Marco, Tarefa e Orçamento, com regra de negócio real — 2026-08-30.**
+`Project` (nome, datas, estado) nasceu esqueleto a 2026-08-29; ganhou Marco
+(data alvo, alcançar uma vez), Tarefa (título, prazo, atribuição a
+Colaborador verificada contra `hr`, concluir/cancelar sem reabrir) e
+Orçamento (valor e moeda, zero ou um por projecto, moeda fixa na primeira
+vez) como parte do mesmo agregado — nascem, alteram-se e desaparecem só com
+o Projecto, e nada se acrescenta nem altera depois de fechado. 39 testes de
+domínio (`Rivo.Projects.Domain.Tests`); verificação end-to-end em
+`scripts/verify-projects.ps1` — **33/33 confirmados contra a stack local a
 2026-08-30**, sem nenhuma falha, primeira corrida.
 
-⚠ **Continuam por fazer:** Orçamento de Projecto — **desbloqueado por
-ADR-040** (2026-08-30), ainda por implementar — e Alocação de Recursos
-(pessoas além da atribuição de Tarefa, viaturas, custos), essa sem decisão
-própria ainda. Permissões atribuídas a `ProjectManager`, que deixou de estar
-vazio a 2026-08-29.
+⚠ **Continua por fazer:** Alocação de Recursos (pessoas além da atribuição
+de Tarefa, viaturas, custos), sem decisão própria ainda. Permissões
+atribuídas a `ProjectManager`, que deixou de estar vazio a 2026-08-29.

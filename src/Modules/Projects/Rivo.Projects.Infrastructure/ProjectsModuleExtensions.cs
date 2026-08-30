@@ -9,9 +9,9 @@ using Rivo.Projects.Infrastructure.Persistence;
 namespace Rivo.Projects.Infrastructure;
 
 /// <summary>
-/// Composição do módulo `projects` — ver `modules/projects.md`. Marco e
-/// Tarefa têm regra de negócio própria desde 2026-08-30; Orçamento de
-/// Projecto e Alocação de Recursos continuam por fazer.
+/// Composição do módulo `projects` — ver `modules/projects.md`. Marco,
+/// Tarefa e Orçamento têm regra de negócio própria desde 2026-08-30;
+/// Alocação de Recursos continua por fazer.
 /// </summary>
 public static class ProjectsModuleExtensions
 {
@@ -40,6 +40,7 @@ public static class ProjectsModuleExtensions
         services.AddScoped<AssignTask>();
         services.AddScoped<CompleteTask>();
         services.AddScoped<CancelTask>();
+        services.AddScoped<SetProjectBudget>();
 
         services.AddAuthorization(options =>
         {

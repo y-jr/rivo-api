@@ -1090,8 +1090,36 @@ primeiro teste de qualquer um dos quatro esqueletos de 2026-08-29).
 28/28 contra a stack local a 2026-08-30**, sem nenhuma falha — nem sequer o
 K20 habitual, porque esta suite não toca políticas de `approval`.
 
-**Continuam por fazer:** Orçamento de Projecto e Alocação de Recursos
-(pessoas além da atribuição de Tarefa, viaturas, custos) — ver "Perguntas em
+**Orçamento, na mesma sessão (2026-08-30), desbloqueado por ADR-040.**
+`Project` ganhou um terceiro filho, `ProjectBudget` — **zero ou um por
+projecto**, ao contrário de Marco e Tarefa: `SetBudget(amount, currency, at)`
+cria-o da primeira vez e revê-o depois, sem histórico de revisões, só o
+valor actual.
+
+- **A moeda fixa-se na primeira vez.** Uma revisão para outra moeda é
+  recusada (`InvalidOperationException` → 409) — não porque a conversão seja
+  impossível, mas porque decidir a taxa de câmbio não é decisão deste
+  método.
+- **Distinto do orçamento por centro de custo de `finance`** (ADR-040,
+  ADR-037) — as duas entidades nunca se fundem. A validação cruzada (uma
+  despesa de projecto contra o disponível de `finance`, sem duplicar a
+  entidade) continua por desenhar; este fecho só implementa a entidade e a
+  regra dentro de `projects`.
+- Sujeito à mesma invariante de Marco e Tarefa: nem definir nem rever é
+  possível depois de o projecto fechar.
+
+`ProjectBudgetView` (em `ProjectView.Budget`, nulo até `SetBudget` ser
+chamado) segue o mesmo padrão de `MilestoneView`/`ProjectTaskView`. Um
+endpoint novo, `POST /projects/{id}/budget`, serve tanto a definição inicial
+como a revisão.
+
+**10 testes de domínio novos** (`Rivo.Projects.Domain.Tests` cresceu de 29
+para 39). `scripts/verify-projects.ps1` cresceu de 28 para 33 casos e
+**confirmou 33/33 contra a stack local a 2026-08-30, sem nenhuma falha na
+primeira corrida**.
+
+**Continua por fazer:** Alocação de Recursos (pessoas além da atribuição de
+Tarefa, viaturas, custos) — sem decisão própria ainda, ver "Perguntas em
 aberto" em `modules/projects.md`.
 
 ## fleet

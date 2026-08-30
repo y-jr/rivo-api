@@ -19,13 +19,16 @@ public sealed record ProjectView(
     DateOnly StartDate,
     DateOnly? EndDate,
     IReadOnlyList<MilestoneView> Milestones,
-    IReadOnlyList<ProjectTaskView> Tasks);
+    IReadOnlyList<ProjectTaskView> Tasks,
+    ProjectBudgetView? Budget);
 
 public sealed record MilestoneView(
     Guid MilestoneId, string Name, string Status, DateOnly TargetDate, DateOnly? ReachedOn);
 
 public sealed record ProjectTaskView(
     Guid TaskId, string Title, string Status, DateOnly? DueDate, Guid? AssignedEmployeeId);
+
+public sealed record ProjectBudgetView(decimal Amount, string Currency, DateTimeOffset SetAt);
 
 internal static class ProjectViews
 {
@@ -38,7 +41,10 @@ internal static class ProjectViews
         [.. projecto.Milestones.Select(m =>
             new MilestoneView(m.Id, m.Name, m.Status.ToString(), m.TargetDate, m.ReachedOn))],
         [.. projecto.Tasks.Select(t =>
-            new ProjectTaskView(t.Id, t.Title, t.Status.ToString(), t.DueDate, t.AssignedEmployeeId))]);
+            new ProjectTaskView(t.Id, t.Title, t.Status.ToString(), t.DueDate, t.AssignedEmployeeId))],
+        projecto.Budget is { } orcamento
+            ? new ProjectBudgetView(orcamento.Amount, orcamento.Currency, orcamento.SetAt)
+            : null);
 }
 
 public sealed class ListProjects(IProjectStore store)
@@ -156,6 +162,7 @@ public static class ProjectsAuditActions
     public const string TaskAssigned = "projects.task.assigned";
     public const string TaskCompleted = "projects.task.completed";
     public const string TaskCancelled = "projects.task.cancelled";
+    public const string BudgetSet = "projects.budget.set";
 }
 
 public static class ProjectsAuditEntityTypes
@@ -163,4 +170,5 @@ public static class ProjectsAuditEntityTypes
     public const string Project = "projects.project";
     public const string Milestone = "projects.milestone";
     public const string Task = "projects.task";
+    public const string Budget = "projects.budget";
 }

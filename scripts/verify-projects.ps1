@@ -3,9 +3,9 @@
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 #   pwsh -File scripts/verify-projects.ps1
 #
-# Deixou de ser esqueleto puro a 2026-08-30: Marco e Tarefa ganharam regra de
-# negócio (ver `modules/projects.md` §Possui e a nota "Estado"). Orçamento de
-# Projecto e Alocação de Recursos continuam por fazer — esta suite verifica o
+# Deixou de ser esqueleto puro a 2026-08-30: Marco, Tarefa e Orçamento
+# ganharam regra de negócio (ver `modules/projects.md` §Possui e a nota
+# "Estado"). Alocação de Recursos continua por fazer — esta suite verifica o
 # que existe, não o que falta.
 #
 # Re-executável: cada corrida abre um projecto com nome próprio, derivado do
@@ -219,26 +219,69 @@ Test-Case "18. Cancelar tarefa nunca elimina" {
     "tarefa cancelada; a linha continua na base de dados (BR-14)"
 }
 
-Test-Case "19. Marcos e tarefas ficam na trilha, com actor" {
+Test-Case "19. Definir orcamento" {
+    $body = @{ amount = 500000; currency = "aoa" } | ConvertTo-Json
+    Invoke-RestMethod "$base/projects/$($script:projectId)/budget" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+    $p = Invoke-RestMethod "$base/projects/$($script:projectId)" -Headers $adminHeaders
+    if (-not $p.budget) { throw "orcamento nao aparece no projecto" }
+    if ([decimal]$p.budget.amount -ne 500000) { throw "amount esperado 500000, obtido $($p.budget.amount)" }
+    if ($p.budget.currency -ne "AOA") { throw "moeda nao normalizada: $($p.budget.currency)" }
+    "orcamento definido: 500000 AOA"
+}
+
+Test-Case "20. Orcamento com valor nao positivo e recusado" {
+    $body = @{ amount = 0; currency = "AOA" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/budget" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "valor zero recusado"
+}
+
+Test-Case "21. Orcamento com moeda invalida e recusado" {
+    $body = @{ amount = 1000; currency = "KWANZA" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/budget" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "moeda malformada recusada"
+}
+
+Test-Case "22. Rever orcamento mantendo a moeda" {
+    $body = @{ amount = 650000; currency = "AOA" } | ConvertTo-Json
+    Invoke-RestMethod "$base/projects/$($script:projectId)/budget" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+    $p = Invoke-RestMethod "$base/projects/$($script:projectId)" -Headers $adminHeaders
+    if ([decimal]$p.budget.amount -ne 650000) { throw "amount esperado 650000, obtido $($p.budget.amount)" }
+    "orcamento revisto para 650000 AOA"
+}
+
+Test-Case "23. Rever orcamento com moeda diferente e recusado" {
+    $body = @{ amount = 1000; currency = "USD" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/budget" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    $p = Invoke-RestMethod "$base/projects/$($script:projectId)" -Headers $adminHeaders
+    if ($p.budget.currency -ne "AOA") { throw "moeda mudou apesar da recusa: $($p.budget.currency)" }
+    if ([decimal]$p.budget.amount -ne 650000) { throw "amount mudou apesar da recusa: $($p.budget.amount)" }
+    "409 -- a moeda fixa-se na primeira vez"
+}
+
+Test-Case "24. Marcos, tarefas e orcamento ficam na trilha, com actor" {
     $acoes = @(
         "projects.milestone.added", "projects.milestone.reached",
         "projects.task.added", "projects.task.assigned",
-        "projects.task.completed", "projects.task.cancelled")
+        "projects.task.completed", "projects.task.cancelled",
+        "projects.budget.set")
     foreach ($accao in $acoes) {
         $n = Invoke-Sql "select count(*) from audit.audit_event where action='$accao' and actor_id is not null"
         if ([int]$n -lt 1) { throw "sem evento auditado para '$accao'" }
     }
-    "seis tipos de evento de marco/tarefa auditados, todos com actor"
+    "sete tipos de evento de marco/tarefa/orcamento auditados, todos com actor"
 }
 
-Test-Case "20. Fechar com data anterior ao inicio e recusado" {
+Test-Case "25. Fechar com data anterior ao inicio e recusado" {
     $body = @{ endDate = "2026-08-01" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/closure" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "data de fecho anterior ao inicio recusada"
 }
 
-Test-Case "21. Fechar projecto" {
+Test-Case "26. Fechar projecto" {
     $body = @{ endDate = "2026-12-31" } | ConvertTo-Json
     Invoke-RestMethod "$base/projects/$($script:projectId)/closure" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
     $p = Invoke-RestMethod "$base/projects/$($script:projectId)" -Headers $adminHeaders
@@ -246,14 +289,14 @@ Test-Case "21. Fechar projecto" {
     "projecto fechado"
 }
 
-Test-Case "22. Fechar outra vez e recusado (nao ha reabertura)" {
+Test-Case "27. Fechar outra vez e recusado (nao ha reabertura)" {
     $body = @{ endDate = "2026-12-31" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/closure" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "409 no segundo fecho"
 }
 
-Test-Case "23. Projecto fechado nao aceita marco nem tarefa novos" {
+Test-Case "28. Projecto fechado nao aceita marco, tarefa nem orcamento novos" {
     # Conflito com o estado do projecto, nao pedido malformado -- 409, nao 400.
     $bodyMarco = @{ name = "Marco tardio"; targetDate = "2026-12-01" } | ConvertTo-Json
     $codeMarco = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/milestones" -Method Post -Body $bodyMarco -ContentType "application/json" -Headers $adminHeaders }
@@ -262,10 +305,15 @@ Test-Case "23. Projecto fechado nao aceita marco nem tarefa novos" {
     $bodyTarefa = @{ title = "Tarefa tardia"; dueDate = $null; assignedEmployeeId = $null } | ConvertTo-Json
     $codeTarefa = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/tasks" -Method Post -Body $bodyTarefa -ContentType "application/json" -Headers $adminHeaders }
     if ($codeTarefa -ne 409) { throw "tarefa em projecto fechado: esperado 409, obtido $codeTarefa" }
-    "projecto fechado e facto historico -- nem marco nem tarefa se acrescentam"
+
+    $bodyOrcamento = @{ amount = 1000; currency = "AOA" } | ConvertTo-Json
+    $codeOrcamento = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/budget" -Method Post -Body $bodyOrcamento -ContentType "application/json" -Headers $adminHeaders }
+    if ($codeOrcamento -ne 409) { throw "orcamento em projecto fechado: esperado 409, obtido $codeOrcamento" }
+
+    "projecto fechado e facto historico -- nem marco, nem tarefa, nem orcamento se alteram"
 }
 
-Test-Case "24. Projecto fechado sai da listagem por omissao, includeClosed traz de volta" {
+Test-Case "29. Projecto fechado sai da listagem por omissao, includeClosed traz de volta" {
     $activos = Invoke-RestMethod "$base/projects" -Headers $adminHeaders
     if ($activos.projectId -contains $script:projectId) { throw "projecto fechado ainda aparece nos activos" }
 
@@ -274,7 +322,7 @@ Test-Case "24. Projecto fechado sai da listagem por omissao, includeClosed traz 
     "filtra por omissao; includeClosed mostra tudo"
 }
 
-Test-Case "25. Nao ha eliminacao de projecto" {
+Test-Case "30. Nao ha eliminacao de projecto" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)" -Method Delete -Headers $adminHeaders }
     if ($code -ne 405 -and $code -ne 404) { throw "DELETE devia ser recusado, obtido $code" }
     $existe = Invoke-Sql "select count(*) from projects.project where id='$($script:projectId)'"
@@ -282,7 +330,7 @@ Test-Case "25. Nao ha eliminacao de projecto" {
     "DELETE recusado ($code); a linha continua la"
 }
 
-Test-Case "26. Abrir e fechar ficam na trilha, com actor" {
+Test-Case "31. Abrir e fechar ficam na trilha, com actor" {
     $abrir = Invoke-Sql "select count(*) from audit.audit_event where action='projects.project.opened' and entity_id='$($script:projectId)' and actor_id is not null"
     if ($abrir -ne "1") { throw "abertura nao auditada com actor" }
     $fechar = Invoke-Sql "select count(*) from audit.audit_event where action='projects.project.closed' and entity_id='$($script:projectId)' and actor_id is not null"
@@ -290,7 +338,7 @@ Test-Case "26. Abrir e fechar ficam na trilha, com actor" {
     "abertura e fecho na trilha, ambos com actor"
 }
 
-Test-Case "27. Autorizacao: sem token 401, sem perfil 403" {
+Test-Case "32. Autorizacao: sem token 401, sem perfil 403" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/projects" }
     if ($code -ne 401) { throw "sem token: esperado 401, obtido $code" }
 
@@ -299,7 +347,7 @@ Test-Case "27. Autorizacao: sem token 401, sem perfil 403" {
     "401 e 403 correctos"
 }
 
-Test-Case "28. Dados sobrevivem ao reinicio da stack" {
+Test-Case "33. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
@@ -311,7 +359,8 @@ Test-Case "28. Dados sobrevivem ao reinicio da stack" {
     if ($marco.status -ne "Reached") { throw "estado do marco perdido apos restart: $($marco.status)" }
     $tarefa = $p.tasks | Where-Object { $_.taskId -eq $script:taskId }
     if ($tarefa.status -ne "Done") { throw "estado da tarefa perdido apos restart: $($tarefa.status)" }
-    "projecto '$nome', marco e tarefa intactos apos restart"
+    if ([decimal]$p.budget.amount -ne 650000) { throw "orcamento perdido apos restart: $($p.budget.amount)" }
+    "projecto '$nome', marco, tarefa e orcamento intactos apos restart"
 }
 
 Write-Host ""
