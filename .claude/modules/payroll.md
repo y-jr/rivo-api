@@ -102,9 +102,19 @@ ninguém as "corrija".
 ⚠ **Esqueleto** — 2026-08-29. `PayrollRun` e `PayrollItem`, CRUD, ligado a
 `approval` (submete-se pelo total bruto, aprova/recusa aplicado deste lado).
 **Sem cálculo de IRT/INSS**: os campos existem no modelo (`NetSalary`,
-`WithholdingTax`, `SocialSecurityContribution`), ficam sempre nulos — a ordem
-do IRT está confirmada em lei, mas os escalões dependem de `fiscal`, que não
-tem tabela angolana carregada, e `CLAUDE.md` proíbe implementar a partir do
-levantamento não verificado. Sem regras de negócio (BR-1/BR-5/BR-15/BR-17
-listadas acima não impostas), sem testes, sem verificação end-to-end.
-Permissões atribuídas a `HR`.
+`WithholdingTax`, `SocialSecurityContribution`), ficam sempre nulos. Sem
+regras de negócio (BR-1/BR-5/BR-15/BR-17 listadas acima não impostas), sem
+testes, sem verificação end-to-end. Permissões atribuídas a `HR`.
+
+**A tabela de escalões deixou de ser o bloqueio, a 2026-08-30** — o
+utilizador confirmou a parcela fixa dos dois escalões em aberto (150.001–
+200.000 = 12.500 Kz; 1.500.001–2.000.000 = 292.250 Kz) e que o INSS não tem
+tecto contributivo. **A fonte é o utilizador, não o Anexo I da Lei n.º 14/25
+nem parecer de fiscalista** — ver `state/pending-decisions.md` para a
+reserva completa. O que falta agora para os campos deixarem de ficar nulos
+não é fonte fiscal, é engenharia: `fiscal` precisa de um desenho novo para
+tabelas de escalões progressivos (`TaxRateSchedule` só modela taxa plana
+com vigência), e `payroll` precisa de o consultar à data do facto gerador.
+Subsídios (alimentação, transporte, férias, Natal) continuam sem tratamento
+definido, e `PayrollItem` não distingue componentes do salário bruto —
+enquanto isso não for decidido, o cálculo aplica-se ao bruto inteiro.

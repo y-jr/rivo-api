@@ -186,21 +186,20 @@ re-litigação:
 - [x] ~~Qual tabela de IRT está em vigor~~ — **resolvido** adoptando a KPMG
       como fonte: isenção de **150.000 Kz** desde 01/01/2026 (Lei n.º
       14/25). A tabela de isenção 70.000 é histórica.
-- [ ] **⚠ Parcela fixa do escalão 150.001–200.000 (12.500 Kz).** Se
-      correcta, um rendimento de 150.001 paga 12.500 — salto de 12.500 Kz
-      por 1 Kz. Ou o salto é real (a tabela histórica tem o mesmo padrão), ou
-      a parcela fixa foi ajustada na Lei n.º 14/25 e a transcrição arrastou o
-      valor antigo. **Questão de direito fiscal.** Exige o Anexo I da Lei
-      n.º 14/25 ou parecer de fiscalista. **Bloqueia produção de `payroll`**
-      — desenvolvimento e teste podem prosseguir com o valor provisório.
+- [x] ~~⚠ Parcela fixa do escalão 150.001–200.000 (12.500 Kz)~~ — **confirmado
+      pelo utilizador a 2026-08-30: 12.500 Kz, o salto é real** (produz um
+      rendimento de 150.001 a pagar 12.500 Kz — salto de 12.500 Kz por 1 Kz —
+      tal como no escalão equivalente da tabela histórica, isenção 70.000).
 
-      **Reafirmado pelo utilizador a 2026-08-30, deliberadamente por
-      decidir:** não é decisão de arquitectura, e não se inventa nem se
-      "valida" por essa via. O valor provisório fica, desde que o cálculo
-      seja parametrizável — o campo já existe e fica nulo até haver fonte
-      fiscal competente.
-- [ ] Divergência na parcela fixa do escalão 1.500.001–2.000.000:
-      292.000 vs. 292.250.
+      Reafirmado antes pelo mesmo utilizador, no mesmo dia, como
+      deliberadamente por decidir e não inventável por decisão de
+      arquitectura — a fonte da confirmação é o próprio utilizador, **não**
+      o Anexo I da Lei n.º 14/25 nem parecer de fiscalista, que continuam por
+      obter. Registar esta distinção sempre que o valor for citado.
+- [x] ~~Divergência na parcela fixa do escalão 1.500.001–2.000.000: 292.000
+      vs. 292.250~~ — **confirmado pelo utilizador a 2026-08-30: 292.250 Kz**
+      (valor da Angolex; a contribuição do cliente, 292.000, fica descartada
+      como provável erro de OCR). Mesma reserva de fonte da entrada acima.
 - [ ] **Obter DS.120 v1.4 oficial da AGT** (Especificação Técnica de
       Facturação Electrónica, Agosto 2025). As cópias localizadas estão em
       Scribd — não é fonte fiável para especificação normativa.
@@ -210,7 +209,11 @@ re-litigação:
 - [ ] Outras taxas reduzidas de IVA além dos 5% de equipamento industrial.
 - [ ] Tratamento de subsídios em IRT (alimentação, transporte, férias,
       Natal).
-- [ ] Tecto contributivo no INSS; prazo de entrega; expatriados.
+- [x] ~~Tecto contributivo no INSS~~ — **confirmado pelo utilizador a
+      2026-08-30: sem tecto.** Os 3%/8% incidem sobre o salário bruto
+      inteiro, sem limite superior. Fonte é o utilizador, não texto legal
+      primário — mesma reserva das duas entradas acima. Prazo de entrega e
+      regras de expatriados continuam em aberto, sem resposta.
 - [ ] Regras completas do Grupo B do IRT.
 - [ ] Prazos e formatos das declarações periódicas à AGT.
 - [ ] Processo de certificação de software junto da AGT

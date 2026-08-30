@@ -53,7 +53,7 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `commercial` | ⚠ **Reduzido ao Cliente** (ADR-036). Sem funil comercial |
 | `finance` | **Os cinco contextos existem, e os documentos lançam.** Venda (factura, nota de crédito, recibo, saldo), Contas a Pagar, Tesouraria com extracto append-only, Contabilidade & Fecho com postagem automática, Planeamento. **BR-1, BR-3, BR-5 e BR-8 impostas.** Anular uma factura, nota de crédito ou recibo estorna o lançamento (2026-08-29). ⚠ Contabilidade vazia até alguém carregar o plano; Activos Fixos sem código ainda — o K1 que os bloqueava fechou por ADR-039 (2026-08-30), falta escrevê-los |
 | `procurement` | **Os quatro agregados, e o 3-way match fecha.** Fornecedor com IBAN verificado (ISO 13616) e publicado a `finance`; requisição com linhas e decisão de `approval`; Ordem de Compra, que só nasce de requisição aprovada e não deixa encomendar acima do aprovado; Recepção parcial, acumulada por linha e nunca acima do encomendado. A factura liga-se à Ordem (`PurchaseOrderId`, opcional) e `GET .../match` mostra encomendado, recebido e facturado lado a lado — recusa ligar a uma ordem de outro fornecedor, mas **não bloqueia** divergência de valor: fica visível, não impede o registo |
-| `payroll` | ⚠⚠ **Esqueleto** (2026-08-29). Folha e itens, CRUD, ligado a `approval` (submete pelo bruto, aprova/recusa aplicado deste lado). **Sem cálculo de IRT/INSS** — os campos existem, ficam sempre nulos; os escalões dependem de `fiscal`, que não tem tabela angolana carregada, e `CLAUDE.md` proíbe implementar a partir do levantamento não verificado |
+| `payroll` | ⚠⚠ **Esqueleto** (2026-08-29). Folha e itens, CRUD, ligado a `approval` (submete pelo bruto, aprova/recusa aplicado deste lado). **Sem cálculo de IRT/INSS** — os campos existem, ficam sempre nulos. A tabela de escalões deixou de estar em aberto (utilizador confirmou os dois pontos que faltavam a 2026-08-30, ver `pending-decisions.md`); falta o motor em `fiscal` — escalões progressivos, desenho ainda por fazer |
 | `projects` | **Marco, Tarefa e Orçamento com regra de negócio, confirmado (2026-08-30).** Projecto como agregado — fecha, e fechado é facto histórico: nem Marco, nem Tarefa, nem Orçamento se alteram depois. Tarefa atribuída verifica o Colaborador contra `hr` (ADR-010, BR-18); concluir/cancelar não reabre. Orçamento é zero ou um por projecto, moeda fixa na primeira vez (ADR-040). `verify-projects.ps1` 33/33 contra a stack local, sem falha. ⚠ Alocação de Recursos (pessoas além da atribuição, viaturas, custos) continua por fazer, sem decisão própria |
 | `fleet` | **Manutenção, Atribuição e Plano de Manutenção com regra de negócio, confirmado (2026-08-30).** Viatura como agregado — um registo de manutenção aberto de cada vez, uma atribuição aberta de cada vez, vários planos activos ao mesmo tempo (sem exclusão mútua); nenhum dos três se exclui dos outros dois. Atribuição verifica o Colaborador contra `hr` (ADR-010, BR-18). Alerta de plano devido é consulta (`GET /fleet/maintenance-plans/due`), não notificação empurrada — `identity` não resolve "todos os AssetManager" ainda. `verify-fleet.ps1` 38/38 contra a stack local, sem falha. ⚠ Registo de Viagem, Despesa de Frota e Seguros continuam por fazer |
 | `inventory` | **Movimento com regra de negócio, confirmado (2026-08-30).** Item como agregado — Recepção, Saída e Ajuste; `QuantityOnHand` é a soma assinada, nunca negativo; item inactivo não aceita movimentos novos. `verify-inventory.ps1` 25/25 contra a stack local, sem falha. ⚠ Armazém, Transferência, Contagem e valorização de stock continuam por fazer |
@@ -221,10 +221,14 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    válido, segundo cancelamento recusado (409), trilha com actor para os dois
    casos, e que `payroll` só trata `Cancelled` como recusa quando pergunta.
 8. **`payroll` é o único esqueleto de prazo que resta sem regra de
-   negócio.** Precisa de Recibo e da ligação a `fiscal` quando houver tabela
-   real; o IRT definitivo continua a depender de fonte fiscal (ver
-   `pending-decisions.md`) — desenvolvimento e teste podem prosseguir com o
-   valor provisório. `projects`, `fleet` e `inventory` saíram desta lista a
+   negócio.** Precisa de Recibo e da ligação a `fiscal`. **A tabela de
+   escalões de IRT deixou de ser o bloqueio a 2026-08-30** — o utilizador
+   confirmou os dois pontos em aberto (parcela fixa 150.001–200.000 e
+   1.500.001–2.000.000; sem tecto no INSS), com a reserva de que a fonte é
+   o próprio utilizador, não o Anexo I da Lei n.º 14/25 (ver
+   `pending-decisions.md`). O que falta agora é engenharia: `fiscal`
+   precisa de um desenho novo para escalões progressivos. `projects`,
+   `fleet` e `inventory` saíram desta lista a
    2026-08-30 (ver "Fechado" abaixo), incluindo o Orçamento de Projecto
    (ADR-040) e o Plano de Manutenção de `fleet`. **O que fica por fazer nos
    três não tem decisão própria à espera** — é trabalho de engenharia sem
@@ -232,6 +236,33 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    de Tarefa, viaturas, custos), Armazém/Transferência/Contagem em
    `inventory`, Registo de Viagem/Despesa/Seguros em `fleet`. Ver o
    "Seguimento" em cada `modules/*.md`.
+
+**Fechado a 2026-08-30 (payroll: os dois pontos de IRT/INSS que bloqueavam
+produção):** o utilizador confirmou, depois de reafirmar mais cedo no mesmo
+dia que não decidiria por via de arquitectura, que não havia fonte fiscal
+disponível e que respondia directamente.
+
+- **Parcela fixa do escalão 150.001–200.000 = 12.500 Kz.** O salto de
+  12.500 Kz na fronteira da isenção é real, não erro de transcrição — mesmo
+  padrão do escalão equivalente na tabela histórica (isenção 70.000).
+- **Parcela fixa do escalão 1.500.001–2.000.000 = 292.250 Kz** (valor da
+  Angolex; a contribuição do cliente, 292.000, fica descartada como
+  provável erro de OCR).
+- **INSS sem tecto contributivo** — os 3%/8% incidem sobre o salário bruto
+  inteiro, sempre.
+
+**A fonte destes três valores é o utilizador, não o Anexo I da Lei n.º 14/25
+nem parecer de fiscalista** — essa fonte primária continua por obter, e a
+distinção fica registada em `pending-decisions.md`, `modules/fiscal.md` e
+`modules/payroll.md` para não se perder da próxima vez que o valor for
+citado.
+
+**Isto não implementa o cálculo de IRT/INSS.** Resolve a incógnita fiscal
+que faltava; o que falta agora é engenharia — `fiscal` não tem desenho para
+tabelas de escalões progressivos (`TaxRateSchedule` só modela taxa plana com
+vigência), e `payroll` ainda não o consulta. Tratamento de subsídios em IRT
+continua sem resposta, e `PayrollItem` não distingue componentes do salário
+bruto.
 
 **Fechado a 2026-08-30 (`fleet`: Plano de Manutenção):** `Vehicle` ganhou um
 terceiro filho no agregado, `MaintenancePlan` — calendário preventivo,

@@ -139,19 +139,26 @@ Levantamento provisório em `docs/rivo-fiscal-regras-angola-v1.md` —
 
 Detalhe e estado de confiança em `docs/rivo-fiscal-regras-angola-v1.md` §5.
 
-- **Tabela de escalões de IRT** — fontes secundárias **contradizem-se**
-  (11 escalões/mín. 16% vs. 12 escalões/mín. 13%). Exige o Anexo I da
-  Lei n.º 14/25. Bloqueia `payroll`.
-- **INSS é dedutível à matéria colectável do IRT?** Desconhecido, e muda o
-  valor retido a toda a gente.
-- **Taxas de INSS** — 8%/3% (Decreto Presidencial n.º 227/18) com alteração
-  pendente noticiada para 10%/5%, por confirmar.
+- **Tabela de escalões de IRT (Tabela B, vigente desde 01/01/2026)** —
+  **confirmada pelo utilizador a 2026-08-30**, incluindo os dois pontos que
+  bloqueavam `payroll`: parcela fixa do escalão 150.001–200.000 = 12.500 Kz
+  (o salto na fronteira da isenção é real), e parcela fixa do escalão
+  1.500.001–2.000.000 = 292.250 Kz. **A fonte é o utilizador, não o Anexo I
+  da Lei n.º 14/25 nem parecer de fiscalista** — continuam por obter; ver
+  `state/pending-decisions.md`. Ainda por fazer: carregar a tabela como dado
+  versionado (ADR-011), não como código.
+- **INSS é dedutível à matéria colectável do IRT?** — resolvido antes: sim,
+  só a parcela do trabalhador (3%), artigo 7.º do CIRT.
+- **Taxas de INSS** — 8%/3% confirmadas; sem tecto contributivo
+  (**confirmado pelo utilizador a 2026-08-30**, mesma reserva de fonte).
 - **Lista de isenções de IVA e respectivos códigos** — indispensável, porque
   o SAF-T exige `TaxExemptionReason` **e** `TaxExemptionCode` em cada linha
   isenta.
 - Outras taxas reduzidas de IVA além dos 5% para equipamento industrial.
-- Tratamento de subsídios (alimentação, transporte, férias, Natal) em IRT.
-- Existe tecto contributivo no INSS?
+- Tratamento de subsídios (alimentação, transporte, férias, Natal) em IRT —
+  continua sem resposta; `PayrollItem` não distingue componentes do salário
+  bruto ainda.
+- Prazo de entrega do INSS; regras de expatriados — continuam sem resposta.
 - Prazos e formatos das **declarações periódicas** à AGT.
 - **Processo de certificação de software** junto da AGT
   (`SoftwareValidationNumber`).
@@ -182,10 +189,12 @@ uma taxa com vigência e um contrato de determinação.
 | Isenção com taxa ≠ 0 recusada | Ou o código isenta, ou há imposto a liquidar |
 | `ITaxDetermination` | Determinação **à data do facto gerador**, que é parâmetro obrigatório em vez de `UtcNow` lá dentro |
 
-`TaxKind` só tem `ValueAdded`. O IRT e o INSS precisam de regras que as fontes
-secundárias contradizem, e que `CLAUDE.md` proíbe implementar sem verificação
-profissional — acrescentar aqui um valor que ninguém sabe calcular seria pior
-do que a ausência.
+`TaxKind` só tem `ValueAdded`. **As regras de IRT e INSS estão confirmadas
+pelo utilizador desde 2026-08-30** (ver "Perguntas em aberto"), mas o motor
+ainda não existe: `TaxRateSchedule` modela uma taxa plana com vigência, e o
+IRT é uma tabela de escalões progressivos (Parcela Fixa + Taxa × Excesso) —
+precisa de um desenho novo, ainda por fazer, não de reaproveitar o que já
+existe.
 
 ### Códigos: só ISE e NS
 
