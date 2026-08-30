@@ -94,6 +94,17 @@ public class ConcurrencyTokenTests
             "o imposto de documentos já emitidos. Corrigir é fechar esta e introduzir outra (ADR-011). " +
             "A série que a contém tem o contador, e é lá que a sobreposição colide.",
 
+        ["IncomeTaxScheduleVersion"] =
+            "Imutável depois de introduzida, mesma razão de TaxRateVersion: é facto histórico, e " +
+            "alterá-la mudaria retroactivamente o IRT de folhas já calculadas. Corrigir é fechar " +
+            "esta e introduzir outra (ADR-011). A tabela que a contém tem o contador, e é lá que a " +
+            "sobreposição colide.",
+
+        ["IncomeTaxBracket"] =
+            "Escalão de uma versão imutável — nasce com ela e nunca se altera a si só. Rever um " +
+            "escalão é introduzir uma versão nova da tabela inteira, não editar um escalão isolado. " +
+            "A raiz (IncomeTaxSchedule) tem o contador.",
+
         ["BillingAddress"] =
             "Objecto de valor, não agregado: substitui-se inteira e não tem identidade nem ciclo de " +
             "vida próprio. As colunas vivem na tabela de `Customer`, que tem o contador.",

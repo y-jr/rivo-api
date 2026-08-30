@@ -10,6 +10,8 @@ public sealed class FiscalDbContext(DbContextOptions<FiscalDbContext> options) :
 
     public DbSet<TaxRateSchedule> Schedules => Set<TaxRateSchedule>();
 
+    public DbSet<IncomeTaxSchedule> IncomeTaxSchedules => Set<IncomeTaxSchedule>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -63,6 +65,57 @@ public sealed class FiscalDbContext(DbContextOptions<FiscalDbContext> options) :
 
             // A consulta da determinação: que versão cobria esta data.
             version.HasIndex(v => v.EffectiveFrom);
+        });
+
+        builder.Entity<IncomeTaxSchedule>(schedule =>
+        {
+            schedule.ToTable("income_tax_schedule");
+            schedule.HasKey(s => s.Id);
+
+            schedule.Property(s => s.Version).IsConcurrencyToken();
+
+            schedule.HasMany(s => s.Versions)
+                .WithOne()
+                .HasForeignKey("income_tax_schedule_id")
+                .OnDelete(DeleteBehavior.Cascade);
+
+            schedule.Navigation(s => s.Versions)
+                .HasField("_versions")
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        builder.Entity<IncomeTaxScheduleVersion>(version =>
+        {
+            version.ToTable("income_tax_schedule_version");
+            version.HasKey(v => v.Id);
+
+            version.Property(v => v.LegalInstrument).HasMaxLength(200).IsRequired();
+
+            // A consulta da determinação: que versão cobria esta data.
+            version.HasIndex(v => v.EffectiveFrom);
+
+            version.HasMany(v => v.Brackets)
+                .WithOne()
+                .HasForeignKey("income_tax_schedule_version_id")
+                .OnDelete(DeleteBehavior.Cascade);
+
+            version.Navigation(v => v.Brackets)
+                .HasField("_brackets")
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        builder.Entity<IncomeTaxBracket>(bracket =>
+        {
+            bracket.ToTable("income_tax_bracket");
+            bracket.HasKey(b => b.Id);
+
+            // 18,2: mesma precisão que `finance` usa para valores monetários
+            // — a parcela fixa e o "excesso de" são Kwanzas.
+            bracket.Property(b => b.LowerBound).HasPrecision(18, 2);
+            bracket.Property(b => b.FixedPortion).HasPrecision(18, 2);
+
+            // A taxa é percentagem, mesma precisão de `TaxRateVersion.Percentage`.
+            bracket.Property(b => b.Rate).HasPrecision(5, 2);
         });
 
         // As chaves são geradas pelo domínio (`Guid.CreateVersion7`), nunca

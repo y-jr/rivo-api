@@ -42,6 +42,12 @@ $suites = @(
     # corre logo a seguir a `verify-payroll`, mesmo veiculo (folha submetida)
     # para exercitar o cancelamento de `approval` que nenhuma suite cobria
     # (K18, "Proximos passos" #7 em project-state.md).
+    #
+    # `verify-payroll` tambem depende de `verify-fiscal` (2026-08-30): e la
+    # que o INSS e a tabela de escaloes de IRT sao semeados com os codigos e
+    # datas reais que o motor de calculo consome -- mesma dependencia de
+    # `verify-payables` -> `verify-ledger`, so que `fiscal` ja corre bem
+    # antes de `payroll` nesta lista, por isso nao precisou de se mover.
     "verify-payroll",
     "verify-approval",
     "verify-procurement"

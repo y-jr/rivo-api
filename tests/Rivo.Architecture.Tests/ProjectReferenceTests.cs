@@ -99,7 +99,7 @@ public class ProjectReferenceTests
         // módulo novo. Sem regra de negócio ainda, e sem as dependências que
         // os `.md` listam a mais: essas chegam com as funcionalidades que as
         // justificam.
-        ["Payroll"] = ["Audit"],
+        ["Payroll"] = ["Audit", "Fiscal"],
         ["Inventory"] = ["Audit"],
 
         // `projects` ganhou Marco e Tarefa — 2026-08-30, já não é esqueleto

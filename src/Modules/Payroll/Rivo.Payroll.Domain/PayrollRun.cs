@@ -1,16 +1,15 @@
 namespace Rivo.Payroll.Domain;
 
 /// <summary>
-/// Folha de Pagamento. Esqueleto do módulo — ver `modules/payroll.md`.
+/// Folha de Pagamento. Ver `modules/payroll.md`.
 ///
 /// <para>
-/// <strong>Fatia mínima, deliberada, sem cálculo fiscal.</strong> A ordem de
-/// cálculo do IRT está confirmada em lei (artigo 7.º do Código do IRT), mas os
-/// escalões concretos vêm de `fiscal`, que não tem tabela angolana carregada
-/// — e `CLAUDE.md` proíbe implementar regras fiscais a partir de levantamento
-/// não verificado. Por isso <see cref="PayrollItem"/> só tem o salário bruto:
-/// um número calculado sem regra real por trás mentiria pior do que a
-/// ausência do campo.
+/// <strong>Cálculo fiscal via `fiscal`.</strong> A ordem de cálculo do IRT
+/// está confirmada em lei (artigo 7.º do Código do IRT); os escalões
+/// concretos e as taxas de INSS vêm de `fiscal`, único módulo autorizado a
+/// implementar regra fiscal (`modules/fiscal.md`). `payroll` nunca calcula
+/// o imposto — pergunta a `fiscal` à data do facto gerador e aplica o
+/// resultado via <see cref="PayrollItem.ApplyCalculation"/>.
 /// </para>
 ///
 /// <para>
@@ -94,6 +93,14 @@ public sealed class PayrollRun
     public decimal TotalGross => _items.Sum(i => i.GrossSalary);
 
     /// <summary>
+    /// O facto gerador do imposto deste período — o último dia do mês a que a
+    /// folha respeita. É a data que se passa a `fiscal` para determinar o
+    /// INSS e o IRT em vigor (ADR-011 §3: determinação à data do facto
+    /// gerador, nunca a data corrente).
+    /// </summary>
+    public DateOnly PeriodEndDate => new(Year, Month, DateTime.DaysInMonth(Year, Month));
+
+    /// <summary>
     /// Marca a folha como submetida. Chamado depois de `approval` aceitar —
     /// o composition root é quem fala com `approval`; este método só regista
     /// o resultado (mesmo desenho de `PurchaseRequisition.MarkSubmitted`).
@@ -152,10 +159,10 @@ public enum PayrollRunStatus
 }
 
 /// <summary>
-/// Item de folha, por colaborador. **Só o bruto** — ver o comentário em
-/// <see cref="PayrollRun"/>. Os campos de cálculo existem no modelo de dados,
-/// porque o desenho da folha os prevê, mas ficam sempre nulos: não há motor
-/// de cálculo por trás deles ainda.
+/// Item de folha, por colaborador. Nasce só com o bruto; o cálculo fiscal
+/// (INSS e IRT) é aplicado depois, via <see cref="ApplyCalculation"/>, pelo
+/// caso de uso que pergunta a `fiscal` — ver o comentário em
+/// <see cref="PayrollRun"/>.
 /// </summary>
 public sealed class PayrollItem
 {
@@ -180,16 +187,13 @@ public sealed class PayrollItem
 
     public decimal GrossSalary { get; private set; }
 
-    /// <summary>
-    /// Nulo sempre, por agora. Sem tabela de IRT carregada em `fiscal`, não há
-    /// como calcular sem inventar — e inventar seria pior do que não calcular.
-    /// </summary>
+    /// <summary>Nulo até <see cref="ApplyCalculation"/>.</summary>
     public decimal? NetSalary { get; private set; }
 
-    /// <summary>Nulo sempre, por agora. Ver <see cref="NetSalary"/>.</summary>
+    /// <summary>O IRT retido — nulo até <see cref="ApplyCalculation"/>.</summary>
     public decimal? WithholdingTax { get; private set; }
 
-    /// <summary>Nulo sempre, por agora. Ver <see cref="NetSalary"/>.</summary>
+    /// <summary>A contribuição de INSS a cargo do trabalhador — nulo até <see cref="ApplyCalculation"/>.</summary>
     public decimal? SocialSecurityContribution { get; private set; }
 
     /// <summary>Concorrência optimista (ADR-025). O domínio nunca lhe toca.</summary>
@@ -204,5 +208,34 @@ public sealed class PayrollItem
         }
 
         return new PayrollItem(Guid.CreateVersion7(), runId, employeeId, grossSalary);
+    }
+
+    /// <summary>
+    /// Aplica o resultado do cálculo fiscal, já determinado por `fiscal`.
+    ///
+    /// <para>
+    /// <strong>O líquido calcula-se aqui, não se recebe.</strong> Um terceiro
+    /// parâmetro <c>netSalary</c> seria redundante com <c>bruto − IRT − INSS</c>
+    /// e permitiria os dois discordarem — a invariante fica verdadeira por
+    /// construção só se for este método a fazer a subtracção.
+    /// </para>
+    /// </summary>
+    public void ApplyCalculation(decimal withholdingTax, decimal socialSecurityContribution)
+    {
+        if (withholdingTax < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(withholdingTax), "O IRT retido não pode ser negativo.");
+        }
+
+        if (socialSecurityContribution < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(socialSecurityContribution), "A contribuição de INSS não pode ser negativa.");
+        }
+
+        WithholdingTax = withholdingTax;
+        SocialSecurityContribution = socialSecurityContribution;
+        NetSalary = GrossSalary - withholdingTax - socialSecurityContribution;
     }
 }

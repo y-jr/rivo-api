@@ -85,18 +85,102 @@ public sealed record TaxDetermination(
     string LegalInstrument);
 
 /// <summary>
+/// Determina o IRT devido sobre uma matéria colectável, por tabela de
+/// escalões progressivos.
+///
+/// <para>
+/// <strong>Devolve o imposto já calculado</strong> — ao contrário de
+/// <see cref="ITaxDetermination"/>, que devolve a percentagem e deixa quem
+/// pergunta multiplicar. A diferença é deliberada: "percentagem × montante"
+/// não é uma regra fiscal, é aritmética que qualquer módulo pode fazer
+/// correctamente; "Parcela Fixa + Taxa × (Matéria Colectável − Excesso de)"
+/// é exactamente o tipo de regra que `modules/fiscal.md` reserva a este
+/// módulo — "nenhum outro módulo pode implementar regras de imposto por sua
+/// conta".
+/// </para>
+/// </summary>
+public interface IIncomeTaxDetermination
+{
+    /// <summary>
+    /// Determina o IRT devido sobre <paramref name="request"/>.TaxableIncome,
+    /// à data do facto gerador — nunca à data do cálculo (ADR-011 §3), pela
+    /// mesma razão de <see cref="ITaxDetermination.DetermineAsync"/>.
+    /// </summary>
+    Task<IncomeTaxDeterminationResult> DetermineAsync(
+        IncomeTaxDeterminationRequest request,
+        CancellationToken cancellationToken);
+}
+
+/// <param name="TaxableIncome">
+/// A matéria colectável — já com o INSS do trabalhador e as componentes
+/// isentas deduzidas. Este contrato não sabe nada do salário bruto.
+/// </param>
+/// <param name="TaxPointDate">Data do facto gerador.</param>
+public sealed record IncomeTaxDeterminationRequest(decimal TaxableIncome, DateOnly TaxPointDate);
+
+public sealed record IncomeTaxDeterminationResult(
+    IncomeTaxDeterminationOutcome Outcome, IncomeTaxDetermination? Determination)
+{
+    public static IncomeTaxDeterminationResult Determined(IncomeTaxDetermination determination) =>
+        new(IncomeTaxDeterminationOutcome.Determined, determination);
+
+    public static IncomeTaxDeterminationResult NoScheduleInForce() =>
+        new(IncomeTaxDeterminationOutcome.NoScheduleInForce, null);
+}
+
+public enum IncomeTaxDeterminationOutcome
+{
+    Determined,
+
+    /// <summary>
+    /// Não há tabela de escalões em vigor à data pedida. Recusa, não omissão
+    /// — mesma razão de <see cref="TaxDeterminationOutcome.NoRateInForce"/>.
+    /// </summary>
+    NoScheduleInForce,
+}
+
+/// <param name="Amount">O IRT devido, já calculado.</param>
+/// <param name="Rate">A taxa marginal do escalão aplicado.</param>
+/// <param name="FixedPortion">A parcela fixa do escalão aplicado.</param>
+/// <param name="BracketLowerBound">
+/// O "excesso de" do escalão aplicado — o limiar a partir do qual a taxa
+/// marginal incide.
+/// </param>
+/// <param name="LegalInstrument">
+/// O diploma que fixou esta tabela (ADR-011 §4).
+/// </param>
+public sealed record IncomeTaxDetermination(
+    decimal Amount,
+    decimal Rate,
+    decimal FixedPortion,
+    decimal BracketLowerBound,
+    string LegalInstrument);
+
+/// <summary>
 /// Impostos que `fiscal` determina.
 ///
 /// <para>
-/// Só o IVA, por ora. O IRT e o INSS precisam de regras que as fontes
-/// secundárias contradizem — escalões, dedutibilidade, tecto contributivo — e
-/// que `CLAUDE.md` proíbe implementar sem verificação profissional. Acrescentar
-/// aqui um valor que ninguém sabe calcular seria pior do que a ausência.
+/// O IVA usa <see cref="ITaxDetermination"/> — uma taxa plana com vigência.
+/// O INSS reaproveita o mesmo mecanismo (também é plano). O IRT tem tabela
+/// própria de escalões progressivos, publicada por
+/// <see cref="IIncomeTaxDetermination"/>.
 /// </para>
 /// </summary>
 public enum TaxKind
 {
     ValueAdded,
+
+    /// <summary>
+    /// A parcela do trabalhador (3%, Decreto Presidencial n.º 227/18) — a
+    /// única dedutível à matéria colectável do IRT (artigo 7.º do CIRT).
+    /// </summary>
+    EmployeeSocialSecurity,
+
+    /// <summary>
+    /// A parcela patronal (8%) — custo da empresa, nunca dedutível ao
+    /// rendimento do trabalhador. `payroll` ainda não a consome.
+    /// </summary>
+    EmployerSocialSecurity,
 }
 
 /// <summary>
@@ -117,6 +201,13 @@ public static class TaxCodes
 
     /// <summary>Não sujeito.</summary>
     public const string NotSubject = "NS";
+
+    /// <summary>
+    /// Código interno para as séries de INSS. Não vem do SAF-T — existe só
+    /// para reaproveitar <see cref="ITaxDetermination"/>, que exige um código
+    /// por série.
+    /// </summary>
+    public const string SocialSecurity = "INSS";
 
     /// <summary>
     /// <c>taxCode ∈ { ISE, NS } → taxExemptionCode obrigatório</c>, da

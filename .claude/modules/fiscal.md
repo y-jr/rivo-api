@@ -144,13 +144,19 @@ Detalhe e estado de confiança em `docs/rivo-fiscal-regras-angola-v1.md` §5.
   bloqueavam `payroll`: parcela fixa do escalão 150.001–200.000 = 12.500 Kz
   (o salto na fronteira da isenção é real), e parcela fixa do escalão
   1.500.001–2.000.000 = 292.250 Kz. **A fonte é o utilizador, não o Anexo I
-  da Lei n.º 14/25 nem parecer de fiscalista** — continuam por obter; ver
-  `state/pending-decisions.md`. Ainda por fazer: carregar a tabela como dado
-  versionado (ADR-011), não como código.
+  da Lei n.º 14/25 nem parecer de fiscalista** — continua por obter; ver
+  `state/pending-decisions.md`. **Carregada como dado versionado desde
+  2026-08-30** (`IncomeTaxSchedule`, ADR-011) — a reserva é sobre a fonte do
+  valor, não sobre o mecanismo.
 - **INSS é dedutível à matéria colectável do IRT?** — resolvido antes: sim,
-  só a parcela do trabalhador (3%), artigo 7.º do CIRT.
+  só a parcela do trabalhador (3%), artigo 7.º do CIRT. **Implementado desde
+  2026-08-30**: `AddPayrollItem` deduz o INSS do trabalhador antes de pedir o
+  IRT.
 - **Taxas de INSS** — 8%/3% confirmadas; sem tecto contributivo
   (**confirmado pelo utilizador a 2026-08-30**, mesma reserva de fonte).
+  Carregadas como `TaxRateSchedule` (`TaxKind.EmployeeSocialSecurity` /
+  `EmployerSocialSecurity`, código `INSS`) — o mesmo mecanismo do IVA, sem
+  desenho novo.
 - **Lista de isenções de IVA e respectivos códigos** — indispensável, porque
   o SAF-T exige `TaxExemptionReason` **e** `TaxExemptionCode` em cada linha
   isenta.
@@ -167,7 +173,9 @@ Detalhe e estado de confiança em `docs/rivo-fiscal-regras-angola-v1.md` §5.
 
 ## Estado
 
-**Fatia mínima iniciada em 2026-08-24 — ADR-036.**
+**Fatia mínima iniciada em 2026-08-24 — ADR-036. Motor de IRT/INSS
+acrescentado em 2026-08-30**, depois de o utilizador confirmar directamente
+os valores até então por confirmar.
 
 **As cinco camadas existem desde 2026-08-24**, com schema `fiscal`, migração
 aplicada e rotas alcançáveis.
@@ -178,23 +186,27 @@ uma taxa com vigência e um contrato de determinação.
 
 ### O que existe
 
-`Rivo.Fiscal.Contracts` e `Rivo.Fiscal.Domain`, com 18 testes de domínio.
+`Rivo.Fiscal.Contracts` e `Rivo.Fiscal.Domain`, com 39 testes de domínio (18
+de `TaxRateSchedule`, 21 de `IncomeTaxSchedule`).
 
 | Peça | O que impõe |
 |---|---|
-| `TaxRateSchedule` | Série de versões da mesma taxa. A raiz é a série e não a versão, porque a invariante é sobre o conjunto |
+| `TaxRateSchedule` | Série de versões da mesma taxa plana (IVA, INSS). A raiz é a série e não a versão, porque a invariante é sobre o conjunto |
 | Não sobreposição de vigências | Sem ela, "que taxa vigorava em Março" pode ter duas respostas e a determinação deixa de ser determinística |
 | `InForceOn(data)` | Puramente temporal. Devolver nulo é a resposta certa — recair na versão mais próxima inventaria o valor |
 | Instrumento legal obrigatório | ADR-011 §4. Sem ele, "porquê este valor" fica sem resposta na auditoria |
 | Isenção com taxa ≠ 0 recusada | Ou o código isenta, ou há imposto a liquidar |
-| `ITaxDetermination` | Determinação **à data do facto gerador**, que é parâmetro obrigatório em vez de `UtcNow` lá dentro |
+| `ITaxDetermination` | Determinação **à data do facto gerador**, que é parâmetro obrigatório em vez de `UtcNow` lá dentro. Devolve a **taxa** — quem pede multiplica |
+| `IncomeTaxSchedule` | Série de versões da tabela de escalões de IRT — mesmo padrão de `TaxRateSchedule`, mas cada versão é um conjunto de escalões (Parcela Fixa + Taxa × Excesso de), não um único número |
+| `SelectBracket`/`Compute` | O escalão de maior "excesso de" que a matéria colectável ainda ultrapassa, nunca iguala — é o que faz 150.000 cair na isenção e 150.001 já não |
+| `IIncomeTaxDetermination` | Devolve o **montante já calculado**, ao contrário de `ITaxDetermination`. A fórmula do escalão é regra fiscal (`modules/fiscal.md` — "nenhum outro módulo implementa regra de imposto"); percentagem × montante não é |
 
-`TaxKind` só tem `ValueAdded`. **As regras de IRT e INSS estão confirmadas
-pelo utilizador desde 2026-08-30** (ver "Perguntas em aberto"), mas o motor
-ainda não existe: `TaxRateSchedule` modela uma taxa plana com vigência, e o
-IRT é uma tabela de escalões progressivos (Parcela Fixa + Taxa × Excesso) —
-precisa de um desenho novo, ainda por fazer, não de reaproveitar o que já
-existe.
+**Desde 2026-08-30, `TaxKind` tem `EmployeeSocialSecurity` e
+`EmployerSocialSecurity`** além de `ValueAdded` — o INSS usa o mecanismo de
+`TaxRateSchedule` sem alteração, porque é uma taxa plana como o IVA. O IRT
+precisou de um agregado novo (`IncomeTaxSchedule`), porque é uma tabela de
+escalões, não um número: `TaxRateSchedule` não conseguia modelar isso sem
+distorcer o que "vigência" significa.
 
 ### Códigos: só ISE e NS
 
@@ -209,10 +221,14 @@ a lista oficial de códigos. Não se inventa código.
 ### Adiado por ADR-036
 
 Certificação AGT (`SoftwareValidationNumber`), exportação SAF-T, declarações
-periódicas, motor de IRT e INSS, e a cadeia `Hash`/`HashControl` (K7).
+periódicas, e a cadeia `Hash`/`HashControl` (K7). **O motor de IRT e INSS já
+não está nesta lista — implementado a 2026-08-30.**
 
 ⚠ **As facturas emitidas não são documentos fiscais válidos em Angola.** É
-assunção de produto registada no ADR-036, não conclusão técnica.
+assunção de produto registada no ADR-036, não conclusão técnica. **Os valores
+de IRT/INSS calculados por `payroll` têm a mesma reserva** — o mecanismo
+existe e está testado, mas a fonte dos valores (escalões, taxas) é o
+utilizador, não fiscalista nem Anexo I da lei; ver "Perguntas em aberto".
 
 ### Rotas
 
@@ -221,17 +237,26 @@ assunção de produto registada no ADR-036, não conclusão técnica.
 | GET | `/fiscal/tax-rates` | `fiscal.rates.read` |
 | POST | `/fiscal/tax-rates` | `fiscal.rates.write` |
 | POST | `/fiscal/tax-rates/{scheduleId}/versions` | `fiscal.rates.write` |
-| GET | `/fiscal/tax-rates/determination?taxCode=&taxPointDate=` | `fiscal.rates.read` |
+| GET | `/fiscal/tax-rates/determination?taxCode=&taxPointDate=&kind=` | `fiscal.rates.read` |
+| GET | `/fiscal/income-tax-schedule` | `fiscal.rates.read` |
+| POST | `/fiscal/income-tax-schedule/versions` | `fiscal.rates.write` |
+| GET | `/fiscal/income-tax-schedule/determination?taxableIncome=&taxPointDate=` | `fiscal.rates.read` |
 
-Três códigos com significado, verificados contra a API a correr:
+Três códigos com significado, verificados contra a API a correr — o mesmo
+padrão nas duas famílias de rotas (taxa plana e escalões):
 
 - **`409`** ao introduzir uma versão que se sobrepõe. Não é campo mal
   preenchido — é conflito com o que já lá está, e corrige-se fechando a versão
   anterior.
-- **`404`** na determinação sem taxa em vigor à data. Recusar é a resposta
-  certa; recair na versão mais próxima inventaria o valor.
-- **`501`** na determinação com `ISE` ou `NS`. A capacidade não existe neste
-  sistema — falta o catálogo de códigos de isenção — e não é defeito do pedido.
+- **`404`** na determinação sem taxa/tabela em vigor à data. Recusar é a
+  resposta certa; recair na versão mais próxima inventaria o valor.
+- **`501`** na determinação de IVA com `ISE` ou `NS`. A capacidade não existe
+  neste sistema — falta o catálogo de códigos de isenção — e não é defeito do
+  pedido.
 
-**Só o `Admin` escreve taxas.** `Sales` recebe `commercial`, não `fiscal`: quem
-vende não fixa a taxa que a sua própria venda vai liquidar.
+**Só o `Admin` escreve taxas e escalões.** `Sales` recebe `commercial`, não
+`fiscal`: quem vende não fixa a taxa que a sua própria venda vai liquidar. O
+corpo JSON de `kind` é o valor ordinal do enum (`1` para
+`EmployeeSocialSecurity`, `2` para `EmployerSocialSecurity`) — não há
+`JsonStringEnumConverter` registado; a query string aceita o nome (binding de
+parâmetro, não de corpo JSON).

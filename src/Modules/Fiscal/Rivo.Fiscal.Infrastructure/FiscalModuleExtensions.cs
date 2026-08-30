@@ -35,6 +35,14 @@ public static class FiscalModuleExtensions
         services.AddScoped<OpenTaxRateSchedule>();
         services.AddScoped<IntroduceTaxRate>();
 
+        services.AddScoped<IIncomeTaxScheduleStore, IncomeTaxScheduleStore>();
+
+        // O contrato publicado de IRT. `payroll` pergunta por aqui.
+        services.AddScoped<IIncomeTaxDetermination, IncomeTaxDeterminationService>();
+
+        services.AddScoped<GetIncomeTaxSchedule>();
+        services.AddScoped<IntroduceIncomeTaxScheduleVersion>();
+
         // Cada módulo regista as policies das suas permissões (ADR-014).
         services.AddAuthorization(options =>
         {

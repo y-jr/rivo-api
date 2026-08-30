@@ -4,11 +4,19 @@
 #   pwsh -File scripts/verify-fiscal.ps1
 #
 # Âmbito reduzido pelo ADR-036: taxa com vigência e determinação à data do
-# facto gerador. Não há motor fiscal, exportação SAF-T nem declarações — e o
-# que esta suite verifica é exactamente a fatia que existe.
+# facto gerador. Exportação SAF-T e declarações periódicas continuam adiadas
+# — mas o motor de IRT/INSS existe desde 2026-08-30 (ver casos 13-19).
 #
 # Re-executável: cada corrida usa um código de taxa próprio, derivado do
-# carimbo temporal. Duas corridas seguidas passam as duas.
+# carimbo temporal, para os casos que exercitam a série em si (1-12). Os
+# casos 13-19 semeiam INSS e a tabela de IRT com os códigos e datas
+# *reais* que `payroll` consome — por isso são idempotentes por desenho, e
+# não por código único: uma segunda corrida encontra-os já semeados e
+# confirma-o em vez de os duplicar.
+#
+# **Carrega-se antes de `verify-payroll`** (verify-all.ps1): sem INSS e IRT
+# em vigor, `AddPayrollItem` recusa por `NoRateInForce`/`NoScheduleInForce`
+# — mesma dependência de ordem que `verify-payables` → `verify-ledger`.
 
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "_ambiente.ps1")
@@ -166,7 +174,134 @@ Test-Case "12. Serie por imposto e codigo e unica na base de dados" {
     "indice unico e a segunda linha de defesa"
 }
 
-Test-Case "13. Dados sobrevivem ao reinicio da stack" {
+Test-Case "13. Semear INSS do trabalhador (3%) e recusar Sales a faze-lo" {
+    $body = @{ code = "SALES"; description = "Tentativa" } | ConvertTo-Json
+    # Ja verificado no caso 2 para IVA; aqui confirma-se que a mesma politica
+    # cobre o INSS -- nao ha um segundo conjunto de permissoes por tipo de
+    # imposto (fiscal.rates.write cobre todas as series).
+    $existeSemPerfil = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='Sales' and c.claim_value='fiscal.rates.write'"
+    if ($existeSemPerfil -ne "0") { throw "Sales tem fiscal.rates.write" }
+
+    $existe = (Invoke-Sql "select id from fiscal.tax_rate_schedule where kind='EmployeeSocialSecurity' and code='INSS'").Trim()
+    if ($existe) {
+        $script:inssTrabalhadorId = $existe
+        "ja semeado por uma corrida anterior ($existe)"
+    }
+    else {
+        # 1 = TaxKind.EmployeeSocialSecurity. O corpo JSON nao tem um
+        # JsonStringEnumConverter registado (nenhum outro sitio no codigo
+        # ainda precisava de o enviar por nome) -- o valor ordinal e o unico
+        # que o model binding aceita aqui. A query string do caso 15 e
+        # diferente: o binding de parametro de rota/query aceita o nome.
+        $abrir = @{ kind = 1; code = "INSS"; description = "INSS - contribuicao do trabalhador" } | ConvertTo-Json
+        $r = Invoke-RestMethod "$base/fiscal/tax-rates" -Method Post -Body $abrir -ContentType "application/json" -Headers $adminHeaders
+        $script:inssTrabalhadorId = $r.scheduleId
+
+        # Vigencia aberta desde antes de qualquer folha que a suite de payroll
+        # processe: nao e um valor de teste, e o que `payroll` consome de
+        # facto. legalInstrument documenta a origem -- confirmado pelo
+        # utilizador em resposta directa, nao levantamento secundario
+        # (`.claude/docs/rivo-fiscal-regras-angola-v1.md` nao e fonte).
+        $versao = @{
+            percentage      = 3
+            effectiveFrom   = "2020-01-01"
+            legalInstrument = "Confirmado pelo utilizador em 2026-08-30 (sem tecto, 3% sobre o bruto inteiro); nao fonte fiscal profissional"
+        } | ConvertTo-Json
+        Invoke-RestMethod "$base/fiscal/tax-rates/$($script:inssTrabalhadorId)/versions" -Method Post -Body $versao -ContentType "application/json" -Headers $adminHeaders | Out-Null
+        "aberto e semeado agora ($($script:inssTrabalhadorId))"
+    }
+}
+
+Test-Case "14. Semear INSS patronal (8%)" {
+    $existe = (Invoke-Sql "select id from fiscal.tax_rate_schedule where kind='EmployerSocialSecurity' and code='INSS'").Trim()
+    if ($existe) {
+        $script:inssPatronalId = $existe
+        "ja semeado por uma corrida anterior ($existe)"
+    }
+    else {
+        # 2 = TaxKind.EmployerSocialSecurity -- ver a nota no caso 13.
+        $abrir = @{ kind = 2; code = "INSS"; description = "INSS - contribuicao patronal" } | ConvertTo-Json
+        $r = Invoke-RestMethod "$base/fiscal/tax-rates" -Method Post -Body $abrir -ContentType "application/json" -Headers $adminHeaders
+        $script:inssPatronalId = $r.scheduleId
+
+        $versao = @{
+            percentage      = 8
+            effectiveFrom   = "2020-01-01"
+            legalInstrument = "Confirmado pelo utilizador em 2026-08-30 (sem tecto, 8% sobre o bruto inteiro); nao fonte fiscal profissional"
+        } | ConvertTo-Json
+        Invoke-RestMethod "$base/fiscal/tax-rates/$($script:inssPatronalId)/versions" -Method Post -Body $versao -ContentType "application/json" -Headers $adminHeaders | Out-Null
+        "aberto e semeado agora ($($script:inssPatronalId))"
+    }
+}
+
+Test-Case "15. Determinacao de INSS devolve 3% (trabalhador) e 8% (patronal)" {
+    $trabalhador = Invoke-RestMethod "$base/fiscal/tax-rates/determination?kind=EmployeeSocialSecurity&taxCode=INSS&taxPointDate=2026-08-31" -Headers $adminHeaders
+    if ($trabalhador.percentage -ne 3) { throw "esperado 3%, obtido $($trabalhador.percentage)" }
+
+    $patronal = Invoke-RestMethod "$base/fiscal/tax-rates/determination?kind=EmployerSocialSecurity&taxCode=INSS&taxPointDate=2026-08-31" -Headers $adminHeaders
+    if ($patronal.percentage -ne 8) { throw "esperado 8%, obtido $($patronal.percentage)" }
+    "trabalhador=3%, patronal=8%"
+}
+
+Test-Case "16. Semear a tabela de escalões de IRT (Tabela B, Lei n.o 14/25)" {
+    $existe = (Invoke-Sql "select id from fiscal.income_tax_schedule").Trim()
+    if ($existe) {
+        $script:irtScheduleId = $existe
+        "ja semeada por uma corrida anterior ($existe)"
+    }
+    else {
+        # Os 11 escalões da Tabela B. Os dois que estavam por confirmar em
+        # `docs/rivo-fiscal-regras-angola-v1.md` §1.4 (escalao 2: 12.500;
+        # escalao 7: 292.250) vieram do utilizador directamente, nao do
+        # levantamento -- e e por isso que se pode semear em producao-like,
+        # nao so em teste.
+        $escaloes = @(
+            @{ lowerBound = 0; fixedPortion = 0; rate = 0 }
+            @{ lowerBound = 150000; fixedPortion = 12500; rate = 16.0 }
+            @{ lowerBound = 200000; fixedPortion = 31250; rate = 18.0 }
+            @{ lowerBound = 300000; fixedPortion = 49250; rate = 19.0 }
+            @{ lowerBound = 500000; fixedPortion = 87250; rate = 20.0 }
+            @{ lowerBound = 1000000; fixedPortion = 187250; rate = 21.0 }
+            @{ lowerBound = 1500000; fixedPortion = 292250; rate = 22.0 }
+            @{ lowerBound = 2000000; fixedPortion = 402250; rate = 23.0 }
+            @{ lowerBound = 2500000; fixedPortion = 517250; rate = 24.0 }
+            @{ lowerBound = 5000000; fixedPortion = 1117250; rate = 24.5 }
+            @{ lowerBound = 10000000; fixedPortion = 2342250; rate = 25.0 }
+        )
+        $body = @{
+            brackets        = $escaloes
+            effectiveFrom   = "2020-01-01"
+            legalInstrument = "Lei n.o 14/25 (Tabela B); parcelas dos escaloes 2 e 7 confirmadas pelo utilizador em 2026-08-30, nao fonte fiscal profissional"
+        } | ConvertTo-Json -Depth 5
+
+        $r = Invoke-RestMethod "$base/fiscal/income-tax-schedule/versions" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
+        $script:irtScheduleId = $r.versionId
+        "semeada agora, 11 escaloes"
+    }
+}
+
+Test-Case "17. Escalao de isencao: ate 150.000 nao paga IRT" {
+    $r = Invoke-RestMethod "$base/fiscal/income-tax-schedule/determination?taxableIncome=150000&taxPointDate=2026-08-31" -Headers $adminHeaders
+    if ($r.amount -ne 0) { throw "esperado 0, obtido $($r.amount)" }
+    "150.000 exacto ainda no escalao de isencao"
+}
+
+Test-Case "18. Um kwanza acima da isencao ja paga (salto documentado, 12.500)" {
+    $r = Invoke-RestMethod "$base/fiscal/income-tax-schedule/determination?taxableIncome=150001&taxPointDate=2026-08-31" -Headers $adminHeaders
+    if ($r.amount -ne 12500.16) { throw "esperado 12500.16, obtido $($r.amount)" }
+    if ($r.fixedPortion -ne 12500) { throw "parcela fixa errada: $($r.fixedPortion)" }
+    "150.001: IRT=12500.16, confirmando o salto (docs/rivo-fiscal-regras-angola-v1.md 1.5)"
+}
+
+Test-Case "19. Exemplo documentado: bruto 250.000, materia colectavel 242.500, IRT 38.900" {
+    $r = Invoke-RestMethod "$base/fiscal/income-tax-schedule/determination?taxableIncome=242500&taxPointDate=2026-08-31" -Headers $adminHeaders
+    if ($r.amount -ne 38900) { throw "esperado 38900, obtido $($r.amount)" }
+    if ($r.rate -ne 18) { throw "taxa errada: $($r.rate)" }
+    if ($r.bracketLowerBound -ne 200000) { throw "escalao errado, excesso de $($r.bracketLowerBound)" }
+    "242.500 -> escalao 200.001-300.000, IRT=38.900 (docs/rivo-fiscal-regras-angola-v1.md 1.6)"
+}
+
+Test-Case "20. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
@@ -174,7 +309,10 @@ Test-Case "13. Dados sobrevivem ao reinicio da stack" {
 
     $r = Invoke-RestMethod "$base/fiscal/tax-rates/determination?taxCode=$codigo&taxPointDate=2026-03-15" -Headers $adminHeaders
     if ($r.percentage -ne 5) { throw "taxa perdida ou alterada: $($r.percentage)" }
-    "determinacao intacta apos restart"
+
+    $irt = Invoke-RestMethod "$base/fiscal/income-tax-schedule/determination?taxableIncome=242500&taxPointDate=2026-08-31" -Headers $adminHeaders
+    if ($irt.amount -ne 38900) { throw "IRT perdido ou alterado: $($irt.amount)" }
+    "determinacao de IVA e de IRT intactas apos restart"
 }
 
 Write-Host ""

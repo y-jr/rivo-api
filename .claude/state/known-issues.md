@@ -362,8 +362,9 @@ lacuna de verificação end-to-end é anterior a esta correcção e continua.
 - **Módulo:** verificação end-to-end (`scripts/verify-ledger.ps1` caso 45 —
   era o caso 44 até 2026-08-29, quando o estorno automático (ver abaixo)
   acrescentou um caso novo antes deste; `scripts/verify-procurement.ps1` caso
-  58, `scripts/verify-payroll.ps1` caso 15) — não se confirmou defeito na
-  aplicação, em nenhuma das investigações.
+  58, `scripts/verify-payroll.ps1` caso 16 — era o caso 15 até 2026-08-30,
+  quando o motor de IRT/INSS acrescentou dois casos novos antes deste) — não
+  se confirmou defeito na aplicação, em nenhuma das investigações.
 - **Impacto:** as duas suites terminam a desactivar, pela rota
   `POST /approval/policies/{id}/deactivation`, a política de
   `finance.payment_request` que a própria corrida criou — para que a próxima

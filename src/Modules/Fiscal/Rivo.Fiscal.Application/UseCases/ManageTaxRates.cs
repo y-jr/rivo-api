@@ -45,12 +45,16 @@ public sealed class ListTaxRates(ITaxRateStore store)
     internal static Contracts.TaxKind ToContract(Domain.TaxKind kind) => kind switch
     {
         Domain.TaxKind.ValueAdded => Contracts.TaxKind.ValueAdded,
+        Domain.TaxKind.EmployeeSocialSecurity => Contracts.TaxKind.EmployeeSocialSecurity,
+        Domain.TaxKind.EmployerSocialSecurity => Contracts.TaxKind.EmployerSocialSecurity,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Imposto sem correspondência publicada."),
     };
 
     internal static Domain.TaxKind ToDomain(Contracts.TaxKind kind) => kind switch
     {
         Contracts.TaxKind.ValueAdded => Domain.TaxKind.ValueAdded,
+        Contracts.TaxKind.EmployeeSocialSecurity => Domain.TaxKind.EmployeeSocialSecurity,
+        Contracts.TaxKind.EmployerSocialSecurity => Domain.TaxKind.EmployerSocialSecurity,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Imposto sem correspondência no domínio."),
     };
 }
@@ -232,9 +236,13 @@ public static class FiscalAuditActions
     public const string ScheduleOpened = "fiscal.tax_rate.schedule_opened";
 
     public const string RateIntroduced = "fiscal.tax_rate.introduced";
+
+    public const string IncomeTaxScheduleVersionIntroduced = "fiscal.income_tax_schedule.version_introduced";
 }
 
 public static class FiscalAuditEntityTypes
 {
     public const string TaxRateSchedule = "fiscal.tax_rate_schedule";
+
+    public const string IncomeTaxSchedule = "fiscal.income_tax_schedule";
 }

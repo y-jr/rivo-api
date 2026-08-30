@@ -147,4 +147,7 @@
     <Project Path="tests/Modules/Notifications/Rivo.Notifications.Domain.Tests/Rivo.Notifications.Domain.Tests.csproj" />
     <Project Path="tests/Modules/Notifications/Rivo.Notifications.Infrastructure.Tests/Rivo.Notifications.Infrastructure.Tests.csproj" />
   </Folder>
+  <Folder Name="/tests/Payroll/">
+    <Project Path="tests/Modules/Payroll/Rivo.Payroll.Domain.Tests/Rivo.Payroll.Domain.Tests.csproj" />
+  </Folder>
 </Solution>

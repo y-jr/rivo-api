@@ -34,7 +34,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 3 | `fiscal` — o que não está bloqueado | **Reduzida a fatia mínima** em 2026-08-24 (ADR-036) |
 | 4 | `finance` — o núcleo | ✅ **Critério de saída cumprido** em 2026-08-25 — os cinco contextos internos, BR-1/3/5/8 impostas, os documentos a lançar nos livros e (2026-08-29) a anular a estornar. Em dívida: o plano de contas, que é do contabilista |
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
-| 6 | `payroll` | Esqueleto sem regra (2026-08-29) — trave de produção por parecer fiscal, ver a nota da fase |
+| 6 | `payroll` | Motor de IRT/INSS ganhou regra de negócio real em 2026-08-30 — trave de **produção** continua por parecer fiscal, ver a nota da fase |
 | 7 | `projects`, `inventory`, `fleet` | Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). Nenhum tem bloqueio de negócio; Armazém/Transferência/Contagem em `inventory`, Alocação de Recursos em `projects` e Registo de Viagem/Despesa/Seguros em `fleet` continuam por fazer |
 | 8 | Camadas de composição e portais | Por iniciar |
 
@@ -338,6 +338,23 @@ em AR sem intervenção manual.
 **Critério de saída:** recibos correctos em staging; ida a produção
 condicionada ao parecer, por decisão explícita e registada.
 
+> **Estado a 2026-08-30 — o motor existe, confirmado contra a stack local;
+> a trave de produção não mudou.** `payroll` nasceu esqueleto a 2026-08-29
+> (decisão explícita, sob prazo de apresentação). O utilizador confirmou
+> directamente, no mesmo dia, os dois pontos que faltavam para a Tabela B
+> (parcela fixa dos escalões 150.001–200.000 e 1.500.001–2.000.000) e que o
+> INSS não tem tecto — ver `pending-decisions.md`. `fiscal` ganhou
+> `IncomeTaxSchedule` (escalões progressivos, mesmo padrão de vigência de
+> `TaxRateSchedule`), e `AddPayrollItem` passou a perguntar-lhe na ordem do
+> artigo 7.º do CIRT: INSS do trabalhador, matéria colectável, IRT,
+> líquido — sempre calculado, recusando (400) quando falta taxa ou tabela
+> em vigor. `verify-payroll.ps1` (17 casos) e `verify-fiscal.ps1` (20)
+> confirmam, incluindo o exemplo documentado ponta-a-ponta (bruto 250.000 →
+> líquido 203.600). **A trave de produção continua de pé**: a fonte dos
+> valores é o utilizador, não parecer de fiscalista nem o Anexo I da Lei
+> n.º 14/25 — o critério de saída desta fase (ida a produção condicionada
+> ao parecer) não mudou, só deixou de bloquear o desenvolvimento e o teste.
+
 ---
 
 ## Fase 7 — `projects`, `inventory`, `fleet`
@@ -490,7 +507,7 @@ falta a certificação da AGT e a cadeia `Hash`/`HashControl`.
 | Certificação AGT, exportação SAF-T, declarações | Nenhum sobre o que está feito — acrescenta-se |
 | Cadeia `Hash`/`HashControl` (K7) | **Baixo**, e é o ponto: numeração, ordem e imutabilidade já existem, portanto a assinatura enxerta-se sem reescrever a emissão |
 | Códigos de isenção | Emitir com `ISE`/`NS` devolve `501` até haver a lista oficial |
-| Motor de IRT e INSS | `payroll` (Fase 6) continua bloqueado, como já estava |
+| Motor de IRT e INSS | `payroll` (Fase 6) continua bloqueado, como já estava — **implementado a 2026-08-30**, ver a nota na Fase 6 acima |
 
 **O que a Fase 4 ainda deve por inteiro:** Contas a Pagar, Tesouraria,
 Contabilidade & Fecho, Planeamento, e com eles BR-1, BR-3, BR-5 e o disponível

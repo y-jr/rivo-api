@@ -1,4 +1,5 @@
 using Rivo.Audit.Contracts;
+using Rivo.Fiscal.Contracts;
 using Rivo.Payroll.Application.Abstractions;
 using Rivo.Payroll.Domain;
 
@@ -59,7 +60,30 @@ public sealed record OpenRunResult(bool Succeeded, Guid? RunId, string? Error)
     public static OpenRunResult Rejected(string error) => new(false, null, error);
 }
 
-public sealed class AddPayrollItem(IPayrollRunStore store, IAuditTrail audit)
+/// <summary>
+/// Acrescenta um item à folha, já com o cálculo fiscal aplicado.
+///
+/// <para>
+/// <strong>`payroll` pergunta, `fiscal` responde.</strong> A ordem é a do
+/// artigo 7.º do Código do IRT: primeiro desconta-se o INSS a cargo do
+/// trabalhador, depois calcula-se o IRT sobre a matéria colectável já líquida
+/// de INSS — nunca sobre o bruto. Ambas as perguntas são feitas à data do
+/// facto gerador (o fim do período da folha, <see cref="PayrollRun.PeriodEndDate"/>),
+/// nunca à data corrente (ADR-011 §3).
+/// </para>
+///
+/// <para>
+/// <strong>Recusa, não omissão.</strong> Se `fiscal` não tiver taxa de INSS
+/// ou tabela de IRT em vigor para a data, o item não nasce — mesmo padrão de
+/// `IssueSalesInvoice` perante `TaxDeterminationOutcome.NoRateInForce`:
+/// inventar o valor seria pior do que recusar.
+/// </para>
+/// </summary>
+public sealed class AddPayrollItem(
+    IPayrollRunStore store,
+    ITaxDetermination taxes,
+    IIncomeTaxDetermination incomeTax,
+    IAuditTrail audit)
 {
     public async Task<AddItemOutcome> ExecuteAsync(
         Guid runId,
@@ -72,17 +96,56 @@ public sealed class AddPayrollItem(IPayrollRunStore store, IAuditTrail audit)
 
         if (folha is null)
         {
-            return AddItemOutcome.NotFound;
+            return AddItemOutcome.NotFound();
         }
+
+        var facto = folha.PeriodEndDate;
+
+        var inss = await taxes.DetermineAsync(
+            new TaxDeterminationRequest(TaxKind.EmployeeSocialSecurity, TaxCodes.SocialSecurity, facto),
+            cancellationToken);
+
+        if (inss.Outcome is not TaxDeterminationOutcome.Determined)
+        {
+            return AddItemOutcome.FiscalDataMissing(
+                $"Não há taxa de INSS (trabalhador) em vigor a {facto:yyyy-MM-dd}. " +
+                "Configure a taxa em /fiscal/tax-rates antes de calcular a folha.");
+        }
+
+        var inssTrabalhador = grossSalary * (inss.Determination!.Percentage / 100m);
+        var materiaColectavel = grossSalary - inssTrabalhador;
+
+        var irt = await incomeTax.DetermineAsync(
+            new IncomeTaxDeterminationRequest(materiaColectavel, facto),
+            cancellationToken);
+
+        if (irt.Outcome is not IncomeTaxDeterminationOutcome.Determined)
+        {
+            return AddItemOutcome.FiscalDataMissing(
+                $"Não há tabela de escalões de IRT em vigor a {facto:yyyy-MM-dd}. " +
+                "Configure a tabela em /fiscal/income-tax-schedule antes de calcular a folha.");
+        }
+
+        PayrollItem item;
 
         try
         {
-            folha.AddItem(employeeId, grossSalary);
+            item = folha.AddItem(employeeId, grossSalary);
         }
-        catch (Exception error) when (error is InvalidOperationException or ArgumentOutOfRangeException)
+        catch (ArgumentOutOfRangeException error)
         {
-            return AddItemOutcome.Rejected;
+            // Campo mal preenchido (salário bruto não positivo) — 400.
+            return AddItemOutcome.Rejected(error.Message);
         }
+        catch (InvalidOperationException error)
+        {
+            // Conflito com o estado corrente da folha (já não está em
+            // rascunho) — 409, não 400: o pedido está bem formado, é o
+            // recurso que já não aceita a operação.
+            return AddItemOutcome.Conflict(error.Message);
+        }
+
+        item.ApplyCalculation(irt.Determination!.Amount, inssTrabalhador);
 
         await store.SaveChangesAsync(cancellationToken);
 
@@ -92,10 +155,12 @@ public sealed class AddPayrollItem(IPayrollRunStore store, IAuditTrail audit)
                 PayrollAuditEntityTypes.Run,
                 folha.Id.ToString(),
                 context,
-                NewValue: $$"""{"employeeId":"{{employeeId}}","grossSalary":{{grossSalary}}}"""),
+                NewValue: $$"""
+                    {"employeeId":"{{employeeId}}","grossSalary":{{grossSalary}},"withholdingTax":{{item.WithholdingTax}},"socialSecurityContribution":{{item.SocialSecurityContribution}},"netSalary":{{item.NetSalary}}}
+                    """),
             cancellationToken);
 
-        return AddItemOutcome.Added;
+        return AddItemOutcome.Added(item.Id);
     }
 }
 
@@ -227,11 +292,35 @@ public sealed class ApplyPayrollDecision(
     }
 }
 
-public enum AddItemOutcome
+public sealed record AddItemOutcome(AddItemResultKind Outcome, Guid? ItemId, string? Error)
+{
+    public static AddItemOutcome Added(Guid itemId) => new(AddItemResultKind.Added, itemId, null);
+
+    public static AddItemOutcome NotFound() =>
+        new(AddItemResultKind.NotFound, null, "Folha não encontrada.");
+
+    /// <summary>Campo mal preenchido no item — 400.</summary>
+    public static AddItemOutcome Rejected(string error) => new(AddItemResultKind.Rejected, null, error);
+
+    /// <summary>Conflito com o estado corrente da folha — 409.</summary>
+    public static AddItemOutcome Conflict(string error) => new(AddItemResultKind.Conflict, null, error);
+
+    /// <summary>
+    /// `fiscal` não tem taxa/tabela em vigor à data do facto gerador — 400:
+    /// o pedido está bem formado, falta configuração fiscal para o satisfazer
+    /// (mesmo padrão de `IssueSalesInvoice` perante `NoRateInForce`).
+    /// </summary>
+    public static AddItemOutcome FiscalDataMissing(string error) =>
+        new(AddItemResultKind.FiscalDataMissing, null, error);
+}
+
+public enum AddItemResultKind
 {
     Added,
     NotFound,
     Rejected,
+    Conflict,
+    FiscalDataMissing,
 }
 
 public sealed record SubmitRunResult(SubmitRunOutcome Outcome, Guid? ApprovalRequestId, string? Error)

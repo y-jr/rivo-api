@@ -15,6 +15,19 @@ namespace Rivo.Fiscal.Domain;
 public enum TaxKind
 {
     ValueAdded,
+
+    /// <summary>
+    /// A parcela do trabalhador (3%, Decreto Presidencial n.º 227/18) — a
+    /// única dedutível à matéria colectável do IRT (artigo 7.º do CIRT).
+    /// </summary>
+    EmployeeSocialSecurity,
+
+    /// <summary>
+    /// A parcela patronal (8%) — custo da empresa, nunca dedutível ao
+    /// rendimento do trabalhador. `payroll` ainda não a consome: não há campo
+    /// no modelo de dados para o custo da entidade patronal.
+    /// </summary>
+    EmployerSocialSecurity,
 }
 
 /// <summary>
@@ -34,6 +47,14 @@ public static class TaxCodes
 
     /// <summary>Não sujeito.</summary>
     public const string NotSubject = "NS";
+
+    /// <summary>
+    /// Código interno para as séries de INSS (<see cref="TaxKind.EmployeeSocialSecurity"/>,
+    /// <see cref="TaxKind.EmployerSocialSecurity"/>). Não vem do SAF-T — o
+    /// INSS não tem código de imposto na tabela do SAF-T do jeito que o IVA
+    /// tem; existe só para reaproveitar `TaxRateSchedule`, que exige um.
+    /// </summary>
+    public const string SocialSecurity = "INSS";
 
     /// <summary>
     /// <c>taxCode ∈ { ISE, NS } → taxExemptionCode obrigatório</c>.

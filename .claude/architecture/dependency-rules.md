@@ -84,7 +84,7 @@ justificação e, se não for trivial, de ADR.
 | `audit` | — (fundacional) | implementado |
 | `hr` | audit, documents | implementado; por ligar: approval, notifications |
 | `identity` | audit, hr, documents, notifications | implementado |
-| `payroll` | hr, finance, approval, documents, audit, notifications | por implementar |
+| `payroll` | hr, finance, fiscal, approval, documents, audit, notifications | IRT/INSS ligado a `fiscal` (2026-08-30); resto por implementar |
 | `finance` | procurement, commercial, hr, approval, fiscal, documents, audit, notifications | por implementar |
 | `procurement` | hr, approval, documents, audit, notifications | por implementar |
 | `commercial` | hr, fiscal, approval, documents, audit, notifications | por implementar |

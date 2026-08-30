@@ -214,6 +214,13 @@ re-litigação:
       inteiro, sem limite superior. Fonte é o utilizador, não texto legal
       primário — mesma reserva das duas entradas acima. Prazo de entrega e
       regras de expatriados continuam em aberto, sem resposta.
+- [x] ~~Motor de cálculo de IRT/INSS em `payroll`~~ — **implementado a
+      2026-08-30**, com as quatro entradas acima como valores de entrada.
+      `IncomeTaxSchedule` (novo agregado em `fiscal`) modela a tabela de
+      escalões; `AddPayrollItem` pergunta a `fiscal` na ordem do artigo 7.º
+      do CIRT. **A reserva de fonte não muda** — o mecanismo está pronto e
+      testado, mas os valores continuam por confirmar profissionalmente
+      antes de produção.
 - [ ] Regras completas do Grupo B do IRT.
 - [ ] Prazos e formatos das declarações periódicas à AGT.
 - [ ] Processo de certificação de software junto da AGT

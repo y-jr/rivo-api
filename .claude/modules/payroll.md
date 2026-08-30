@@ -95,26 +95,40 @@ ninguém as "corrija".
 
 - Âmbito exacto: o cálculo salarial completo é in-scope, ou parte é
   externa? `docs` regista isto como por confirmar.
-- Regras concretas de IRT e INSS angolanos — dependem de `fiscal`.
+- Os valores de IRT e INSS que `fiscal` usa — mecanismo implementado desde
+  2026-08-30, mas a fonte é o utilizador, não fonte fiscal profissional; ver
+  `state/pending-decisions.md`.
 
 ## Estado
 
-⚠ **Esqueleto** — 2026-08-29. `PayrollRun` e `PayrollItem`, CRUD, ligado a
-`approval` (submete-se pelo total bruto, aprova/recusa aplicado deste lado).
-**Sem cálculo de IRT/INSS**: os campos existem no modelo (`NetSalary`,
-`WithholdingTax`, `SocialSecurityContribution`), ficam sempre nulos. Sem
-regras de negócio (BR-1/BR-5/BR-15/BR-17 listadas acima não impostas), sem
-testes, sem verificação end-to-end. Permissões atribuídas a `HR`.
+**`PayrollRun` e `PayrollItem`, com cálculo de IRT/INSS desde 2026-08-30.**
+CRUD ligado a `approval` (submete-se pelo total bruto, aprova/recusa
+aplicado deste lado). `AddPayrollItem` pergunta a `fiscal` — nunca calcula
+por si — na ordem do artigo 7.º do CIRT: determina o INSS do trabalhador
+(`TaxKind.EmployeeSocialSecurity`, código `INSS`) à data do fim do período
+(`PayrollRun.PeriodEndDate`), deduz-o do bruto para obter a matéria
+colectável, pede o IRT sobre essa matéria (`IIncomeTaxDetermination`), e só
+então `PayrollItem.ApplyCalculation` grava os três campos —
+`NetSalary = GrossSalary − WithholdingTax − SocialSecurityContribution`,
+calculado, nunca recebido como parâmetro, para que a invariante seja
+verdadeira por construção.
 
-**A tabela de escalões deixou de ser o bloqueio, a 2026-08-30** — o
-utilizador confirmou a parcela fixa dos dois escalões em aberto (150.001–
-200.000 = 12.500 Kz; 1.500.001–2.000.000 = 292.250 Kz) e que o INSS não tem
-tecto contributivo. **A fonte é o utilizador, não o Anexo I da Lei n.º 14/25
-nem parecer de fiscalista** — ver `state/pending-decisions.md` para a
-reserva completa. O que falta agora para os campos deixarem de ficar nulos
-não é fonte fiscal, é engenharia: `fiscal` precisa de um desenho novo para
-tabelas de escalões progressivos (`TaxRateSchedule` só modela taxa plana
-com vigência), e `payroll` precisa de o consultar à data do facto gerador.
-Subsídios (alimentação, transporte, férias, Natal) continuam sem tratamento
-definido, e `PayrollItem` não distingue componentes do salário bruto —
-enquanto isso não for decidido, o cálculo aplica-se ao bruto inteiro.
+**Recusa, não omissão**: sem taxa de INSS ou tabela de IRT em vigor à data,
+o item não nasce (400, mesmo padrão de `IssueSalesInvoice` perante
+`NoRateInForce`) — nunca fica com um campo nulo a fingir "ainda não
+calculado". Regras de negócio impostas: BR-17 (concorrência optimista);
+BR-1/BR-5 (aprovação via `approval`) já existiam. BR-15 (retenção de
+recibos) continua por implementar — não há `documents` ligado ainda.
+
+Testes: 16 de domínio (`Rivo.Payroll.Domain.Tests`, novo a 2026-08-30) e
+verificação end-to-end (`scripts/verify-payroll.ps1`, 17 casos, incluindo o
+exemplo documentado bruto 250.000 → líquido 203.600 reproduzido como
+regressão). Permissões atribuídas a `HR`.
+
+**A fonte dos valores continua a ser o utilizador, não o Anexo I da Lei
+n.º 14/25 nem parecer de fiscalista** — ver `state/pending-decisions.md`
+para a reserva completa; o que mudou a 2026-08-30 foi o mecanismo, não a
+proveniência do dado. Subsídios (alimentação, transporte, férias, Natal)
+continuam sem tratamento definido, e `PayrollItem` não distingue componentes
+do salário bruto — o cálculo aplica-se ao bruto inteiro enquanto isso não
+for decidido.

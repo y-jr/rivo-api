@@ -90,14 +90,25 @@ public static class PayrollModuleEndpoints
         HttpContext http,
         CancellationToken cancellationToken)
     {
-        var outcome = await addItem.ExecuteAsync(
+        var result = await addItem.ExecuteAsync(
             runId, request.EmployeeId, request.GrossSalary, BuildAuditContext(http), cancellationToken);
 
-        return outcome switch
+        return result.Outcome switch
         {
-            AddItemOutcome.Added => Results.NoContent(),
-            AddItemOutcome.NotFound => Results.NotFound(new { erro = "Folha não encontrada." }),
-            AddItemOutcome.Rejected => Results.Conflict(new { erro = "Não foi possível acrescentar o item." }),
+            AddItemResultKind.Added => Results.Created($"/payroll/runs/{runId}", new { itemId = result.ItemId }),
+
+            AddItemResultKind.NotFound => Results.NotFound(new { erro = result.Error }),
+
+            // 400: campo mal preenchido (salário não positivo) ou falta de
+            // configuração fiscal — em ambos os casos o pedido corrige-se do
+            // lado do chamador, não é conflito com o estado da folha.
+            AddItemResultKind.Rejected or AddItemResultKind.FiscalDataMissing =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["item"] = [result.Error!] }),
+
+            // 409: a folha já não está em rascunho.
+            AddItemResultKind.Conflict =>
+                Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
+
             _ => Results.Problem("Resultado inesperado ao acrescentar o item."),
         };
     }

@@ -8,10 +8,10 @@ _Última actualização: 2026-08-30_
 completos ou em fatia deliberada; os quatro últimos — `payroll`, `projects`,
 `inventory`, `fleet` — nasceram a 2026-08-29 como **esqueletos**: CRUD sem
 regra de negócio, sob prazo de apresentação, decisão explícita e registada,
-não descoberta depois. **`projects`, `fleet` e `inventory` ganharam regra de
-negócio real a 2026-08-30** — Marco/Tarefa, Manutenção/Atribuição e
-Movimento, ver a secção Módulos — e deixaram de ser esqueletos puros;
-`payroll` continua como nasceu.
+não descoberta depois. **Todos os quatro ganharam regra de negócio real a
+2026-08-30** — Marco/Tarefa/Orçamento, Manutenção/Atribuição/Plano,
+Movimento, e por último `payroll` com o motor de cálculo de IRT/INSS (ver a
+secção Módulos) — e nenhum continua esqueleto puro.
 
 As quatro capacidades transversais estão feitas — `audit`, `documents`,
 `notifications` e `approval`. A partir daí, o objectivo do produto mudou: o
@@ -49,31 +49,28 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `notifications` | Completo menos a entrega real. Fila com estado, worker, leitura e marcação (uma a uma ou todas) — **sem envio de e-mail** (K13) |
 | `hr` | Completo. Colaborador, Departamento, Cargo, Contrato, Assiduidade, Férias, Benefícios, Recrutamento, Onboarding/Offboarding |
 | `approval` | Completo para o âmbito fixado. Políticas (criar e desactivar), pedidos, decisões, BR-2/4/6/17, worker de reconciliação, cancelamento restrito a quem submeteu (K18) |
-| `fiscal` | ⚠ **Fatia mínima** (ADR-036). Taxa com vigência e determinação. Não é o motor fiscal |
+| `fiscal` | ⚠ **Fatia mínima** (ADR-036), mais o motor de IRT/INSS (2026-08-30). Taxa plana com vigência e determinação (IVA, INSS); `IncomeTaxSchedule` — tabela de escalões progressivos, com o mesmo padrão de vigência — para o IRT. Continua a não ser o motor fiscal completo: sem SAF-T, sem declarações periódicas |
 | `commercial` | ⚠ **Reduzido ao Cliente** (ADR-036). Sem funil comercial |
 | `finance` | **Os cinco contextos existem, e os documentos lançam.** Venda (factura, nota de crédito, recibo, saldo), Contas a Pagar, Tesouraria com extracto append-only, Contabilidade & Fecho com postagem automática, Planeamento. **BR-1, BR-3, BR-5 e BR-8 impostas.** Anular uma factura, nota de crédito ou recibo estorna o lançamento (2026-08-29). ⚠ Contabilidade vazia até alguém carregar o plano; Activos Fixos sem código ainda — o K1 que os bloqueava fechou por ADR-039 (2026-08-30), falta escrevê-los |
 | `procurement` | **Os quatro agregados, e o 3-way match fecha.** Fornecedor com IBAN verificado (ISO 13616) e publicado a `finance`; requisição com linhas e decisão de `approval`; Ordem de Compra, que só nasce de requisição aprovada e não deixa encomendar acima do aprovado; Recepção parcial, acumulada por linha e nunca acima do encomendado. A factura liga-se à Ordem (`PurchaseOrderId`, opcional) e `GET .../match` mostra encomendado, recebido e facturado lado a lado — recusa ligar a uma ordem de outro fornecedor, mas **não bloqueia** divergência de valor: fica visível, não impede o registo |
-| `payroll` | ⚠⚠ **Esqueleto** (2026-08-29). Folha e itens, CRUD, ligado a `approval` (submete pelo bruto, aprova/recusa aplicado deste lado). **Sem cálculo de IRT/INSS** — os campos existem, ficam sempre nulos. A tabela de escalões deixou de estar em aberto (utilizador confirmou os dois pontos que faltavam a 2026-08-30, ver `pending-decisions.md`); falta o motor em `fiscal` — escalões progressivos, desenho ainda por fazer |
+| `payroll` | **Folha e itens, com cálculo de IRT/INSS, confirmado (2026-08-30).** `AddPayrollItem` pergunta a `fiscal` — nunca calcula por si — na ordem do artigo 7.º do CIRT: INSS do trabalhador à data do fim do período, matéria colectável, IRT por escalões; `NetSalary` sai sempre calculado, nunca recebido. Sem taxa/tabela em vigor, o item recusa (400) em vez de nascer com campo nulo. Ligado a `approval` (submete pelo bruto). `verify-payroll.ps1` 17 casos. ⚠ A fonte dos valores continua o utilizador, não fiscalista nem Anexo I da lei |
 | `projects` | **Marco, Tarefa e Orçamento com regra de negócio, confirmado (2026-08-30).** Projecto como agregado — fecha, e fechado é facto histórico: nem Marco, nem Tarefa, nem Orçamento se alteram depois. Tarefa atribuída verifica o Colaborador contra `hr` (ADR-010, BR-18); concluir/cancelar não reabre. Orçamento é zero ou um por projecto, moeda fixa na primeira vez (ADR-040). `verify-projects.ps1` 33/33 contra a stack local, sem falha. ⚠ Alocação de Recursos (pessoas além da atribuição, viaturas, custos) continua por fazer, sem decisão própria |
 | `fleet` | **Manutenção, Atribuição e Plano de Manutenção com regra de negócio, confirmado (2026-08-30).** Viatura como agregado — um registo de manutenção aberto de cada vez, uma atribuição aberta de cada vez, vários planos activos ao mesmo tempo (sem exclusão mútua); nenhum dos três se exclui dos outros dois. Atribuição verifica o Colaborador contra `hr` (ADR-010, BR-18). Alerta de plano devido é consulta (`GET /fleet/maintenance-plans/due`), não notificação empurrada — `identity` não resolve "todos os AssetManager" ainda. `verify-fleet.ps1` 38/38 contra a stack local, sem falha. ⚠ Registo de Viagem, Despesa de Frota e Seguros continuam por fazer |
 | `inventory` | **Movimento com regra de negócio, confirmado (2026-08-30).** Item como agregado — Recepção, Saída e Ajuste; `QuantityOnHand` é a soma assinada, nunca negativo; item inactivo não aceita movimentos novos. `verify-inventory.ps1` 25/25 contra a stack local, sem falha. ⚠ Armazém, Transferência, Contagem e valorização de stock continuam por fazer |
 
 Detalhe com datas e ressalvas em [implemented.md](implemented.md).
 
-**Os três marcados com uma ⚠ são fatias deliberadas do produto** (ADR-036,
-com o custo do que falta registado em cada `modules/*.md`). **Os marcados com
-⚠⚠ são esqueletos de prazo** — categoria diferente: sem regra de negócio, sem
-testes de domínio, feitos para "existir e responder", não para estarem
-correctos. Não confundir os dois. Só `payroll` continua nessa categoria;
-`projects`, `fleet` e `inventory` saíram dela a 2026-08-30. **Têm, desde
-2026-08-29, verificação end-to-end** (`scripts/verify-payroll.ps1`,
-`verify-projects.ps1`, `verify-inventory.ps1`, `verify-fleet.ps1`) —
-`verify-projects` cresceu de 14 para 28 casos, `verify-fleet` de 15 para 26 e
-`verify-inventory` de 13 para 25, todas a 2026-08-30, e **confirmaram 28/28,
-26/26 e 25/25 contra a stack local no mesmo dia, sem nenhuma falha**;
-`verify-payroll` continua a confirmar só o CRUD e a sua superfície HTTP
-(contrato, permissão, auditoria, persistência), nunca regra de negócio que
-não existe.
+**Os marcados com uma ⚠ são fatias deliberadas do produto** (ADR-036, com o
+custo do que falta registado em cada `modules/*.md`). **Nenhum módulo
+continua marcado ⚠⚠ (esqueleto de prazo)** — categoria que existiu entre
+2026-08-29 e 2026-08-30 para `payroll`, `projects`, `inventory` e `fleet`:
+sem regra de negócio, sem testes de domínio, feitos para "existir e
+responder". Os quatro ganharam regra de negócio real a 2026-08-30, o
+último a sair da categoria foi `payroll` (motor de IRT/INSS). **Todos têm
+verificação end-to-end**: `verify-projects.ps1` 33 casos, `verify-fleet.ps1`
+38, `verify-inventory.ps1` 25, `verify-payroll.ps1` 17 — as quatro
+confirmadas contra a stack local sem falha nova (só o K20, pré-existente e
+sem causa de código, em `verify-payroll`).
 
 ## Ambiente publicado
 
@@ -98,23 +95,22 @@ superfície inteira é legível por quem estiver a ouvir.
 
 | Área | Estado |
 |---|---|
-| Código | 14 módulos, 70 projectos em `src/`, 311 ficheiros `.cs` |
-| Superfície HTTP | 187 endpoints em 14 grupos de rota, mais `/health` |
+| Código | 14 módulos, 70 projectos em `src/`, 318 ficheiros `.cs` |
+| Superfície HTTP | 191 endpoints em 14 grupos de rota, mais `/health` |
 | ADRs | 40, aceites |
-| Testes | **816** em 18 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). +8 a 2026-08-29 (`ReverseDocumentPostingTests`, estorno automático); a 2026-08-30, `Rivo.Projects.Domain.Tests` cresceu de 29 (Marco e Tarefa) para 39 (+ Orçamento), `Rivo.Fleet.Domain.Tests` de 25 (Manutenção e Atribuição) para 42 (+ Plano de Manutenção), e nasceu `Rivo.Inventory.Domain.Tests` com 21 (Movimento) — os três primeiros projectos de teste de qualquer um dos quatro esqueletos de 2026-08-29. **Zero** em `payroll` — nenhum projecto de teste existe ainda |
-| Verificação end-to-end | **17 suites** PowerShell, **390 casos** — as 4 dos esqueletos e `verify-approval` (cancelamento, K18) escritas a 2026-08-29; `verify-ledger` ganhou o caso do estorno automático no mesmo dia; a 2026-08-30, `verify-projects` cresceu de 14 (Marco e Tarefa) para 33 (+ Orçamento), `verify-fleet` de 15 (Manutenção e Atribuição) para 38 (+ Plano de Manutenção) e `verify-inventory` de 13 para 25 (Movimento), e **as três confirmaram 33/33, 38/38 e 25/25 contra a stack local no mesmo dia, sem falha** — a primeira ronda de `verify-fleet` (26 casos, Manutenção e Atribuição) apanhou dois defeitos reais (400 em vez de 409 em duas rejeições por conflito de estado), corrigidos no mesmo dia e replicados na correcção equivalente de `verify-projects`; todas as rondas seguintes já nasceram com a correcção aplicada e não apanharam nada. Última corrida confirmada de cada, isolada: `verify-projects` 33/33, `verify-fleet` 38/38, `verify-inventory` 25/25, `verify-approval` 10/10, `verify-ledger` 46/46, `verify-payroll` 15/16. O único caso que costuma falhar em cada corrida é a mesma falha intermitente na limpeza final de uma política, sem causa de código confirmada em quatro investigações — **K20** em [known-issues.md](known-issues.md); nenhuma das três suites de 2026-08-30 a toca, por não submeterem nada a `approval` |
+| Testes | **853** em 19 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). A 2026-08-30, `Rivo.Projects.Domain.Tests` cresceu de 29 (Marco e Tarefa) para 39 (+ Orçamento), `Rivo.Fleet.Domain.Tests` de 25 para 42 (+ Plano de Manutenção), nasceu `Rivo.Inventory.Domain.Tests` com 21 (Movimento), `Rivo.Fiscal.Domain.Tests` cresceu de 18 para 39 (+ `IncomeTaxSchedule`, 21 casos) e nasceu `Rivo.Payroll.Domain.Tests` com 16 (`ApplyCalculation` e o ciclo da folha) — o último dos quatro esqueletos de 2026-08-29 a ganhar projecto de teste próprio |
+| Verificação end-to-end | **17 suites** PowerShell, **398 casos** — a 2026-08-30, `verify-projects` cresceu de 14 para 33 (+ Orçamento), `verify-fleet` de 15 para 38 (+ Plano de Manutenção), `verify-inventory` de 13 para 25 (Movimento), `verify-fiscal` de 12 para 20 (+ motor de IRT/INSS: semeia INSS e a tabela de escalões, idempotente por desenho) e `verify-payroll` de 5 para 17 (cálculo real substitui a verificação de campos nulos). **Corrida completa (`verify-all.ps1`) confirmada a 2026-08-30: 395/398** — as 3 falhas são todas o mesmo K20 (limpeza de política, sem causa de código em quatro investigações), em `verify-ledger`, `verify-payroll` e `verify-procurement`; zero regressão nova. A primeira ronda de `verify-fleet` (26 casos) apanhou dois defeitos reais (400 em vez de 409), corrigidos no mesmo dia; a primeira ronda do motor de IRT/INSS apanhou um terceiro — `TaxKind.EmployeeSocialSecurity`/`EmployerSocialSecurity` sem entrada no `switch` exaustivo de `ListTaxRates.ToDomain`/`ToContract` (500 em vez de determinar), corrigido antes de fechar |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
 
 ## O que não existe
 
-- **Teste de domínio ou regra de negócio em `payroll` e `inventory`** —
-  ⚠⚠ esqueletos desde 2026-08-29, sem alteração. Têm verificação end-to-end
-  (ver Números) que confirma o CRUD e a sua superfície HTTP, nunca regra de
-  negócio que não existe. `projects` e `fleet` nasceram na mesma categoria e
-  saíram dela a 2026-08-30. Ver a nota ⚠⚠ na secção Módulos e o "Seguimento"
-  que cada `modules/*.md` regista.
+- ~~Teste de domínio ou regra de negócio em `payroll` e `inventory`~~ —
+  **resolvido a 2026-08-30.** Os quatro esqueletos de 2026-08-29 (`payroll`,
+  `projects`, `inventory`, `fleet`) ganharam regra de negócio real e projecto
+  de teste próprio; nenhum continua marcado ⚠⚠. Ver a secção Módulos e o
+  "Seguimento" que cada `modules/*.md` regista.
 - **Cobertura de Application em sete dos nove módulos com código de
   domínio.** `finance` (100) e `identity` (8) têm-na; os outros não. 429
   testes de domínio contra 108 de Application e 4 de Infrastructure.
@@ -165,17 +161,13 @@ superfície inteira é legível por quem estiver a ouvir.
    e `finance` respondem a HTTP e têm testes, o que é fácil de confundir com
    estarem feitos. Uma factura do Rivo tem número, série e ar de factura, e não
    é documento fiscal. Mitigação: ⚠ em cada `modules/*.md`, no ADR-036 e aqui.
-4. **Um módulo é CRUD sem regra nenhuma, e responde tão bem quanto os
-   feitos.** `payroll` (2026-08-29) — sob prazo de apresentação, decisão
-   explícita. `projects`, `fleet` e `inventory` saíram deste risco a
-   2026-08-30 (Marco/Tarefa, Manutenção/Atribuição e Movimento,
-   respectivamente). Ao contrário do risco 3, aqui não há sequer uma regra
-   reduzida por trás: `POST /payroll/runs/{id}/items` aceita qualquer
-   salário, nada verifica quem pode ver o quê para além da permissão de
-   entrada. **O maior risco concreto é apresentar isto como mais do que é.**
-   Mitigação: ⚠⚠ em `modules/payroll.md` e na secção Módulos acima, distinta
-   da ⚠ dos três reduzidos
-   de propósito.
+4. ~~Um módulo é CRUD sem regra nenhuma, e responde tão bem quanto os
+   feitos.~~ **Fechado a 2026-08-30.** `payroll` (nascido 2026-08-29, sob
+   prazo de apresentação, decisão explícita) foi o último dos quatro
+   esqueletos a sair deste risco — ganhou o motor de cálculo de IRT/INSS.
+   `projects`, `fleet` e `inventory` já tinham saído no mesmo dia
+   (Marco/Tarefa/Orçamento, Manutenção/Atribuição/Plano, Movimento). Nenhum
+   módulo continua marcado ⚠⚠.
 5. **K16 — sem TLS.** Credenciais e token em claro no ambiente publicado. Com
    a documentação da API agora aberta (K17), a superfície inteira viaja no
    mesmo canal.
@@ -220,22 +212,17 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    (K18, 403), pedido inexistente (404), 401/403 de permissão, cancelamento
    válido, segundo cancelamento recusado (409), trilha com actor para os dois
    casos, e que `payroll` só trata `Cancelled` como recusa quando pergunta.
-8. **`payroll` é o único esqueleto de prazo que resta sem regra de
-   negócio.** Precisa de Recibo e da ligação a `fiscal`. **A tabela de
-   escalões de IRT deixou de ser o bloqueio a 2026-08-30** — o utilizador
-   confirmou os dois pontos em aberto (parcela fixa 150.001–200.000 e
-   1.500.001–2.000.000; sem tecto no INSS), com a reserva de que a fonte é
-   o próprio utilizador, não o Anexo I da Lei n.º 14/25 (ver
-   `pending-decisions.md`). O que falta agora é engenharia: `fiscal`
-   precisa de um desenho novo para escalões progressivos. `projects`,
-   `fleet` e `inventory` saíram desta lista a
-   2026-08-30 (ver "Fechado" abaixo), incluindo o Orçamento de Projecto
-   (ADR-040) e o Plano de Manutenção de `fleet`. **O que fica por fazer nos
-   três não tem decisão própria à espera** — é trabalho de engenharia sem
-   bloqueio: Alocação de Recursos em `projects` (pessoas além da atribuição
-   de Tarefa, viaturas, custos), Armazém/Transferência/Contagem em
-   `inventory`, Registo de Viagem/Despesa/Seguros em `fleet`. Ver o
-   "Seguimento" em cada `modules/*.md`.
+8. ~~`payroll` é o único esqueleto de prazo que resta sem regra de
+   negócio.~~ **Fechado a 2026-08-30** — motor de IRT/INSS, ver abaixo.
+   Ainda falta Recibo (via `documents`) em `payroll`. `projects`, `fleet` e
+   `inventory` saíram da lista de esqueletos no mesmo dia (Orçamento de
+   Projecto/ADR-040, Plano de Manutenção, Movimento). **O que fica por
+   fazer nos quatro não tem decisão própria à espera** — é trabalho de
+   engenharia sem bloqueio: Recibo em `payroll`, Alocação de Recursos em
+   `projects` (pessoas além da atribuição de Tarefa, viaturas, custos),
+   Armazém/Transferência/Contagem em `inventory`, Registo de
+   Viagem/Despesa/Seguros em `fleet`. Ver o "Seguimento" em cada
+   `modules/*.md`.
 
 **Fechado a 2026-08-30 (payroll: os dois pontos de IRT/INSS que bloqueavam
 produção):** o utilizador confirmou, depois de reafirmar mais cedo no mesmo
@@ -258,11 +245,57 @@ distinção fica registada em `pending-decisions.md`, `modules/fiscal.md` e
 citado.
 
 **Isto não implementa o cálculo de IRT/INSS.** Resolve a incógnita fiscal
-que faltava; o que falta agora é engenharia — `fiscal` não tem desenho para
-tabelas de escalões progressivos (`TaxRateSchedule` só modela taxa plana com
-vigência), e `payroll` ainda não o consulta. Tratamento de subsídios em IRT
-continua sem resposta, e `PayrollItem` não distingue componentes do salário
-bruto.
+que faltava; o que faltava a seguir era engenharia — ver o fecho imediatamente
+abaixo, na mesma sessão.
+
+**Fechado a 2026-08-30 (`fiscal`+`payroll`: motor de cálculo de IRT/INSS):**
+com a incógnita fiscal resolvida (acima), `fiscal` ganhou um agregado novo,
+`IncomeTaxSchedule` — série de versões de uma **tabela** de escalões
+progressivos, mesmo padrão de vigência/`InForceOn` de `TaxRateSchedule`, mas
+cada versão guarda vários `IncomeTaxBracket` (Parcela Fixa + Taxa × Excesso
+de) em vez de um único número. `SelectBracket` escolhe o escalão de maior
+"excesso de" que a matéria colectável ainda ultrapassa — nunca iguala — o
+que reproduz correctamente tanto 150.000 (isenção) como 150.001 (já no
+escalão seguinte, com o salto de 12.500 Kz confirmado).
+
+`TaxKind` ganhou `EmployeeSocialSecurity`/`EmployerSocialSecurity`, e o INSS
+carrega-se pelo mecanismo já existente de `TaxRateSchedule` — é uma taxa
+plana como o IVA, não precisou de desenho novo. `payroll.AddPayrollItem`
+pergunta a `fiscal` na ordem do artigo 7.º do CIRT: determina o INSS do
+trabalhador à data do fim do período (`PayrollRun.PeriodEndDate`, não a data
+corrente — ADR-011 §3), deduz-o do bruto, pede o IRT sobre a matéria
+colectável resultante, e só então `PayrollItem.ApplyCalculation` grava os
+três campos — o líquido é sempre `bruto − IRT − INSS`, calculado dentro do
+método, nunca recebido como parâmetro solto que pudesse discordar da soma.
+Sem taxa de INSS ou tabela de IRT em vigor à data, o item recusa (400) em
+vez de nascer com um campo a fingir "por calcular" — mesmo padrão de
+`IssueSalesInvoice` perante `TaxDeterminationOutcome.NoRateInForce`.
+
+**Um defeito real, apanhado só na verificação end-to-end**: o `switch`
+exaustivo que traduz `TaxKind` entre `Domain` e `Contracts`
+(`ListTaxRates.ToDomain`/`ToContract`, padrão do ADR-010) não tinha entrada
+para os dois valores novos — `dotnet test` não apanhou, porque nenhum teste
+de domínio ou de aplicação passava um `TaxKind` de INSS por esse caminho; só
+apareceu como 500 ao pedir a determinação de INSS contra a API a correr.
+Corrigido no mesmo dia.
+
+Testes: `Rivo.Fiscal.Domain.Tests` cresceu de 18 para 39 (`IncomeTaxSchedule`,
+incluindo o exemplo documentado bruto 250.000 → IRT 38.900); nasceu
+`Rivo.Payroll.Domain.Tests` com 16 (`ApplyCalculation`, incluindo o mesmo
+exemplo ponta-a-ponta, líquido 203.600). `verify-fiscal.ps1` cresceu de 12
+para 20 casos — semeia o INSS real (3%/8%) e a Tabela B completa de forma
+**idempotente** (por códigos e vigência reais, não por código único de
+corrida, ao contrário dos casos 1-12 da mesma suite) — e `verify-payroll.ps1`
+de 5 para 17, com o cálculo real a substituir a verificação de "campos ficam
+nulos", mais um caso novo para a recusa por falta de dados fiscais.
+`verify-all.ps1` completo: 395/398, as 3 falhas todas o K20 pré-existente
+(limpeza de política), zero regressão nova.
+
+**A reserva de fonte não muda.** O mecanismo está pronto e testado; os
+valores continuam a depender do utilizador, não de fiscalista nem do Anexo I
+da Lei n.º 14/25. Tratamento de subsídios em IRT continua sem resposta, e
+`PayrollItem` não distingue componentes do salário bruto — o cálculo
+aplica-se ao bruto inteiro enquanto isso não for decidido.
 
 **Fechado a 2026-08-30 (`fleet`: Plano de Manutenção):** `Vehicle` ganhou um
 terceiro filho no agregado, `MaintenancePlan` — calendário preventivo,

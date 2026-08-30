@@ -4,6 +4,7 @@
     <ProjectReference Include="..\Rivo.Payroll.Domain\Rivo.Payroll.Domain.csproj" />
     <ProjectReference Include="..\Rivo.Payroll.Contracts\Rivo.Payroll.Contracts.csproj" />
     <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
+    <ProjectReference Include="..\..\Fiscal\Rivo.Fiscal.Contracts\Rivo.Fiscal.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

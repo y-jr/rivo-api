@@ -1,6 +1,6 @@
 # Implementado
 
-_Última actualização: 2026-08-29._
+_Última actualização: 2026-08-30._
 
 Funcionalidade concluída e a funcionar, por módulo. Actualizar como parte de
 terminar uma funcionalidade (passo 8 do fluxo em [CLAUDE.md](../CLAUDE.md)).
@@ -10,14 +10,16 @@ deliberada: `identity`, `audit`, `hr`, `documents`, `notifications`,
 `approval`, `fiscal`, `commercial`, `finance`, `procurement`. Os últimos
 quatro — `payroll`, `projects`, `inventory`, `fleet` — nasceram a 2026-08-29
 como **esqueletos** sob prazo de apresentação: CRUD sem regra de negócio, sem
-testes, sem verificação end-to-end. Ver a secção própria mais abaixo.
+testes, sem verificação end-to-end. **Todos os quatro ganharam regra de
+negócio real a 2026-08-30** — ver a secção própria de cada um mais abaixo.
 
 ⚠ **Dois estão reduzidos ao mínimo pelo ADR-036**, e não implementados por
-inteiro: `fiscal` (só taxa com vigência e determinação) e `commercial` (só
-Cliente). `finance` tem os cinco contextos internos desde 2026-08-25 e os
-documentos lançam nos livros, mas a contabilidade está de pé e **vazia** — o
-plano de contas carrega-se e as regras de postagem definem-se, e sem elas nada
-lança. Ver a ressalva em cada secção.
+inteiro: `fiscal` (taxa plana com vigência e determinação, mais a tabela de
+escalões de IRT desde 2026-08-30 — continua sem SAF-T nem declarações) e
+`commercial` (só Cliente). `finance` tem os cinco contextos internos desde
+2026-08-25 e os documentos lançam nos livros, mas a contabilidade está de pé
+e **vazia** — o plano de contas carrega-se e as regras de postagem
+definem-se, e sem elas nada lança. Ver a ressalva em cada secção.
 
 > As datas até 2026-08-16 vêm do carimbo das migrações EF Core — o repositório
 > só passou a estar sob git nesse dia. A partir daí vêm do histórico.
@@ -498,6 +500,18 @@ soma acumulada de entradas anteriores desta tabela, que tinha ficado para trás
 em `verify-documents`, `verify-hr` e `verify-notifications`, e nunca chegara a
 incluir `verify-procurement`. As cinco últimas linhas nasceram a 2026-08-29.
 
+> **Continuado a 2026-08-30.** `verify-fiscal` cresceu de 13 para 20 (motor
+> de IRT/INSS — semeia INSS e a Tabela B, idempotente por vigência real) e
+> `verify-payroll` de 16 para 17 (cálculo real substitui a verificação de
+> campos nulos, mais o caso de recusa por falta de dados fiscais); ver as
+> secções `fiscal` e `payroll` acima para o detalhe. `verify-projects`,
+> `verify-fleet` e `verify-inventory` cresceram no mesmo dia por razões não
+> fiscais (Orçamento, Plano de Manutenção, Movimento). **398 casos ao todo**
+> (era 336); `verify-all.ps1` completo confirmado em **395/398** — as 3
+> falhas são o K20 (limpeza de política), em `verify-ledger` (caso 45),
+> `verify-payroll` (caso 16, renumerado — era 15) e `verify-procurement`
+> (caso 58), nenhuma nova.
+
 `verify-finance` corre por último e **monta os seus pré-requisitos pelas rotas
 de `fiscal` e `commercial`** — taxa, vigências e cliente. Não há atalho por SQL
 de propósito: se a montagem falhar, é porque o caminho real de emissão está
@@ -629,10 +643,46 @@ _2026-08-24 — **fatia mínima**, ADR-036._
 - Instrumento legal obrigatório em cada versão (ADR-011 §4)
 - `ITaxDetermination` publicado; `commercial` e `finance` consomem-no
 
-⚠ **Não é o motor fiscal.** Fora: certificação AGT, exportação SAF-T,
-declarações periódicas, IRT e INSS, e o catálogo de códigos de isenção — sem
-ele, emitir com `ISE`/`NS` devolve **501**. `TaxCodes` só fixa `ISE` e `NS`,
-que são os únicos verificados em fonte documentada.
+⚠ **Não é o motor fiscal completo.** Fora: certificação AGT, exportação
+SAF-T, declarações periódicas, e o catálogo de códigos de isenção — sem ele,
+emitir com `ISE`/`NS` devolve **501**. `TaxCodes` só fixa `ISE` e `NS`, que
+são os únicos verificados em fonte documentada.
+
+_2026-08-30 — **motor de cálculo de IRT/INSS.**_ IRT e INSS deixam de estar
+fora de âmbito. `TaxKind` ganhou `EmployeeSocialSecurity` e
+`EmployerSocialSecurity` — o INSS (3%/8%, sem tecto, confirmado pelo
+utilizador) carrega-se pelo mecanismo já existente de `TaxRateSchedule`,
+sem desenho novo, porque é uma taxa plana como o IVA.
+
+O IRT precisou de agregado novo: `IncomeTaxSchedule` — série de versões de
+uma **tabela** de escalões progressivos, mesmo padrão de vigência e
+`InForceOn` de `TaxRateSchedule`, mas cada versão guarda vários
+`IncomeTaxBracket` (Parcela Fixa + Taxa × Excesso de) em vez de um único
+número. `SelectBracket` escolhe o escalão de maior "excesso de" que a
+matéria colectável ainda ultrapassa — nunca iguala — o que reproduz 150.000
+como isenção e 150.001 já no escalão seguinte (salto de 12.500 Kz,
+confirmado pelo utilizador, não corrigido como se fosse defeito).
+
+`IIncomeTaxDetermination` é contrato novo, distinto de `ITaxDetermination`:
+devolve o **montante já calculado**, não só a taxa — decisão deliberada,
+porque a fórmula do escalão é regra fiscal (autoridade exclusiva de
+`fiscal`), e "percentagem × montante" não é. Rotas novas:
+`GET /fiscal/income-tax-schedule`, `POST /fiscal/income-tax-schedule/versions`,
+`GET /fiscal/income-tax-schedule/determination`.
+
+**Defeito real, só visível contra a API a correr**: o `switch` exaustivo
+`ListTaxRates.ToDomain`/`ToContract` (ADR-010, tradução `Domain.TaxKind` ↔
+`Contracts.TaxKind`) não tinha entrada para os dois valores novos — 500 ao
+determinar INSS, não apanhado por `dotnet test` porque nenhum teste de
+domínio ou de aplicação passava por esse caminho de tradução. Corrigido no
+mesmo dia.
+
+Testes: `Rivo.Fiscal.Domain.Tests` cresceu de 18 para 39 (`IncomeTaxSchedule`,
+incluindo o exemplo documentado bruto 250.000 → IRT 38.900 e as fronteiras
+exactas da Tabela B). `verify-fiscal.ps1` cresceu de 12 para 20 — semeia o
+INSS e a Tabela B **de forma idempotente por código e vigência reais**
+(2020-01-01 em diante), ao contrário dos casos 1-12 da mesma suite, que usam
+um código por corrida. Consumido por `payroll` — ver secção própria.
 
 ## commercial
 
@@ -1042,6 +1092,44 @@ código confirmada.
   Confirmado: abrir folha, acrescentar item, submeter devolve `409` sem
   política configurada para `payroll.payroll_run` — mesmo comportamento que
   `procurement` tem sem política, não falha nova.
+
+_2026-08-30 — **motor de cálculo de IRT/INSS, com regra de negócio real.**_
+Deixa de ser esqueleto: `AddPayrollItem` pergunta a `fiscal`, nunca calcula
+por si (`modules/fiscal.md` — "nenhum outro módulo implementa regra de
+imposto"). Ordem exacta do artigo 7.º do CIRT: determina o INSS do
+trabalhador (`TaxKind.EmployeeSocialSecurity`, código `INSS`) à data do fim
+do período (`PayrollRun.PeriodEndDate`, não `UtcNow` — ADR-011 §3), deduz-o
+do bruto para obter a matéria colectável, pede o IRT sobre essa matéria a
+`IIncomeTaxDetermination` (ver secção `fiscal` abaixo), e só então
+`PayrollItem.ApplyCalculation(withholdingTax, socialSecurityContribution)`
+grava os três campos — `NetSalary` é sempre `GrossSalary − WithholdingTax −
+SocialSecurityContribution`, calculado dentro do método, nunca recebido como
+terceiro parâmetro que pudesse discordar da soma.
+
+**Recusa, não omissão**: sem taxa de INSS ou tabela de IRT em vigor à data
+do facto gerador, o item não nasce — `AddItemOutcome.FiscalDataMissing`,
+mapeado a 400 (`ValidationProblem`), mesmo padrão de `IssueSalesInvoice`
+perante `TaxDeterminationOutcome.NoRateInForce`. Testado abrindo uma folha
+de 2019, fora da vigência semeada por `verify-fiscal.ps1` (2020-01-01 em
+diante).
+
+**Um segundo defeito 400-vs-409 apanhado e corrigido no mesmo lote**: o
+`catch (Exception error) when (error is InvalidOperationException or
+ArgumentOutOfRangeException)` original de `AddPayrollItem` mapeava tanto
+"folha já não está em rascunho" (conflito de estado) como "salário não
+positivo" (campo mal preenchido) para o mesmo outcome — `Rejected`, sempre
+409. Separado em dois `catch`: `ArgumentOutOfRangeException` → `Rejected`
+(400), `InvalidOperationException` → `Conflict` (409). Mesma disciplina
+aplicada em `fleet` e `projects` a 2026-08-30 (ver secções próprias).
+
+Testes: `Rivo.Payroll.Domain.Tests` (novo projecto, 16 casos) —
+`PayrollItem.ApplyCalculation` e o ciclo `PayrollRun`, incluindo o exemplo
+documentado ponta-a-ponta (bruto 250.000 → líquido 203.600). `verify-payroll`
+cresceu de 5 (campos ficam nulos) para 17 casos — o cálculo real substitui
+essa verificação, mais um caso novo para a recusa por falta de dados
+fiscais. Ver `state/known-issues.md` K20: o caso de limpeza de política
+mudou de número (era 15, passou a 16) mas continua o mesmo defeito
+pré-existente, sem causa de código.
 
 ## projects
 

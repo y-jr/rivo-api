@@ -31,6 +31,17 @@ public static class FiscalModuleEndpoints
         group.MapGet("/tax-rates/determination", DetermineAsync)
             .RequireAuthorization(FiscalPermissions.RatesRead);
 
+        group.MapGet("/income-tax-schedule", GetIncomeTaxScheduleAsync)
+            .RequireAuthorization(FiscalPermissions.RatesRead);
+
+        // Escrita de escalões é configuração sensível: altera o IRT de todos
+        // os recibos calculados a partir da data escolhida (ADR-011 §5).
+        group.MapPost("/income-tax-schedule/versions", IntroduceIncomeTaxScheduleVersionAsync)
+            .RequireAuthorization(FiscalPermissions.RatesWrite);
+
+        group.MapGet("/income-tax-schedule/determination", DetermineIncomeTaxAsync)
+            .RequireAuthorization(FiscalPermissions.RatesRead);
+
         return endpoints;
     }
 
@@ -128,6 +139,74 @@ public static class FiscalModuleEndpoints
         };
     }
 
+    private static async Task<IResult> GetIncomeTaxScheduleAsync(
+        GetIncomeTaxSchedule getSchedule,
+        CancellationToken cancellationToken)
+    {
+        var tabela = await getSchedule.ExecuteAsync(cancellationToken);
+
+        return tabela is null
+            ? Results.NotFound(new { erro = "Ainda não existe tabela de escalões de IRT." })
+            : Results.Ok(tabela);
+    }
+
+    private static async Task<IResult> IntroduceIncomeTaxScheduleVersionAsync(
+        IntroduceIncomeTaxScheduleVersionRequest request,
+        IntroduceIncomeTaxScheduleVersion introduceVersion,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await introduceVersion.ExecuteAsync(
+            request.Brackets,
+            request.EffectiveFrom,
+            request.EffectiveTo,
+            request.LegalInstrument,
+            BuildAuditContext(http),
+            cancellationToken);
+
+        return result.Outcome switch
+        {
+            IntroduceScheduleVersionOutcome.Introduced =>
+                Results.Created("/fiscal/income-tax-schedule", new { versionId = result.VersionId }),
+
+            // 409 e não 400: a sobreposição não é um campo mal preenchido, é
+            // conflito com o que já lá está.
+            IntroduceScheduleVersionOutcome.Overlaps =>
+                Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
+
+            // 400: instrumento legal em branco, escalão fora de forma, taxa
+            // fora de 0–100, vigência invertida.
+            IntroduceScheduleVersionOutcome.Rejected =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["escaloes"] = [result.Error!] }),
+
+            _ => Results.Problem("Resultado inesperado ao introduzir a versão de escalões."),
+        };
+    }
+
+    private static async Task<IResult> DetermineIncomeTaxAsync(
+        IIncomeTaxDetermination determination,
+        decimal taxableIncome,
+        DateOnly taxPointDate,
+        CancellationToken cancellationToken)
+    {
+        var result = await determination.DetermineAsync(
+            new IncomeTaxDeterminationRequest(taxableIncome, taxPointDate),
+            cancellationToken);
+
+        return result.Outcome switch
+        {
+            IncomeTaxDeterminationOutcome.Determined => Results.Ok(result.Determination),
+
+            // 404: não há tabela de escalões em vigor para esta data. Recusar
+            // é a resposta certa — recair na versão mais próxima inventaria
+            // o valor (mesma regra de `TaxDeterminationOutcome.NoRateInForce`).
+            IncomeTaxDeterminationOutcome.NoScheduleInForce =>
+                Results.NotFound(new { erro = "Não há tabela de escalões de IRT em vigor à data indicada." }),
+
+            _ => Results.Problem("Resultado inesperado na determinação de IRT."),
+        };
+    }
+
     private static AuditContext BuildAuditContext(HttpContext http)
     {
         var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
@@ -144,6 +223,12 @@ public sealed record OpenScheduleRequest(TaxKind? Kind, string Code, string Desc
 
 public sealed record IntroduceRateRequest(
     decimal Percentage,
+    DateOnly EffectiveFrom,
+    DateOnly? EffectiveTo,
+    string LegalInstrument);
+
+public sealed record IntroduceIncomeTaxScheduleVersionRequest(
+    IReadOnlyList<Rivo.Fiscal.Domain.NewIncomeTaxBracket> Brackets,
     DateOnly EffectiveFrom,
     DateOnly? EffectiveTo,
     string LegalInstrument);

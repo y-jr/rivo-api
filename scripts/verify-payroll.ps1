@@ -3,13 +3,13 @@
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 #   pwsh -File scripts/verify-payroll.ps1
 #
-# Esqueleto — 2026-08-29. Folha e itens, ligados a `approval` pelo total
-# bruto. **Sem cálculo de IRT/INSS**: os campos existem no modelo e ficam
-# sempre nulos — a ordem do IRT está confirmada em lei, mas os escalões
-# dependem de `fiscal`, que não tem tabela angolana carregada, e
-# `CLAUDE.md` proíbe implementar a partir do levantamento não verificado.
-# Esta suite verifica que os campos ficam mesmo nulos, e não os testa como
-# se calculassem algo.
+# Folha e itens, ligados a `approval` pelo total bruto, com IRT/INSS
+# calculados desde 2026-08-30 — `payroll` pergunta a `fiscal`, nunca calcula
+# por si (`modules/fiscal.md`). **Pressupõe que `verify-fiscal` já correu**
+# nesta mesma base de dados: é lá que o INSS (3%/8%) e a tabela de escalões
+# de IRT são semeados, com os códigos e datas reais que o motor consome —
+# sem isso, o caso 5 recusa por falta de dados fiscais em vez de calcular
+# (mesma dependência de ordem que `verify-payables` → `verify-ledger`).
 #
 # Re-executável: cada corrida usa um período próprio (mês derivado do
 # carimbo temporal) e limpa a política de `payroll.payroll_run` que cria.
@@ -89,7 +89,7 @@ $cargo = (Invoke-RestMethod "$base/hr/positions" -Method Post -ContentType "appl
 Invoke-RestMethod "$base/hr/employees/$aprovador/positions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
     -Body (@{ positionId = $cargo } | ConvertTo-Json) | Out-Null
 
-# **Estado determinista antes de comecar** -- o caso 6 verifica a recusa
+# **Estado determinista antes de comecar** -- o caso 8 verifica a recusa
 # quando nao ha politica nenhuma para payroll.payroll_run.
 #
 # `@(...)` a forcar array: defesa documentada contra um modo de falha real
@@ -97,12 +97,12 @@ Invoke-RestMethod "$base/hr/employees/$aprovador/positions" -Method Post -Conten
 # implemented.md).
 # Clear-RivoApprovalPolicies (_ambiente.ps1) repete ate confirmar por SQL: uma
 # unica tentativa tolerava o K20 (known-issues.md) na propria suite, mas
-# deixava a politica activa para tras -- e a submissao do caso 8 recusaria por
+# deixava a politica activa para tras -- e a submissao do caso 9 recusaria por
 # ambiguidade (duas politicas igualmente especificas) se uma corrida anterior
 # tivesse ficado exactamente assim.
 Clear-RivoApprovalPolicies -ProcessType "payroll.payroll_run" -Headers $adminHeaders
 
-Write-Host "`n=== Modulo payroll (esqueleto) ===`n"
+Write-Host "`n=== Modulo payroll ===`n"
 
 Test-Case "1. Schema payroll com migration propria e isolado" {
     $m = Invoke-Sql "select count(*) from payroll.__ef_migrations_history"
@@ -135,7 +135,7 @@ Test-Case "4. Mes fora de 1-12 e recusado" {
     "mes invalido recusado (400)"
 }
 
-Test-Case "5. Acrescentar item -- so o bruto, sem nenhum campo calculado" {
+Test-Case "5. Acrescentar item -- INSS e IRT calculados por fiscal, liquido derivado" {
     $body = @{ employeeId = $colaborador; grossSalary = 350000 } | ConvertTo-Json
     Invoke-RestMethod "$base/payroll/runs/$($script:runId)/items" -Method Post -Body $body -ContentType "application/json" -Headers $hrHeaders | Out-Null
 
@@ -144,23 +144,42 @@ Test-Case "5. Acrescentar item -- so o bruto, sem nenhum campo calculado" {
     $item = $folha.items[0]
     if ([decimal]$item.grossSalary -ne 350000) { throw "bruto errado: $($item.grossSalary)" }
 
-    # Nulo e nao zero: zero pareceria um calculo que deu zero. Nulo diz "nao
-    # calculado", que e a verdade.
-    if ($null -ne $item.netSalary) { throw "netSalary deveria ser nulo, veio $($item.netSalary)" }
-    if ($null -ne $item.withholdingTax) { throw "withholdingTax deveria ser nulo, veio $($item.withholdingTax)" }
-    if ($null -ne $item.socialSecurityContribution) { throw "socialSecurityContribution deveria ser nulo, veio $($item.socialSecurityContribution)" }
+    # 350.000 x 3% = 10.500 de INSS; materia colectavel 339.500 cai no
+    # escalao 300.001-500.000: IRT = 49.250 + (339.500-300.000) x 19% =
+    # 56.755. Liquido = 350.000 - 56.755 - 10.500 = 282.745 (verify-fiscal.ps1
+    # semeia o INSS e a tabela de IRT que tornam isto determinado).
+    if ([decimal]$item.socialSecurityContribution -ne 10500) { throw "INSS errado: $($item.socialSecurityContribution)" }
+    if ([decimal]$item.withholdingTax -ne 56755) { throw "IRT errado: $($item.withholdingTax)" }
+    if ([decimal]$item.netSalary -ne 282745) { throw "liquido errado: $($item.netSalary)" }
 
-    "bruto 350000; net/IRT/INSS todos nulos, deliberado"
+    "bruto 350000, INSS 10500, IRT 56755, liquido 282745"
 }
 
-Test-Case "6. Salario nao positivo e recusado" {
+Test-Case "6. Salario nao positivo e recusado com 400" {
     $body = @{ employeeId = $colaborador; grossSalary = 0 } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/payroll/runs/$($script:runId)/items" -Method Post -Body $body -ContentType "application/json" -Headers $hrHeaders }
-    if ($code -ne 409 -and $code -ne 500) { throw "esperado erro, obtido $code" }
-    "salario zero recusado ($code)"
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "campo mal preenchido -- 400, nao 409"
 }
 
-Test-Case "7. Sem politica configurada, submeter recusa e a folha continua Draft" {
+Test-Case "7. Sem INSS/IRT em vigor a data, o item e recusado (recusa, nao omissao)" {
+    # Um periodo anterior a 2020 nao esta coberto pela vigencia que
+    # verify-fiscal.ps1 semeia (2020-01-01 em diante) -- mesmo padrao de
+    # `IssueSalesInvoice` perante `NoRateInForce`: inventar o valor seria
+    # pior do que recusar.
+    $folhaAntiga = Invoke-RestMethod "$base/payroll/runs" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+        -Body (@{ year = 2019; month = 6; openedByEmployeeId = $rh } | ConvertTo-Json)
+
+    $body = @{ employeeId = $colaborador; grossSalary = 100000 } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/payroll/runs/$($folhaAntiga.runId)/items" -Method Post -Body $body -ContentType "application/json" -Headers $hrHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+
+    $folha = Invoke-RestMethod "$base/payroll/runs/$($folhaAntiga.runId)" -Headers $hrHeaders
+    if ($folha.items.Count -ne 0) { throw "item nasceu apesar da recusa: $($folha.items.Count)" }
+    "2019/06 fora da vigencia semeada -- recusado, sem item a nascer"
+}
+
+Test-Case "8. Sem politica configurada, submeter recusa e a folha continua Draft" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/payroll/runs/$($script:runId)/submission" -Method Post -Headers $hrHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
 
@@ -169,7 +188,7 @@ Test-Case "7. Sem politica configurada, submeter recusa e a folha continua Draft
     "409 sem politica; folha continua Draft"
 }
 
-Test-Case "8. Com politica, submeter cria o processo em approval" {
+Test-Case "9. Com politica, submeter cria o processo em approval" {
     $politica = Invoke-RestMethod "$base/approval/policies" -Method Post -ContentType "application/json" -Headers $adminHeaders `
         -Body (@{ processType = "payroll.payroll_run"; steps = @(@{ approverPositionId = $cargo }) } | ConvertTo-Json -Depth 5)
     $script:politicaId = $politica.policyId
@@ -190,20 +209,20 @@ Test-Case "8. Com politica, submeter cria o processo em approval" {
     "processo $($script:processoId), 350000 de bruto, aprovador atribuido"
 }
 
-Test-Case "9. Depois de submetida, acrescentar item e recusado" {
+Test-Case "10. Depois de submetida, acrescentar item e recusado" {
     $body = @{ employeeId = $colaborador; grossSalary = 100000 } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/payroll/runs/$($script:runId)/items" -Method Post -Body $body -ContentType "application/json" -Headers $hrHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "409 -- ja nao esta em Draft"
 }
 
-Test-Case "10. Enquanto ninguem decide, aplicar a decisao mantem PendingApproval" {
+Test-Case "11. Enquanto ninguem decide, aplicar a decisao mantem PendingApproval" {
     $r = Invoke-RestMethod "$base/payroll/runs/$($script:runId)/decision" -Method Post -Headers $hrHeaders
     if ($r.status -ne "PendingApproval") { throw "estado '$($r.status)'" }
     "continua PendingApproval"
 }
 
-Test-Case "11. Decidida em approval, o efeito e aplicado em payroll" {
+Test-Case "12. Decidida em approval, o efeito e aplicado em payroll" {
     $body = @{ decidedByEmployeeId = $aprovador; action = "Approved"; notes = "Folha conferida." } | ConvertTo-Json
     Invoke-RestMethod "$base/approval/requests/$($script:processoId)/decisions" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
 
@@ -217,7 +236,7 @@ Test-Case "11. Decidida em approval, o efeito e aplicado em payroll" {
     "aprovada em approval, e so aplicada quando payroll pergunta"
 }
 
-Test-Case "12. Aplicar a decisao outra vez nao falha nem duplica" {
+Test-Case "13. Aplicar a decisao outra vez nao falha nem duplica" {
     $r = Invoke-RestMethod "$base/payroll/runs/$($script:runId)/decision" -Method Post -Headers $hrHeaders
     if ($r.status -ne "Approved") { throw "estado '$($r.status)' na segunda chamada" }
 
@@ -226,7 +245,7 @@ Test-Case "12. Aplicar a decisao outra vez nao falha nem duplica" {
     "segunda chamada devolve Approved, e a trilha nao duplica"
 }
 
-Test-Case "13. Autorizacao: sem token 401, sem perfil 403" {
+Test-Case "14. Autorizacao: sem token 401, sem perfil 403" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/payroll/runs" }
     if ($code -ne 401) { throw "sem token: esperado 401, obtido $code" }
 
@@ -235,7 +254,7 @@ Test-Case "13. Autorizacao: sem token 401, sem perfil 403" {
     "401 e 403 correctos"
 }
 
-Test-Case "14. Abertura, submissao e aprovacao ficam na trilha, com actor" {
+Test-Case "15. Abertura, submissao e aprovacao ficam na trilha, com actor" {
     $abrir = Invoke-Sql "select count(*) from audit.audit_event where action='payroll.run.opened' and entity_id='$($script:runId)' and actor_id is not null"
     if ($abrir -ne "1") { throw "abertura nao auditada com actor" }
     $submeter = Invoke-Sql "select count(*) from audit.audit_event where action='payroll.run.submitted' and entity_id='$($script:runId)' and actor_id is not null"
@@ -243,7 +262,7 @@ Test-Case "14. Abertura, submissao e aprovacao ficam na trilha, com actor" {
     "abertura e submissao na trilha, ambas com actor"
 }
 
-Test-Case "15. A suite nao deixa politica de payroll activa atras de si" {
+Test-Case "16. A suite nao deixa politica de payroll activa atras de si" {
     @(Invoke-RestMethod "$base/approval/policies" -Headers $adminHeaders) |
     Where-Object { $_.processType -eq "payroll.payroll_run" -and $_.isActive } |
     ForEach-Object {
@@ -256,7 +275,7 @@ Test-Case "15. A suite nao deixa politica de payroll activa atras de si" {
     "nenhuma politica de payroll.payroll_run activa"
 }
 
-Test-Case "16. Dados sobrevivem ao reinicio da stack" {
+Test-Case "17. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
@@ -265,7 +284,8 @@ Test-Case "16. Dados sobrevivem ao reinicio da stack" {
     $folha = Invoke-RestMethod "$base/payroll/runs/$($script:runId)" -Headers $hrHeaders
     if ($folha.status -ne "Approved") { throw "estado perdido: $($folha.status)" }
     if ($folha.items.Count -ne 1) { throw "itens perdidos: $($folha.items.Count)" }
-    "folha $ano/$mes, estado e item intactos apos restart"
+    if ([decimal]$folha.items[0].netSalary -ne 282745) { throw "liquido perdido ou alterado: $($folha.items[0].netSalary)" }
+    "folha $ano/$mes, estado, item e liquido calculado intactos apos restart"
 }
 
 Write-Host ""
