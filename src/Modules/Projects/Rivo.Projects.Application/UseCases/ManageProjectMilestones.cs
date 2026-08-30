@@ -26,9 +26,15 @@ public sealed class AddMilestone(IProjectStore store, IAuditTrail audit)
         {
             marco = projecto.AddMilestone(name, targetDate);
         }
-        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        catch (ArgumentException error)
         {
             return AddMilestoneResult.Rejected(error.Message);
+        }
+        catch (InvalidOperationException error)
+        {
+            // Projecto fechado: conflito com o estado actual, não pedido
+            // malformado — 409, não 400.
+            return AddMilestoneResult.Conflict(error.Message);
         }
 
         await store.SaveChangesAsync(cancellationToken);
@@ -56,13 +62,21 @@ public sealed record AddMilestoneResult(AddMilestoneOutcome Outcome, Guid? Miles
 
     public static AddMilestoneResult Rejected(string error) =>
         new(AddMilestoneOutcome.Rejected, null, error);
+
+    public static AddMilestoneResult Conflict(string error) =>
+        new(AddMilestoneOutcome.Conflict, null, error);
 }
 
 public enum AddMilestoneOutcome
 {
     Added,
     NotFound,
+
+    /// <summary>Pedido malformado — nome vazio ou data antes do início. 400.</summary>
     Rejected,
+
+    /// <summary>Projecto fechado. 409.</summary>
+    Conflict,
 }
 
 /// <summary>Marca um marco como alcançado. Vale uma vez só (ver <see cref="Milestone.Reach"/>).</summary>

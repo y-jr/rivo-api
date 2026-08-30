@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Fleet\Rivo.Fleet.Domain\Rivo.Fleet.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

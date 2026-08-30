@@ -4,17 +4,58 @@ using Rivo.Fleet.Domain;
 
 namespace Rivo.Fleet.Application.UseCases;
 
+/// <summary>
+/// Vista de leitura de uma viatura, com as suas manutenções e atribuições.
+///
+/// <para>
+/// A entidade de domínio nunca sai desta camada (architecture/dependency-rules.md
+/// §API) — mesma forma de <c>ProjectView</c> em `projects`.
+/// </para>
+/// </summary>
+public sealed record VehicleView(
+    Guid VehicleId,
+    string PlateNumber,
+    string Model,
+    string Status,
+    IReadOnlyList<MaintenanceRecordView> Maintenances,
+    IReadOnlyList<VehicleAssignmentView> Assignments);
+
+public sealed record MaintenanceRecordView(
+    Guid MaintenanceId, string Type, string Description, DateOnly StartedOn, DateOnly? EndedOn);
+
+public sealed record VehicleAssignmentView(
+    Guid AssignmentId, Guid EmployeeId, DateOnly StartedOn, DateOnly? EndedOn);
+
+internal static class VehicleViews
+{
+    internal static VehicleView ToView(Vehicle veiculo) => new(
+        veiculo.Id,
+        veiculo.PlateNumber,
+        veiculo.Model,
+        veiculo.Status.ToString(),
+        [.. veiculo.Maintenances.Select(m =>
+            new MaintenanceRecordView(m.Id, m.Type.ToString(), m.Description, m.StartedOn, m.EndedOn))],
+        [.. veiculo.Assignments.Select(a =>
+            new VehicleAssignmentView(a.Id, a.EmployeeId, a.StartedOn, a.EndedOn))]);
+}
+
 public sealed class ListVehicles(IVehicleStore store)
 {
-    public async Task<IReadOnlyList<Vehicle>> ExecuteAsync(
-        bool includeInactive, CancellationToken cancellationToken) =>
-        await store.ListAsync(includeInactive, cancellationToken);
+    public async Task<IReadOnlyList<VehicleView>> ExecuteAsync(
+        bool includeInactive, CancellationToken cancellationToken)
+    {
+        var veiculos = await store.ListAsync(includeInactive, cancellationToken);
+        return [.. veiculos.Select(VehicleViews.ToView)];
+    }
 }
 
 public sealed class GetVehicle(IVehicleStore store)
 {
-    public Task<Vehicle?> ExecuteAsync(Guid vehicleId, CancellationToken cancellationToken) =>
-        store.FindAsync(vehicleId, cancellationToken);
+    public async Task<VehicleView?> ExecuteAsync(Guid vehicleId, CancellationToken cancellationToken)
+    {
+        var veiculo = await store.FindAsync(vehicleId, cancellationToken);
+        return veiculo is null ? null : VehicleViews.ToView(veiculo);
+    }
 }
 
 /// <summary>
@@ -87,48 +128,6 @@ public sealed class RegisterVehicle(IVehicleStore store, IAuditTrail audit)
     }
 }
 
-public sealed class SetVehicleMaintenance(IVehicleStore store, IAuditTrail audit)
-{
-    public async Task<SetMaintenanceOutcome> ExecuteAsync(
-        Guid vehicleId, bool inMaintenance, AuditContext context, CancellationToken cancellationToken)
-    {
-        var veiculo = await store.FindForUpdateAsync(vehicleId, cancellationToken);
-
-        if (veiculo is null)
-        {
-            return SetMaintenanceOutcome.NotFound;
-        }
-
-        try
-        {
-            if (inMaintenance)
-            {
-                veiculo.SendToMaintenance();
-            }
-            else
-            {
-                veiculo.ReturnFromMaintenance();
-            }
-        }
-        catch (InvalidOperationException)
-        {
-            return SetMaintenanceOutcome.Rejected;
-        }
-
-        await store.SaveChangesAsync(cancellationToken);
-
-        await audit.RecordAsync(
-            new AuditRecord(
-                inMaintenance ? FleetAuditActions.VehicleSentToMaintenance : FleetAuditActions.VehicleReturnedFromMaintenance,
-                FleetAuditEntityTypes.Vehicle,
-                veiculo.Id.ToString(),
-                context),
-            cancellationToken);
-
-        return SetMaintenanceOutcome.Applied;
-    }
-}
-
 public sealed record RegisterVehicleResult(bool Succeeded, Guid? VehicleId, string? Error)
 {
     public static RegisterVehicleResult Success(Guid vehicleId) => new(true, vehicleId, null);
@@ -139,22 +138,19 @@ public sealed record RegisterVehicleResult(bool Succeeded, Guid? VehicleId, stri
         new(false, existingId, "Matrícula já existente.");
 }
 
-public enum SetMaintenanceOutcome
-{
-    Applied,
-    NotFound,
-    Rejected,
-}
-
 public static class FleetAuditActions
 {
     public const string VehicleRegistered = "fleet.vehicle.registered";
-    public const string VehicleSentToMaintenance = "fleet.vehicle.sent_to_maintenance";
-    public const string VehicleReturnedFromMaintenance = "fleet.vehicle.returned_from_maintenance";
     public const string VehicleDeactivated = "fleet.vehicle.deactivated";
+    public const string MaintenanceOpened = "fleet.maintenance.opened";
+    public const string MaintenanceClosed = "fleet.maintenance.closed";
+    public const string AssignmentOpened = "fleet.assignment.opened";
+    public const string AssignmentEnded = "fleet.assignment.ended";
 }
 
 public static class FleetAuditEntityTypes
 {
     public const string Vehicle = "fleet.vehicle";
+    public const string Maintenance = "fleet.maintenance";
+    public const string Assignment = "fleet.assignment";
 }

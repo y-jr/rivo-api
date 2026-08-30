@@ -119,6 +119,7 @@ public static class ProjectsModuleEndpoints
             AddMilestoneOutcome.Added => Results.Created(
                 $"/projects/{projectId}", new { milestoneId = result.MilestoneId }),
             AddMilestoneOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            AddMilestoneOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
             _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["marco"] = [result.Error!] }),
         };
     }
@@ -160,6 +161,7 @@ public static class ProjectsModuleEndpoints
             AddTaskOutcome.Added => Results.Created($"/projects/{projectId}", new { taskId = result.TaskId }),
             AddTaskOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
             AddTaskOutcome.EmployeeNotFound => Results.NotFound(new { erro = result.Error }),
+            AddTaskOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
             _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["tarefa"] = [result.Error!] }),
         };
     }

@@ -35,7 +35,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 4 | `finance` — o núcleo | ✅ **Critério de saída cumprido** em 2026-08-25 — os cinco contextos internos, BR-1/3/5/8 impostas, os documentos a lançar nos livros e (2026-08-29) a anular a estornar. Em dívida: o plano de contas, que é do contabilista |
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
 | 6 | `payroll` | Esqueleto sem regra (2026-08-29) — trave de produção por parecer fiscal, ver a nota da fase |
-| 7 | `projects`, `inventory`, `fleet` | `projects` ganhou Marco e Tarefa em 2026-08-30 (sem bloqueio de negócio); `inventory` e `fleet` continuam esqueleto — `inventory` trava em K1 |
+| 7 | `projects`, `inventory`, `fleet` | `projects` (Marco e Tarefa) e `fleet` (Manutenção e Atribuição) ganharam regra de negócio em 2026-08-30, nenhum bloqueio de negócio nos dois; `inventory` continua esqueleto, trava em K1 |
 | 8 | Camadas de composição e portais | Por iniciar |
 
 **Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
@@ -347,13 +347,14 @@ testes de arquitectura da Fase 0.
 
 > **Estado a 2026-08-30 — a dependência de K1 só bloqueia `inventory`.** Os
 > três nasceram esqueletos a 2026-08-29 (decisão explícita, sob prazo de
-> apresentação). `projects` ganhou Marco e Tarefa a 2026-08-30 sem esperar por
-> K1: a fronteira em aberto é sobre Activos Fixos vs. Activos, e não toca
-> Projecto/Marco/Tarefa. `fleet` (Manutenção, Atribuição) também não depende
-> de K1 — pode seguir o mesmo caminho. **`inventory` continua a depender de
-> K1 de facto**: o próprio Movimento — o que falta para `QuantityOnHand` sair
-> de zero — é a operação que materializa a fronteira ainda por decidir.
-> Detalhe em `pending-decisions.md` §Domínio e negócio.
+> apresentação). `projects` (Marco e Tarefa) e `fleet` (Manutenção e
+> Atribuição) ganharam regra de negócio no mesmo dia sem esperar por K1: a
+> fronteira em aberto é sobre Activos Fixos vs. Activos, e não toca nenhum
+> dos dois. Ambos confirmados contra a stack local (`verify-projects.ps1`
+> 28/28, `verify-fleet.ps1` 26/26). **`inventory` continua a depender de K1
+> de facto**: o próprio Movimento — o que falta para `QuantityOnHand` sair de
+> zero — é a operação que materializa a fronteira ainda por decidir. Detalhe
+> em `pending-decisions.md` §Domínio e negócio.
 
 ---
 

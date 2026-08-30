@@ -1,17 +1,21 @@
 namespace Rivo.Fleet.Domain;
 
 /// <summary>
-/// Viatura. Esqueleto do módulo — ver `modules/fleet.md`.
+/// Viatura — agregado raiz de `fleet` (ver `modules/fleet.md`).
 ///
 /// <para>
-/// <strong>Fatia mínima, deliberada.</strong> Manutenção, Plano de
-/// Manutenção, Atribuição, Registo de Viagem, Despesa de Frota e Seguros (ver
-/// `modules/fleet.md` §Possui) ficam por fazer. Esta entidade é só a matrícula
-/// e o modelo, sem nada disso ligado ainda.
+/// <strong>Manutenção e Atribuição vivem aqui dentro</strong> (§Possui):
+/// nascem sempre por este agregado (<see cref="OpenMaintenance"/>,
+/// <see cref="Assign"/>). Plano de Manutenção (calendário preventivo com
+/// alertas), Registo de Viagem, Despesa de Frota e Seguros continuam por
+/// fazer.
 /// </para>
 /// </summary>
 public sealed class Vehicle
 {
+    private readonly List<MaintenanceRecord> _maintenances = [];
+    private readonly List<VehicleAssignment> _assignments = [];
+
     private Vehicle(Guid id, string plateNumber, string model)
     {
         Id = id;
@@ -36,6 +40,10 @@ public sealed class Vehicle
 
     public VehicleStatus Status { get; private set; }
 
+    public IReadOnlyList<MaintenanceRecord> Maintenances => _maintenances;
+
+    public IReadOnlyList<VehicleAssignment> Assignments => _assignments;
+
     /// <summary>Concorrência optimista (ADR-025). O domínio nunca lhe toca.</summary>
     public int Version { get; private set; }
 
@@ -55,30 +63,93 @@ public sealed class Vehicle
             Guid.CreateVersion7(), plateNumber.Trim().ToUpperInvariant(), model.Trim());
     }
 
-    /// <summary>Envia para manutenção. Nunca elimina — o histórico da viatura fica.</summary>
-    public void SendToMaintenance()
+    /// <summary>
+    /// Abre um registo de manutenção. Só um de cada vez — enquanto um estiver
+    /// aberto, <see cref="Status"/> já diz <c>InMaintenance</c>, e é essa a
+    /// exclusividade que aqui se impõe.
+    /// </summary>
+    public MaintenanceRecord OpenMaintenance(MaintenanceType type, string description, DateOnly startedOn)
     {
-        if (Status is VehicleStatus.Inactive)
+        EnsureNotInactive("enviar para manutenção");
+
+        if (Status is VehicleStatus.InMaintenance)
         {
-            throw new InvalidOperationException("Uma viatura inactiva não vai para manutenção.");
+            throw new InvalidOperationException("Esta viatura já está em manutenção.");
         }
 
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            throw new ArgumentException("Uma manutenção precisa de descrição.", nameof(description));
+        }
+
+        var registo = new MaintenanceRecord(Guid.CreateVersion7(), Id, type, description.Trim(), startedOn);
+        _maintenances.Add(registo);
         Status = VehicleStatus.InMaintenance;
+
+        return registo;
     }
 
-    public void ReturnFromMaintenance()
+    /// <summary>Fecha o registo de manutenção aberto e devolve a viatura a activa.</summary>
+    public void CloseMaintenance(Guid maintenanceId, DateOnly endedOn)
     {
-        if (Status is not VehicleStatus.InMaintenance)
+        var registo = _maintenances.FirstOrDefault(m => m.Id == maintenanceId)
+            ?? throw new InvalidOperationException("Registo de manutenção não encontrado nesta viatura.");
+
+        registo.Close(endedOn);
+        Status = VehicleStatus.Active;
+    }
+
+    /// <summary>
+    /// Atribui a viatura a um motorista. Só uma atribuição aberta de cada
+    /// vez — reatribuir exige terminar a actual primeiro
+    /// (<see cref="EndAssignment"/>), nunca a substitui em silêncio.
+    ///
+    /// <para>
+    /// Quem verifica que <paramref name="employeeId"/> é um Colaborador que
+    /// existe é a camada Application, contra o contrato de `hr` (ADR-010) —
+    /// o agregado só sabe que é um identificador.
+    /// </para>
+    /// </summary>
+    public VehicleAssignment Assign(Guid employeeId, DateOnly startedOn)
+    {
+        EnsureNotInactive("atribuir");
+
+        if (employeeId == Guid.Empty)
         {
-            throw new InvalidOperationException("Esta viatura não está em manutenção.");
+            throw new ArgumentException("Uma atribuição precisa de motorista.", nameof(employeeId));
         }
 
-        Status = VehicleStatus.Active;
+        if (_assignments.Any(a => a.IsOpen))
+        {
+            throw new InvalidOperationException(
+                "Esta viatura já está atribuída — termine a atribuição actual antes de atribuir de novo.");
+        }
+
+        var atribuicao = new VehicleAssignment(Guid.CreateVersion7(), Id, employeeId, startedOn);
+        _assignments.Add(atribuicao);
+
+        return atribuicao;
+    }
+
+    public void EndAssignment(Guid assignmentId, DateOnly endedOn)
+    {
+        var atribuicao = _assignments.FirstOrDefault(a => a.Id == assignmentId)
+            ?? throw new InvalidOperationException("Atribuição não encontrada nesta viatura.");
+
+        atribuicao.End(endedOn);
     }
 
     public void Deactivate()
     {
         Status = VehicleStatus.Inactive;
+    }
+
+    private void EnsureNotInactive(string acto)
+    {
+        if (Status is VehicleStatus.Inactive)
+        {
+            throw new InvalidOperationException($"Não é possível {acto}: a viatura está inactiva.");
+        }
     }
 }
 

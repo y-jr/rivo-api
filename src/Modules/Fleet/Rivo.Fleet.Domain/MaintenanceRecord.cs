@@ -1,0 +1,77 @@
+namespace Rivo.Fleet.Domain;
+
+/// <summary>
+/// Registo de manutenção de uma viatura — parte do agregado
+/// <see cref="Vehicle"/> (`modules/fleet.md` §Possui).
+///
+/// <para>
+/// Nasce sempre por <see cref="Vehicle.OpenMaintenance"/>: não tem vida fora
+/// da viatura a que pertence, por isso o construtor é <c>internal</c>. Uma
+/// viatura só tem um registo aberto de cada vez — é o que dá sentido a
+/// <see cref="Vehicle.Status"/> continuar a existir como resumo de estado.
+/// </para>
+///
+/// <para>
+/// <strong>Não é o Plano de Manutenção</strong> (`modules/fleet.md` §Possui)
+/// — este é o registo do que aconteceu, não o calendário preventivo com
+/// alertas. Esse continua por fazer.
+/// </para>
+/// </summary>
+public sealed class MaintenanceRecord
+{
+    internal MaintenanceRecord(
+        Guid id, Guid vehicleId, MaintenanceType type, string description, DateOnly startedOn)
+    {
+        Id = id;
+        VehicleId = vehicleId;
+        Type = type;
+        Description = description;
+        StartedOn = startedOn;
+    }
+
+    /// <summary>Construtor sem parâmetros para materialização pelo ORM.</summary>
+    private MaintenanceRecord()
+    {
+        Description = string.Empty;
+    }
+
+    public Guid Id { get; private set; }
+
+    public Guid VehicleId { get; private set; }
+
+    public MaintenanceType Type { get; private set; }
+
+    public string Description { get; private set; }
+
+    public DateOnly StartedOn { get; private set; }
+
+    public DateOnly? EndedOn { get; private set; }
+
+    /// <summary>Verdadeiro enquanto a manutenção ainda não fechou.</summary>
+    public bool IsOpen => EndedOn is null;
+
+    /// <summary>Concorrência optimista (ADR-025). O domínio nunca lhe toca.</summary>
+    public int Version { get; private set; }
+
+    internal void Close(DateOnly endedOn)
+    {
+        if (!IsOpen)
+        {
+            throw new InvalidOperationException("Este registo de manutenção já está fechado.");
+        }
+
+        if (endedOn < StartedOn)
+        {
+            throw new ArgumentException(
+                "A data de fecho não pode ser anterior ao início da manutenção.", nameof(endedOn));
+        }
+
+        EndedOn = endedOn;
+    }
+}
+
+public enum MaintenanceType
+{
+    Preventive,
+    Corrective,
+}

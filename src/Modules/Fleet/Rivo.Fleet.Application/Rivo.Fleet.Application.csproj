@@ -4,6 +4,11 @@
     <ProjectReference Include="..\Rivo.Fleet.Domain\Rivo.Fleet.Domain.csproj" />
     <ProjectReference Include="..\Rivo.Fleet.Contracts\Rivo.Fleet.Contracts.csproj" />
     <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
+
+    <!-- O motorista de uma atribuição é um Colaborador, e o acesso é
+         exclusivamente pelo contrato (ADR-010). `fleet` nunca lê tabelas de
+         `hr`. -->
+    <ProjectReference Include="..\..\Hr\Rivo.Hr.Contracts\Rivo.Hr.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

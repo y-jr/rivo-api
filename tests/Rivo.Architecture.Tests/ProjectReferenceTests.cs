@@ -94,14 +94,13 @@ public class ProjectReferenceTests
         ["Documents"] = ["Audit"],
         ["Hr"] = ["Audit", "Documents"],
 
-        // Esqueletos (ver `modules/payroll.md`, `inventory.md`, `fleet.md`) —
-        // 2026-08-29. Só o catálogo de permissões publicado e `audit`, como
-        // qualquer módulo novo. Sem regra de negócio ainda, e sem as
-        // dependências que os `.md` listam a mais: essas chegam com as
-        // funcionalidades que as justificam.
+        // Esqueletos (ver `modules/payroll.md`, `inventory.md`) — 2026-08-29.
+        // Só o catálogo de permissões publicado e `audit`, como qualquer
+        // módulo novo. Sem regra de negócio ainda, e sem as dependências que
+        // os `.md` listam a mais: essas chegam com as funcionalidades que as
+        // justificam.
         ["Payroll"] = ["Audit"],
         ["Inventory"] = ["Audit"],
-        ["Fleet"] = ["Audit"],
 
         // `projects` ganhou Marco e Tarefa — 2026-08-30, já não é esqueleto
         // puro. `hr` entra porque atribuir uma Tarefa referencia um
@@ -112,6 +111,15 @@ public class ProjectReferenceTests
         // `notifications` — pertencem a Orçamento de Projecto e Alocação de
         // Recursos, que ainda não estão feitos.
         ["Projects"] = ["Audit", "Hr"],
+
+        // `fleet` ganhou Manutenção e Atribuição — 2026-08-30, mesma razão de
+        // `projects`: atribuir uma viatura a um motorista referencia um
+        // Colaborador pelo contrato de `hr` (ADR-010), nunca por leitura de
+        // tabela. As direcções que `modules/fleet.md` lista e que faltam —
+        // `finance`, `inventory`, `documents`, `notifications` — pertencem ao
+        // Plano de Manutenção, Registo de Viagem, Despesa de Frota e Seguros,
+        // que ainda não estão feitos.
+        ["Fleet"] = ["Audit", "Hr"],
 
         // `identity` compõe o catálogo de permissões a partir do que cada
         // módulo declara — cada um diz que permissões existem, `identity`

@@ -48,9 +48,15 @@ public sealed class AddTask(IProjectStore store, IEmployeeDirectory employees, I
         {
             tarefa = projecto.AddTask(title, dueDate, assignedEmployeeId);
         }
-        catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+        catch (ArgumentException error)
         {
             return AddTaskResult.Rejected(error.Message);
+        }
+        catch (InvalidOperationException error)
+        {
+            // Projecto fechado: conflito com o estado actual, não pedido
+            // malformado — 409, não 400.
+            return AddTaskResult.Conflict(error.Message);
         }
 
         await store.SaveChangesAsync(cancellationToken);
@@ -79,6 +85,8 @@ public sealed record AddTaskResult(AddTaskOutcome Outcome, Guid? TaskId, string?
         new(AddTaskOutcome.EmployeeNotFound, null, "Colaborador a atribuir não encontrado.");
 
     public static AddTaskResult Rejected(string error) => new(AddTaskOutcome.Rejected, null, error);
+
+    public static AddTaskResult Conflict(string error) => new(AddTaskOutcome.Conflict, null, error);
 }
 
 public enum AddTaskOutcome
@@ -86,7 +94,12 @@ public enum AddTaskOutcome
     Added,
     NotFound,
     EmployeeNotFound,
+
+    /// <summary>Pedido malformado — título vazio ou prazo antes do início. 400.</summary>
     Rejected,
+
+    /// <summary>Projecto fechado. 409.</summary>
+    Conflict,
 }
 
 /// <summary>Atribui ou desatribui (<c>employeeId</c> nulo) uma tarefa já existente.</summary>

@@ -978,25 +978,25 @@ e anular devolve a quantidade a "por receber" deixando o registo do erro.
 ⚠ **A cobertura de Application continua a ser nenhuma**, como nos outros sete
 módulos.
 
-## payroll, inventory, fleet
+## payroll, inventory
 
 _2026-08-29 — **esqueletos**, sob prazo de apresentação. Decisão explícita,
-registada aqui e em cada `modules/*.md`, não descoberta depois. `projects`
-nasceu no mesmo lote — ver a secção própria abaixo — mas saiu desta categoria
-a 2026-08-30._
+registada aqui e em cada `modules/*.md`, não descoberta depois. `projects` e
+`fleet` nasceram no mesmo lote — ver as secções próprias abaixo — mas saíram
+desta categoria a 2026-08-30._
 
-Os catorze módulos passam a ter código. Cada um: cinco camadas, um schema
-próprio, migração inicial, CRUD por permissão de `identity`. **Zero testes de
-domínio, zero regra de negócio além da que o próprio CRUD impõe**, nestes
-três.
+Os catorze módulos passam a ter código nesse dia. Cada um: cinco camadas, um
+schema próprio, migração inicial, CRUD por permissão de `identity`. **Zero
+testes de domínio, zero regra de negócio além da que o próprio CRUD impõe**,
+nestes dois.
 
 **Verificação end-to-end escrita e corrida a 2026-08-29** —
 `scripts/verify-payroll.ps1` (16 casos), `verify-projects.ps1` (14, ver
 secção `projects` para o que cresceu depois), `verify-inventory.ps1` (13),
-`verify-fleet.ps1` (15), mesmo padrão das outras dez suites (schema isolado,
-permissão por perfil, CRUD, 401/403, trilha de auditoria, persistência ao
-reiniciar). Confirmam o contrato HTTP, não regra de negócio — não há regra a
-confirmar.
+`verify-fleet.ps1` (15, ver secção `fleet` para o que cresceu depois), mesmo
+padrão das outras dez suites (schema isolado, permissão por perfil, CRUD,
+401/403, trilha de auditoria, persistência ao reiniciar). Confirmam o
+contrato HTTP, não regra de negócio — não há regra a confirmar.
 
 Escrever as suites apanhou três defeitos reais, nenhum cosmético:
 
@@ -1044,10 +1044,6 @@ código confirmada.
 - **`inventory`** — `InventoryItem` (SKU único, nome, unidade). **Sem
   movimento nenhum** — `QuantityOnHand` nasce e fica a zero até `Movimento`
   existir. Sem Armazém, Transferência, Contagem, valorização de stock.
-
-- **`fleet`** — `Vehicle` (matrícula única, modelo, estado
-  Active/InMaintenance/Inactive). Sem Manutenção, Plano de Manutenção,
-  Atribuição, Registo de Viagem, Despesa de Frota, Seguros.
 
 ## projects
 
@@ -1099,6 +1095,71 @@ K20 habitual, porque esta suite não toca políticas de `approval`.
 **Continuam por fazer:** Orçamento de Projecto e Alocação de Recursos
 (pessoas além da atribuição de Tarefa, viaturas, custos) — ver "Perguntas em
 aberto" em `modules/projects.md`.
+
+## fleet
+
+`Vehicle` (matrícula única, modelo, estado Active/InMaintenance/Inactive)
+nasceu esqueleto a 2026-08-29 — ver a secção `payroll, inventory` acima para
+esse lote. _2026-08-30 — **Manutenção e Atribuição, com regra de negócio
+real.**_
+
+`Vehicle` passou a agregado raiz de dois filhos:
+
+- **Manutenção** (`MaintenanceRecord`) — tipo (Preventive/Corrective),
+  descrição, data de início, data de fim opcional. Só um registo aberto de
+  cada vez por viatura; `Vehicle.Status` continua a resumir o estado.
+  `SendToMaintenance()`/`ReturnFromMaintenance()` (o par booleano do
+  esqueleto) foram substituídos por `OpenMaintenance(...)`/
+  `CloseMaintenance(maintenanceId, ...)`, que criam e fecham um registo real
+  em vez de só mudar um enum.
+- **Atribuição** (`VehicleAssignment`) — motorista (Colaborador por
+  identificador), data de início, data de fim opcional. Só uma atribuição
+  aberta de cada vez; reatribuir exige terminar a actual primeiro.
+
+**Manutenção e Atribuição não se excluem** — uma viatura atribuída pode ir
+para revisão sem perder o motorista, e vice-versa. Só `Status == Inactive`
+bloqueia as duas.
+
+**A atribuição referencia o Colaborador só por identificador** (ADR-010): a
+camada Application verifica que existe em `hr`
+(`IEmployeeDirectory.FindAsync`) antes de gravar — devolve 404 se não existir
+— e nunca copia nome, departamento ou cargo (BR-18). Mesma forma da
+verificação de `hr` em `projects.AddTask`. `hr` entrou nas dependências
+declaradas de `fleet` em `ProjectReferenceTests` — já estava prevista em
+`architecture/dependency-rules.md`, só por ligar.
+
+A entidade de domínio deixou de sair directa da API: `VehicleView`,
+`MaintenanceRecordView` e `VehicleAssignmentView` (mesmo padrão de
+`ProjectView` em `projects`) substituem o mapeamento `ToView` que antes vivia
+na camada Api.
+
+Quatro endpoints novos, todos sob `fleet.vehicles.write`:
+`POST /fleet/vehicles/{id}/maintenance`,
+`POST /fleet/vehicles/{id}/maintenance/{maintenanceId}/closure`,
+`POST /fleet/vehicles/{id}/assignments`,
+`POST /fleet/vehicles/{id}/assignments/{assignmentId}/closure`. O antigo
+`POST /fleet/vehicles/{id}/maintenance` (corpo `{ inMaintenance: bool }`)
+desapareceu — substituído pelo par abrir/fechar.
+
+**25 testes de domínio** (`Rivo.Fleet.Domain.Tests`, novo projecto).
+`scripts/verify-fleet.ps1` cresceu de 15 para 26 casos e **confirmou 26/26
+contra a stack local a 2026-08-30**.
+
+**A corrida apanhou dois defeitos reais**, mesma causa em dois sítios:
+`OpenMaintenance` e `Assign` deviam devolver `409 Conflict` quando a viatura
+já estava em manutenção/atribuída ou inactiva — devolviam `400
+ValidationProblem`, porque um único `catch` apanhava `ArgumentException`
+(pedido malformado, 400 correcto) e `InvalidOperationException` (conflito de
+estado, devia ser 409) e mapeava os dois para o mesmo desfecho. Corrigido
+separando os `catch` e acrescentando o desfecho `Conflict` a
+`OpenMaintenanceOutcome`/`AssignVehicleOutcome`. **O mesmo defeito latente
+existia em `projects.AddMilestone`/`AddTask`** (fechar o projecto também
+lança `InvalidOperationException`) — corrigido no mesmo padrão antes de se
+manifestar lá por falta de teste; `verify-projects.ps1` caso 23 passou de
+esperar 400 a esperar 409.
+
+**Continuam por fazer:** Plano de Manutenção (calendário preventivo com
+alertas), Registo de Viagem, Despesa de Frota, Seguros.
 
 Permissões atribuídas aos perfis que já esperavam por módulos de negócio:
 `ProjectManager` (estava vazio) fica com `projects`; `AssetManager` ("gere

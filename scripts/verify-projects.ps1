@@ -254,13 +254,14 @@ Test-Case "22. Fechar outra vez e recusado (nao ha reabertura)" {
 }
 
 Test-Case "23. Projecto fechado nao aceita marco nem tarefa novos" {
+    # Conflito com o estado do projecto, nao pedido malformado -- 409, nao 400.
     $bodyMarco = @{ name = "Marco tardio"; targetDate = "2026-12-01" } | ConvertTo-Json
     $codeMarco = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/milestones" -Method Post -Body $bodyMarco -ContentType "application/json" -Headers $adminHeaders }
-    if ($codeMarco -ne 400) { throw "marco em projecto fechado: esperado 400, obtido $codeMarco" }
+    if ($codeMarco -ne 409) { throw "marco em projecto fechado: esperado 409, obtido $codeMarco" }
 
     $bodyTarefa = @{ title = "Tarefa tardia"; dueDate = $null; assignedEmployeeId = $null } | ConvertTo-Json
     $codeTarefa = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/tasks" -Method Post -Body $bodyTarefa -ContentType "application/json" -Headers $adminHeaders }
-    if ($codeTarefa -ne 400) { throw "tarefa em projecto fechado: esperado 400, obtido $codeTarefa" }
+    if ($codeTarefa -ne 409) { throw "tarefa em projecto fechado: esperado 409, obtido $codeTarefa" }
     "projecto fechado e facto historico -- nem marco nem tarefa se acrescentam"
 }
 

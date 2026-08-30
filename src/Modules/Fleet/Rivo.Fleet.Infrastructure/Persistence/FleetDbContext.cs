@@ -30,6 +30,52 @@ public sealed class FleetDbContext(DbContextOptions<FleetDbContext> options) : D
             vehicle.Property(v => v.Status).HasConversion<string>().HasMaxLength(20);
 
             vehicle.HasIndex(v => v.PlateNumber).IsUnique();
+
+            // Manutenção e Atribuição são parte do agregado: não têm vida sem
+            // a viatura, e por isso a cascata é a semântica correcta — mesma
+            // forma de `Project.Milestones`/`Project.Tasks` em `projects`.
+            vehicle.HasMany(v => v.Maintenances)
+                .WithOne()
+                .HasForeignKey(m => m.VehicleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            vehicle.Navigation(v => v.Maintenances).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            vehicle.HasMany(v => v.Assignments)
+                .WithOne()
+                .HasForeignKey(a => a.VehicleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            vehicle.Navigation(v => v.Assignments).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        builder.Entity<MaintenanceRecord>(maintenance =>
+        {
+            maintenance.ToTable("maintenance_record");
+            maintenance.HasKey(m => m.Id);
+
+            maintenance.Property(m => m.Version).IsConcurrencyToken();
+
+            maintenance.Property(m => m.Type).HasConversion<string>().HasMaxLength(20);
+            maintenance.Property(m => m.Description).HasMaxLength(500).IsRequired();
+
+            maintenance.HasIndex(m => m.VehicleId);
+        });
+
+        builder.Entity<VehicleAssignment>(assignment =>
+        {
+            assignment.ToTable("vehicle_assignment");
+            assignment.HasKey(a => a.Id);
+
+            assignment.Property(a => a.Version).IsConcurrencyToken();
+
+            assignment.HasIndex(a => a.VehicleId);
+
+            // Sem FK para `hr.employee`: é identificador de outro contexto, e
+            // uma FK entre schemas acopla o ciclo de vida dos dois lados
+            // (ADR-010). Índice sim — é por aqui que se listam as atribuições
+            // de um motorista.
+            assignment.HasIndex(a => a.EmployeeId);
         });
 
         // As chaves são geradas pelo domínio (Guid.CreateVersion7), nunca pela

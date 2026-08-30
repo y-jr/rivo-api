@@ -26,9 +26,12 @@ Despesa de Frota, Seguros e documentação legal (ficheiros via `documents`).
 
 ## Depende de
 
-`hr` (`ReferenciaColaborador` do motorista), `finance` (centro de custo,
-postagem de custos), `inventory` (peças e consumíveis, se geridos como
-inventário geral), `documents`, `audit`, `notifications`.
+`hr` (`ReferenciaColaborador` do motorista — **ligado**, 2026-08-30: a
+atribuição verifica que o Colaborador existe antes de gravar), `finance`
+(centro de custo, postagem de custos), `inventory` (peças e consumíveis, se
+geridos como inventário geral), `documents`, `audit`, `notifications`. As
+direcções por ligar pertencem ao Plano de Manutenção, Registo de Viagem,
+Despesa de Frota e Seguros, que ainda não estão feitos.
 
 ## Consumido por
 
@@ -50,6 +53,17 @@ viatura).
 
 - FK para `hr.colaborador(id)` permitida apenas para a chave primária
   (ADR-010); sem `JOIN` a outras tabelas de `hr`.
+- Manutenção e Atribuição pertencem ao agregado Viatura — nascem, alteram-se
+  e desaparecem com ela, nunca de forma independente.
+- Só um registo de manutenção aberto de cada vez por viatura, e só uma
+  atribuição aberta de cada vez — reatribuir exige terminar a actual primeiro,
+  nunca a substitui em silêncio.
+- Manutenção e Atribuição não se excluem: uma viatura pode estar atribuída e
+  ir para revisão sem que isso desatribua ninguém.
+- Uma viatura inactiva não aceita nova manutenção nem nova atribuição.
+- Uma Atribuição referencia o Colaborador só por identificador (ADR-010); a
+  Application verifica que existe em `hr` antes de gravar, e nunca copia
+  nome, departamento ou cargo (BR-18).
 
 ## Perguntas em aberto
 
@@ -58,7 +72,14 @@ viatura).
 
 ## Estado
 
-⚠ **Esqueleto** — 2026-08-29. `Vehicle` (matrícula única, modelo, estado —
-Activa/Manutenção/Inactiva), CRUD. Sem Manutenção, Plano de Manutenção,
-Atribuição, Registo de Viagem, Despesa de Frota, Seguros — sem testes, sem
-verificação end-to-end. Permissões atribuídas a `AssetManager`.
+**Manutenção e Atribuição, com regra de negócio real — 2026-08-30.**
+`Vehicle` (matrícula única, modelo, estado Active/InMaintenance/Inactive)
+nasceu esqueleto a 2026-08-29; ganhou Manutenção (registo histórico, um
+aberto de cada vez) e Atribuição (motorista, verificado contra `hr`, uma
+aberta de cada vez) como parte do mesmo agregado. 25 testes de domínio
+(`Rivo.Fleet.Domain.Tests`); `scripts/verify-fleet.ps1` — **26/26 confirmados
+contra a stack local a 2026-08-30**, sem nenhuma falha.
+
+⚠ **Continuam por fazer:** Plano de Manutenção (calendário preventivo com
+alertas), Registo de Viagem, Despesa de Frota, Seguros. Permissões
+atribuídas a `AssetManager`, que deixou de estar vazio a 2026-08-29.

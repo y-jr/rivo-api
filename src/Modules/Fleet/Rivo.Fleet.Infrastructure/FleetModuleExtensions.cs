@@ -9,9 +9,10 @@ using Rivo.Fleet.Infrastructure.Persistence;
 namespace Rivo.Fleet.Infrastructure;
 
 /// <summary>
-/// Esqueleto do módulo `fleet` — ver `modules/fleet.md`. Catálogo de
-/// viaturas, sem nada mais ligado ainda: Manutenção, Plano de Manutenção,
-/// Atribuição, Registo de Viagem, Despesa de Frota e Seguros ficam por fazer.
+/// Composição do módulo `fleet` — ver `modules/fleet.md`. Manutenção e
+/// Atribuição têm regra de negócio própria desde 2026-08-30; Plano de
+/// Manutenção, Registo de Viagem, Despesa de Frota e Seguros continuam por
+/// fazer.
 /// </summary>
 public static class FleetModuleExtensions
 {
@@ -33,8 +34,11 @@ public static class FleetModuleExtensions
         services.AddScoped<ListVehicles>();
         services.AddScoped<GetVehicle>();
         services.AddScoped<RegisterVehicle>();
-        services.AddScoped<SetVehicleMaintenance>();
         services.AddScoped<DeactivateVehicle>();
+        services.AddScoped<OpenMaintenance>();
+        services.AddScoped<CloseMaintenance>();
+        services.AddScoped<AssignVehicle>();
+        services.AddScoped<EndVehicleAssignment>();
 
         services.AddAuthorization(options =>
         {

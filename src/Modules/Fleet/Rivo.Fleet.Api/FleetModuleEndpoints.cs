@@ -25,11 +25,20 @@ public static class FleetModuleEndpoints
         group.MapPost("/vehicles", RegisterAsync)
             .RequireAuthorization(FleetPermissions.VehiclesWrite);
 
-        group.MapPost("/vehicles/{vehicleId:guid}/maintenance", SetMaintenanceAsync)
-            .RequireAuthorization(FleetPermissions.VehiclesWrite);
-
         // Nunca eliminar — desactivar é o que existe.
         group.MapPost("/vehicles/{vehicleId:guid}/deactivation", DeactivateAsync)
+            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+
+        group.MapPost("/vehicles/{vehicleId:guid}/maintenance", OpenMaintenanceAsync)
+            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+
+        group.MapPost("/vehicles/{vehicleId:guid}/maintenance/{maintenanceId:guid}/closure", CloseMaintenanceAsync)
+            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+
+        group.MapPost("/vehicles/{vehicleId:guid}/assignments", AssignAsync)
+            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+
+        group.MapPost("/vehicles/{vehicleId:guid}/assignments/{assignmentId:guid}/closure", EndAssignmentAsync)
             .RequireAuthorization(FleetPermissions.VehiclesWrite);
 
         return endpoints;
@@ -41,7 +50,7 @@ public static class FleetModuleEndpoints
         CancellationToken cancellationToken)
     {
         var veiculos = await listVehicles.ExecuteAsync(includeInactive ?? false, cancellationToken);
-        return Results.Ok(veiculos.Select(ToView));
+        return Results.Ok(veiculos);
     }
 
     private static async Task<IResult> GetAsync(
@@ -53,14 +62,8 @@ public static class FleetModuleEndpoints
 
         return veiculo is null
             ? Results.NotFound(new { erro = "Viatura não encontrada." })
-            : Results.Ok(ToView(veiculo));
+            : Results.Ok(veiculo);
     }
-
-    // A entidade de domínio nunca é exposta como modelo de transporte
-    // (architecture/dependency-rules.md) — sem isto, Status sairia como o
-    // inteiro subjacente do enum, e não como "Active"/"InMaintenance".
-    private static VehicleView ToView(Vehicle veiculo) => new(
-        veiculo.Id, veiculo.PlateNumber, veiculo.Model, veiculo.Status.ToString());
 
     private static async Task<IResult> RegisterAsync(
         RegisterVehicleRequest request,
@@ -81,25 +84,6 @@ public static class FleetModuleEndpoints
             : Results.ValidationProblem(new Dictionary<string, string[]> { ["viatura"] = [result.Error!] });
     }
 
-    private static async Task<IResult> SetMaintenanceAsync(
-        Guid vehicleId,
-        SetMaintenanceRequest request,
-        SetVehicleMaintenance setMaintenance,
-        HttpContext http,
-        CancellationToken cancellationToken)
-    {
-        var outcome = await setMaintenance.ExecuteAsync(
-            vehicleId, request.InMaintenance, BuildAuditContext(http), cancellationToken);
-
-        return outcome switch
-        {
-            SetMaintenanceOutcome.Applied => Results.NoContent(),
-            SetMaintenanceOutcome.NotFound => Results.NotFound(new { erro = "Viatura não encontrada." }),
-            SetMaintenanceOutcome.Rejected => Results.Conflict(new { erro = "Transição de estado inválida." }),
-            _ => Results.Problem("Resultado inesperado ao alterar o estado da viatura."),
-        };
-    }
-
     private static async Task<IResult> DeactivateAsync(
         Guid vehicleId,
         DeactivateVehicle deactivateVehicle,
@@ -111,6 +95,97 @@ public static class FleetModuleEndpoints
         return encontrada
             ? Results.NoContent()
             : Results.NotFound(new { erro = "Viatura não encontrada." });
+    }
+
+    private static async Task<IResult> OpenMaintenanceAsync(
+        Guid vehicleId,
+        OpenMaintenanceRequest request,
+        OpenMaintenance openMaintenance,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        if (!Enum.TryParse<MaintenanceType>(request.Type, ignoreCase: true, out var tipo))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["tipo"] = [$"Tipo de manutenção desconhecido: '{request.Type}'. Use Preventive ou Corrective."],
+            });
+        }
+
+        var result = await openMaintenance.ExecuteAsync(
+            vehicleId, tipo, request.Description, request.StartedOn, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            OpenMaintenanceOutcome.Opened => Results.Created(
+                $"/fleet/vehicles/{vehicleId}", new { maintenanceId = result.MaintenanceId }),
+            OpenMaintenanceOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            OpenMaintenanceOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
+            _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["manutencao"] = [result.Error!] }),
+        };
+    }
+
+    private static async Task<IResult> CloseMaintenanceAsync(
+        Guid vehicleId,
+        Guid maintenanceId,
+        CloseMaintenanceRequest request,
+        CloseMaintenance closeMaintenance,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var outcome = await closeMaintenance.ExecuteAsync(
+            vehicleId, maintenanceId, request.EndedOn, BuildAuditContext(http), cancellationToken);
+
+        return outcome switch
+        {
+            MaintenanceLifecycleOutcome.Closed => Results.NoContent(),
+            MaintenanceLifecycleOutcome.VehicleNotFound => Results.NotFound(new { erro = "Viatura não encontrada." }),
+            MaintenanceLifecycleOutcome.MaintenanceNotFound => Results.NotFound(new { erro = "Registo de manutenção não encontrado." }),
+            MaintenanceLifecycleOutcome.Rejected => Results.Conflict(new { erro = "Não foi possível fechar a manutenção." }),
+            _ => Results.Problem("Resultado inesperado ao fechar a manutenção."),
+        };
+    }
+
+    private static async Task<IResult> AssignAsync(
+        Guid vehicleId,
+        AssignVehicleRequest request,
+        AssignVehicle assignVehicle,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await assignVehicle.ExecuteAsync(
+            vehicleId, request.EmployeeId, request.StartedOn, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            AssignVehicleOutcome.Assigned => Results.Created(
+                $"/fleet/vehicles/{vehicleId}", new { assignmentId = result.AssignmentId }),
+            AssignVehicleOutcome.VehicleNotFound => Results.NotFound(new { erro = result.Error }),
+            AssignVehicleOutcome.EmployeeNotFound => Results.NotFound(new { erro = result.Error }),
+            AssignVehicleOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
+            _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["atribuicao"] = [result.Error!] }),
+        };
+    }
+
+    private static async Task<IResult> EndAssignmentAsync(
+        Guid vehicleId,
+        Guid assignmentId,
+        EndAssignmentRequest request,
+        EndVehicleAssignment endAssignment,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var outcome = await endAssignment.ExecuteAsync(
+            vehicleId, assignmentId, request.EndedOn, BuildAuditContext(http), cancellationToken);
+
+        return outcome switch
+        {
+            AssignmentLifecycleOutcome.Ended => Results.NoContent(),
+            AssignmentLifecycleOutcome.VehicleNotFound => Results.NotFound(new { erro = "Viatura não encontrada." }),
+            AssignmentLifecycleOutcome.AssignmentNotFound => Results.NotFound(new { erro = "Atribuição não encontrada." }),
+            AssignmentLifecycleOutcome.Rejected => Results.Conflict(new { erro = "Não foi possível terminar a atribuição." }),
+            _ => Results.Problem("Resultado inesperado ao terminar a atribuição."),
+        };
     }
 
     private static AuditContext BuildAuditContext(HttpContext http)
@@ -127,6 +202,10 @@ public static class FleetModuleEndpoints
 
 public sealed record RegisterVehicleRequest(string PlateNumber, string Model);
 
-public sealed record SetMaintenanceRequest(bool InMaintenance);
+public sealed record OpenMaintenanceRequest(string Type, string Description, DateOnly StartedOn);
 
-public sealed record VehicleView(Guid VehicleId, string PlateNumber, string Model, string Status);
+public sealed record CloseMaintenanceRequest(DateOnly EndedOn);
+
+public sealed record AssignVehicleRequest(Guid EmployeeId, DateOnly StartedOn);
+
+public sealed record EndAssignmentRequest(DateOnly EndedOn);
