@@ -50,12 +50,12 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `approval` | Completo para o âmbito fixado. Políticas (criar e desactivar), pedidos, decisões, BR-2/4/6/17, worker de reconciliação, cancelamento restrito a quem submeteu (K18) |
 | `fiscal` | ⚠ **Fatia mínima** (ADR-036). Taxa com vigência e determinação. Não é o motor fiscal |
 | `commercial` | ⚠ **Reduzido ao Cliente** (ADR-036). Sem funil comercial |
-| `finance` | **Os cinco contextos existem, e os documentos lançam.** Venda (factura, nota de crédito, recibo, saldo), Contas a Pagar, Tesouraria com extracto append-only, Contabilidade & Fecho com postagem automática, Planeamento. **BR-1, BR-3, BR-5 e BR-8 impostas.** Anular uma factura, nota de crédito ou recibo estorna o lançamento (2026-08-29). ⚠ Contabilidade vazia até alguém carregar o plano; activos fixos bloqueados por K1 |
+| `finance` | **Os cinco contextos existem, e os documentos lançam.** Venda (factura, nota de crédito, recibo, saldo), Contas a Pagar, Tesouraria com extracto append-only, Contabilidade & Fecho com postagem automática, Planeamento. **BR-1, BR-3, BR-5 e BR-8 impostas.** Anular uma factura, nota de crédito ou recibo estorna o lançamento (2026-08-29). ⚠ Contabilidade vazia até alguém carregar o plano; Activos Fixos sem código ainda — o K1 que os bloqueava fechou por ADR-039 (2026-08-30), falta escrevê-los |
 | `procurement` | **Os quatro agregados, e o 3-way match fecha.** Fornecedor com IBAN verificado (ISO 13616) e publicado a `finance`; requisição com linhas e decisão de `approval`; Ordem de Compra, que só nasce de requisição aprovada e não deixa encomendar acima do aprovado; Recepção parcial, acumulada por linha e nunca acima do encomendado. A factura liga-se à Ordem (`PurchaseOrderId`, opcional) e `GET .../match` mostra encomendado, recebido e facturado lado a lado — recusa ligar a uma ordem de outro fornecedor, mas **não bloqueia** divergência de valor: fica visível, não impede o registo |
 | `payroll` | ⚠⚠ **Esqueleto** (2026-08-29). Folha e itens, CRUD, ligado a `approval` (submete pelo bruto, aprova/recusa aplicado deste lado). **Sem cálculo de IRT/INSS** — os campos existem, ficam sempre nulos; os escalões dependem de `fiscal`, que não tem tabela angolana carregada, e `CLAUDE.md` proíbe implementar a partir do levantamento não verificado |
 | `projects` | **Marco e Tarefa com regra de negócio, confirmado (2026-08-30).** Projecto como agregado — fecha, e fechado é facto histórico: nem Marco nem Tarefa se acrescentam depois. Tarefa atribuída verifica o Colaborador contra `hr` (ADR-010, BR-18); concluir/cancelar não reabre. `verify-projects.ps1` 28/28 contra a stack local, sem falha. ⚠ Orçamento de Projecto e Alocação de Recursos (pessoas além da atribuição, viaturas, custos) continuam por fazer |
 | `fleet` | **Manutenção e Atribuição com regra de negócio, confirmado (2026-08-30).** Viatura como agregado — um registo de manutenção aberto de cada vez, uma atribuição aberta de cada vez; os dois não se excluem. Atribuição verifica o Colaborador contra `hr` (ADR-010, BR-18). `verify-fleet.ps1` 26/26 contra a stack local, sem falha. ⚠ Plano de Manutenção, Registo de Viagem, Despesa de Frota e Seguros continuam por fazer |
-| `inventory` | ⚠⚠ **Esqueleto** (2026-08-29). Item com SKU único. Sem nenhuma das regras que `modules/inventory.md` descreve |
+| `inventory` | ⚠⚠ **Esqueleto** (2026-08-29). Item com SKU único. Sem nenhuma das regras que `modules/inventory.md` descreve. Movimento **desbloqueado por ADR-039** (2026-08-30), ainda por implementar |
 
 Detalhe com datas e ressalvas em [implemented.md](implemented.md).
 
@@ -217,32 +217,22 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    (K18, 403), pedido inexistente (404), 401/403 de permissão, cancelamento
    válido, segundo cancelamento recusado (409), trilha com actor para os dois
    casos, e que `payroll` só trata `Cancelled` como recusa quando pergunta.
-8. **Dar regra de negócio real aos dois esqueletos que restam, ou decidir que
-   ficam CRUD por agora.** `payroll` precisa de Recibo e da ligação a `fiscal`
-   quando houver tabela real; `inventory` precisa de Movimento — sem ele
-   `QuantityOnHand` nunca sai de zero. `projects` e `fleet` saíram desta lista
-   a 2026-08-30 (ver "Fechado" abaixo); `projects` ainda tem Orçamento de
-   Projecto e Alocação de Recursos por fazer, `fleet` tem Plano de
-   Manutenção, Registo de Viagem, Despesa de Frota e Seguros.
-   `payroll`/`inventory` têm suite end-to-end desde 2026-08-29 (confirma o
-   CRUD, não regra que não existe) e continuam sem teste de domínio. Ver o
-   "Seguimento" em cada `modules/*.md`. Nenhum dos dois tem bloqueio de
-   negócio conhecido — `projects` e `fleet` também não tinham.
-
-**Fechado a 2026-08-30 (`projects`: Marco e Tarefa):** `Project` passou a
-agregado raiz de Marco e Tarefa — nascem, alteram-se e desaparecem só com o
-Projecto, e nada se acrescenta ou altera depois de fechado. Marco: data alvo
-não anterior ao início, alcança-se uma vez só. Tarefa: prazo não anterior ao
-início, atribuição a Colaborador verificada contra `hr` antes de gravar
-(ADR-010) e nunca copiada (BR-18), conclui/cancela sem reabrir, cancelar
-nunca elimina (BR-14). `hr` entrou nas dependências declaradas de `projects`
-(`ProjectReferenceTests`, `dependency-rules.md` já a previa). 29 testes de
-domínio novos (`Rivo.Projects.Domain.Tests`, primeiro projecto de teste de um
-dos quatro esqueletos de 2026-08-29). `verify-projects.ps1` cresceu de 14
-para 28 casos e **confirmou 28/28 contra a stack local no mesmo dia**, sem
-nenhuma falha na primeira corrida. Orçamento de Projecto e Alocação de
-Recursos continuam por fazer. Detalhe em
-[modules/projects.md](../modules/projects.md).
+8. **Dar regra de negócio real a `inventory` (Movimento) — desbloqueado por
+   ADR-039 a 2026-08-30, ainda por implementar.** Sem Movimento,
+   `QuantityOnHand` nunca sai de zero. Tem suite end-to-end desde 2026-08-29
+   (confirma o CRUD, não regra que não existe) e continua sem teste de
+   domínio. `payroll` fica como esqueleto por decisão explícita — precisa de
+   Recibo e da ligação a `fiscal` quando houver tabela real, e o IRT
+   definitivo continua a depender de fonte fiscal (ver
+   `pending-decisions.md`). `projects` e `fleet` saíram desta lista a
+   2026-08-30 (ver "Fechado" abaixo) mas ainda têm trabalho desbloqueado por
+   fazer: `projects` ganhou luz verde para Orçamento de Projecto (ADR-040;
+   Alocação de Recursos — pessoas além da atribuição de Tarefa, viaturas,
+   custos — continua sem decisão própria), `fleet` para Plano de Manutenção
+   com alertas (sem bloqueio de negócio, confirmado pelo utilizador). Ver o
+   "Seguimento" em cada `modules/*.md`. Nenhum dos três (`inventory`,
+   Orçamento de `projects`, Plano de `fleet`) tem bloqueio de negócio
+   conhecido agora.
 
 **Fechado a 2026-08-30 (`fleet`: Manutenção e Atribuição):** `Vehicle` passou
 a agregado raiz de Manutenção e Atribuição — só um registo de manutenção
@@ -284,6 +274,30 @@ nenhuma falha na primeira corrida — a correcção 400→409 do parágrafo acim
 veio depois, no trabalho de `fleet`. Orçamento de Projecto e Alocação de
 Recursos continuam por fazer. Detalhe em
 [modules/projects.md](../modules/projects.md).
+
+**Fechado a 2026-08-30 (decisões: K1, Orçamento de Projecto):** o utilizador
+respondeu às duas perguntas de negócio que travavam trabalho por fazer.
+
+- **ADR-039 — `inventory` e Activos Fixos de `finance` coexistem**, com
+  relação explícita e idealmente 1:1 quando é o mesmo bem: `inventory` dono
+  do activo físico/operacional, `finance` do contabilístico. Nem todo item de
+  `inventory` é Activo Fixo — mercadorias e consumíveis podem ficar só lá.
+  Fecha o **K1**. Desbloqueia `inventory` → Movimento, ainda por implementar.
+- **ADR-040 — Orçamento de Projecto e orçamento por centro de custo de
+  `finance` são entidades distintas, relacionadas.** `projects` é dono do
+  Orçamento de Projecto; `finance` continua dono do orçamento financeiro. Uma
+  despesa de projecto há-de ser validada contra o disponível de `finance` sem
+  duplicar a entidade — mecanismo concreto por desenhar. Desbloqueia
+  `projects` → Orçamento de Projecto, ainda por implementar.
+- **IRT 150.001–200.000 Kz — reafirmado, deliberadamente por decidir.** Não é
+  decisão de arquitectura; `payroll` continua a desenvolver-se e testar-se
+  com o valor provisório, parametrizável, e a produção continua condicionada
+  a fonte fiscal.
+- **`fleet` → Plano de Manutenção (calendário preventivo com alertas)
+  confirmado sem bloqueio de negócio** — não precisava de decisão, só de
+  confirmação para avançar.
+
+Ver ADR-039, ADR-040 e `pending-decisions.md`.
 
 **Fechado a 2026-08-29 (esqueletos):** `payroll`, `projects`, `inventory` e
 `fleet` ganharam código — os catorze módulos têm-no agora. Decisão explícita

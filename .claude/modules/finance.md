@@ -744,8 +744,10 @@ por exemplo — não há nada a estornar, e isso não bloqueia a anulação.
 
 ### Por fazer, depois de Contabilidade e Planeamento
 
-- **Activos fixos e depreciação** — bloqueado por **K1**: a sobreposição com
-  `inventory` não está resolvida, e nenhum dos módulos pode assumir ownership.
+- **Activos fixos e depreciação** — ⚠ deixou de estar bloqueado por K1
+  (**ADR-039**, 2026-08-30): `finance` é dono do activo contabilístico
+  (valor, capitalização, depreciação, abate), `inventory` do físico/
+  operacional, com relação explícita e idealmente 1:1. Continua sem código.
 - **Reconciliação bancária propriamente dita** — importar o extracto do banco e
   emparelhar movimentos. Depende do formato, que é decisão do banco.
 - **Câmbio multi-moeda** — candidato BNA, sem fonte fixada.

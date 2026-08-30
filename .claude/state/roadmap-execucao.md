@@ -35,7 +35,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 4 | `finance` — o núcleo | ✅ **Critério de saída cumprido** em 2026-08-25 — os cinco contextos internos, BR-1/3/5/8 impostas, os documentos a lançar nos livros e (2026-08-29) a anular a estornar. Em dívida: o plano de contas, que é do contabilista |
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
 | 6 | `payroll` | Esqueleto sem regra (2026-08-29) — trave de produção por parecer fiscal, ver a nota da fase |
-| 7 | `projects`, `inventory`, `fleet` | `projects` (Marco e Tarefa) e `fleet` (Manutenção e Atribuição) ganharam regra de negócio em 2026-08-30, nenhum bloqueio de negócio nos dois; `inventory` continua esqueleto, trava em K1 |
+| 7 | `projects`, `inventory`, `fleet` | `projects` (Marco e Tarefa) e `fleet` (Manutenção e Atribuição) ganharam regra de negócio em 2026-08-30; `inventory` → Movimento desbloqueado por ADR-039 no mesmo dia, ainda por implementar. Nenhum dos três tem bloqueio de negócio agora |
 | 8 | Camadas de composição e portais | Por iniciar |
 
 **Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
@@ -303,7 +303,9 @@ revalidação, a correr em staging.
 >   a inventar o PGC angolano. **Precisa do contabilista, não de código.**
 > - ~~A anulação não estorna.~~ **Fechado a 2026-08-29** — anular gera o
 >   lançamento inverso, na mesma unidade de trabalho.
-> - **K1 continua aberto**, e com ele os activos fixos e a depreciação.
+> - ~~K1 continua aberto~~ **Fechado a 2026-08-30 — ADR-039.** Activos Fixos
+>   e depreciação deixaram de estar bloqueados por ownership; continuam sem
+>   código, agora só por não estarem feitos.
 > - **PGC, câmbio (BNA) e reconciliação bancária** continuam por fazer, os três
 >   à espera de decisões que não são de engenharia.
 
@@ -340,21 +342,23 @@ condicionada ao parecer, por decisão explícita e registada.
 
 ## Fase 7 — `projects`, `inventory`, `fleet`
 
-**Depende de:** Fase 4 (K1). Paralelizáveis entre si.
+**Depende de:** ~~Fase 4 (K1)~~ — K1 fechado por ADR-039. Paralelizáveis
+entre si.
 
 **Critério de saída:** catorze módulos, com as fronteiras ainda impostas pelos
 testes de arquitectura da Fase 0.
 
-> **Estado a 2026-08-30 — a dependência de K1 só bloqueia `inventory`.** Os
+> **Estado a 2026-08-30 — os três deixaram de ter bloqueio de negócio.** Os
 > três nasceram esqueletos a 2026-08-29 (decisão explícita, sob prazo de
 > apresentação). `projects` (Marco e Tarefa) e `fleet` (Manutenção e
-> Atribuição) ganharam regra de negócio no mesmo dia sem esperar por K1: a
-> fronteira em aberto é sobre Activos Fixos vs. Activos, e não toca nenhum
-> dos dois. Ambos confirmados contra a stack local (`verify-projects.ps1`
-> 28/28, `verify-fleet.ps1` 26/26). **`inventory` continua a depender de K1
-> de facto**: o próprio Movimento — o que falta para `QuantityOnHand` sair de
-> zero — é a operação que materializa a fronteira ainda por decidir. Detalhe
-> em `pending-decisions.md` §Domínio e negócio.
+> Atribuição) ganharam regra de negócio no mesmo dia — ambos confirmados
+> contra a stack local (`verify-projects.ps1` 28/28, `verify-fleet.ps1`
+> 26/26). `inventory` → Movimento estava condicionado a K1 (a fronteira
+> Activos Fixos vs. Activos); **ADR-039 fechou-o no mesmo dia** — os dois
+> módulos coexistem, com relação explícita e idealmente 1:1 sobre o mesmo
+> bem, e o utilizador confirmou explicitamente "avançar com Inventory →
+> Movimento". Fica por implementar. Detalhe em `pending-decisions.md`
+> §Domínio e negócio e ADR-039.
 
 ---
 

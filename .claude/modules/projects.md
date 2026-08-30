@@ -74,8 +74,13 @@ custos), que ainda não estão feitos.
 
 - Relação com `procurement`: requisições geradas por projecto são
   dependência directa ou baseada em eventos?
-- O Orçamento de Projecto relaciona-se com o Orçamento por centro de custo
-  de `finance`, ou é independente?
+
+**Resolvida por ADR-040** (2026-08-30): o Orçamento de Projecto e o Orçamento
+por centro de custo de `finance` são entidades distintas, relacionadas — uma
+despesa de projecto há-de ser validada contra o disponível de `finance` sem
+duplicar a entidade. O mecanismo concreto da validação cruzada fica por
+desenhar quando o Orçamento de Projecto tiver código. Detalhe em
+[decisions/adr-040](../decisions/adr-040-orcamento-de-projecto-vs-orcamento-financeiro.md).
 
 ## Estado
 
@@ -89,7 +94,8 @@ acrescenta depois de fechado. 29 testes de domínio
 `scripts/verify-projects.ps1` — **28/28 confirmados contra a stack local a
 2026-08-30**, sem nenhuma falha, primeira corrida.
 
-⚠ **Continuam por fazer:** Orçamento de Projecto e Alocação de Recursos
-(pessoas além da atribuição de Tarefa, viaturas, custos) — ver "Perguntas em
-aberto". Permissões atribuídas a `ProjectManager`, que deixou de estar vazio
-a 2026-08-29.
+⚠ **Continuam por fazer:** Orçamento de Projecto — **desbloqueado por
+ADR-040** (2026-08-30), ainda por implementar — e Alocação de Recursos
+(pessoas além da atribuição de Tarefa, viaturas, custos), essa sem decisão
+própria ainda. Permissões atribuídas a `ProjectManager`, que deixou de estar
+vazio a 2026-08-29.

@@ -19,7 +19,7 @@ repetir é real.
 
 | # | Lacuna | Impacto | Onde |
 |---|---|---|---|
-| K1 | Sobreposição entre Activos Fixos (`finance`, com depreciação) e Activos (`inventory`) | Nenhum dos módulos pode assumir ownership; bloqueia modelação de ambos | `docs` §1.2; [pending-decisions](pending-decisions.md) |
+| ~~K1~~ | ~~Sobreposição entre Activos Fixos (`finance`, com depreciação) e Activos (`inventory`)~~ | **Fechado a 2026-08-30 — ADR-039.** Coexistem: `inventory` dono do activo físico/operacional, `finance` do contabilístico, relação explícita e idealmente 1:1. O mecanismo concreto da ligação (o campo, o sentido) fica por desenhar quando `finance` tiver Activos Fixos com código — o que ainda não tem | `docs` §1.2; ADR-039; [pending-decisions](pending-decisions.md) |
 | K2 | Motor de cálculo fiscal não detalhado (taxas de IVA e incidência, escalões de IRT, taxas de INSS, mapeamento de códigos de isenção). O **modelo de dados** está fixado pelo XSD do SAF-T AO; as **regras de cálculo** não | Bloqueia `fiscal`, e por arrasto `commercial`, `procurement`, `payroll` | [modules/fiscal.md](../modules/fiscal.md) |
 | K7 | Cadeia de `Hash`/`HashControl` do SAF-T implica assinatura ordenada e imutável dos documentos — requisito arquitectural ainda sem desenho | Afecta `commercial` e `finance`; tem impacto em concorrência e em ordenação de emissão | [modules/fiscal.md](../modules/fiscal.md) |
 | K3 | Fluxo de despesa eventual avulsa do SGAP não coberto | Lacuna funcional — expansão de `procurement`, não módulo novo | `docs` §2 |

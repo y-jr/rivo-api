@@ -40,6 +40,8 @@ re-litigação:
 | Desenho do `approval` | ADR-034 — Política, Passo, Pedido, Atribuição, Decisão. `AnyApprover` por omissão. Sem endpoint de submissão |
 | Conflito de concorrência → HTTP | ADR-035 — `409` traduzido no composition root, **sem repetição automática**. Fecha o K15 |
 | Emitir sem certificação | ADR-036 — forma do documento fiscal sem conformidade legal. Reordena as Fases 3, 4 e 5 |
+| Fronteira Activos Fixos (`finance`) vs. Activos (`inventory`) | ADR-039 — coexistem, com relação explícita e idealmente 1:1. Fecha o K1 |
+| Orçamento de Projecto vs. Orçamento por centro de custo (`finance`) | ADR-040 — entidades distintas, relacionadas, sem duplicação |
 
 ## Stack tecnológica
 
@@ -191,6 +193,12 @@ re-litigação:
       valor antigo. **Questão de direito fiscal.** Exige o Anexo I da Lei
       n.º 14/25 ou parecer de fiscalista. **Bloqueia produção de `payroll`**
       — desenvolvimento e teste podem prosseguir com o valor provisório.
+
+      **Reafirmado pelo utilizador a 2026-08-30, deliberadamente por
+      decidir:** não é decisão de arquitectura, e não se inventa nem se
+      "valida" por essa via. O valor provisório fica, desde que o cálculo
+      seja parametrizável — o campo já existe e fica nulo até haver fonte
+      fiscal competente.
 - [ ] Divergência na parcela fixa do escalão 1.500.001–2.000.000:
       292.000 vs. 292.250.
 - [ ] **Obter DS.120 v1.4 oficial da AGT** (Especificação Técnica de
@@ -207,9 +215,11 @@ re-litigação:
 - [ ] Prazos e formatos das declarações periódicas à AGT.
 - [ ] Processo de certificação de software junto da AGT
       (`SoftwareValidationNumber` é campo obrigatório do SAF-T).
-- [ ] **Fronteira Activos Fixos (`finance`) vs. Activos (`inventory`)** —
-      `docs` §1.2 assinala a sobreposição mas não a resolve. Não assumir
-      dono.
+- [x] ~~Fronteira Activos Fixos (`finance`) vs. Activos (`inventory`)~~ —
+      **resolvido por ADR-039** (2026-08-30): coexistem — `inventory` dono do
+      activo físico/operacional, `finance` do activo contabilístico, relação
+      explícita e idealmente 1:1 quando é o mesmo bem. Nem todo item de
+      `inventory` é Activo Fixo. Fecha o K1.
 - [ ] Método de valorização de stock (FIFO / custo médio ponderado / outro).
 - [ ] Âmbito exacto de `payroll` — o cálculo salarial completo é in-scope?
 - [ ] Peças e consumíveis de frota: stock próprio de `fleet` ou itens de
@@ -217,8 +227,11 @@ re-litigação:
 - [ ] Política de preços e descontos: `commercial` ou configuração
       administrativa? Limiares que disparam aprovação.
 - [ ] Regras de férias (acumulação, saldo, carry-over).
-- [ ] Orçamento de Projecto vs. Orçamento por centro de custo — relacionados
-      ou independentes?
+- [x] ~~Orçamento de Projecto vs. Orçamento por centro de custo~~ —
+      **resolvido por ADR-040** (2026-08-30): entidades distintas,
+      relacionadas. `projects` é dono do Orçamento de Projecto; `finance`
+      continua dono do orçamento por centro de custo (ADR-037). O mecanismo
+      concreto de validação cruzada fica por desenhar quando houver código.
 - [ ] Postagem em `finance`: tempo real ou em lote?
 
 ## Segurança

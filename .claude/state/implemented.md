@@ -802,8 +802,10 @@ pedido.
 semântica que a postagem obrigou. A linha regista um *fecho*, não dá licença;
 exigi-la faria a facturação parar no dia 1 de cada mês.
 
-**Fora:** activos fixos e depreciação (bloqueados por **K1**), adiantamentos,
-nota de débito, câmbio, e a reconciliação bancária propriamente dita.
+**Fora:** activos fixos e depreciação (K1 fechado por ADR-039 a 2026-08-30 —
+deixaram de estar bloqueados por ownership, continuam sem código),
+adiantamentos, nota de débito, câmbio, e a reconciliação bancária
+propriamente dita.
 
 ### Estorno automático — 2026-08-29
 

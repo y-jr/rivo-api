@@ -56,20 +56,23 @@ se aplicável).
 
 - Movimentos de stock são auditados (BR-9).
 
-## Sobreposição conhecida
+## Sobreposição conhecida — resolvida (ADR-039)
 
-**Activos Fixos** (`finance`, com depreciação) sobrepõe-se parcialmente a
-**Activos** (`inventory`). `docs` §1.2 assinala a sobreposição mas **não a
-resolve**. É decisão em aberto — ver
-[state/pending-decisions.md](../state/pending-decisions.md).
-
-Enquanto não for resolvida, não assumir nenhum dos lados como dono.
+**Activos Fixos** (`finance`, com depreciação) e **Activos** (`inventory`)
+**coexistem**, cada um dono de uma faceta do mesmo bem físico: `inventory` é
+dono do activo físico/operacional (localização, responsável, estado,
+movimentos); `finance` é dono do activo contabilístico (valor, capitalização,
+depreciação, abate). Deve existir uma relação explícita entre os dois,
+idealmente 1:1 quando representam o mesmo bem — nem todo item de `inventory`
+é Activo Fixo (mercadorias e consumíveis podem existir só aqui). O mecanismo
+concreto da ligação (o campo, o sentido) fica por desenhar para quando
+`finance` tiver Activos Fixos com código, o que ainda não tem. Fecha o
+**K1**. Detalhe em [decisions/adr-039](../decisions/adr-039-inventory-vs-activos-fixos.md).
 
 ## Perguntas em aberto
 
 - Método de valorização (FIFO / custo médio ponderado / outro) — decisão de
   negócio, não assumir por omissão.
-- Fronteira com Activos Fixos de `finance`.
 - Semântica de transferência entre armazéns.
 
 ## Estado
