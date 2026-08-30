@@ -1092,9 +1092,9 @@ Seis endpoints novos, todos sob `projects.projects.write`:
 
 **29 testes de domínio** (`Rivo.Projects.Domain.Tests`, novo projecto —
 primeiro teste de qualquer um dos quatro esqueletos de 2026-08-29).
-`scripts/verify-projects.ps1` cresceu de 14 para 28 casos — escrito nesta
-sessão, **ainda por confirmar contra a stack publicada** (ver "Próximos
-passos" em `project-state.md`).
+`scripts/verify-projects.ps1` cresceu de 14 para 28 casos e **confirmou
+28/28 contra a stack local a 2026-08-30**, sem nenhuma falha — nem sequer o
+K20 habitual, porque esta suite não toca políticas de `approval`.
 
 **Continuam por fazer:** Orçamento de Projecto e Alocação de Recursos
 (pessoas além da atribuição de Tarefa, viaturas, custos) — ver "Perguntas em

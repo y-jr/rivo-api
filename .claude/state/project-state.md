@@ -53,7 +53,7 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `finance` | **Os cinco contextos existem, e os documentos lançam.** Venda (factura, nota de crédito, recibo, saldo), Contas a Pagar, Tesouraria com extracto append-only, Contabilidade & Fecho com postagem automática, Planeamento. **BR-1, BR-3, BR-5 e BR-8 impostas.** Anular uma factura, nota de crédito ou recibo estorna o lançamento (2026-08-29). ⚠ Contabilidade vazia até alguém carregar o plano; activos fixos bloqueados por K1 |
 | `procurement` | **Os quatro agregados, e o 3-way match fecha.** Fornecedor com IBAN verificado (ISO 13616) e publicado a `finance`; requisição com linhas e decisão de `approval`; Ordem de Compra, que só nasce de requisição aprovada e não deixa encomendar acima do aprovado; Recepção parcial, acumulada por linha e nunca acima do encomendado. A factura liga-se à Ordem (`PurchaseOrderId`, opcional) e `GET .../match` mostra encomendado, recebido e facturado lado a lado — recusa ligar a uma ordem de outro fornecedor, mas **não bloqueia** divergência de valor: fica visível, não impede o registo |
 | `payroll` | ⚠⚠ **Esqueleto** (2026-08-29). Folha e itens, CRUD, ligado a `approval` (submete pelo bruto, aprova/recusa aplicado deste lado). **Sem cálculo de IRT/INSS** — os campos existem, ficam sempre nulos; os escalões dependem de `fiscal`, que não tem tabela angolana carregada, e `CLAUDE.md` proíbe implementar a partir do levantamento não verificado |
-| `projects` | **Marco e Tarefa com regra de negócio** (2026-08-30). Projecto como agregado — fecha, e fechado é facto histórico: nem Marco nem Tarefa se acrescentam depois. Tarefa atribuída verifica o Colaborador contra `hr` (ADR-010, BR-18); concluir/cancelar não reabre. ⚠ Orçamento de Projecto e Alocação de Recursos (pessoas além da atribuição, viaturas, custos) continuam por fazer |
+| `projects` | **Marco e Tarefa com regra de negócio, confirmado (2026-08-30).** Projecto como agregado — fecha, e fechado é facto histórico: nem Marco nem Tarefa se acrescentam depois. Tarefa atribuída verifica o Colaborador contra `hr` (ADR-010, BR-18); concluir/cancelar não reabre. `verify-projects.ps1` 28/28 contra a stack local, sem falha. ⚠ Orçamento de Projecto e Alocação de Recursos (pessoas além da atribuição, viaturas, custos) continuam por fazer |
 | `inventory`, `fleet` | ⚠⚠ **Esqueletos** (2026-08-29). Item com SKU único; Viatura com matrícula única. Sem nenhuma das regras que `modules/*.md` descreve |
 
 Detalhe com datas e ressalvas em [implemented.md](implemented.md).
@@ -67,10 +67,10 @@ nessa categoria; `projects` saiu dela a 2026-08-30 (Marco e Tarefa, ver
 acima), mas ainda tem Orçamento de Projecto e Alocação de Recursos por fazer.
 **Têm, desde 2026-08-29, verificação end-to-end** (`scripts/verify-payroll.ps1`,
 `verify-projects.ps1`, `verify-inventory.ps1`, `verify-fleet.ps1`) — a de
-`projects` cresceu de 14 para 28 casos a 2026-08-30, **ainda por confirmar
-contra a stack** (ver "Próximos passos"); as outras três confirmam só o CRUD
-e a sua superfície HTTP (contrato, permissão, auditoria, persistência), nunca
-regra de negócio que não existe.
+`projects` cresceu de 14 para 28 casos a 2026-08-30 e **confirmou 28/28
+contra a stack local no mesmo dia, sem nenhuma falha**; as outras três
+confirmam só o CRUD e a sua superfície HTTP (contrato, permissão, auditoria,
+persistência), nunca regra de negócio que não existe.
 
 ## Ambiente publicado
 
@@ -99,7 +99,7 @@ superfície inteira é legível por quem estiver a ouvir.
 | Superfície HTTP | 176 endpoints em 14 grupos de rota, mais `/health` |
 | ADRs | 38, aceites |
 | Testes | **743** em 16 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). +8 a 2026-08-29 (`ReverseDocumentPostingTests`, estorno automático); +29 a 2026-08-30 (`Rivo.Projects.Domain.Tests`, Marco e Tarefa — primeiro projecto de teste de um dos quatro esqueletos). **Zero** em `payroll`, `inventory`, `fleet` — nenhum projecto de teste existe para eles ainda |
-| Verificação end-to-end | **17 suites** PowerShell, **350 casos** — as 4 dos esqueletos e `verify-approval` (cancelamento, K18) escritas a 2026-08-29; `verify-ledger` ganhou o caso do estorno automático no mesmo dia; `verify-projects` cresceu de 14 para 28 casos a 2026-08-30 (Marco e Tarefa), **ainda por confirmar contra a stack**. Última corrida confirmada de cada, isolada: `verify-inventory` 13/13, `verify-fleet` 15/15, `verify-approval` 10/10, `verify-ledger` 46/46, `verify-payroll` 15/16. O único caso que costuma falhar em cada corrida é a mesma falha intermitente na limpeza final de uma política, sem causa de código confirmada em quatro investigações — **K20** em [known-issues.md](known-issues.md) |
+| Verificação end-to-end | **17 suites** PowerShell, **350 casos** — as 4 dos esqueletos e `verify-approval` (cancelamento, K18) escritas a 2026-08-29; `verify-ledger` ganhou o caso do estorno automático no mesmo dia; `verify-projects` cresceu de 14 para 28 casos a 2026-08-30 (Marco e Tarefa) e **confirmou 28/28 contra a stack local no mesmo dia, sem falha**. Última corrida confirmada de cada, isolada: `verify-projects` 28/28, `verify-inventory` 13/13, `verify-fleet` 15/15, `verify-approval` 10/10, `verify-ledger` 46/46, `verify-payroll` 15/16. O único caso que costuma falhar em cada corrida é a mesma falha intermitente na limpeza final de uma política, sem causa de código confirmada em quatro investigações — **K20** em [known-issues.md](known-issues.md); `verify-projects` não a toca, por não submeter nada a `approval` |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
@@ -237,9 +237,10 @@ nunca elimina (BR-14). `hr` entrou nas dependências declaradas de `projects`
 (`ProjectReferenceTests`, `dependency-rules.md` já a previa). 29 testes de
 domínio novos (`Rivo.Projects.Domain.Tests`, primeiro projecto de teste de um
 dos quatro esqueletos de 2026-08-29). `verify-projects.ps1` cresceu de 14
-para 28 casos — **ainda por confirmar contra a stack**, ver "Próximos
-passos". Orçamento de Projecto e Alocação de Recursos continuam por fazer.
-Detalhe em [modules/projects.md](../modules/projects.md).
+para 28 casos e **confirmou 28/28 contra a stack local no mesmo dia**, sem
+nenhuma falha na primeira corrida. Orçamento de Projecto e Alocação de
+Recursos continuam por fazer. Detalhe em
+[modules/projects.md](../modules/projects.md).
 
 **Fechado a 2026-08-29 (esqueletos):** `payroll`, `projects`, `inventory` e
 `fleet` ganharam código — os catorze módulos têm-no agora. Decisão explícita

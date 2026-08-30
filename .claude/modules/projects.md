@@ -86,8 +86,8 @@ verificada contra `hr`, concluir/cancelar sem reabrir) como parte do mesmo
 agregado — nascem, alteram-se e desaparecem só com o Projecto, e nada se
 acrescenta depois de fechado. 29 testes de domínio
 (`Rivo.Projects.Domain.Tests`); verificação end-to-end em
-`scripts/verify-projects.ps1` (28 casos, ainda por confirmar contra a stack —
-ver `state/project-state.md`).
+`scripts/verify-projects.ps1` — **28/28 confirmados contra a stack local a
+2026-08-30**, sem nenhuma falha, primeira corrida.
 
 ⚠ **Continuam por fazer:** Orçamento de Projecto e Alocação de Recursos
 (pessoas além da atribuição de Tarefa, viaturas, custos) — ver "Perguntas em
