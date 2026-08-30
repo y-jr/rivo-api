@@ -10,6 +10,8 @@ public sealed class PayrollDbContext(DbContextOptions<PayrollDbContext> options)
 
     public DbSet<PayrollRun> Runs => Set<PayrollRun>();
 
+    public DbSet<PayrollItemDocument> ItemDocuments => Set<PayrollItemDocument>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -51,6 +53,27 @@ public sealed class PayrollDbContext(DbContextOptions<PayrollDbContext> options)
             item.Property(i => i.NetSalary).HasPrecision(18, 2);
             item.Property(i => i.WithholdingTax).HasPrecision(18, 2);
             item.Property(i => i.SocialSecurityContribution).HasPrecision(18, 2);
+        });
+
+        builder.Entity<PayrollItemDocument>(link =>
+        {
+            link.ToTable("payroll_item_document");
+            link.HasKey(l => l.Id);
+            link.Property(l => l.Category).HasMaxLength(100).IsRequired();
+
+            link.HasOne<PayrollItem>()
+                .WithMany()
+                .HasForeignKey(l => l.PayrollItemId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Chave estrangeira para documents.document(id): FK entre schemas
+            // para a chave primária do contexto dono, único caso permitido
+            // (ADR-010) — mesmo desenho de `hr.EmployeeDocument`. Declarada
+            // por SQL numa migração própria, e não por navegação de EF: a
+            // entidade Document pertence a `documents` e não pode ser
+            // referenciada a partir daqui (ADR-017).
+            link.HasIndex(l => l.PayrollItemId);
+            link.HasIndex(l => l.DocumentId).IsUnique();
         });
 
         // As chaves são geradas pelo domínio (Guid.CreateVersion7), nunca pela

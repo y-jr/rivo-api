@@ -380,9 +380,11 @@ public static class PayrollAuditActions
     public const string RunSubmitted = "payroll.run.submitted";
     public const string RunApproved = "payroll.run.approved";
     public const string RunRefused = "payroll.run.refused";
+    public const string DocumentAttached = "payroll.item.document_attached";
 }
 
 public static class PayrollAuditEntityTypes
 {
     public const string Run = "payroll.run";
+    public const string Item = "payroll.item";
 }

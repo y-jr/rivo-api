@@ -82,6 +82,9 @@ não depende de ninguém.
 
 **Implementado.** Upload, download, metadados por contrato, hash SHA-256 para
 integridade, e a tabela de ligação em `hr` que valida o ADR-009.
+`payroll.PayrollItemDocument` (Recibo, 2026-08-30) é o segundo exemplo do
+mesmo desenho — mesma FK real entre schemas, mesma migração própria
+(`AddCrossSchemaDocumentForeignKey`), mesma separação upload/anexar.
 
 Verificado em `scripts/verify-documents.ps1` (13 casos), incluindo que a **FK
 entre schemas bloqueia a eliminação** de um documento ligado — a integridade

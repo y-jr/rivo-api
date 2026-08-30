@@ -243,6 +243,15 @@ re-litigação:
       continua dono do orçamento por centro de custo (ADR-037). O mecanismo
       concreto de validação cruzada fica por desenhar quando houver código.
 - [ ] Postagem em `finance`: tempo real ou em lote?
+- [ ] **Recibo só se anexa a um item de folha Aprovada** (`payroll`,
+      2026-08-30) — implementado como inferência do domínio (um recibo é
+      prova do que foi autorizado; os valores de um item podem mudar em
+      Draft/PendingApproval), **não confirmado com o utilizador nem
+      registado em `docs/`**. Revisível se aparecer caso de uso real que
+      precise de anexar antes (ex.: rascunho de recibo para conferência).
+      Ver `modules/payroll.md`.
+- [ ] Prazo de retenção legal do recibo (BR-15, `payroll`) — a ligação a
+      `documents` existe desde 2026-08-30; o prazo em si não está fixado.
 
 ## Segurança
 

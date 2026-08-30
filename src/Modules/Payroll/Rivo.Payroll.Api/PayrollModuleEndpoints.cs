@@ -36,6 +36,15 @@ public static class PayrollModuleEndpoints
         group.MapPost("/runs/{runId:guid}/decision", ApplyDecisionAsync)
             .RequireAuthorization(PayrollPermissions.RunsRead);
 
+        // Anexar exige permissão de escrita em folhas, não de documentos: está
+        // a alterar-se o registo do item. O upload do ficheiro é que exige
+        // `documents.write` — mesma separação de `hr`.
+        group.MapPost("/runs/{runId:guid}/items/{itemId:guid}/documents", AttachDocumentAsync)
+            .RequireAuthorization(PayrollPermissions.RunsWrite);
+
+        group.MapGet("/runs/{runId:guid}/items/{itemId:guid}/documents", ListItemDocumentsAsync)
+            .RequireAuthorization(PayrollPermissions.RunsRead);
+
         return endpoints;
     }
 
@@ -152,6 +161,44 @@ public static class PayrollModuleEndpoints
         };
     }
 
+    private static async Task<IResult> AttachDocumentAsync(
+        Guid runId,
+        Guid itemId,
+        AttachPayrollDocumentRequest request,
+        AttachDocumentToPayrollItem attach,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await attach.ExecuteAsync(
+            runId, itemId, request.DocumentId, request.Category, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            AttachPayrollDocumentOutcome.Attached => Results.Created(
+                $"/payroll/runs/{runId}/items/{itemId}/documents", new { linkId = result.LinkId }),
+
+            AttachPayrollDocumentOutcome.RunNotFound or AttachPayrollDocumentOutcome.ItemNotFound
+                or AttachPayrollDocumentOutcome.DocumentNotFound =>
+                Results.NotFound(new { erro = result.Error }),
+
+            // 400: categoria em branco — campo mal preenchido.
+            AttachPayrollDocumentOutcome.Rejected =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["documento"] = [result.Error!] }),
+
+            // 409: a folha ainda não está Aprovada.
+            AttachPayrollDocumentOutcome.Conflict =>
+                Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
+
+            _ => Results.Problem("Resultado inesperado ao anexar o documento."),
+        };
+    }
+
+    private static async Task<IResult> ListItemDocumentsAsync(
+        Guid itemId,
+        ListPayrollItemDocuments list,
+        CancellationToken cancellationToken) =>
+        Results.Ok(await list.ExecuteAsync(itemId, cancellationToken));
+
     private static AuditContext BuildAuditContext(HttpContext http)
     {
         var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
@@ -167,6 +214,8 @@ public static class PayrollModuleEndpoints
 public sealed record OpenRunRequest(int Year, int Month, Guid OpenedByEmployeeId);
 
 public sealed record AddItemRequest(Guid EmployeeId, decimal GrossSalary);
+
+public sealed record AttachPayrollDocumentRequest(Guid DocumentId, string Category);
 
 public sealed record PayrollRunView(
     Guid RunId,

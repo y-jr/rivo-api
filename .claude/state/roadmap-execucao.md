@@ -354,6 +354,14 @@ condicionada ao parecer, por decisão explícita e registada.
 > valores é o utilizador, não parecer de fiscalista nem o Anexo I da Lei
 > n.º 14/25 — o critério de saída desta fase (ida a produção condicionada
 > ao parecer) não mudou, só deixou de bloquear o desenvolvimento e o teste.
+>
+> **Mesmo dia, Recibo ligado a `documents`.** `PayrollItemDocument` — mesmo
+> desenho ADR-009 de `hr.EmployeeDocument`: FK real para `payroll_item(id)`
+> e para `documents.document(id)`, upload e anexar como passos separados,
+> só se anexa a um item de folha Aprovada (409 antes disso — inferência da
+> sessão, não requisito confirmado, registada como tal em
+> `modules/payroll.md`). `verify-payroll.ps1` cresceu de 17 para 22 casos,
+> todos a passar à primeira corrida contra a stack local.
 
 ---
 

@@ -27,6 +27,18 @@ public sealed class PayrollRunStore(PayrollDbContext context) : IPayrollRunStore
     public async Task AddAsync(PayrollRun run, CancellationToken cancellationToken) =>
         await context.Runs.AddAsync(run, cancellationToken);
 
+    public async Task AddPayrollItemDocumentAsync(
+        PayrollItemDocument link, CancellationToken cancellationToken) =>
+        await context.ItemDocuments.AddAsync(link, cancellationToken);
+
+    public async Task<IReadOnlyList<PayrollItemDocument>> ListPayrollItemDocumentsAsync(
+        Guid payrollItemId, CancellationToken cancellationToken) =>
+        await context.ItemDocuments
+            .AsNoTracking()
+            .Where(link => link.PayrollItemId == payrollItemId)
+            .OrderByDescending(link => link.AttachedAt)
+            .ToListAsync(cancellationToken);
+
     public Task SaveChangesAsync(CancellationToken cancellationToken) =>
         context.SaveChangesAsync(cancellationToken);
 }

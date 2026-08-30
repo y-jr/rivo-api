@@ -53,7 +53,7 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `commercial` | ⚠ **Reduzido ao Cliente** (ADR-036). Sem funil comercial |
 | `finance` | **Os cinco contextos existem, e os documentos lançam.** Venda (factura, nota de crédito, recibo, saldo), Contas a Pagar, Tesouraria com extracto append-only, Contabilidade & Fecho com postagem automática, Planeamento. **BR-1, BR-3, BR-5 e BR-8 impostas.** Anular uma factura, nota de crédito ou recibo estorna o lançamento (2026-08-29). ⚠ Contabilidade vazia até alguém carregar o plano; Activos Fixos sem código ainda — o K1 que os bloqueava fechou por ADR-039 (2026-08-30), falta escrevê-los |
 | `procurement` | **Os quatro agregados, e o 3-way match fecha.** Fornecedor com IBAN verificado (ISO 13616) e publicado a `finance`; requisição com linhas e decisão de `approval`; Ordem de Compra, que só nasce de requisição aprovada e não deixa encomendar acima do aprovado; Recepção parcial, acumulada por linha e nunca acima do encomendado. A factura liga-se à Ordem (`PurchaseOrderId`, opcional) e `GET .../match` mostra encomendado, recebido e facturado lado a lado — recusa ligar a uma ordem de outro fornecedor, mas **não bloqueia** divergência de valor: fica visível, não impede o registo |
-| `payroll` | **Folha e itens, com cálculo de IRT/INSS, confirmado (2026-08-30).** `AddPayrollItem` pergunta a `fiscal` — nunca calcula por si — na ordem do artigo 7.º do CIRT: INSS do trabalhador à data do fim do período, matéria colectável, IRT por escalões; `NetSalary` sai sempre calculado, nunca recebido. Sem taxa/tabela em vigor, o item recusa (400) em vez de nascer com campo nulo. Ligado a `approval` (submete pelo bruto). `verify-payroll.ps1` 17 casos. ⚠ A fonte dos valores continua o utilizador, não fiscalista nem Anexo I da lei |
+| `payroll` | **Folha, itens e Recibo, confirmado (2026-08-30).** `AddPayrollItem` pergunta a `fiscal` — nunca calcula por si — na ordem do artigo 7.º do CIRT: INSS do trabalhador à data do fim do período, matéria colectável, IRT por escalões; `NetSalary` sai sempre calculado, nunca recebido. Sem taxa/tabela em vigor, o item recusa (400) em vez de nascer com campo nulo. Recibo liga-se via `documents` (ADR-009, mesmo desenho de `hr`) a um item de folha Aprovada. Ligado a `approval` (submete pelo bruto). `verify-payroll.ps1` 22 casos. ⚠ A fonte dos valores de IRT/INSS continua o utilizador, não fiscalista nem Anexo I da lei |
 | `projects` | **Marco, Tarefa e Orçamento com regra de negócio, confirmado (2026-08-30).** Projecto como agregado — fecha, e fechado é facto histórico: nem Marco, nem Tarefa, nem Orçamento se alteram depois. Tarefa atribuída verifica o Colaborador contra `hr` (ADR-010, BR-18); concluir/cancelar não reabre. Orçamento é zero ou um por projecto, moeda fixa na primeira vez (ADR-040). `verify-projects.ps1` 33/33 contra a stack local, sem falha. ⚠ Alocação de Recursos (pessoas além da atribuição, viaturas, custos) continua por fazer, sem decisão própria |
 | `fleet` | **Manutenção, Atribuição e Plano de Manutenção com regra de negócio, confirmado (2026-08-30).** Viatura como agregado — um registo de manutenção aberto de cada vez, uma atribuição aberta de cada vez, vários planos activos ao mesmo tempo (sem exclusão mútua); nenhum dos três se exclui dos outros dois. Atribuição verifica o Colaborador contra `hr` (ADR-010, BR-18). Alerta de plano devido é consulta (`GET /fleet/maintenance-plans/due`), não notificação empurrada — `identity` não resolve "todos os AssetManager" ainda. `verify-fleet.ps1` 38/38 contra a stack local, sem falha. ⚠ Registo de Viagem, Despesa de Frota e Seguros continuam por fazer |
 | `inventory` | **Movimento com regra de negócio, confirmado (2026-08-30).** Item como agregado — Recepção, Saída e Ajuste; `QuantityOnHand` é a soma assinada, nunca negativo; item inactivo não aceita movimentos novos. `verify-inventory.ps1` 25/25 contra a stack local, sem falha. ⚠ Armazém, Transferência, Contagem e valorização de stock continuam por fazer |
@@ -95,11 +95,11 @@ superfície inteira é legível por quem estiver a ouvir.
 
 | Área | Estado |
 |---|---|
-| Código | 14 módulos, 70 projectos em `src/`, 318 ficheiros `.cs` |
-| Superfície HTTP | 191 endpoints em 14 grupos de rota, mais `/health` |
+| Código | 14 módulos, 70 projectos em `src/`, 324 ficheiros `.cs` |
+| Superfície HTTP | 193 endpoints em 14 grupos de rota, mais `/health` |
 | ADRs | 40, aceites |
-| Testes | **853** em 19 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). A 2026-08-30, `Rivo.Projects.Domain.Tests` cresceu de 29 (Marco e Tarefa) para 39 (+ Orçamento), `Rivo.Fleet.Domain.Tests` de 25 para 42 (+ Plano de Manutenção), nasceu `Rivo.Inventory.Domain.Tests` com 21 (Movimento), `Rivo.Fiscal.Domain.Tests` cresceu de 18 para 39 (+ `IncomeTaxSchedule`, 21 casos) e nasceu `Rivo.Payroll.Domain.Tests` com 16 (`ApplyCalculation` e o ciclo da folha) — o último dos quatro esqueletos de 2026-08-29 a ganhar projecto de teste próprio |
-| Verificação end-to-end | **17 suites** PowerShell, **398 casos** — a 2026-08-30, `verify-projects` cresceu de 14 para 33 (+ Orçamento), `verify-fleet` de 15 para 38 (+ Plano de Manutenção), `verify-inventory` de 13 para 25 (Movimento), `verify-fiscal` de 12 para 20 (+ motor de IRT/INSS: semeia INSS e a tabela de escalões, idempotente por desenho) e `verify-payroll` de 5 para 17 (cálculo real substitui a verificação de campos nulos). **Corrida completa (`verify-all.ps1`) confirmada a 2026-08-30: 395/398** — as 3 falhas são todas o mesmo K20 (limpeza de política, sem causa de código em quatro investigações), em `verify-ledger`, `verify-payroll` e `verify-procurement`; zero regressão nova. A primeira ronda de `verify-fleet` (26 casos) apanhou dois defeitos reais (400 em vez de 409), corrigidos no mesmo dia; a primeira ronda do motor de IRT/INSS apanhou um terceiro — `TaxKind.EmployeeSocialSecurity`/`EmployerSocialSecurity` sem entrada no `switch` exaustivo de `ListTaxRates.ToDomain`/`ToContract` (500 em vez de determinar), corrigido antes de fechar |
+| Testes | **859** em 19 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). A 2026-08-30, `Rivo.Projects.Domain.Tests` cresceu de 29 (Marco e Tarefa) para 39 (+ Orçamento), `Rivo.Fleet.Domain.Tests` de 25 para 42 (+ Plano de Manutenção), nasceu `Rivo.Inventory.Domain.Tests` com 21 (Movimento), `Rivo.Fiscal.Domain.Tests` cresceu de 18 para 39 (+ `IncomeTaxSchedule`, 21 casos) e nasceu `Rivo.Payroll.Domain.Tests`, que cresceu de 16 (`ApplyCalculation` e o ciclo da folha) para 22 (+ `PayrollItemDocument`, o Recibo) — o último dos quatro esqueletos de 2026-08-29 a ganhar projecto de teste próprio |
+| Verificação end-to-end | **17 suites** PowerShell, **403 casos** — a 2026-08-30, `verify-projects` cresceu de 14 para 33 (+ Orçamento), `verify-fleet` de 15 para 38 (+ Plano de Manutenção), `verify-inventory` de 13 para 25 (Movimento), `verify-fiscal` de 12 para 20 (+ motor de IRT/INSS: semeia INSS e a tabela de escalões, idempotente por desenho) e `verify-payroll` de 5 para 17 (cálculo real) e depois para 22 (+ Recibo, mesmo dia). **Corrida completa (`verify-all.ps1`) confirmada a 2026-08-30: 395/398** (antes do Recibo) — as 3 falhas são todas o mesmo K20 (limpeza de política, sem causa de código em quatro investigações), em `verify-ledger`, `verify-payroll` e `verify-procurement`; zero regressão nova, e a mesma suite de `verify-payroll` isolada confirmou 21/22 depois do Recibo (só o K20, renumerado). A primeira ronda de `verify-fleet` (26 casos) apanhou dois defeitos reais (400 em vez de 409), corrigidos no mesmo dia; a primeira ronda do motor de IRT/INSS apanhou um terceiro — `TaxKind.EmployeeSocialSecurity`/`EmployerSocialSecurity` sem entrada no `switch` exaustivo de `ListTaxRates.ToDomain`/`ToContract` (500 em vez de determinar), corrigido antes de fechar. O Recibo não apanhou nenhum — todos os casos novos passaram à primeira |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
@@ -213,15 +213,14 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    válido, segundo cancelamento recusado (409), trilha com actor para os dois
    casos, e que `payroll` só trata `Cancelled` como recusa quando pergunta.
 8. ~~`payroll` é o único esqueleto de prazo que resta sem regra de
-   negócio.~~ **Fechado a 2026-08-30** — motor de IRT/INSS, ver abaixo.
-   Ainda falta Recibo (via `documents`) em `payroll`. `projects`, `fleet` e
-   `inventory` saíram da lista de esqueletos no mesmo dia (Orçamento de
-   Projecto/ADR-040, Plano de Manutenção, Movimento). **O que fica por
-   fazer nos quatro não tem decisão própria à espera** — é trabalho de
-   engenharia sem bloqueio: Recibo em `payroll`, Alocação de Recursos em
-   `projects` (pessoas além da atribuição de Tarefa, viaturas, custos),
-   Armazém/Transferência/Contagem em `inventory`, Registo de
-   Viagem/Despesa/Seguros em `fleet`. Ver o "Seguimento" em cada
+   negócio.~~ **Fechado a 2026-08-30** — motor de IRT/INSS, e depois Recibo
+   (via `documents`), ver abaixo. `projects`, `fleet` e `inventory` saíram
+   da lista de esqueletos no mesmo dia (Orçamento de Projecto/ADR-040, Plano
+   de Manutenção, Movimento). **O que fica por fazer nos quatro não tem
+   decisão própria à espera** — é trabalho de engenharia sem bloqueio:
+   Alocação de Recursos em `projects` (pessoas além da atribuição de Tarefa,
+   viaturas, custos), Armazém/Transferência/Contagem em `inventory`,
+   Registo de Viagem/Despesa/Seguros em `fleet`. Ver o "Seguimento" em cada
    `modules/*.md`.
 
 **Fechado a 2026-08-30 (payroll: os dois pontos de IRT/INSS que bloqueavam
@@ -296,6 +295,35 @@ valores continuam a depender do utilizador, não de fiscalista nem do Anexo I
 da Lei n.º 14/25. Tratamento de subsídios em IRT continua sem resposta, e
 `PayrollItem` não distingue componentes do salário bruto — o cálculo
 aplica-se ao bruto inteiro enquanto isso não for decidido.
+
+**Fechado a 2026-08-30 (`payroll`: Recibo, ligado a `documents`):** com o
+motor de IRT/INSS fechado (acima), no mesmo dia `payroll` ganhou
+`PayrollItemDocument` — a ligação entre um Item de Folha e o ficheiro do
+recibo. Entidade independente, não filha do agregado da folha (mesma razão
+de `Rivo.Hr.Domain.EmployeeDocument`: anexar um documento não é decisão do
+agregado, é registo à parte, feito depois de a folha já ter dito o que tem a
+dizer): FK real para `payroll.payroll_item(id)`, e por SQL entre schemas
+numa migração própria (`AddCrossSchemaDocumentForeignKey`, mesmo nome e
+desenho da versão de `hr`), para `documents.document(id)`. `documents`
+guarda o ficheiro e o hash; `payroll` guarda a categoria e sabe o que ela
+significa (BR-15, retenção legal — o prazo em si continua por fixar).
+
+**Upload e anexar continuam passos separados**, mesma disciplina de `hr`:
+upload exige `documents.write`, anexar exige `payroll.runs.write` porque
+está a alterar-se o registo do item. **Só se anexa a um item de uma folha
+Aprovada** (409 antes disso) — a única regra desta funcionalidade que é
+inferência da sessão e não requisito confirmado: um recibo é prova do que
+foi autorizado, e os valores de um item podem mudar em Draft ou
+PendingApproval. Registada como tal em `modules/payroll.md`, revisável.
+
+Testes: `Rivo.Payroll.Domain.Tests` cresceu de 16 para 22
+(`PayrollItemDocumentTests`, mesmo desenho de `EmployeeDocumentTests`).
+`verify-payroll.ps1` cresceu de 17 para 22 casos — recusa antes de Aprovada,
+anexar com sucesso, listar com os metadados de `documents` juntados em
+memória, documento inexistente devolve 404, e o anexo fica na trilha com
+actor. Todos passaram à primeira corrida — zero defeito apanhado nesta
+ronda, ao contrário das duas anteriores do mesmo dia (`fleet` e o motor de
+IRT/INSS).
 
 **Fechado a 2026-08-30 (`fleet`: Plano de Manutenção):** `Vehicle` ganhou um
 terceiro filho no agregado, `MaintenancePlan` — calendário preventivo,

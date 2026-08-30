@@ -9,10 +9,11 @@ using Rivo.Payroll.Infrastructure.Persistence;
 namespace Rivo.Payroll.Infrastructure;
 
 /// <summary>
-/// Esqueleto do módulo `payroll` — ver `modules/payroll.md`. Folha e itens
-/// com salário bruto, ligados a `approval` (via composition root — ver
-/// <c>Rivo.Api.Composition.PayrollApprovalSubmission</c>). Sem cálculo de
-/// IRT/INSS: os campos existem no modelo, ficam sempre nulos.
+/// Módulo `payroll` — ver `modules/payroll.md`. Folha e itens, com IRT/INSS
+/// calculados por `fiscal` (2026-08-30) e ligados a `approval` (via
+/// composition root — ver <c>Rivo.Api.Composition.PayrollApprovalSubmission</c>).
+/// Recibo anexável via `documents` a partir de uma folha Aprovada
+/// (2026-08-30).
 /// </summary>
 public static class PayrollModuleExtensions
 {
@@ -37,6 +38,8 @@ public static class PayrollModuleExtensions
         services.AddScoped<AddPayrollItem>();
         services.AddScoped<SubmitPayrollRun>();
         services.AddScoped<ApplyPayrollDecision>();
+        services.AddScoped<AttachDocumentToPayrollItem>();
+        services.AddScoped<ListPayrollItemDocuments>();
 
         services.AddAuthorization(options =>
         {

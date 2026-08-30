@@ -29,8 +29,9 @@ registo de assiduidade.
 
 `hr` (`ReferenciaColaborador`, contrato de trabalho, assiduidade),
 `finance` (execução do pagamento a colaboradores, postagem contabilística),
-`approval` (aprovação da folha), `documents` (recibos), `fiscal`
-(IRT, INSS), `audit`, `notifications`.
+`approval` (aprovação da folha), `documents` (recibos — ligado a
+2026-08-30), `fiscal` (IRT, INSS — ligado a 2026-08-30), `audit`,
+`notifications`.
 
 ## Consumido por
 
@@ -52,6 +53,8 @@ registo de assiduidade.
   `payroll_audit_logs` quase idêntico a `audit_logs`).
 - Executar o pagamento — isso é `finance`/Tesouraria.
 - Calcular as regras fiscais — consulta `fiscal` para IRT e INSS.
+- **Guardar o ficheiro do recibo.** `documents` guarda o ficheiro e o hash;
+  `payroll` guarda só a ligação — mesmo desenho de `hr` (ADR-009).
 
 ## Ordem de cálculo do IRT — invariante
 
@@ -89,7 +92,14 @@ ninguém as "corrija".
   (BR-1, BR-5).
 - Concorrência optimista na folha e nos seus itens (BR-17).
 - Retenção legal dos recibos — prazo conhecido por `payroll`, storage em
-  `documents` (BR-15).
+  `documents` (BR-15). **Prazo ainda não fixado** — a ligação existe desde
+  2026-08-30, a retenção em si continua por decidir (ver "Perguntas em
+  aberto").
+- **Recibo só se anexa a um item de uma folha Aprovada** — inferência do
+  domínio, não requisito confirmado em `docs/`: um recibo é prova do que foi
+  autorizado, e os valores de um item podem mudar enquanto a folha está em
+  rascunho ou pendente. Anexar antes arriscaria emitir um recibo que a
+  decisão de `approval` ainda pode invalidar.
 
 ## Perguntas em aberto
 
@@ -98,6 +108,12 @@ ninguém as "corrija".
 - Os valores de IRT e INSS que `fiscal` usa — mecanismo implementado desde
   2026-08-30, mas a fonte é o utilizador, não fonte fiscal profissional; ver
   `state/pending-decisions.md`.
+- Prazo de retenção legal do recibo (BR-15) — a ligação a `documents` existe,
+  o prazo em si não está fixado em lado nenhum.
+- "Só depois de Aprovada" (regra acima) é inferência desta sessão, não
+  confirmada com o utilizador nem registada em `docs/`. Revisível se houver
+  caso de uso real que precise de anexar antes (ex.: rascunho de recibo para
+  conferência).
 
 ## Estado
 
@@ -117,13 +133,27 @@ verdadeira por construção.
 o item não nasce (400, mesmo padrão de `IssueSalesInvoice` perante
 `NoRateInForce`) — nunca fica com um campo nulo a fingir "ainda não
 calculado". Regras de negócio impostas: BR-17 (concorrência optimista);
-BR-1/BR-5 (aprovação via `approval`) já existiam. BR-15 (retenção de
-recibos) continua por implementar — não há `documents` ligado ainda.
+BR-1/BR-5 (aprovação via `approval`) já existiam.
 
-Testes: 16 de domínio (`Rivo.Payroll.Domain.Tests`, novo a 2026-08-30) e
-verificação end-to-end (`scripts/verify-payroll.ps1`, 17 casos, incluindo o
-exemplo documentado bruto 250.000 → líquido 203.600 reproduzido como
-regressão). Permissões atribuídas a `HR`.
+**Recibo ligado a `documents`, também desde 2026-08-30.** `PayrollItemDocument`
+— entidade independente, não filha do agregado da folha, mesmo desenho de
+`Rivo.Hr.Domain.EmployeeDocument` (ADR-009): FK real para `payroll_item(id)`
+e, por SQL entre schemas numa migração própria (`AddCrossSchemaDocumentForeignKey`,
+mesmo nome e desenho da de `hr`), para `documents.document(id)`. `documents`
+guarda o ficheiro; `payroll` guarda a categoria e sabe o significado de
+negócio dela. **Upload e anexar são passos separados** — upload exige
+`documents.write`, anexar exige `payroll.runs.write`, porque está a
+alterar-se o registo do item — e **só se anexa a um item de folha Aprovada**
+(400 → 409 antes disso, "Regras de negócio" acima). Um documento só se liga
+uma vez (índice único em `document_id`, mesma defesa de `hr`).
+
+Testes: 22 de domínio (`Rivo.Payroll.Domain.Tests`, 16 do motor de IRT/INSS +
+6 de `PayrollItemDocument`, novo a 2026-08-30) e verificação end-to-end
+(`scripts/verify-payroll.ps1`, 22 casos, incluindo o exemplo documentado
+bruto 250.000 → líquido 203.600 reproduzido como regressão, e o ciclo
+completo do recibo — recusa antes de Aprovada, anexar, listar com metadados
+de `documents`, documento inexistente devolve 404). Permissões atribuídas a
+`HR`.
 
 **A fonte dos valores continua a ser o utilizador, não o Anexo I da Lei
 n.º 14/25 nem parecer de fiscalista** — ver `state/pending-decisions.md`

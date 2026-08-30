@@ -150,6 +150,10 @@ definem-se, e sem elas nada lança. Ver a ressalva em cada secção.
 **Por satisfazer:** conteúdo sem cifra em repouso (K11); ficheiro órfão se a
 gravação de metadados falhar (K12).
 
+_2026-08-30 — segundo consumidor do desenho ADR-009._ `payroll` liga o
+Recibo a um Item de Folha pelo mesmo padrão que `hr` usa para os documentos
+de um colaborador — ver a secção `payroll` para o detalhe.
+
 ## notifications
 
 - Fila em tabela com estado; enfileirar **não** entrega — 2026-08-11 —
@@ -1130,6 +1134,43 @@ essa verificação, mais um caso novo para a recusa por falta de dados
 fiscais. Ver `state/known-issues.md` K20: o caso de limpeza de política
 mudou de número (era 15, passou a 16) mas continua o mesmo defeito
 pré-existente, sem causa de código.
+
+_2026-08-30, mesmo dia — **Recibo, ligado a `documents`.**_ `PayrollItemDocument`
+— entidade independente, não filha do agregado `PayrollRun`: anexar um
+documento não é decisão da folha, é registo à parte, feito depois de a folha
+já ter dito o que tinha a dizer. Mesmo desenho exacto de
+`Rivo.Hr.Domain.EmployeeDocument` (ADR-009): FK real para
+`payroll.payroll_item(id)`, e para `documents.document(id)` por SQL numa
+migração própria — `AddCrossSchemaDocumentForeignKey`, mesmo nome e mesma
+razão da versão de `hr` ("quando `payroll` migra, `documents` já tem de
+estar migrado" — `Program.cs` já garantia essa ordem). Índice único em
+`document_id`: um ficheiro só se liga uma vez, mesma defesa de `hr`.
+
+**Upload e anexar são passos separados**, mesma disciplina de `hr`: o
+upload (`POST /documents`) exige `documents.write`; anexar
+(`POST /payroll/runs/{runId}/items/{itemId}/documents`) exige
+`payroll.runs.write`, porque está a alterar-se o registo do item, não o
+arquivo. `ListPayrollItemDocuments` junta em memória o que `payroll` sabe
+(a ligação) com o que `documents` sabe (nome, tipo, tamanho) — mesma
+junção de `ListEmployeeDocuments`.
+
+**Uma regra de negócio nova, e assinalada como inferência**: só se anexa
+um documento a um item de uma folha **Aprovada** — 409 antes disso. Não é
+requisito confirmado em `docs/`; é dedução desta sessão (um recibo é prova
+do que foi autorizado, e os valores de um item ainda podem mudar em Draft
+ou PendingApproval), registada como tal em `modules/payroll.md` para ser
+revista se aparecer um caso de uso real que precise do contrário. `hr` não
+impõe nada semelhante a `EmployeeDocument` — a diferença é deliberada, não
+copiada por inércia.
+
+Testes: `Rivo.Payroll.Domain.Tests` cresceu de 16 para 22
+(`PayrollItemDocumentTests`, mesmo desenho de `EmployeeDocumentTests` em
+`hr`). `verify-payroll` cresceu de 17 para 22 casos: recusa antes de
+Aprovada (409), anexar com sucesso, listar com os metadados de `documents`,
+documento inexistente (404), e o anexo auditado com actor. Todos passaram à
+primeira corrida contra a stack local — zero defeito apanhado, ao contrário
+das duas rondas anteriores do mesmo dia (`fleet`, e o motor de IRT/INSS
+acima).
 
 ## projects
 

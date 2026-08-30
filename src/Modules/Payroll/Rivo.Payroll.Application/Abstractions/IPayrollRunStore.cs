@@ -18,5 +18,10 @@ public interface IPayrollRunStore
 
     Task AddAsync(PayrollRun run, CancellationToken cancellationToken);
 
+    Task AddPayrollItemDocumentAsync(PayrollItemDocument link, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<PayrollItemDocument>> ListPayrollItemDocumentsAsync(
+        Guid payrollItemId, CancellationToken cancellationToken);
+
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
