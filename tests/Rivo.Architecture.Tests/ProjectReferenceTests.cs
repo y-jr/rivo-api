@@ -94,15 +94,24 @@ public class ProjectReferenceTests
         ["Documents"] = ["Audit"],
         ["Hr"] = ["Audit", "Documents"],
 
-        // Esqueletos (ver `modules/payroll.md`, `projects.md`, `inventory.md`,
-        // `fleet.md`) — 2026-08-29. Só o catálogo de permissões publicado e
-        // `audit`, como qualquer módulo novo. Sem regra de negócio ainda, e
-        // sem as dependências que os `.md` listam a mais: essas chegam com as
+        // Esqueletos (ver `modules/payroll.md`, `inventory.md`, `fleet.md`) —
+        // 2026-08-29. Só o catálogo de permissões publicado e `audit`, como
+        // qualquer módulo novo. Sem regra de negócio ainda, e sem as
+        // dependências que os `.md` listam a mais: essas chegam com as
         // funcionalidades que as justificam.
         ["Payroll"] = ["Audit"],
-        ["Projects"] = ["Audit"],
         ["Inventory"] = ["Audit"],
         ["Fleet"] = ["Audit"],
+
+        // `projects` ganhou Marco e Tarefa — 2026-08-30, já não é esqueleto
+        // puro. `hr` entra porque atribuir uma Tarefa referencia um
+        // Colaborador, lido pelo contrato e nunca por leitura de tabela
+        // (ADR-010) — mesma forma da referência ao requisitante em
+        // `procurement`. As direcções que `modules/projects.md` lista e que
+        // faltam — `finance`, `commercial`, `fleet`, `documents`, `approval`,
+        // `notifications` — pertencem a Orçamento de Projecto e Alocação de
+        // Recursos, que ainda não estão feitos.
+        ["Projects"] = ["Audit", "Hr"],
 
         // `identity` compõe o catálogo de permissões a partir do que cada
         // módulo declara — cada um diz que permissões existem, `identity`

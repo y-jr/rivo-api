@@ -33,9 +33,9 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 2 | `approval` — governança de decisões | **Critério de saída cumprido** em 2026-08-24 |
 | 3 | `fiscal` — o que não está bloqueado | **Reduzida a fatia mínima** em 2026-08-24 (ADR-036) |
 | 4 | `finance` — o núcleo | ✅ **Critério de saída cumprido** em 2026-08-25 — os cinco contextos internos, BR-1/3/5/8 impostas, os documentos a lançar nos livros e (2026-08-29) a anular a estornar. Em dívida: o plano de contas, que é do contabilista |
-| 5 | `procurement` e `commercial` | `commercial` reduzido ao Cliente e feito; `procurement` por iniciar |
-| 6 | `payroll` | Por iniciar |
-| 7 | `projects`, `inventory`, `fleet` | Por iniciar |
+| 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
+| 6 | `payroll` | Esqueleto sem regra (2026-08-29) — trave de produção por parecer fiscal, ver a nota da fase |
+| 7 | `projects`, `inventory`, `fleet` | `projects` ganhou Marco e Tarefa em 2026-08-30 (sem bloqueio de negócio); `inventory` e `fleet` continuam esqueleto — `inventory` trava em K1 |
 | 8 | Camadas de composição e portais | Por iniciar |
 
 **Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
@@ -344,6 +344,16 @@ condicionada ao parecer, por decisão explícita e registada.
 
 **Critério de saída:** catorze módulos, com as fronteiras ainda impostas pelos
 testes de arquitectura da Fase 0.
+
+> **Estado a 2026-08-30 — a dependência de K1 só bloqueia `inventory`.** Os
+> três nasceram esqueletos a 2026-08-29 (decisão explícita, sob prazo de
+> apresentação). `projects` ganhou Marco e Tarefa a 2026-08-30 sem esperar por
+> K1: a fronteira em aberto é sobre Activos Fixos vs. Activos, e não toca
+> Projecto/Marco/Tarefa. `fleet` (Manutenção, Atribuição) também não depende
+> de K1 — pode seguir o mesmo caminho. **`inventory` continua a depender de
+> K1 de facto**: o próprio Movimento — o que falta para `QuantityOnHand` sair
+> de zero — é a operação que materializa a fronteira ainda por decidir.
+> Detalhe em `pending-decisions.md` §Domínio e negócio.
 
 ---
 

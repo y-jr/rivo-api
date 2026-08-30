@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Routing;
 using Rivo.Audit.Contracts;
 using Rivo.Projects.Application.UseCases;
 using Rivo.Projects.Contracts;
-using Rivo.Projects.Domain;
 
 namespace Rivo.Projects.Api;
 
@@ -29,6 +28,25 @@ public static class ProjectsModuleEndpoints
         group.MapPost("/{projectId:guid}/closure", CloseAsync)
             .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
 
+        group.MapPost("/{projectId:guid}/milestones", AddMilestoneAsync)
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+
+        group.MapPost("/{projectId:guid}/milestones/{milestoneId:guid}/reached", ReachMilestoneAsync)
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+
+        group.MapPost("/{projectId:guid}/tasks", AddTaskAsync)
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+
+        group.MapPost("/{projectId:guid}/tasks/{taskId:guid}/assignment", AssignTaskAsync)
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+
+        group.MapPost("/{projectId:guid}/tasks/{taskId:guid}/completion", CompleteTaskAsync)
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+
+        // Nunca eliminar — cancelar é o que existe (BR-14).
+        group.MapPost("/{projectId:guid}/tasks/{taskId:guid}/cancellation", CancelTaskAsync)
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+
         return endpoints;
     }
 
@@ -38,7 +56,7 @@ public static class ProjectsModuleEndpoints
         CancellationToken cancellationToken)
     {
         var projectos = await listProjects.ExecuteAsync(includeClosed ?? false, cancellationToken);
-        return Results.Ok(projectos.Select(ToView));
+        return Results.Ok(projectos);
     }
 
     private static async Task<IResult> GetAsync(
@@ -50,15 +68,8 @@ public static class ProjectsModuleEndpoints
 
         return projecto is null
             ? Results.NotFound(new { erro = "Projecto não encontrado." })
-            : Results.Ok(ToView(projecto));
+            : Results.Ok(projecto);
     }
-
-    // A entidade de domínio nunca é exposta como modelo de transporte
-    // (architecture/dependency-rules.md) — e é isto, e não só princípio, que
-    // faz `Status` sair como texto ("Active") em vez do inteiro subjacente
-    // que o System.Text.Json usaria por omissão sobre o enum cru.
-    private static ProjectView ToView(Project projecto) => new(
-        projecto.Id, projecto.Name, projecto.Status.ToString(), projecto.StartDate, projecto.EndDate);
 
     private static async Task<IResult> OpenAsync(
         OpenProjectRequest request,
@@ -93,6 +104,117 @@ public static class ProjectsModuleEndpoints
         };
     }
 
+    private static async Task<IResult> AddMilestoneAsync(
+        Guid projectId,
+        AddMilestoneRequest request,
+        AddMilestone addMilestone,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await addMilestone.ExecuteAsync(
+            projectId, request.Name, request.TargetDate, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            AddMilestoneOutcome.Added => Results.Created(
+                $"/projects/{projectId}", new { milestoneId = result.MilestoneId }),
+            AddMilestoneOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["marco"] = [result.Error!] }),
+        };
+    }
+
+    private static async Task<IResult> ReachMilestoneAsync(
+        Guid projectId,
+        Guid milestoneId,
+        ReachMilestoneRequest request,
+        ReachMilestone reachMilestone,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var outcome = await reachMilestone.ExecuteAsync(
+            projectId, milestoneId, request.ReachedOn, BuildAuditContext(http), cancellationToken);
+
+        return outcome switch
+        {
+            ReachMilestoneOutcome.Reached => Results.NoContent(),
+            ReachMilestoneOutcome.ProjectNotFound => Results.NotFound(new { erro = "Projecto não encontrado." }),
+            ReachMilestoneOutcome.MilestoneNotFound => Results.NotFound(new { erro = "Marco não encontrado." }),
+            ReachMilestoneOutcome.Rejected => Results.Conflict(new { erro = "Não foi possível alcançar o marco." }),
+            _ => Results.Problem("Resultado inesperado ao alcançar o marco."),
+        };
+    }
+
+    private static async Task<IResult> AddTaskAsync(
+        Guid projectId,
+        AddTaskRequest request,
+        AddTask addTask,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await addTask.ExecuteAsync(
+            projectId, request.Title, request.DueDate, request.AssignedEmployeeId,
+            BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            AddTaskOutcome.Added => Results.Created($"/projects/{projectId}", new { taskId = result.TaskId }),
+            AddTaskOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            AddTaskOutcome.EmployeeNotFound => Results.NotFound(new { erro = result.Error }),
+            _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["tarefa"] = [result.Error!] }),
+        };
+    }
+
+    private static async Task<IResult> AssignTaskAsync(
+        Guid projectId,
+        Guid taskId,
+        AssignTaskRequest request,
+        AssignTask assignTask,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var outcome = await assignTask.ExecuteAsync(
+            projectId, taskId, request.EmployeeId, BuildAuditContext(http), cancellationToken);
+
+        return outcome switch
+        {
+            AssignTaskOutcome.Assigned => Results.NoContent(),
+            AssignTaskOutcome.ProjectNotFound => Results.NotFound(new { erro = "Projecto não encontrado." }),
+            AssignTaskOutcome.TaskNotFound => Results.NotFound(new { erro = "Tarefa não encontrada." }),
+            AssignTaskOutcome.EmployeeNotFound => Results.NotFound(new { erro = "Colaborador a atribuir não encontrado." }),
+            AssignTaskOutcome.Rejected => Results.Conflict(new { erro = "Não foi possível atribuir a tarefa." }),
+            _ => Results.Problem("Resultado inesperado ao atribuir a tarefa."),
+        };
+    }
+
+    private static async Task<IResult> CompleteTaskAsync(
+        Guid projectId,
+        Guid taskId,
+        CompleteTask completeTask,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        TaskLifecycleResult(
+            await completeTask.ExecuteAsync(projectId, taskId, BuildAuditContext(http), cancellationToken),
+            "concluir");
+
+    private static async Task<IResult> CancelTaskAsync(
+        Guid projectId,
+        Guid taskId,
+        CancelTask cancelTask,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        TaskLifecycleResult(
+            await cancelTask.ExecuteAsync(projectId, taskId, BuildAuditContext(http), cancellationToken),
+            "cancelar");
+
+    private static IResult TaskLifecycleResult(TaskLifecycleOutcome outcome, string acto) => outcome switch
+    {
+        TaskLifecycleOutcome.Applied => Results.NoContent(),
+        TaskLifecycleOutcome.ProjectNotFound => Results.NotFound(new { erro = "Projecto não encontrado." }),
+        TaskLifecycleOutcome.TaskNotFound => Results.NotFound(new { erro = "Tarefa não encontrada." }),
+        TaskLifecycleOutcome.Rejected => Results.Conflict(new { erro = $"Não foi possível {acto} a tarefa." }),
+        _ => Results.Problem($"Resultado inesperado ao {acto} a tarefa."),
+    };
+
     private static AuditContext BuildAuditContext(HttpContext http)
     {
         var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
@@ -109,4 +231,10 @@ public sealed record OpenProjectRequest(string Name, DateOnly StartDate);
 
 public sealed record CloseProjectRequest(DateOnly EndDate);
 
-public sealed record ProjectView(Guid ProjectId, string Name, string Status, DateOnly StartDate, DateOnly? EndDate);
+public sealed record AddMilestoneRequest(string Name, DateOnly TargetDate);
+
+public sealed record ReachMilestoneRequest(DateOnly ReachedOn);
+
+public sealed record AddTaskRequest(string Title, DateOnly? DueDate, Guid? AssignedEmployeeId);
+
+public sealed record AssignTaskRequest(Guid? EmployeeId);

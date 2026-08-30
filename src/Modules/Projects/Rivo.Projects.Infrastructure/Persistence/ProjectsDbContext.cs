@@ -29,6 +29,55 @@ public sealed class ProjectsDbContext(DbContextOptions<ProjectsDbContext> option
             project.Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
 
             project.HasIndex(p => p.Name);
+
+            // Marco e Tarefa são parte do agregado: não têm vida sem o
+            // projecto, e por isso a cascata é a semântica correcta — mesma
+            // forma de `PurchaseRequisition.Lines` em `procurement`.
+            project.HasMany(p => p.Milestones)
+                .WithOne()
+                .HasForeignKey(m => m.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            project.Navigation(p => p.Milestones).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            project.HasMany(p => p.Tasks)
+                .WithOne()
+                .HasForeignKey(t => t.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            project.Navigation(p => p.Tasks).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        builder.Entity<Milestone>(milestone =>
+        {
+            milestone.ToTable("milestone");
+            milestone.HasKey(m => m.Id);
+
+            milestone.Property(m => m.Version).IsConcurrencyToken();
+
+            milestone.Property(m => m.Name).HasMaxLength(200).IsRequired();
+            milestone.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
+
+            milestone.HasIndex(m => m.ProjectId);
+        });
+
+        builder.Entity<ProjectTask>(task =>
+        {
+            task.ToTable("project_task");
+            task.HasKey(t => t.Id);
+
+            task.Property(t => t.Version).IsConcurrencyToken();
+
+            task.Property(t => t.Title).HasMaxLength(200).IsRequired();
+            task.Property(t => t.Status).HasConversion<string>().HasMaxLength(20);
+
+            task.HasIndex(t => t.ProjectId);
+
+            // Sem FK para `hr.employee`: é identificador de outro contexto, e
+            // uma FK entre schemas acopla o ciclo de vida dos dois lados
+            // (ADR-010). Índice sim — é por aqui que se listam as tarefas de
+            // uma pessoa.
+            task.HasIndex(t => t.AssignedEmployeeId);
         });
 
         // As chaves são geradas pelo domínio (Guid.CreateVersion7), nunca pela

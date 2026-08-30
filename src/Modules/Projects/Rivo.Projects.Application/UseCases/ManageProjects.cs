@@ -4,16 +4,59 @@ using Rivo.Projects.Domain;
 
 namespace Rivo.Projects.Application.UseCases;
 
+/// <summary>
+/// Vista de leitura de um projecto, com os seus marcos e tarefas.
+///
+/// <para>
+/// A entidade de domínio nunca sai desta camada (architecture/dependency-rules.md
+/// §API) — mesma forma de <c>RequisitionView</c> em `procurement`.
+/// </para>
+/// </summary>
+public sealed record ProjectView(
+    Guid ProjectId,
+    string Name,
+    string Status,
+    DateOnly StartDate,
+    DateOnly? EndDate,
+    IReadOnlyList<MilestoneView> Milestones,
+    IReadOnlyList<ProjectTaskView> Tasks);
+
+public sealed record MilestoneView(
+    Guid MilestoneId, string Name, string Status, DateOnly TargetDate, DateOnly? ReachedOn);
+
+public sealed record ProjectTaskView(
+    Guid TaskId, string Title, string Status, DateOnly? DueDate, Guid? AssignedEmployeeId);
+
+internal static class ProjectViews
+{
+    internal static ProjectView ToView(Project projecto) => new(
+        projecto.Id,
+        projecto.Name,
+        projecto.Status.ToString(),
+        projecto.StartDate,
+        projecto.EndDate,
+        [.. projecto.Milestones.Select(m =>
+            new MilestoneView(m.Id, m.Name, m.Status.ToString(), m.TargetDate, m.ReachedOn))],
+        [.. projecto.Tasks.Select(t =>
+            new ProjectTaskView(t.Id, t.Title, t.Status.ToString(), t.DueDate, t.AssignedEmployeeId))]);
+}
+
 public sealed class ListProjects(IProjectStore store)
 {
-    public async Task<IReadOnlyList<Project>> ExecuteAsync(bool includeClosed, CancellationToken cancellationToken) =>
-        await store.ListAsync(includeClosed, cancellationToken);
+    public async Task<IReadOnlyList<ProjectView>> ExecuteAsync(bool includeClosed, CancellationToken cancellationToken)
+    {
+        var projectos = await store.ListAsync(includeClosed, cancellationToken);
+        return [.. projectos.Select(ProjectViews.ToView)];
+    }
 }
 
 public sealed class GetProject(IProjectStore store)
 {
-    public Task<Project?> ExecuteAsync(Guid projectId, CancellationToken cancellationToken) =>
-        store.FindAsync(projectId, cancellationToken);
+    public async Task<ProjectView?> ExecuteAsync(Guid projectId, CancellationToken cancellationToken)
+    {
+        var projecto = await store.FindAsync(projectId, cancellationToken);
+        return projecto is null ? null : ProjectViews.ToView(projecto);
+    }
 }
 
 public sealed class OpenProject(IProjectStore store, IAuditTrail audit)
@@ -107,9 +150,17 @@ public static class ProjectsAuditActions
 {
     public const string ProjectOpened = "projects.project.opened";
     public const string ProjectClosed = "projects.project.closed";
+    public const string MilestoneAdded = "projects.milestone.added";
+    public const string MilestoneReached = "projects.milestone.reached";
+    public const string TaskAdded = "projects.task.added";
+    public const string TaskAssigned = "projects.task.assigned";
+    public const string TaskCompleted = "projects.task.completed";
+    public const string TaskCancelled = "projects.task.cancelled";
 }
 
 public static class ProjectsAuditEntityTypes
 {
     public const string Project = "projects.project";
+    public const string Milestone = "projects.milestone";
+    public const string Task = "projects.task";
 }

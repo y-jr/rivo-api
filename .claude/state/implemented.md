@@ -978,21 +978,25 @@ e anular devolve a quantidade a "por receber" deixando o registo do erro.
 ⚠ **A cobertura de Application continua a ser nenhuma**, como nos outros sete
 módulos.
 
-## payroll, projects, inventory, fleet
+## payroll, inventory, fleet
 
 _2026-08-29 — **esqueletos**, sob prazo de apresentação. Decisão explícita,
-registada aqui e em cada `modules/*.md`, não descoberta depois._
+registada aqui e em cada `modules/*.md`, não descoberta depois. `projects`
+nasceu no mesmo lote — ver a secção própria abaixo — mas saiu desta categoria
+a 2026-08-30._
 
 Os catorze módulos passam a ter código. Cada um: cinco camadas, um schema
 próprio, migração inicial, CRUD por permissão de `identity`. **Zero testes de
-domínio, zero regra de negócio além da que o próprio CRUD impõe.**
+domínio, zero regra de negócio além da que o próprio CRUD impõe**, nestes
+três.
 
 **Verificação end-to-end escrita e corrida a 2026-08-29** —
-`scripts/verify-payroll.ps1` (16 casos), `verify-projects.ps1` (14),
-`verify-inventory.ps1` (13), `verify-fleet.ps1` (15), mesmo padrão das outras
-dez suites (schema isolado, permissão por perfil, CRUD, 401/403, trilha de
-auditoria, persistência ao reiniciar). Confirmam o contrato HTTP, não regra de
-negócio — não há regra a confirmar.
+`scripts/verify-payroll.ps1` (16 casos), `verify-projects.ps1` (14, ver
+secção `projects` para o que cresceu depois), `verify-inventory.ps1` (13),
+`verify-fleet.ps1` (15), mesmo padrão das outras dez suites (schema isolado,
+permissão por perfil, CRUD, 401/403, trilha de auditoria, persistência ao
+reiniciar). Confirmam o contrato HTTP, não regra de negócio — não há regra a
+confirmar.
 
 Escrever as suites apanhou três defeitos reais, nenhum cosmético:
 
@@ -1037,9 +1041,6 @@ código confirmada.
   política configurada para `payroll.payroll_run` — mesmo comportamento que
   `procurement` tem sem política, não falha nova.
 
-- **`projects`** — `Project` (nome, datas, estado Active/Closed). Sem Marco,
-  Tarefa, Orçamento de Projecto, Alocação de Recursos.
-
 - **`inventory`** — `InventoryItem` (SKU único, nome, unidade). **Sem
   movimento nenhum** — `QuantityOnHand` nasce e fica a zero até `Movimento`
   existir. Sem Armazém, Transferência, Contagem, valorização de stock.
@@ -1047,6 +1048,57 @@ código confirmada.
 - **`fleet`** — `Vehicle` (matrícula única, modelo, estado
   Active/InMaintenance/Inactive). Sem Manutenção, Plano de Manutenção,
   Atribuição, Registo de Viagem, Despesa de Frota, Seguros.
+
+## projects
+
+`Project` (nome, datas, estado Active/Closed) nasceu esqueleto a 2026-08-29 —
+ver a secção acima para esse lote. _2026-08-30 — **Marco e Tarefa, com regra
+de negócio real.**_
+
+`Project` passou a agregado raiz de dois filhos, ambos com a mesma invariante
+comum: nada se acrescenta nem se altera depois de o projecto fechar
+(`EnsureActive`, mesma leitura que impede reabrir o próprio `Project`).
+
+- **Marco** — nome, data alvo (não anterior ao início do projecto), estado
+  Pending/Reached. `Reach(reachedOn)` vale uma vez só — um marco alcançado
+  não volta a "por alcançar".
+- **Tarefa** — título, prazo opcional (não anterior ao início do projecto),
+  atribuição opcional a Colaborador, estado Pending/Done/Cancelled. Concluir
+  e cancelar são estados finais: nenhum dos dois se repete nem se reverte um
+  no outro. Cancelar nunca elimina (BR-14) — fica como facto histórico, mesma
+  leitura de `PurchaseRequisition.Cancel`.
+
+**A atribuição de Tarefa referencia o Colaborador só por identificador**
+(ADR-010): a camada Application verifica que existe em `hr`
+(`IEmployeeDirectory.FindAsync`) antes de gravar — devolve 404 se não existir
+— e nunca copia nome, departamento ou cargo (BR-18). Mesma forma da
+verificação do requisitante em `procurement.OpenRequisition`. `hr` entrou nas
+dependências declaradas de `projects` em `ProjectReferenceTests` — já estava
+prevista em `architecture/dependency-rules.md`, só por ligar.
+
+A entidade de domínio deixou de sair directa da API: `ProjectView`,
+`MilestoneView` e `ProjectTaskView` (em `Rivo.Projects.Application`, mesmo
+padrão de `RequisitionView` em `procurement`) substituem o `ProjectView` que
+antes vivia na camada Api — `GetProject`/`ListProjects` passaram a devolvê-los
+directamente, com Marcos e Tarefas aninhados.
+
+Seis endpoints novos, todos sob `projects.projects.write`:
+`POST /projects/{id}/milestones`,
+`POST /projects/{id}/milestones/{milestoneId}/reached`,
+`POST /projects/{id}/tasks`,
+`POST /projects/{id}/tasks/{taskId}/assignment`,
+`POST /projects/{id}/tasks/{taskId}/completion`,
+`POST /projects/{id}/tasks/{taskId}/cancellation`.
+
+**29 testes de domínio** (`Rivo.Projects.Domain.Tests`, novo projecto —
+primeiro teste de qualquer um dos quatro esqueletos de 2026-08-29).
+`scripts/verify-projects.ps1` cresceu de 14 para 28 casos — escrito nesta
+sessão, **ainda por confirmar contra a stack publicada** (ver "Próximos
+passos" em `project-state.md`).
+
+**Continuam por fazer:** Orçamento de Projecto e Alocação de Recursos
+(pessoas além da atribuição de Tarefa, viaturas, custos) — ver "Perguntas em
+aberto" em `modules/projects.md`.
 
 Permissões atribuídas aos perfis que já esperavam por módulos de negócio:
 `ProjectManager` (estava vazio) fica com `projects`; `AssetManager` ("gere

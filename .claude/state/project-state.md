@@ -8,7 +8,9 @@ _Última actualização: 2026-08-29_
 completos ou em fatia deliberada; os quatro últimos — `payroll`, `projects`,
 `inventory`, `fleet` — nasceram a 2026-08-29 como **esqueletos**: CRUD sem
 regra de negócio, sob prazo de apresentação, decisão explícita e registada,
-não descoberta depois. Detalhe na secção Módulos.
+não descoberta depois. **`projects` ganhou regra de negócio real a
+2026-08-30** — Marco e Tarefa, ver a secção Módulos — e deixou de ser
+esqueleto puro; os outros três continuam como nasceram.
 
 As quatro capacidades transversais estão feitas — `audit`, `documents`,
 `notifications` e `approval`. A partir daí, o objectivo do produto mudou: o
@@ -51,18 +53,23 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `finance` | **Os cinco contextos existem, e os documentos lançam.** Venda (factura, nota de crédito, recibo, saldo), Contas a Pagar, Tesouraria com extracto append-only, Contabilidade & Fecho com postagem automática, Planeamento. **BR-1, BR-3, BR-5 e BR-8 impostas.** Anular uma factura, nota de crédito ou recibo estorna o lançamento (2026-08-29). ⚠ Contabilidade vazia até alguém carregar o plano; activos fixos bloqueados por K1 |
 | `procurement` | **Os quatro agregados, e o 3-way match fecha.** Fornecedor com IBAN verificado (ISO 13616) e publicado a `finance`; requisição com linhas e decisão de `approval`; Ordem de Compra, que só nasce de requisição aprovada e não deixa encomendar acima do aprovado; Recepção parcial, acumulada por linha e nunca acima do encomendado. A factura liga-se à Ordem (`PurchaseOrderId`, opcional) e `GET .../match` mostra encomendado, recebido e facturado lado a lado — recusa ligar a uma ordem de outro fornecedor, mas **não bloqueia** divergência de valor: fica visível, não impede o registo |
 | `payroll` | ⚠⚠ **Esqueleto** (2026-08-29). Folha e itens, CRUD, ligado a `approval` (submete pelo bruto, aprova/recusa aplicado deste lado). **Sem cálculo de IRT/INSS** — os campos existem, ficam sempre nulos; os escalões dependem de `fiscal`, que não tem tabela angolana carregada, e `CLAUDE.md` proíbe implementar a partir do levantamento não verificado |
-| `projects`, `inventory`, `fleet` | ⚠⚠ **Esqueletos** (2026-08-29). CRUD simples — Projecto; Item com SKU único; Viatura com matrícula única. Sem nenhuma das regras que `modules/*.md` descreve |
+| `projects` | **Marco e Tarefa com regra de negócio** (2026-08-30). Projecto como agregado — fecha, e fechado é facto histórico: nem Marco nem Tarefa se acrescentam depois. Tarefa atribuída verifica o Colaborador contra `hr` (ADR-010, BR-18); concluir/cancelar não reabre. ⚠ Orçamento de Projecto e Alocação de Recursos (pessoas além da atribuição, viaturas, custos) continuam por fazer |
+| `inventory`, `fleet` | ⚠⚠ **Esqueletos** (2026-08-29). Item com SKU único; Viatura com matrícula única. Sem nenhuma das regras que `modules/*.md` descreve |
 
 Detalhe com datas e ressalvas em [implemented.md](implemented.md).
 
 **Os três marcados com uma ⚠ são fatias deliberadas do produto** (ADR-036,
-com o custo do que falta registado em cada `modules/*.md`). **Os quatro
-marcados com ⚠⚠ são esqueletos de prazo** — categoria diferente: sem regra de
-negócio, sem testes de domínio, feitos para "existir e responder", não para
-estarem correctos. Não confundir os dois. **Têm, desde 2026-08-29, verificação
-end-to-end** (`scripts/verify-payroll.ps1`, `verify-projects.ps1`,
-`verify-inventory.ps1`, `verify-fleet.ps1`) — o que confirmam é o CRUD e a
-sua superfície HTTP (contrato, permissão, auditoria, persistência), nunca
+com o custo do que falta registado em cada `modules/*.md`). **Os marcados com
+⚠⚠ são esqueletos de prazo** — categoria diferente: sem regra de negócio, sem
+testes de domínio, feitos para "existir e responder", não para estarem
+correctos. Não confundir os dois. `payroll`, `inventory` e `fleet` continuam
+nessa categoria; `projects` saiu dela a 2026-08-30 (Marco e Tarefa, ver
+acima), mas ainda tem Orçamento de Projecto e Alocação de Recursos por fazer.
+**Têm, desde 2026-08-29, verificação end-to-end** (`scripts/verify-payroll.ps1`,
+`verify-projects.ps1`, `verify-inventory.ps1`, `verify-fleet.ps1`) — a de
+`projects` cresceu de 14 para 28 casos a 2026-08-30, **ainda por confirmar
+contra a stack** (ver "Próximos passos"); as outras três confirmam só o CRUD
+e a sua superfície HTTP (contrato, permissão, auditoria, persistência), nunca
 regra de negócio que não existe.
 
 ## Ambiente publicado
@@ -88,11 +95,11 @@ superfície inteira é legível por quem estiver a ouvir.
 
 | Área | Estado |
 |---|---|
-| Código | 14 módulos, 70 projectos em `src/`, 287 ficheiros `.cs` |
-| Superfície HTTP | 169 endpoints em 14 grupos de rota, mais `/health` |
+| Código | 14 módulos, 70 projectos em `src/`, 293 ficheiros `.cs` |
+| Superfície HTTP | 176 endpoints em 14 grupos de rota, mais `/health` |
 | ADRs | 38, aceites |
-| Testes | **714** em 15 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). +8 a 2026-08-29 (`ReverseDocumentPostingTests`, estorno automático). **Zero** nos quatro módulos esqueleto (`payroll`, `projects`, `inventory`, `fleet`) — nenhum projecto de teste existe para eles ainda |
-| Verificação end-to-end | **17 suites** PowerShell, **336 casos** — as 4 dos esqueletos e `verify-approval` (cancelamento, K18) escritas a 2026-08-29; `verify-ledger` ganhou o caso do estorno automático no mesmo dia. Última corrida de cada, isolada: `verify-projects` 14/14, `verify-inventory` 13/13, `verify-fleet` 15/15, `verify-approval` 10/10, `verify-ledger` 46/46, `verify-payroll` 15/16. O único caso que costuma falhar em cada corrida é a mesma falha intermitente na limpeza final de uma política, sem causa de código confirmada em quatro investigações — **K20** em [known-issues.md](known-issues.md) |
+| Testes | **743** em 16 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). +8 a 2026-08-29 (`ReverseDocumentPostingTests`, estorno automático); +29 a 2026-08-30 (`Rivo.Projects.Domain.Tests`, Marco e Tarefa — primeiro projecto de teste de um dos quatro esqueletos). **Zero** em `payroll`, `inventory`, `fleet` — nenhum projecto de teste existe para eles ainda |
+| Verificação end-to-end | **17 suites** PowerShell, **350 casos** — as 4 dos esqueletos e `verify-approval` (cancelamento, K18) escritas a 2026-08-29; `verify-ledger` ganhou o caso do estorno automático no mesmo dia; `verify-projects` cresceu de 14 para 28 casos a 2026-08-30 (Marco e Tarefa), **ainda por confirmar contra a stack**. Última corrida confirmada de cada, isolada: `verify-inventory` 13/13, `verify-fleet` 15/15, `verify-approval` 10/10, `verify-ledger` 46/46, `verify-payroll` 15/16. O único caso que costuma falhar em cada corrida é a mesma falha intermitente na limpeza final de uma política, sem causa de código confirmada em quatro investigações — **K20** em [known-issues.md](known-issues.md) |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
@@ -154,15 +161,16 @@ superfície inteira é legível por quem estiver a ouvir.
    e `finance` respondem a HTTP e têm testes, o que é fácil de confundir com
    estarem feitos. Uma factura do Rivo tem número, série e ar de factura, e não
    é documento fiscal. Mitigação: ⚠ em cada `modules/*.md`, no ADR-036 e aqui.
-4. **Quatro módulos são CRUD sem regra nenhuma, e respondem tão bem quanto os
-   feitos.** `payroll`, `projects`, `inventory`, `fleet` (2026-08-29) — sob
-   prazo de apresentação, decisão explícita. Ao contrário do risco 3, aqui não
-   há sequer uma regra reduzida por trás: `POST /fleet/vehicles` aceita
-   qualquer matrícula, `POST /payroll/runs/{id}/items` aceita qualquer
-   salário, nada verifica quem pode ver o quê para além da permissão de
-   entrada. **O maior risco concreto é apresentar isto como mais do que é.**
-   Mitigação: ⚠⚠ em cada `modules/*.md` e na secção Módulos acima, distinta da
-   ⚠ dos três reduzidos de propósito.
+4. **Três módulos são CRUD sem regra nenhuma, e respondem tão bem quanto os
+   feitos.** `payroll`, `inventory`, `fleet` (2026-08-29) — sob prazo de
+   apresentação, decisão explícita. `projects` saiu deste risco a 2026-08-30
+   (Marco e Tarefa). Ao contrário do risco 3, aqui não há sequer uma regra
+   reduzida por trás: `POST /fleet/vehicles` aceita qualquer matrícula,
+   `POST /payroll/runs/{id}/items` aceita qualquer salário, nada verifica quem
+   pode ver o quê para além da permissão de entrada. **O maior risco concreto
+   é apresentar isto como mais do que é.** Mitigação: ⚠⚠ em cada
+   `modules/*.md` e na secção Módulos acima, distinta da ⚠ dos três reduzidos
+   de propósito.
 5. **K16 — sem TLS.** Credenciais e token em claro no ambiente publicado. Com
    a documentação da API agora aberta (K17), a superfície inteira viaja no
    mesmo canal.
@@ -207,13 +215,31 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    (K18, 403), pedido inexistente (404), 401/403 de permissão, cancelamento
    válido, segundo cancelamento recusado (409), trilha com actor para os dois
    casos, e que `payroll` só trata `Cancelled` como recusa quando pergunta.
-8. **Dar regra de negócio real aos quatro esqueletos, ou decidir que ficam
-   CRUD por agora.** `payroll` precisa de Recibo e da ligação a `fiscal`
-   quando houver tabela real; `projects` precisa de Marco, Tarefa e Orçamento;
-   `inventory` precisa de Movimento — sem ele `QuantityOnHand` nunca sai de
-   zero; `fleet` precisa de Manutenção e Atribuição. Têm suite end-to-end
-   desde 2026-08-29 (confirma o CRUD, não regra que não existe); continuam
-   sem teste de domínio. Ver o "Seguimento" em cada `modules/*.md`.
+8. **Dar regra de negócio real aos três esqueletos que restam, ou decidir que
+   ficam CRUD por agora.** `payroll` precisa de Recibo e da ligação a `fiscal`
+   quando houver tabela real; `inventory` precisa de Movimento — sem ele
+   `QuantityOnHand` nunca sai de zero; `fleet` precisa de Manutenção e
+   Atribuição. `projects` saiu desta lista a 2026-08-30 (Marco e Tarefa —
+   ver "Fechado" abaixo); ainda lhe falta Orçamento de Projecto e Alocação de
+   Recursos. `payroll`/`inventory`/`fleet` têm suite end-to-end desde
+   2026-08-29 (confirma o CRUD, não regra que não existe) e continuam sem
+   teste de domínio. Ver o "Seguimento" em cada `modules/*.md`. Nenhum dos
+   três tem bloqueio de negócio conhecido — `projects` (Marco/Tarefa) também
+   não tinha.
+
+**Fechado a 2026-08-30 (`projects`: Marco e Tarefa):** `Project` passou a
+agregado raiz de Marco e Tarefa — nascem, alteram-se e desaparecem só com o
+Projecto, e nada se acrescenta ou altera depois de fechado. Marco: data alvo
+não anterior ao início, alcança-se uma vez só. Tarefa: prazo não anterior ao
+início, atribuição a Colaborador verificada contra `hr` antes de gravar
+(ADR-010) e nunca copiada (BR-18), conclui/cancela sem reabrir, cancelar
+nunca elimina (BR-14). `hr` entrou nas dependências declaradas de `projects`
+(`ProjectReferenceTests`, `dependency-rules.md` já a previa). 29 testes de
+domínio novos (`Rivo.Projects.Domain.Tests`, primeiro projecto de teste de um
+dos quatro esqueletos de 2026-08-29). `verify-projects.ps1` cresceu de 14
+para 28 casos — **ainda por confirmar contra a stack**, ver "Próximos
+passos". Orçamento de Projecto e Alocação de Recursos continuam por fazer.
+Detalhe em [modules/projects.md](../modules/projects.md).
 
 **Fechado a 2026-08-29 (esqueletos):** `payroll`, `projects`, `inventory` e
 `fleet` ganharam código — os catorze módulos têm-no agora. Decisão explícita

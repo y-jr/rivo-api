@@ -7,14 +7,23 @@ namespace Rivo.Projects.Infrastructure.Persistence;
 public sealed class ProjectStore(ProjectsDbContext context) : IProjectStore
 {
     public async Task<Project?> FindAsync(Guid projectId, CancellationToken cancellationToken) =>
-        await context.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == projectId, cancellationToken);
+        await context.Projects.AsNoTracking()
+            .Include(p => p.Milestones)
+            .Include(p => p.Tasks)
+            .FirstOrDefaultAsync(p => p.Id == projectId, cancellationToken);
 
     public async Task<Project?> FindForUpdateAsync(Guid projectId, CancellationToken cancellationToken) =>
-        await context.Projects.FirstOrDefaultAsync(p => p.Id == projectId, cancellationToken);
+        await context.Projects
+            .Include(p => p.Milestones)
+            .Include(p => p.Tasks)
+            .FirstOrDefaultAsync(p => p.Id == projectId, cancellationToken);
 
     public async Task<IReadOnlyList<Project>> ListAsync(bool includeClosed, CancellationToken cancellationToken)
     {
-        var query = context.Projects.AsNoTracking().AsQueryable();
+        var query = context.Projects.AsNoTracking()
+            .Include(p => p.Milestones)
+            .Include(p => p.Tasks)
+            .AsQueryable();
 
         if (!includeClosed)
         {

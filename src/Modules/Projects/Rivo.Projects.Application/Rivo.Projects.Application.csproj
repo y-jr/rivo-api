@@ -4,6 +4,10 @@
     <ProjectReference Include="..\Rivo.Projects.Domain\Rivo.Projects.Domain.csproj" />
     <ProjectReference Include="..\Rivo.Projects.Contracts\Rivo.Projects.Contracts.csproj" />
     <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
+
+    <!-- Quem uma tarefa atribui é um Colaborador, e o acesso é exclusivamente
+         pelo contrato (ADR-010). `projects` nunca lê tabelas de `hr`. -->
+    <ProjectReference Include="..\..\Hr\Rivo.Hr.Contracts\Rivo.Hr.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

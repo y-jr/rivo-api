@@ -9,9 +9,9 @@ using Rivo.Projects.Infrastructure.Persistence;
 namespace Rivo.Projects.Infrastructure;
 
 /// <summary>
-/// Esqueleto do módulo `projects` — ver `modules/projects.md`. CRUD simples,
-/// sem regras de negócio ainda: Marco, Tarefa, Orçamento e Alocação de
-/// Recursos ficam por fazer.
+/// Composição do módulo `projects` — ver `modules/projects.md`. Marco e
+/// Tarefa têm regra de negócio própria desde 2026-08-30; Orçamento de
+/// Projecto e Alocação de Recursos continuam por fazer.
 /// </summary>
 public static class ProjectsModuleExtensions
 {
@@ -34,6 +34,12 @@ public static class ProjectsModuleExtensions
         services.AddScoped<GetProject>();
         services.AddScoped<OpenProject>();
         services.AddScoped<CloseProject>();
+        services.AddScoped<AddMilestone>();
+        services.AddScoped<ReachMilestone>();
+        services.AddScoped<AddTask>();
+        services.AddScoped<AssignTask>();
+        services.AddScoped<CompleteTask>();
+        services.AddScoped<CancelTask>();
 
         services.AddAuthorization(options =>
         {

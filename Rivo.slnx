@@ -114,6 +114,9 @@
   <Folder Name="/tests/Procurement/">
     <Project Path="tests/Modules/Procurement/Rivo.Procurement.Domain.Tests/Rivo.Procurement.Domain.Tests.csproj" />
   </Folder>
+  <Folder Name="/tests/Projects/">
+    <Project Path="tests/Modules/Projects/Rivo.Projects.Domain.Tests/Rivo.Projects.Domain.Tests.csproj" />
+  </Folder>
   <Folder Name="/tests/Documents/">
     <Project Path="tests/Modules/Documents/Rivo.Documents.Domain.Tests/Rivo.Documents.Domain.Tests.csproj" />
   </Folder>
