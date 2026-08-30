@@ -18,7 +18,8 @@ public sealed record VehicleView(
     string Model,
     string Status,
     IReadOnlyList<MaintenanceRecordView> Maintenances,
-    IReadOnlyList<VehicleAssignmentView> Assignments);
+    IReadOnlyList<VehicleAssignmentView> Assignments,
+    IReadOnlyList<MaintenancePlanView> Plans);
 
 public sealed record MaintenanceRecordView(
     Guid MaintenanceId, string Type, string Description, DateOnly StartedOn, DateOnly? EndedOn);
@@ -26,9 +27,12 @@ public sealed record MaintenanceRecordView(
 public sealed record VehicleAssignmentView(
     Guid AssignmentId, Guid EmployeeId, DateOnly StartedOn, DateOnly? EndedOn);
 
+public sealed record MaintenancePlanView(
+    Guid PlanId, string Description, int IntervalDays, DateOnly NextDueOn, bool IsActive, bool IsOverdue);
+
 internal static class VehicleViews
 {
-    internal static VehicleView ToView(Vehicle veiculo) => new(
+    internal static VehicleView ToView(Vehicle veiculo, DateOnly asOf) => new(
         veiculo.Id,
         veiculo.PlateNumber,
         veiculo.Model,
@@ -36,25 +40,29 @@ internal static class VehicleViews
         [.. veiculo.Maintenances.Select(m =>
             new MaintenanceRecordView(m.Id, m.Type.ToString(), m.Description, m.StartedOn, m.EndedOn))],
         [.. veiculo.Assignments.Select(a =>
-            new VehicleAssignmentView(a.Id, a.EmployeeId, a.StartedOn, a.EndedOn))]);
+            new VehicleAssignmentView(a.Id, a.EmployeeId, a.StartedOn, a.EndedOn))],
+        [.. veiculo.Plans.Select(p =>
+            new MaintenancePlanView(p.Id, p.Description, p.IntervalDays, p.NextDueOn, p.IsActive, p.IsOverdue(asOf)))]);
 }
 
-public sealed class ListVehicles(IVehicleStore store)
+public sealed class ListVehicles(IVehicleStore store, TimeProvider clock)
 {
     public async Task<IReadOnlyList<VehicleView>> ExecuteAsync(
         bool includeInactive, CancellationToken cancellationToken)
     {
+        var hoje = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         var veiculos = await store.ListAsync(includeInactive, cancellationToken);
-        return [.. veiculos.Select(VehicleViews.ToView)];
+        return [.. veiculos.Select(v => VehicleViews.ToView(v, hoje))];
     }
 }
 
-public sealed class GetVehicle(IVehicleStore store)
+public sealed class GetVehicle(IVehicleStore store, TimeProvider clock)
 {
     public async Task<VehicleView?> ExecuteAsync(Guid vehicleId, CancellationToken cancellationToken)
     {
         var veiculo = await store.FindAsync(vehicleId, cancellationToken);
-        return veiculo is null ? null : VehicleViews.ToView(veiculo);
+        var hoje = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+        return veiculo is null ? null : VehicleViews.ToView(veiculo, hoje);
     }
 }
 
@@ -146,6 +154,9 @@ public static class FleetAuditActions
     public const string MaintenanceClosed = "fleet.maintenance.closed";
     public const string AssignmentOpened = "fleet.assignment.opened";
     public const string AssignmentEnded = "fleet.assignment.ended";
+    public const string PlanScheduled = "fleet.maintenance_plan.scheduled";
+    public const string PlanCycleCompleted = "fleet.maintenance_plan.cycle_completed";
+    public const string PlanCancelled = "fleet.maintenance_plan.cancelled";
 }
 
 public static class FleetAuditEntityTypes
@@ -153,4 +164,5 @@ public static class FleetAuditEntityTypes
     public const string Vehicle = "fleet.vehicle";
     public const string Maintenance = "fleet.maintenance";
     public const string Assignment = "fleet.assignment";
+    public const string MaintenancePlan = "fleet.maintenance_plan";
 }

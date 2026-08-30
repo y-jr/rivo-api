@@ -41,6 +41,21 @@ public static class FleetModuleEndpoints
         group.MapPost("/vehicles/{vehicleId:guid}/assignments/{assignmentId:guid}/closure", EndAssignmentAsync)
             .RequireAuthorization(FleetPermissions.VehiclesWrite);
 
+        group.MapPost("/vehicles/{vehicleId:guid}/maintenance-plans", SchedulePlanAsync)
+            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+
+        group.MapPost("/vehicles/{vehicleId:guid}/maintenance-plans/{planId:guid}/cycles", CompletePlanCycleAsync)
+            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+
+        // Nunca eliminar — cancelar é o que existe.
+        group.MapPost("/vehicles/{vehicleId:guid}/maintenance-plans/{planId:guid}/cancellation", CancelPlanAsync)
+            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+
+        // O alerta: viaturas com plano devido, sem esperar por uma viatura
+        // concreta — por isso vive fora de /vehicles/{id}.
+        group.MapGet("/maintenance-plans/due", ListDuePlansAsync)
+            .RequireAuthorization(FleetPermissions.VehiclesRead);
+
         return endpoints;
     }
 
@@ -188,6 +203,66 @@ public static class FleetModuleEndpoints
         };
     }
 
+    private static async Task<IResult> SchedulePlanAsync(
+        Guid vehicleId,
+        SchedulePlanRequest request,
+        SchedulePlan schedulePlan,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await schedulePlan.ExecuteAsync(
+            vehicleId, request.Description, request.IntervalDays, request.FirstDueOn,
+            BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            SchedulePlanOutcome.Scheduled => Results.Created(
+                $"/fleet/vehicles/{vehicleId}", new { planId = result.PlanId }),
+            SchedulePlanOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            SchedulePlanOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
+            _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["plano"] = [result.Error!] }),
+        };
+    }
+
+    private static async Task<IResult> CompletePlanCycleAsync(
+        Guid vehicleId,
+        Guid planId,
+        CompletePlanCycleRequest request,
+        CompletePlanCycle completePlanCycle,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        PlanLifecycleResult(await completePlanCycle.ExecuteAsync(
+            vehicleId, planId, request.CompletedOn, BuildAuditContext(http), cancellationToken),
+            "concluir o ciclo do plano");
+
+    private static async Task<IResult> CancelPlanAsync(
+        Guid vehicleId,
+        Guid planId,
+        CancelPlan cancelPlan,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        PlanLifecycleResult(await cancelPlan.ExecuteAsync(
+            vehicleId, planId, BuildAuditContext(http), cancellationToken),
+            "cancelar o plano");
+
+    private static IResult PlanLifecycleResult(PlanLifecycleOutcome outcome, string acto) => outcome switch
+    {
+        PlanLifecycleOutcome.Applied => Results.NoContent(),
+        PlanLifecycleOutcome.VehicleNotFound => Results.NotFound(new { erro = "Viatura não encontrada." }),
+        PlanLifecycleOutcome.PlanNotFound => Results.NotFound(new { erro = "Plano de manutenção não encontrado." }),
+        PlanLifecycleOutcome.Rejected => Results.Conflict(new { erro = $"Não foi possível {acto}." }),
+        _ => Results.Problem($"Resultado inesperado ao {acto}."),
+    };
+
+    private static async Task<IResult> ListDuePlansAsync(
+        ListDueMaintenancePlans listDuePlans,
+        int? withinDays,
+        CancellationToken cancellationToken)
+    {
+        var planos = await listDuePlans.ExecuteAsync(withinDays ?? 0, cancellationToken);
+        return Results.Ok(planos);
+    }
+
     private static AuditContext BuildAuditContext(HttpContext http)
     {
         var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
@@ -209,3 +284,7 @@ public sealed record CloseMaintenanceRequest(DateOnly EndedOn);
 public sealed record AssignVehicleRequest(Guid EmployeeId, DateOnly StartedOn);
 
 public sealed record EndAssignmentRequest(DateOnly EndedOn);
+
+public sealed record SchedulePlanRequest(string Description, int IntervalDays, DateOnly FirstDueOn);
+
+public sealed record CompletePlanCycleRequest(DateOnly CompletedOn);

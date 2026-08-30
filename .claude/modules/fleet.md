@@ -30,8 +30,16 @@ Despesa de Frota, Seguros e documentação legal (ficheiros via `documents`).
 atribuição verifica que o Colaborador existe antes de gravar), `finance`
 (centro de custo, postagem de custos), `inventory` (peças e consumíveis, se
 geridos como inventário geral), `documents`, `audit`, `notifications`. As
-direcções por ligar pertencem ao Plano de Manutenção, Registo de Viagem,
-Despesa de Frota e Seguros, que ainda não estão feitos.
+direcções por ligar pertencem a Registo de Viagem, Despesa de Frota e
+Seguros, que ainda não estão feitos.
+
+⚠ **`notifications` não está ligado, apesar de o Plano de Manutenção ter
+"alertas".** `INotifier.QueueAsync` entrega a um `RecipientUserId` de
+`identity`; não há forma de resolver "todos os `AssetManager`" para um
+destinatário concreto — essa capacidade não existe em `identity` ainda, e
+inventá-la aqui seria adivinhar uma peça de outro módulo. O alerta
+implementado é uma consulta (`GET /fleet/maintenance-plans/due`), não uma
+notificação empurrada. Ver "Estado".
 
 ## Consumido por
 
@@ -64,6 +72,17 @@ viatura).
 - Uma Atribuição referencia o Colaborador só por identificador (ADR-010); a
   Application verifica que existe em `hr` antes de gravar, e nunca copia
   nome, departamento ou cargo (BR-18).
+- Plano de Manutenção pertence ao agregado Viatura. Ao contrário de
+  Manutenção e Atribuição, **vários planos activos ao mesmo tempo são
+  normais** — não há exclusão mútua entre eles.
+- Concluir um ciclo do Plano reagenda a próxima data a partir de **quando foi
+  concluído**, não da data que estava marcada — não empilha ciclos em atraso
+  se a conclusão vier tarde.
+- Uma viatura inactiva não aceita novo Plano nem conclusão de ciclo — mas
+  **cancelar um Plano continua permitido**, mesmo com a viatura inactiva: é
+  o que se espera ao desactivar.
+- Cancelar um Plano nunca o elimina (BR-14) — fica como facto histórico, e
+  deixa de contar como devido.
 
 ## Perguntas em aberto
 
@@ -72,14 +91,23 @@ viatura).
 
 ## Estado
 
-**Manutenção e Atribuição, com regra de negócio real — 2026-08-30.**
-`Vehicle` (matrícula única, modelo, estado Active/InMaintenance/Inactive)
-nasceu esqueleto a 2026-08-29; ganhou Manutenção (registo histórico, um
-aberto de cada vez) e Atribuição (motorista, verificado contra `hr`, uma
-aberta de cada vez) como parte do mesmo agregado. 25 testes de domínio
-(`Rivo.Fleet.Domain.Tests`); `scripts/verify-fleet.ps1` — **26/26 confirmados
-contra a stack local a 2026-08-30**, sem nenhuma falha.
+**Manutenção, Atribuição e Plano de Manutenção, com regra de negócio real —
+2026-08-30.** `Vehicle` (matrícula única, modelo, estado
+Active/InMaintenance/Inactive) nasceu esqueleto a 2026-08-29; ganhou
+Manutenção (registo histórico, uma aberta de cada vez), Atribuição
+(motorista, verificado contra `hr`, uma aberta de cada vez) e Plano de
+Manutenção (calendário preventivo — vários por viatura, cada um com
+intervalo e próxima data devida) como parte do mesmo agregado.
 
-⚠ **Continuam por fazer:** Plano de Manutenção (calendário preventivo com
-alertas), Registo de Viagem, Despesa de Frota, Seguros. Permissões
-atribuídas a `AssetManager`, que deixou de estar vazio a 2026-08-29.
+**O "alerta" é uma consulta, não uma notificação empurrada** —
+`GET /fleet/maintenance-plans/due?withinDays=N` lista viaturas com plano
+activo devido até N dias a partir de hoje, incluindo o já atrasado. Ver a
+nota ⚠ em "Depende de" sobre porquê não usar `notifications`.
+
+42 testes de domínio (`Rivo.Fleet.Domain.Tests`); `scripts/verify-fleet.ps1`
+— **38/38 confirmados contra a stack local a 2026-08-30**, sem nenhuma
+falha, primeira corrida.
+
+⚠ **Continuam por fazer:** Registo de Viagem, Despesa de Frota, Seguros.
+Permissões atribuídas a `AssetManager`, que deixou de estar vazio a
+2026-08-29.

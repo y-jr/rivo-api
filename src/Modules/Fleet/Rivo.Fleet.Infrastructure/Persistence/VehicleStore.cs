@@ -10,12 +10,14 @@ public sealed class VehicleStore(FleetDbContext context) : IVehicleStore
         await context.Vehicles.AsNoTracking()
             .Include(v => v.Maintenances)
             .Include(v => v.Assignments)
+            .Include(v => v.Plans)
             .FirstOrDefaultAsync(v => v.Id == vehicleId, cancellationToken);
 
     public async Task<Vehicle?> FindForUpdateAsync(Guid vehicleId, CancellationToken cancellationToken) =>
         await context.Vehicles
             .Include(v => v.Maintenances)
             .Include(v => v.Assignments)
+            .Include(v => v.Plans)
             .FirstOrDefaultAsync(v => v.Id == vehicleId, cancellationToken);
 
     public async Task<Vehicle?> FindByPlateNumberAsync(string plateNumber, CancellationToken cancellationToken) =>
@@ -26,6 +28,7 @@ public sealed class VehicleStore(FleetDbContext context) : IVehicleStore
         var query = context.Vehicles.AsNoTracking()
             .Include(v => v.Maintenances)
             .Include(v => v.Assignments)
+            .Include(v => v.Plans)
             .AsQueryable();
 
         if (!includeInactive)
@@ -34,6 +37,18 @@ public sealed class VehicleStore(FleetDbContext context) : IVehicleStore
         }
 
         return await query.OrderBy(v => v.PlateNumber).ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Vehicle>> ListWithDuePlansAsync(
+        DateOnly asOf, int withinDays, CancellationToken cancellationToken)
+    {
+        var limite = asOf.AddDays(withinDays);
+
+        return await context.Vehicles.AsNoTracking()
+            .Include(v => v.Plans)
+            .Where(v => v.Plans.Any(p => p.IsActive && p.NextDueOn <= limite))
+            .OrderBy(v => v.PlateNumber)
+            .ToListAsync(cancellationToken);
     }
 
     public async Task AddAsync(Vehicle vehicle, CancellationToken cancellationToken) =>

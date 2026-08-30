@@ -47,6 +47,13 @@ public sealed class FleetDbContext(DbContextOptions<FleetDbContext> options) : D
                 .OnDelete(DeleteBehavior.Cascade);
 
             vehicle.Navigation(v => v.Assignments).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            vehicle.HasMany(v => v.Plans)
+                .WithOne()
+                .HasForeignKey(p => p.VehicleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            vehicle.Navigation(v => v.Plans).UsePropertyAccessMode(PropertyAccessMode.Field);
         });
 
         builder.Entity<MaintenanceRecord>(maintenance =>
@@ -76,6 +83,22 @@ public sealed class FleetDbContext(DbContextOptions<FleetDbContext> options) : D
             // (ADR-010). Índice sim — é por aqui que se listam as atribuições
             // de um motorista.
             assignment.HasIndex(a => a.EmployeeId);
+        });
+
+        builder.Entity<MaintenancePlan>(plan =>
+        {
+            plan.ToTable("maintenance_plan");
+            plan.HasKey(p => p.Id);
+
+            plan.Property(p => p.Version).IsConcurrencyToken();
+
+            plan.Property(p => p.Description).HasMaxLength(500).IsRequired();
+
+            plan.HasIndex(p => p.VehicleId);
+
+            // É por aqui que a consulta de "alerta" filtra — ver
+            // `IVehicleStore.ListWithDuePlansAsync`.
+            plan.HasIndex(p => new { p.IsActive, p.NextDueOn });
         });
 
         // As chaves são geradas pelo domínio (Guid.CreateVersion7), nunca pela

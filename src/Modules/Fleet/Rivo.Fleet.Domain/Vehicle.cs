@@ -4,17 +4,18 @@ namespace Rivo.Fleet.Domain;
 /// Viatura — agregado raiz de `fleet` (ver `modules/fleet.md`).
 ///
 /// <para>
-/// <strong>Manutenção e Atribuição vivem aqui dentro</strong> (§Possui):
-/// nascem sempre por este agregado (<see cref="OpenMaintenance"/>,
-/// <see cref="Assign"/>). Plano de Manutenção (calendário preventivo com
-/// alertas), Registo de Viagem, Despesa de Frota e Seguros continuam por
-/// fazer.
+/// <strong>Manutenção, Atribuição e Plano de Manutenção vivem aqui
+/// dentro</strong> (§Possui): nascem sempre por este agregado
+/// (<see cref="OpenMaintenance"/>, <see cref="Assign"/>,
+/// <see cref="SchedulePlan"/>). Registo de Viagem, Despesa de Frota e
+/// Seguros continuam por fazer.
 /// </para>
 /// </summary>
 public sealed class Vehicle
 {
     private readonly List<MaintenanceRecord> _maintenances = [];
     private readonly List<VehicleAssignment> _assignments = [];
+    private readonly List<MaintenancePlan> _plans = [];
 
     private Vehicle(Guid id, string plateNumber, string model)
     {
@@ -43,6 +44,8 @@ public sealed class Vehicle
     public IReadOnlyList<MaintenanceRecord> Maintenances => _maintenances;
 
     public IReadOnlyList<VehicleAssignment> Assignments => _assignments;
+
+    public IReadOnlyList<MaintenancePlan> Plans => _plans;
 
     /// <summary>Concorrência optimista (ADR-025). O domínio nunca lhe toca.</summary>
     public int Version { get; private set; }
@@ -138,6 +141,48 @@ public sealed class Vehicle
 
         atribuicao.End(endedOn);
     }
+
+    /// <summary>
+    /// Agenda um plano de manutenção preventiva. Vários planos activos ao
+    /// mesmo tempo são normais — ver <see cref="MaintenancePlan"/>.
+    /// </summary>
+    public MaintenancePlan SchedulePlan(string description, int intervalDays, DateOnly firstDueOn)
+    {
+        EnsureNotInactive("agendar um plano de manutenção");
+
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            throw new ArgumentException("Um plano de manutenção precisa de descrição.", nameof(description));
+        }
+
+        if (intervalDays <= 0)
+        {
+            throw new ArgumentException("O intervalo tem de ser positivo.", nameof(intervalDays));
+        }
+
+        var plano = new MaintenancePlan(Guid.CreateVersion7(), Id, description.Trim(), intervalDays, firstDueOn);
+        _plans.Add(plano);
+
+        return plano;
+    }
+
+    /// <summary>Regista que o ciclo actual do plano foi concluído e reagenda o próximo.</summary>
+    public void CompletePlanCycle(Guid planId, DateOnly completedOn)
+    {
+        EnsureNotInactive("concluir um ciclo de manutenção");
+        FindPlan(planId).CompleteCycle(completedOn);
+    }
+
+    /// <summary>
+    /// Cancela um plano. Sem guarda de <see cref="Status"/> de propósito —
+    /// cancelar os planos de uma viatura que acabou de ficar inactiva é o
+    /// que se espera, não algo a bloquear.
+    /// </summary>
+    public void CancelPlan(Guid planId) => FindPlan(planId).Cancel();
+
+    private MaintenancePlan FindPlan(Guid planId) =>
+        _plans.FirstOrDefault(p => p.Id == planId)
+            ?? throw new InvalidOperationException("Plano de manutenção não encontrado nesta viatura.");
 
     public void Deactivate()
     {

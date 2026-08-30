@@ -1155,8 +1155,45 @@ lança `InvalidOperationException`) — corrigido no mesmo padrão antes de se
 manifestar lá por falta de teste; `verify-projects.ps1` caso 23 passou de
 esperar 400 a esperar 409.
 
-**Continuam por fazer:** Plano de Manutenção (calendário preventivo com
-alertas), Registo de Viagem, Despesa de Frota, Seguros.
+**Plano de Manutenção, na mesma sessão (2026-08-30).** `Vehicle` ganhou um
+terceiro filho, `MaintenancePlan` — calendário preventivo, distinto do
+registo histórico de Manutenção: os dois não se ligam automaticamente,
+concluir um ciclo do plano não exige um registo.
+
+- **Vários planos activos ao mesmo tempo são normais** — "óleo a cada 90
+  dias" e "pneus a cada 180 dias" são dois planos da mesma viatura, sem
+  exclusão mútua (ao contrário de Manutenção e Atribuição).
+- **`CompleteCycle` reagenda a partir de quando foi concluído**, não da data
+  que estava marcada — não empilha ciclos em atraso se a conclusão vier
+  tarde.
+- **`Cancel` não tem guarda de `Status`** — cancelar os planos de uma
+  viatura que acabou de ficar inactiva é o que se espera, ao contrário de
+  agendar ou concluir um ciclo, que continuam bloqueados em `Inactive`.
+
+**O "alerta" é uma consulta, não uma notificação empurrada** —
+`GET /fleet/maintenance-plans/due?withinDays=N` lista viaturas com plano
+activo devido até N dias a partir de hoje, incluindo o já atrasado, via novo
+`IVehicleStore.ListWithDuePlansAsync`. **Decisão tomada nesta sessão:**
+`notifications.INotifier.QueueAsync` entrega a um `RecipientUserId` de
+`identity`, e não existe forma de resolver "todos os `AssetManager`" para um
+destinatário concreto — essa capacidade não está em `identity`. Inventar
+essa resolução aqui seria adivinhar uma peça de outro módulo que não foi
+decidida; a consulta é o alerta possível sem isso.
+
+Três endpoints novos, todos sob `fleet.vehicles.write`, mais uma leitura:
+`POST /fleet/vehicles/{id}/maintenance-plans`,
+`POST /fleet/vehicles/{id}/maintenance-plans/{planId}/cycles`,
+`POST /fleet/vehicles/{id}/maintenance-plans/{planId}/cancellation`,
+`GET /fleet/maintenance-plans/due`.
+
+**17 testes de domínio novos** (`Rivo.Fleet.Domain.Tests` cresceu de 25 para
+42). `scripts/verify-fleet.ps1` cresceu de 26 para 38 casos e **confirmou
+38/38 contra a stack local a 2026-08-30, sem nenhuma falha na primeira
+corrida** — a distinção 400 (pedido malformado) vs. 409 (conflito de
+estado), corrigida mais cedo no mesmo dia (ver acima), já nasceu aplicada
+correctamente aqui.
+
+**Continuam por fazer:** Registo de Viagem, Despesa de Frota, Seguros.
 
 ## inventory
 

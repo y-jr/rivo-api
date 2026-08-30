@@ -258,4 +258,169 @@ public class VehicleTests
         Assert.Equal(2, viatura.Assignments.Count);
         Assert.True(segundo.IsOpen);
     }
+
+    // --- Plano de Manutenção ---------------------------------------------
+
+    [Fact]
+    public void SchedulePlan_AddsActivePlan()
+    {
+        var viatura = Registada();
+        var devido = Hoje.AddDays(90);
+
+        var plano = viatura.SchedulePlan("Mudança de óleo", 90, devido);
+
+        Assert.Equal(viatura.Id, plano.VehicleId);
+        Assert.Equal(90, plano.IntervalDays);
+        Assert.Equal(devido, plano.NextDueOn);
+        Assert.True(plano.IsActive);
+        Assert.Same(plano, Assert.Single(viatura.Plans));
+    }
+
+    [Fact]
+    public void SchedulePlan_MultiplePlansAreNormal()
+    {
+        // Ao contrário de Manutenção e Atribuição, vários planos activos ao
+        // mesmo tempo não se excluem.
+        var viatura = Registada();
+
+        viatura.SchedulePlan("Óleo", 90, Hoje.AddDays(90));
+        viatura.SchedulePlan("Pneus", 180, Hoje.AddDays(180));
+
+        Assert.Equal(2, viatura.Plans.Count);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void SchedulePlan_WithoutDescription_Throws(string description)
+    {
+        var viatura = Registada();
+
+        Assert.Throws<ArgumentException>(() => viatura.SchedulePlan(description, 90, Hoje.AddDays(90)));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void SchedulePlan_NonPositiveInterval_Throws(int intervalDays)
+    {
+        var viatura = Registada();
+
+        Assert.Throws<ArgumentException>(() => viatura.SchedulePlan("Óleo", intervalDays, Hoje.AddDays(90)));
+    }
+
+    [Fact]
+    public void SchedulePlan_OnInactiveVehicle_Throws()
+    {
+        var viatura = Registada();
+        viatura.Deactivate();
+
+        Assert.Throws<InvalidOperationException>(() => viatura.SchedulePlan("Óleo", 90, Hoje.AddDays(90)));
+    }
+
+    [Fact]
+    public void IsOverdue_PastDueDate_IsTrue()
+    {
+        var viatura = Registada();
+        var plano = viatura.SchedulePlan("Óleo", 90, Hoje);
+
+        Assert.True(plano.IsOverdue(Hoje.AddDays(1)));
+        Assert.False(plano.IsOverdue(Hoje));
+        Assert.False(plano.IsOverdue(Hoje.AddDays(-1)));
+    }
+
+    [Fact]
+    public void CompletePlanCycle_ReschedulesFromCompletionDate()
+    {
+        var viatura = Registada();
+        var plano = viatura.SchedulePlan("Óleo", 90, Hoje);
+        var concluidoEm = Hoje.AddDays(5);
+
+        viatura.CompletePlanCycle(plano.Id, concluidoEm);
+
+        // Reagenda a partir de quando foi concluído, não da data que estava
+        // marcada — não empilha ciclos em atraso.
+        Assert.Equal(concluidoEm.AddDays(90), plano.NextDueOn);
+    }
+
+    [Fact]
+    public void CompletePlanCycle_OnCancelledPlan_Throws()
+    {
+        var viatura = Registada();
+        var plano = viatura.SchedulePlan("Óleo", 90, Hoje);
+        viatura.CancelPlan(plano.Id);
+
+        Assert.Throws<InvalidOperationException>(() => viatura.CompletePlanCycle(plano.Id, Hoje));
+    }
+
+    [Fact]
+    public void CompletePlanCycle_UnknownId_Throws()
+    {
+        var viatura = Registada();
+
+        Assert.Throws<InvalidOperationException>(() => viatura.CompletePlanCycle(Guid.CreateVersion7(), Hoje));
+    }
+
+    [Fact]
+    public void CompletePlanCycle_OnInactiveVehicle_Throws()
+    {
+        var viatura = Registada();
+        var plano = viatura.SchedulePlan("Óleo", 90, Hoje);
+        viatura.Deactivate();
+
+        Assert.Throws<InvalidOperationException>(() => viatura.CompletePlanCycle(plano.Id, Hoje));
+    }
+
+    [Fact]
+    public void CancelPlan_DeactivatesIt()
+    {
+        var viatura = Registada();
+        var plano = viatura.SchedulePlan("Óleo", 90, Hoje);
+
+        viatura.CancelPlan(plano.Id);
+
+        Assert.False(plano.IsActive);
+    }
+
+    [Fact]
+    public void CancelPlan_StopsCountingAsOverdue()
+    {
+        var viatura = Registada();
+        var plano = viatura.SchedulePlan("Óleo", 90, Hoje);
+        viatura.CancelPlan(plano.Id);
+
+        Assert.False(plano.IsOverdue(Hoje.AddDays(365)));
+    }
+
+    [Fact]
+    public void CancelPlan_AlreadyCancelled_Throws()
+    {
+        var viatura = Registada();
+        var plano = viatura.SchedulePlan("Óleo", 90, Hoje);
+        viatura.CancelPlan(plano.Id);
+
+        Assert.Throws<InvalidOperationException>(() => viatura.CancelPlan(plano.Id));
+    }
+
+    [Fact]
+    public void CancelPlan_UnknownId_Throws()
+    {
+        var viatura = Registada();
+
+        Assert.Throws<InvalidOperationException>(() => viatura.CancelPlan(Guid.CreateVersion7()));
+    }
+
+    [Fact]
+    public void CancelPlan_OnInactiveVehicle_IsAllowed()
+    {
+        // Cancelar os planos de uma viatura que acabou de ficar inactiva é o
+        // que se espera, não algo a bloquear.
+        var viatura = Registada();
+        var plano = viatura.SchedulePlan("Óleo", 90, Hoje);
+        viatura.Deactivate();
+
+        viatura.CancelPlan(plano.Id);
+
+        Assert.False(plano.IsActive);
+    }
 }
