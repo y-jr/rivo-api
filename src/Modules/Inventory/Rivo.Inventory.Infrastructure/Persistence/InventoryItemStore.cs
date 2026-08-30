@@ -7,17 +7,23 @@ namespace Rivo.Inventory.Infrastructure.Persistence;
 public sealed class InventoryItemStore(InventoryDbContext context) : IInventoryItemStore
 {
     public async Task<InventoryItem?> FindAsync(Guid itemId, CancellationToken cancellationToken) =>
-        await context.Items.AsNoTracking().FirstOrDefaultAsync(i => i.Id == itemId, cancellationToken);
+        await context.Items.AsNoTracking()
+            .Include(i => i.Movements)
+            .FirstOrDefaultAsync(i => i.Id == itemId, cancellationToken);
 
     public async Task<InventoryItem?> FindForUpdateAsync(Guid itemId, CancellationToken cancellationToken) =>
-        await context.Items.FirstOrDefaultAsync(i => i.Id == itemId, cancellationToken);
+        await context.Items
+            .Include(i => i.Movements)
+            .FirstOrDefaultAsync(i => i.Id == itemId, cancellationToken);
 
     public async Task<InventoryItem?> FindBySkuAsync(string sku, CancellationToken cancellationToken) =>
         await context.Items.AsNoTracking().FirstOrDefaultAsync(i => i.Sku == sku, cancellationToken);
 
     public async Task<IReadOnlyList<InventoryItem>> ListAsync(bool includeInactive, CancellationToken cancellationToken)
     {
-        var query = context.Items.AsNoTracking().AsQueryable();
+        var query = context.Items.AsNoTracking()
+            .Include(i => i.Movements)
+            .AsQueryable();
 
         if (!includeInactive)
         {

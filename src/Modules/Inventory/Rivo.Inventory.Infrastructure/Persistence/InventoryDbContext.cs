@@ -32,6 +32,30 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
             item.Property(i => i.Status).HasConversion<string>().HasMaxLength(20);
 
             item.HasIndex(i => i.Sku).IsUnique();
+
+            // Movimento é parte do agregado: não tem vida sem o item, e por
+            // isso a cascata é a semântica correcta — mesma forma de
+            // `Project.Milestones`/`Vehicle.Maintenances`.
+            item.HasMany(i => i.Movements)
+                .WithOne()
+                .HasForeignKey(m => m.ItemId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            item.Navigation(i => i.Movements).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        builder.Entity<StockMovement>(movement =>
+        {
+            movement.ToTable("stock_movement");
+            movement.HasKey(m => m.Id);
+
+            movement.Property(m => m.Version).IsConcurrencyToken();
+
+            movement.Property(m => m.Type).HasConversion<string>().HasMaxLength(20);
+            movement.Property(m => m.Quantity).HasPrecision(18, 4);
+            movement.Property(m => m.Reason).HasMaxLength(500);
+
+            movement.HasIndex(m => m.ItemId);
         });
 
         // As chaves são geradas pelo domínio (Guid.CreateVersion7), nunca pela

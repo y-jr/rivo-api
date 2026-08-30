@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Routing;
 using Rivo.Audit.Contracts;
 using Rivo.Inventory.Application.UseCases;
 using Rivo.Inventory.Contracts;
-using Rivo.Inventory.Domain;
 
 namespace Rivo.Inventory.Api;
 
@@ -29,6 +28,15 @@ public static class InventoryModuleEndpoints
         group.MapPost("/items/{itemId:guid}/status", SetStatusAsync)
             .RequireAuthorization(InventoryPermissions.ItemsWrite);
 
+        group.MapPost("/items/{itemId:guid}/movements/receipts", RegisterReceiptAsync)
+            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+
+        group.MapPost("/items/{itemId:guid}/movements/issues", RegisterIssueAsync)
+            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+
+        group.MapPost("/items/{itemId:guid}/movements/adjustments", RegisterAdjustmentAsync)
+            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+
         return endpoints;
     }
 
@@ -38,7 +46,7 @@ public static class InventoryModuleEndpoints
         CancellationToken cancellationToken)
     {
         var itens = await listItems.ExecuteAsync(includeInactive ?? false, cancellationToken);
-        return Results.Ok(itens.Select(ToView));
+        return Results.Ok(itens);
     }
 
     private static async Task<IResult> GetAsync(
@@ -50,14 +58,8 @@ public static class InventoryModuleEndpoints
 
         return item is null
             ? Results.NotFound(new { erro = "Item não encontrado." })
-            : Results.Ok(ToView(item));
+            : Results.Ok(item);
     }
-
-    // A entidade de domínio nunca é exposta como modelo de transporte
-    // (architecture/dependency-rules.md) — sem isto, Status sairia como o
-    // inteiro subjacente do enum, e não como "Active".
-    private static InventoryItemView ToView(InventoryItem item) => new(
-        item.Id, item.Sku, item.Name, item.Unit, item.QuantityOnHand, item.Status.ToString());
 
     private static async Task<IResult> RegisterAsync(
         RegisterItemRequest request,
@@ -93,6 +95,47 @@ public static class InventoryModuleEndpoints
             : Results.NotFound(new { erro = "Item não encontrado." });
     }
 
+    private static async Task<IResult> RegisterReceiptAsync(
+        Guid itemId,
+        RegisterMovementRequest request,
+        RegisterReceipt registerReceipt,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        MovementResult(await registerReceipt.ExecuteAsync(
+            itemId, request.Quantity, request.Reason, request.OccurredOn, BuildAuditContext(http), cancellationToken),
+            itemId, "recepcao");
+
+    private static async Task<IResult> RegisterIssueAsync(
+        Guid itemId,
+        RegisterMovementRequest request,
+        RegisterIssue registerIssue,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        MovementResult(await registerIssue.ExecuteAsync(
+            itemId, request.Quantity, request.Reason, request.OccurredOn, BuildAuditContext(http), cancellationToken),
+            itemId, "saida");
+
+    private static async Task<IResult> RegisterAdjustmentAsync(
+        Guid itemId,
+        RegisterAdjustmentRequest request,
+        RegisterAdjustment registerAdjustment,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        MovementResult(await registerAdjustment.ExecuteAsync(
+            itemId, request.QuantityDelta, request.Reason, request.OccurredOn, BuildAuditContext(http), cancellationToken),
+            itemId, "ajuste");
+
+    private static IResult MovementResult(RegisterMovementResult result, Guid itemId, string campo) =>
+        result.Outcome switch
+        {
+            RegisterMovementOutcome.Registered => Results.Created(
+                $"/inventory/items/{itemId}",
+                new { movementId = result.MovementId, quantityOnHand = result.QuantityOnHand }),
+            RegisterMovementOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            RegisterMovementOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
+            _ => Results.ValidationProblem(new Dictionary<string, string[]> { [campo] = [result.Error!] }),
+        };
+
     private static AuditContext BuildAuditContext(HttpContext http)
     {
         var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
@@ -109,5 +152,6 @@ public sealed record RegisterItemRequest(string Sku, string Name, string Unit);
 
 public sealed record SetItemStatusRequest(bool Active);
 
-public sealed record InventoryItemView(
-    Guid ItemId, string Sku, string Name, string Unit, decimal QuantityOnHand, string Status);
+public sealed record RegisterMovementRequest(decimal Quantity, string? Reason, DateOnly OccurredOn);
+
+public sealed record RegisterAdjustmentRequest(decimal QuantityDelta, string Reason, DateOnly OccurredOn);

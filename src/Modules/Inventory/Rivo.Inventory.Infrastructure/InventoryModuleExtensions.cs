@@ -9,9 +9,9 @@ using Rivo.Inventory.Infrastructure.Persistence;
 namespace Rivo.Inventory.Infrastructure;
 
 /// <summary>
-/// Esqueleto do módulo `inventory` — ver `modules/inventory.md`. Catálogo de
-/// itens, sem movimento nenhum ainda: Armazém, Movimento, Transferência,
-/// Contagem e valorização de stock ficam por fazer.
+/// Composição do módulo `inventory` — ver `modules/inventory.md`. Movimento
+/// tem regra de negócio própria desde 2026-08-30; Armazém, Transferência,
+/// Contagem e valorização de stock continuam por fazer.
 /// </summary>
 public static class InventoryModuleExtensions
 {
@@ -34,6 +34,9 @@ public static class InventoryModuleExtensions
         services.AddScoped<GetInventoryItem>();
         services.AddScoped<RegisterInventoryItem>();
         services.AddScoped<SetInventoryItemStatus>();
+        services.AddScoped<RegisterReceipt>();
+        services.AddScoped<RegisterIssue>();
+        services.AddScoped<RegisterAdjustment>();
 
         services.AddAuthorization(options =>
         {

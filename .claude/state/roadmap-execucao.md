@@ -35,7 +35,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 4 | `finance` — o núcleo | ✅ **Critério de saída cumprido** em 2026-08-25 — os cinco contextos internos, BR-1/3/5/8 impostas, os documentos a lançar nos livros e (2026-08-29) a anular a estornar. Em dívida: o plano de contas, que é do contabilista |
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
 | 6 | `payroll` | Esqueleto sem regra (2026-08-29) — trave de produção por parecer fiscal, ver a nota da fase |
-| 7 | `projects`, `inventory`, `fleet` | `projects` (Marco e Tarefa) e `fleet` (Manutenção e Atribuição) ganharam regra de negócio em 2026-08-30; `inventory` → Movimento desbloqueado por ADR-039 no mesmo dia, ainda por implementar. Nenhum dos três tem bloqueio de negócio agora |
+| 7 | `projects`, `inventory`, `fleet` | Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco e Tarefa), `fleet` (Manutenção e Atribuição), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). Nenhum tem bloqueio de negócio; Armazém/Transferência/Contagem, Orçamento/Alocação e Plano de Manutenção continuam por fazer |
 | 8 | Camadas de composição e portais | Por iniciar |
 
 **Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
@@ -348,17 +348,19 @@ entre si.
 **Critério de saída:** catorze módulos, com as fronteiras ainda impostas pelos
 testes de arquitectura da Fase 0.
 
-> **Estado a 2026-08-30 — os três deixaram de ter bloqueio de negócio.** Os
-> três nasceram esqueletos a 2026-08-29 (decisão explícita, sob prazo de
-> apresentação). `projects` (Marco e Tarefa) e `fleet` (Manutenção e
-> Atribuição) ganharam regra de negócio no mesmo dia — ambos confirmados
-> contra a stack local (`verify-projects.ps1` 28/28, `verify-fleet.ps1`
-> 26/26). `inventory` → Movimento estava condicionado a K1 (a fronteira
-> Activos Fixos vs. Activos); **ADR-039 fechou-o no mesmo dia** — os dois
-> módulos coexistem, com relação explícita e idealmente 1:1 sobre o mesmo
-> bem, e o utilizador confirmou explicitamente "avançar com Inventory →
-> Movimento". Fica por implementar. Detalhe em `pending-decisions.md`
-> §Domínio e negócio e ADR-039.
+> **Estado a 2026-08-30 — os três ganharam regra de negócio, todos
+> confirmados contra a stack local.** Os três nasceram esqueletos a
+> 2026-08-29 (decisão explícita, sob prazo de apresentação). `projects`
+> (Marco e Tarefa), `fleet` (Manutenção e Atribuição) e `inventory`
+> (Movimento — Recepção, Saída, Ajuste) ganharam regra de negócio no mesmo
+> dia, este último depois de ADR-039 fechar a fronteira Activos Fixos vs.
+> Activos que K1 registava. `verify-projects.ps1` 28/28, `verify-fleet.ps1`
+> 26/26, `verify-inventory.ps1` 25/25 — sem nenhuma falha. Detalhe em
+> `pending-decisions.md` §Domínio e negócio e ADR-039.
+>
+> **Fica ainda por fazer, sem bloqueio de negócio:** Armazém, Transferência
+> e Contagem em `inventory`; Orçamento de Projecto e Alocação de Recursos em
+> `projects`; Plano de Manutenção com alertas em `fleet`.
 
 ---
 

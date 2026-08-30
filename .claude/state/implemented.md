@@ -980,22 +980,22 @@ e anular devolve a quantidade a "por receber" deixando o registo do erro.
 ⚠ **A cobertura de Application continua a ser nenhuma**, como nos outros sete
 módulos.
 
-## payroll, inventory
+## payroll
 
-_2026-08-29 — **esqueletos**, sob prazo de apresentação. Decisão explícita,
-registada aqui e em cada `modules/*.md`, não descoberta depois. `projects` e
-`fleet` nasceram no mesmo lote — ver as secções próprias abaixo — mas saíram
-desta categoria a 2026-08-30._
+_2026-08-29 — **esqueleto**, sob prazo de apresentação. Decisão explícita,
+registada aqui e em cada `modules/*.md`, não descoberta depois. `projects`,
+`fleet` e `inventory` nasceram no mesmo lote — ver as secções próprias
+abaixo — mas saíram desta categoria a 2026-08-30._
 
 Os catorze módulos passam a ter código nesse dia. Cada um: cinco camadas, um
 schema próprio, migração inicial, CRUD por permissão de `identity`. **Zero
 testes de domínio, zero regra de negócio além da que o próprio CRUD impõe**,
-nestes dois.
+neste.
 
 **Verificação end-to-end escrita e corrida a 2026-08-29** —
 `scripts/verify-payroll.ps1` (16 casos), `verify-projects.ps1` (14, ver
-secção `projects` para o que cresceu depois), `verify-inventory.ps1` (13),
-`verify-fleet.ps1` (15, ver secção `fleet` para o que cresceu depois), mesmo
+secção `projects` para o que cresceu depois), `verify-inventory.ps1` (13,
+ver secção `inventory`), `verify-fleet.ps1` (15, ver secção `fleet`), mesmo
 padrão das outras dez suites (schema isolado, permissão por perfil, CRUD,
 401/403, trilha de auditoria, persistência ao reiniciar). Confirmam o
 contrato HTTP, não regra de negócio — não há regra a confirmar.
@@ -1042,10 +1042,6 @@ código confirmada.
   Confirmado: abrir folha, acrescentar item, submeter devolve `409` sem
   política configurada para `payroll.payroll_run` — mesmo comportamento que
   `procurement` tem sem política, não falha nova.
-
-- **`inventory`** — `InventoryItem` (SKU único, nome, unidade). **Sem
-  movimento nenhum** — `QuantityOnHand` nasce e fica a zero até `Movimento`
-  existir. Sem Armazém, Transferência, Contagem, valorização de stock.
 
 ## projects
 
@@ -1101,9 +1097,8 @@ aberto" em `modules/projects.md`.
 ## fleet
 
 `Vehicle` (matrícula única, modelo, estado Active/InMaintenance/Inactive)
-nasceu esqueleto a 2026-08-29 — ver a secção `payroll, inventory` acima para
-esse lote. _2026-08-30 — **Manutenção e Atribuição, com regra de negócio
-real.**_
+nasceu esqueleto a 2026-08-29 — ver a secção `payroll` acima para esse lote.
+_2026-08-30 — **Manutenção e Atribuição, com regra de negócio real.**_
 
 `Vehicle` passou a agregado raiz de dois filhos:
 
@@ -1162,6 +1157,50 @@ esperar 400 a esperar 409.
 
 **Continuam por fazer:** Plano de Manutenção (calendário preventivo com
 alertas), Registo de Viagem, Despesa de Frota, Seguros.
+
+## inventory
+
+`InventoryItem` (SKU único, nome, unidade) nasceu esqueleto a 2026-08-29 —
+ver a secção `payroll` acima para esse lote. _2026-08-30 — **Movimento, com
+regra de negócio real, desbloqueado por ADR-039.**_
+
+`InventoryItem` passou a agregado raiz de `StockMovement` — Recepção, Saída
+e Ajuste, os três tipos que fazem sentido sem Armazém (Transferência fica de
+fora, `modules/inventory.md` §Perguntas em aberto continua a assinalá-la).
+
+- **Recepção** — quantidade positiva, aumenta `QuantityOnHand`.
+- **Saída** — quantidade positiva, reduz `QuantityOnHand`. **Nunca abaixo de
+  zero**: sair mais do que há em mão é recusado (409), não truncado.
+- **Ajuste** — correcção de contagem, para cima ou para baixo. **Exige
+  motivo** — uma correcção sem explicação é exactamente o que a validação
+  existe para impedir. Também nunca pode puxar `QuantityOnHand` para
+  negativo.
+
+**`QuantityOnHand` deixou de ser um campo escrito directamente — é a soma
+assinada de `Movements`**, mantida a cada movimento aceite. Um item inactivo
+não aceita nenhum dos três.
+
+A entidade de domínio deixou de sair directa da API: `InventoryItemView` e
+`StockMovementView` (mesmo padrão de `ProjectView`/`VehicleView`) substituem
+o mapeamento `ToView` que antes vivia na camada Api.
+
+Três endpoints novos, todos sob `inventory.items.write`:
+`POST /inventory/items/{id}/movements/receipts`,
+`POST /inventory/items/{id}/movements/issues`,
+`POST /inventory/items/{id}/movements/adjustments`.
+
+**21 testes de domínio** (`Rivo.Inventory.Domain.Tests`, novo projecto), com
+um teste dedicado à invariante de fundo:
+`QuantityOnHand == Movements.Sum(m => m.Quantity)` depois de uma sequência
+de recepções, saídas e ajustes. `scripts/verify-inventory.ps1` cresceu de 13
+para 25 casos e **confirmou 25/25 contra a stack local a 2026-08-30, sem
+nenhuma falha na primeira corrida** — a distinção 400 (pedido malformado) vs.
+409 (conflito de estado), corrigida em `fleet` e `projects` mais cedo no
+mesmo dia (ver secção `fleet`), já nasceu aplicada correctamente aqui: não
+apanhou nada.
+
+**Continuam por fazer:** Armazém, Transferência, Contagem, valorização de
+stock.
 
 Permissões atribuídas aos perfis que já esperavam por módulos de negócio:
 `ProjectManager` (estava vazio) fica com `projects`; `AssetManager` ("gere
