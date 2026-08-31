@@ -59,27 +59,17 @@ jobs:
             git config --global --add safe.directory /opt/projects/rivo
             cd /opt/projects/rivo
 
-            # Guarda as alterações locais do docker-compose.yml
-            if git status --porcelain docker-compose.yml | grep -q .; then
-            git stash push -m "config-vps-$(date +%Y%m%d-%H%M%S)" docker-compose.yml
-            else
-              echo "Sem alterações locais no docker-compose.yml"
-            fi
-      
-            # Puxa as atualizações do repositório
-            git pull origin main
-            
-            # Reaplica as alterações locais (se houver conflito, resolve)
-            # Tenta aplicar o stash
-            if git stash pop; then
-              echo "✅ Configurações locais reaplicadas com sucesso"
-            else
-              echo "⚠️ Conflito no docker-compose.yml - resolvendo manualmente..."
-              # Mostra o conflito
-              cat docker-compose.yml
-              exit 1
-            fi
-            
+            # O deploy da VPS usa o repositório como fonte de verdade. O compose e o
+            # ambiente de produção ficam no servidor e não devem ser guardados em stash
+            # nem reaplicados em cada deploy. Em vez disso, fazemos uma sincronização
+            # limpa da branch main para evitar o erro de "stash/merge" que apareceu.
+            git fetch --all --prune
+            git checkout main
+            git reset --hard origin/main
+
+            # Garante que a rede partilhada com o reverse proxy existe.
+            docker network inspect proxy >/dev/null 2>&1 || docker network create proxy
+
             # Sobe a aplicação
             docker compose up -d --build
 
