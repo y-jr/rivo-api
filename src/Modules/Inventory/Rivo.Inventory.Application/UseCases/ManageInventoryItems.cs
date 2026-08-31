@@ -20,10 +20,20 @@ public sealed record InventoryItemView(
     string Unit,
     decimal QuantityOnHand,
     string Status,
+    IReadOnlyList<WarehouseQuantityView> QuantitiesByWarehouse,
     IReadOnlyList<StockMovementView> Movements);
 
+public sealed record WarehouseQuantityView(Guid WarehouseId, decimal QuantityOnHand);
+
 public sealed record StockMovementView(
-    Guid MovementId, string Type, decimal Quantity, string? Reason, DateOnly OccurredOn, DateTimeOffset RecordedAt);
+    Guid MovementId,
+    string Type,
+    Guid WarehouseId,
+    Guid? RelatedWarehouseId,
+    decimal Quantity,
+    string? Reason,
+    DateOnly OccurredOn,
+    DateTimeOffset RecordedAt);
 
 internal static class InventoryItemViews
 {
@@ -34,8 +44,12 @@ internal static class InventoryItemViews
         item.Unit,
         item.QuantityOnHand,
         item.Status.ToString(),
+        [.. item.Movements
+            .GroupBy(m => m.WarehouseId)
+            .Select(g => new WarehouseQuantityView(g.Key, g.Sum(m => m.Quantity)))],
         [.. item.Movements.Select(m =>
-            new StockMovementView(m.Id, m.Type.ToString(), m.Quantity, m.Reason, m.OccurredOn, m.RecordedAt))]);
+            new StockMovementView(
+                m.Id, m.Type.ToString(), m.WarehouseId, m.RelatedWarehouseId, m.Quantity, m.Reason, m.OccurredOn, m.RecordedAt))]);
 }
 
 public sealed class ListInventoryItems(IInventoryItemStore store)
@@ -152,10 +166,15 @@ public static class InventoryAuditActions
     public const string MovementReceipt = "inventory.movement.receipt";
     public const string MovementIssue = "inventory.movement.issue";
     public const string MovementAdjustment = "inventory.movement.adjustment";
+    public const string MovementTransfer = "inventory.movement.transfer";
+    public const string WarehouseRegistered = "inventory.warehouse.registered";
+    public const string WarehouseDeactivated = "inventory.warehouse.deactivated";
+    public const string WarehouseReactivated = "inventory.warehouse.reactivated";
 }
 
 public static class InventoryAuditEntityTypes
 {
     public const string Item = "inventory.item";
     public const string Movement = "inventory.movement";
+    public const string Warehouse = "inventory.warehouse";
 }

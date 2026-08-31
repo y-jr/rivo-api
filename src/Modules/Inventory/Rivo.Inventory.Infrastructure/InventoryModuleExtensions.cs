@@ -10,8 +10,9 @@ namespace Rivo.Inventory.Infrastructure;
 
 /// <summary>
 /// Composição do módulo `inventory` — ver `modules/inventory.md`. Movimento
-/// tem regra de negócio própria desde 2026-08-30; Armazém, Transferência,
-/// Contagem e valorização de stock continuam por fazer.
+/// tem regra de negócio própria desde 2026-08-30; Armazém e Transferência
+/// desde 2026-08-31 (retrofit de <c>WarehouseId</c> obrigatório). Contagem e
+/// valorização de stock continuam por fazer.
 /// </summary>
 public static class InventoryModuleExtensions
 {
@@ -29,6 +30,7 @@ public static class InventoryModuleExtensions
             .UseSnakeCaseNamingConvention());
 
         services.AddScoped<IInventoryItemStore, InventoryItemStore>();
+        services.AddScoped<IWarehouseStore, WarehouseStore>();
 
         services.AddScoped<ListInventoryItems>();
         services.AddScoped<GetInventoryItem>();
@@ -37,6 +39,11 @@ public static class InventoryModuleExtensions
         services.AddScoped<RegisterReceipt>();
         services.AddScoped<RegisterIssue>();
         services.AddScoped<RegisterAdjustment>();
+        services.AddScoped<TransferStock>();
+        services.AddScoped<ListWarehouses>();
+        services.AddScoped<GetWarehouse>();
+        services.AddScoped<RegisterWarehouse>();
+        services.AddScoped<SetWarehouseStatus>();
 
         services.AddAuthorization(options =>
         {

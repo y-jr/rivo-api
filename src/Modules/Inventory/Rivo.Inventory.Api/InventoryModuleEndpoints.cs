@@ -37,6 +37,22 @@ public static class InventoryModuleEndpoints
         group.MapPost("/items/{itemId:guid}/movements/adjustments", RegisterAdjustmentAsync)
             .RequireAuthorization(InventoryPermissions.ItemsWrite);
 
+        group.MapPost("/items/{itemId:guid}/movements/transfers", TransferAsync)
+            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+
+        group.MapGet("/warehouses", ListWarehousesAsync)
+            .RequireAuthorization(InventoryPermissions.ItemsRead);
+
+        group.MapGet("/warehouses/{warehouseId:guid}", GetWarehouseAsync)
+            .RequireAuthorization(InventoryPermissions.ItemsRead);
+
+        group.MapPost("/warehouses", RegisterWarehouseAsync)
+            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+
+        // Desactivar, nunca eliminar — pode estar referenciado por movimentos.
+        group.MapPost("/warehouses/{warehouseId:guid}/status", SetWarehouseStatusAsync)
+            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+
         return endpoints;
     }
 
@@ -102,7 +118,8 @@ public static class InventoryModuleEndpoints
         HttpContext http,
         CancellationToken cancellationToken) =>
         MovementResult(await registerReceipt.ExecuteAsync(
-            itemId, request.Quantity, request.Reason, request.OccurredOn, BuildAuditContext(http), cancellationToken),
+            itemId, request.WarehouseId, request.Quantity, request.Reason, request.OccurredOn,
+            BuildAuditContext(http), cancellationToken),
             itemId, "recepcao");
 
     private static async Task<IResult> RegisterIssueAsync(
@@ -112,7 +129,8 @@ public static class InventoryModuleEndpoints
         HttpContext http,
         CancellationToken cancellationToken) =>
         MovementResult(await registerIssue.ExecuteAsync(
-            itemId, request.Quantity, request.Reason, request.OccurredOn, BuildAuditContext(http), cancellationToken),
+            itemId, request.WarehouseId, request.Quantity, request.Reason, request.OccurredOn,
+            BuildAuditContext(http), cancellationToken),
             itemId, "saida");
 
     private static async Task<IResult> RegisterAdjustmentAsync(
@@ -122,15 +140,104 @@ public static class InventoryModuleEndpoints
         HttpContext http,
         CancellationToken cancellationToken) =>
         MovementResult(await registerAdjustment.ExecuteAsync(
-            itemId, request.QuantityDelta, request.Reason, request.OccurredOn, BuildAuditContext(http), cancellationToken),
+            itemId, request.WarehouseId, request.QuantityDelta, request.Reason, request.OccurredOn,
+            BuildAuditContext(http), cancellationToken),
             itemId, "ajuste");
+
+    private static async Task<IResult> TransferAsync(
+        Guid itemId,
+        TransferStockRequest request,
+        TransferStock transferStock,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await transferStock.ExecuteAsync(
+            itemId, request.FromWarehouseId, request.ToWarehouseId, request.Quantity, request.Reason,
+            request.OccurredOn, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            TransferOutcome.Registered => Results.Created(
+                $"/inventory/items/{itemId}",
+                new
+                {
+                    outMovementId = result.OutMovementId,
+                    inMovementId = result.InMovementId,
+                    quantityAtSource = result.QuantityAtSource,
+                    quantityAtDestination = result.QuantityAtDestination,
+                }),
+            TransferOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            TransferOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
+            _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["transferencia"] = [result.Error!] }),
+        };
+    }
+
+    private static async Task<IResult> ListWarehousesAsync(
+        ListWarehouses listWarehouses,
+        bool? includeInactive,
+        CancellationToken cancellationToken)
+    {
+        var armazens = await listWarehouses.ExecuteAsync(includeInactive ?? false, cancellationToken);
+        return Results.Ok(armazens);
+    }
+
+    private static async Task<IResult> GetWarehouseAsync(
+        Guid warehouseId,
+        GetWarehouse getWarehouse,
+        CancellationToken cancellationToken)
+    {
+        var armazem = await getWarehouse.ExecuteAsync(warehouseId, cancellationToken);
+
+        return armazem is null
+            ? Results.NotFound(new { erro = "Armazém não encontrado." })
+            : Results.Ok(armazem);
+    }
+
+    private static async Task<IResult> RegisterWarehouseAsync(
+        RegisterWarehouseRequest request,
+        RegisterWarehouse registerWarehouse,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await registerWarehouse.ExecuteAsync(
+            request.Code, request.Name, BuildAuditContext(http), cancellationToken);
+
+        if (result.Succeeded)
+        {
+            return Results.Created($"/inventory/warehouses/{result.WarehouseId}", new { warehouseId = result.WarehouseId });
+        }
+
+        return result.WarehouseId is not null
+            ? Results.Conflict(new { erro = result.Error, warehouseId = result.WarehouseId })
+            : Results.ValidationProblem(new Dictionary<string, string[]> { ["warehouse"] = [result.Error!] });
+    }
+
+    private static async Task<IResult> SetWarehouseStatusAsync(
+        Guid warehouseId,
+        SetWarehouseStatusRequest request,
+        SetWarehouseStatus setStatus,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var encontrado = await setStatus.ExecuteAsync(
+            warehouseId, request.Active, BuildAuditContext(http), cancellationToken);
+
+        return encontrado
+            ? Results.NoContent()
+            : Results.NotFound(new { erro = "Armazém não encontrado." });
+    }
 
     private static IResult MovementResult(RegisterMovementResult result, Guid itemId, string campo) =>
         result.Outcome switch
         {
             RegisterMovementOutcome.Registered => Results.Created(
                 $"/inventory/items/{itemId}",
-                new { movementId = result.MovementId, quantityOnHand = result.QuantityOnHand }),
+                new
+                {
+                    movementId = result.MovementId,
+                    quantityOnHand = result.QuantityOnHand,
+                    quantityAtWarehouse = result.QuantityAtWarehouse,
+                }),
             RegisterMovementOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
             RegisterMovementOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
             _ => Results.ValidationProblem(new Dictionary<string, string[]> { [campo] = [result.Error!] }),
@@ -152,6 +259,13 @@ public sealed record RegisterItemRequest(string Sku, string Name, string Unit);
 
 public sealed record SetItemStatusRequest(bool Active);
 
-public sealed record RegisterMovementRequest(decimal Quantity, string? Reason, DateOnly OccurredOn);
+public sealed record RegisterMovementRequest(Guid WarehouseId, decimal Quantity, string? Reason, DateOnly OccurredOn);
 
-public sealed record RegisterAdjustmentRequest(decimal QuantityDelta, string Reason, DateOnly OccurredOn);
+public sealed record RegisterAdjustmentRequest(Guid WarehouseId, decimal QuantityDelta, string Reason, DateOnly OccurredOn);
+
+public sealed record TransferStockRequest(
+    Guid FromWarehouseId, Guid ToWarehouseId, decimal Quantity, string? Reason, DateOnly OccurredOn);
+
+public sealed record RegisterWarehouseRequest(string Code, string Name);
+
+public sealed record SetWarehouseStatusRequest(bool Active);

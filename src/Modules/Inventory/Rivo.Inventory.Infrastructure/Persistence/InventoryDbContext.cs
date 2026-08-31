@@ -10,6 +10,8 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
 
     public DbSet<InventoryItem> Items => Set<InventoryItem>();
 
+    public DbSet<Warehouse> Warehouses => Set<Warehouse>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -56,6 +58,33 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
             movement.Property(m => m.Reason).HasMaxLength(500);
 
             movement.HasIndex(m => m.ItemId);
+            movement.HasIndex(m => m.WarehouseId);
+
+            // FK dentro do mesmo módulo (inventory → inventory): permitida
+            // sem restrição de ADR-010, que só limita FK entre módulos.
+            movement.HasOne<Warehouse>()
+                .WithMany()
+                .HasForeignKey(m => m.WarehouseId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            movement.HasOne<Warehouse>()
+                .WithMany()
+                .HasForeignKey(m => m.RelatedWarehouseId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<Warehouse>(warehouse =>
+        {
+            warehouse.ToTable("warehouse");
+            warehouse.HasKey(w => w.Id);
+
+            warehouse.Property(w => w.Version).IsConcurrencyToken();
+
+            warehouse.Property(w => w.Code).HasMaxLength(20).IsRequired();
+            warehouse.Property(w => w.Name).HasMaxLength(200).IsRequired();
+            warehouse.Property(w => w.Status).HasConversion<string>().HasMaxLength(20);
+
+            warehouse.HasIndex(w => w.Code).IsUnique();
         });
 
         // As chaves são geradas pelo domínio (Guid.CreateVersion7), nunca pela

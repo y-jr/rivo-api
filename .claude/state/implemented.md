@@ -1537,8 +1537,8 @@ nenhuma falha na primeira corrida** — a distinção 400 (pedido malformado) vs
 mesmo dia (ver secção `fleet`), já nasceu aplicada correctamente aqui: não
 apanhou nada.
 
-**Continuam por fazer:** Armazém, Transferência, Contagem, valorização de
-stock.
+**Continuam por fazer (2026-08-30):** Armazém, Transferência, Contagem,
+valorização de stock — os dois primeiros fecharam a 2026-08-31, ver abaixo.
 
 Permissões atribuídas aos perfis que já esperavam por módulos de negócio:
 `ProjectManager` (estava vazio) fica com `projects`; `AssetManager` ("gere
@@ -1550,4 +1550,76 @@ vazio, deixou de ser verdade.
 
 Testes de arquitectura ajustados: `ProjectReferenceTests.DependenciasDeclaradas`
 precisava dos quatro módulos novos e de `Identity` a apontar para eles. 21/21.
+
+_2026-08-31 — **Armazém e Transferência, retrofit do Movimento.**_ Duas
+decisões de arquitectura/processo confirmadas pelo utilizador, escolhendo em
+ambas a opção recomendada: (1) o Movimento já enviado ganha `WarehouseId`
+obrigatório, em vez de conviver com um Armazém novo e independente; (2)
+Transferência é atómica, sem estado "em trânsito".
+
+`Warehouse` nasceu — agregado raiz próprio (`Code` único normalizado em
+maiúsculas, `Name`, `Status` Active/Inactive), mesma forma de `InventoryItem`.
+Não é filho de `InventoryItem`; um movimento guarda só `WarehouseId`, nunca
+uma referência de objecto — mesma disciplina inter-agregado usada em todo o
+Rivo (ADR-010), aqui dentro do mesmo módulo em vez de entre módulos, por isso
+com FK real (`fk_stock_movement_warehouses_warehouse_id`), ao contrário de FK
+entre módulos, que ADR-010 proíbe.
+
+**Retrofit dos três métodos existentes:**
+`RegisterReceipt`/`RegisterIssue`/`RegisterAdjustment` ganharam `Guid warehouseId`
+como primeiro parâmetro. `QuantityOnHand` mantém-se como o total agregado do
+item (conveniência de leitura, como sempre foi); `QuantityOnHandAt(warehouseId)`
+é novo — a mesma soma assinada dos movimentos, filtrada por armazém, nunca
+escrita directamente. `RegisterIssue` e `RegisterAdjustment` passaram a
+validar contra a quantidade **desse armazém**, não o total: uma Saída não
+pode "emprestar" quantidade de outro armazém do mesmo item, mesmo que o total
+chegasse — recusada (409), exactamente o que o retrofit existe para impedir.
+
+**`Transfer(fromWarehouseId, toWarehouseId, quantity, reason, occurredOn, recordedAt)`**
+é o novo método — um único passo, atómico, que gera duas `StockMovement`
+ligadas: `TransferOut` na origem (quantidade negativa) e `TransferIn` no
+destino (quantidade positiva), cada uma apontando para o armazém do outro
+lado via `RelatedWarehouseId` — rastreabilidade sem precisar de um
+identificador de grupo à parte. Como as duas pernas somam zero,
+`QuantityOnHand` (o total agregado) nunca muda com uma transferência — só a
+distribuição por armazém muda. Recusa: quantidade acima do disponível na
+origem (409), origem igual ao destino (400), quantidade não positiva (400),
+armazém inexistente (404) ou inactivo (409) em qualquer um dos lados.
+
+Camada Application: `WarehouseGuard` (novo, interno) confirma que um armazém
+existe e está activo antes de qualquer movimento — "não encontrado" mapeia
+para 404 (mesmo tratamento de item inexistente), "inactivo" para 409 (mesma
+semântica de item inactivo). `ManageWarehouses.cs` (novo) — registar, listar,
+obter, (des)activar, mesmo desenho de `ManageInventoryItems.cs`.
+`TransferStock` (novo) orquestra a chamada a `InventoryItem.Transfer`.
+
+**Migração fez *backfill*, não bloqueou dados existentes na base local.**
+`stock_movement` já tinha linhas antes do retrofit (a suite de Movimento
+corre desde 2026-08-30 contra uma base persistente). A migração
+`AddWarehouseAndTransfer` cria a tabela `warehouse`, insere um armazém
+"Principal" com um id fixo gerado para a migração, e só depois adiciona
+`warehouse_id` como `NOT NULL` com esse id como valor por omissão —
+mesmo padrão do `defaultValue: 0m` usado no retrofit de subsídios de
+`payroll` (2026-08-31). Documentado no próprio ficheiro da migração como
+artefacto de dados históricos, não escolha de negócio.
+
+Vista da API: `InventoryItemView` ganhou `QuantitiesByWarehouse`
+(lista de `WarehouseId`+`QuantityOnHand`, computada por agrupamento dos
+movimentos); `StockMovementView` ganhou `WarehouseId` e `RelatedWarehouseId`.
+Quatro endpoints novos: `GET/POST /inventory/warehouses`,
+`GET /inventory/warehouses/{id}`, `POST /inventory/warehouses/{id}/status`,
+`POST /inventory/items/{id}/movements/transfers`; os três endpoints de
+movimento existentes ganharam `warehouseId` obrigatório no corpo do pedido.
+
+`Rivo.Inventory.Domain.Tests` cresceu de 21 para 43: `WarehouseTests` novo
+(9 casos), `InventoryItemTests` ganhou `WarehouseId` em todos os casos de
+Movimento e onze casos novos de `Transfer`/`QuantityOnHandAt` (incluindo o
+caso "há quantidade globalmente mas não nesse armazém", que é exactamente o
+que o retrofit existe para provar). `scripts/verify-inventory.ps1` cresceu
+de 25 para 41 casos e **confirmou 41/41 contra a stack local a 2026-08-31,
+sem nenhuma falha na primeira corrida** — nenhum defeito de aplicação
+apanhado, só a distinção 400/404/409 já aplicada correctamente desde a
+primeira escrita.
+
+**Continuam por fazer:** Contagem, valorização de stock.
 

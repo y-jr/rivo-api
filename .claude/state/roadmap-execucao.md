@@ -35,7 +35,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 4 | `finance` — o núcleo | ✅ **Critério de saída cumprido** em 2026-08-25 — os cinco contextos internos, BR-1/3/5/8 impostas, os documentos a lançar nos livros e (2026-08-29) a anular a estornar. Em dívida: o plano de contas, que é do contabilista |
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
 | 6 | `payroll` | Motor de IRT/INSS ganhou regra de negócio real em 2026-08-30 — trave de **produção** continua por parecer fiscal, ver a nota da fase |
-| 7 | `projects`, `inventory`, `fleet` | Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). `projects` ganhou Alocação de Recursos a 2026-08-31 (Colaborador e Viatura, via `hr`/`fleet`). Nenhum tem bloqueio de negócio; Armazém/Transferência/Contagem em `inventory` e Registo de Viagem/Despesa/Seguros em `fleet` continuam por fazer |
+| 7 | `projects`, `inventory`, `fleet` | Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). A 2026-08-31, `projects` ganhou Alocação de Recursos (Colaborador e Viatura, via `hr`/`fleet`) e `inventory` ganhou Armazém e Transferência (retrofit do Movimento, transferência atómica). Nenhum tem bloqueio de negócio; Contagem em `inventory` e Registo de Viagem/Despesa/Seguros em `fleet` continuam por fazer |
 | 8 | Camadas de composição e portais | Por iniciar |
 
 **Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
@@ -403,9 +403,8 @@ testes de arquitectura da Fase 0.
 > destinatário ainda. Detalhe em `pending-decisions.md` §Domínio e negócio,
 > ADR-039, ADR-040 e `modules/fleet.md`.
 >
-> **Fica ainda por fazer, sem bloqueio de negócio:** Armazém, Transferência
-> e Contagem em `inventory`; Registo de Viagem, Despesa de Frota e Seguros
-> em `fleet`.
+> **Fica ainda por fazer, sem bloqueio de negócio:** Contagem em
+> `inventory`; Registo de Viagem, Despesa de Frota e Seguros em `fleet`.
 >
 > **Alocação de Recursos em `projects` fechada a 2026-08-31** —
 > `ProjectResourceAllocation` (Colaborador ou Viatura), mesmo desenho de
@@ -417,6 +416,16 @@ testes de arquitectura da Fase 0.
 > postar em `finance` depende de "tempo real ou em lote?", ainda em
 > aberto. `verify-projects.ps1` cresceu de 33 para 43, `verify-fleet.ps1`
 > confirmado sem regressão em 38/38.
+>
+> **Armazém e Transferência em `inventory` fechados a 2026-08-31** —
+> retrofit, não convivência: o Movimento já enviado (Recepção, Saída,
+> Ajuste) passou a exigir `WarehouseId`, em vez de ficar por fazer ao lado
+> de um Armazém novo. `Warehouse` nasceu como agregado raiz próprio.
+> Transferência é atómica — sem estado "em trânsito" — e nunca altera o
+> total agregado do item. Migração fez *backfill*: os movimentos
+> pré-existentes na base local ganharam um armazém "Principal" gerado pela
+> própria migração. `verify-inventory.ps1` cresceu de 25 para 41, sem
+> nenhuma falha, primeira corrida.
 
 ---
 

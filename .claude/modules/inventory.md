@@ -58,11 +58,29 @@ se aplicável).
 - Movimento pertence ao agregado Item — nasce, e nunca se altera nem se
   elimina depois: é a soma dos movimentos que define `QuantityOnHand`, nunca
   o inverso.
-- Uma Saída nunca pode levar `QuantityOnHand` abaixo de zero — recusada, não
-  truncada.
+- **2026-08-31 — todo o movimento exige Armazém.** `Armazém` é um agregado
+  raiz próprio (código único, nome, estado Active/Inactive) — não é filho de
+  Item nem de nenhum movimento; um movimento guarda só o `WarehouseId`.
+  `QuantityOnHand` mantém-se como o total agregado do item, por conveniência;
+  a quantidade por armazém é lida à parte, sempre computada da soma dos
+  movimentos desse armazém — nunca escrita directamente, mesma disciplina do
+  total.
+- Uma Saída ou Ajuste nunca pode levar a quantidade **desse armazém** abaixo
+  de zero — recusada, não truncada, e nunca compensada com quantidade que
+  exista noutro armazém do mesmo item.
 - Um Ajuste exige motivo — uma correcção de contagem sem explicação não se
-  aceita — e também nunca pode levar `QuantityOnHand` abaixo de zero.
-- Um item inactivo não aceita Recepção, Saída nem Ajuste novos.
+  aceita.
+- Um item inactivo não aceita Recepção, Saída, Ajuste nem Transferência
+  novos. Um armazém inactivo também não aceita nenhum dos quatro.
+- **Transferência é atómica** (decisão confirmada 2026-08-31): move uma
+  quantidade de um armazém de origem para um de destino do mesmo item, num
+  só passo — nunca existe um estado intermédio "em trânsito". Gera duas
+  pernas ligadas (`TransferOut` na origem, `TransferIn` no destino,
+  cada uma apontando para o armazém do outro lado via
+  `RelatedWarehouseId`, para rastreabilidade sem precisar de um
+  identificador de grupo à parte). O total agregado do item nunca muda com
+  uma transferência — só a distribuição por armazém.
+- Não há eliminação de Item nem de Armazém (BR-14) — só desactivação.
 
 ## Sobreposição conhecida — resolvida (ADR-039)
 
@@ -81,19 +99,28 @@ concreto da ligação (o campo, o sentido) fica por desenhar para quando
 
 - Método de valorização (FIFO / custo médio ponderado / outro) — decisão de
   negócio, não assumir por omissão.
-- Semântica de transferência entre armazéns.
 
 ## Estado
 
 **Movimento, com regra de negócio real — 2026-08-30.** `InventoryItem`
 (SKU único, nome, unidade) nasceu esqueleto a 2026-08-29; ganhou Movimento
-(Recepção, Saída, Ajuste — os três tipos que fazem sentido sem Armazém) como
-parte do mesmo agregado, desbloqueado por ADR-039. `QuantityOnHand` é a soma
-assinada dos movimentos; nunca fica negativo; um item inactivo não aceita
-movimentos novos. 21 testes de domínio (`Rivo.Inventory.Domain.Tests`);
-`scripts/verify-inventory.ps1` — **25/25 confirmados contra a stack local a
-2026-08-30**, sem nenhuma falha, primeira corrida.
+(Recepção, Saída, Ajuste) como parte do mesmo agregado, desbloqueado por
+ADR-039.
 
-⚠ **Continuam por fazer:** Armazém, Transferência, Contagem, valorização de
-stock. Permissões atribuídas a `AssetManager`, que deixou de estar vazio a
-2026-08-29.
+**2026-08-31 — Armazém e Transferência (retrofit).** Decisão confirmada com
+o utilizador: (1) o Movimento já existente ganhou `WarehouseId` obrigatório
+em vez de conviver com um desenho sem armazém — `QuantityOnHand` passou a
+ter uma leitura por armazém (`QuantityOnHandAt`) além do total agregado; (2)
+Transferência é **atómica**, sem estado "em trânsito". `Warehouse` nasceu
+como agregado raiz próprio (código único, nome, estado). Migração faz
+*backfill*: os movimentos já existentes na base local ganharam um armazém
+"Principal" gerado pela própria migração — artefacto de dados históricos,
+não escolha de negócio. Resolve a pergunta em aberto "Semântica de
+transferência entre armazéns".
+
+43 testes de domínio (`Rivo.Inventory.Domain.Tests` — 34 do agregado Item,
+9 de `Warehouse`); `scripts/verify-inventory.ps1` — **41/41 confirmados
+contra a stack local a 2026-08-31**, sem nenhuma falha, primeira corrida.
+
+⚠ **Continuam por fazer:** Contagem, valorização de stock. Permissões
+atribuídas a `AssetManager`, que deixou de estar vazio a 2026-08-29.
