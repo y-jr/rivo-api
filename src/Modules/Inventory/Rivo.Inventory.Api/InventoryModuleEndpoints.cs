@@ -53,6 +53,25 @@ public static class InventoryModuleEndpoints
         group.MapPost("/warehouses/{warehouseId:guid}/status", SetWarehouseStatusAsync)
             .RequireAuthorization(InventoryPermissions.ItemsWrite);
 
+        group.MapGet("/counts", ListCountsAsync)
+            .RequireAuthorization(InventoryPermissions.ItemsRead);
+
+        group.MapGet("/counts/{countId:guid}", GetCountAsync)
+            .RequireAuthorization(InventoryPermissions.ItemsRead);
+
+        group.MapPost("/counts", OpenCountAsync)
+            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+
+        group.MapPost("/counts/{countId:guid}/lines", AddCountLineAsync)
+            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+
+        group.MapPost("/counts/{countId:guid}/close", CloseCountAsync)
+            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+
+        // Nunca DELETE (BR-14) — cancelar é o que existe para um engano.
+        group.MapPost("/counts/{countId:guid}/cancellation", CancelCountAsync)
+            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+
         return endpoints;
     }
 
@@ -227,6 +246,106 @@ public static class InventoryModuleEndpoints
             : Results.NotFound(new { erro = "Armazém não encontrado." });
     }
 
+    private static async Task<IResult> ListCountsAsync(
+        ListInventoryCounts listCounts,
+        Guid? warehouseId,
+        CancellationToken cancellationToken)
+    {
+        var contagens = await listCounts.ExecuteAsync(warehouseId, cancellationToken);
+        return Results.Ok(contagens);
+    }
+
+    private static async Task<IResult> GetCountAsync(
+        Guid countId,
+        GetInventoryCount getCount,
+        CancellationToken cancellationToken)
+    {
+        var contagem = await getCount.ExecuteAsync(countId, cancellationToken);
+
+        return contagem is null
+            ? Results.NotFound(new { erro = "Contagem não encontrada." })
+            : Results.Ok(contagem);
+    }
+
+    private static async Task<IResult> OpenCountAsync(
+        OpenCountRequest request,
+        OpenInventoryCount openCount,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await openCount.ExecuteAsync(
+            request.WarehouseId, request.OccurredOn, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            OpenCountOutcome.Opened => Results.Created($"/inventory/counts/{result.CountId}", new { countId = result.CountId }),
+            OpenCountOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            OpenCountOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
+            _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["count"] = [result.Error!] }),
+        };
+    }
+
+    private static async Task<IResult> AddCountLineAsync(
+        Guid countId,
+        AddCountLineRequest request,
+        AddInventoryCountLine addLine,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await addLine.ExecuteAsync(
+            countId, request.ItemId, request.CountedQuantity, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            AddCountLineOutcome.Added => Results.Created(
+                $"/inventory/counts/{countId}",
+                new
+                {
+                    lineId = result.LineId,
+                    expectedQuantity = result.ExpectedQuantity,
+                    countedQuantity = result.CountedQuantity,
+                    variance = result.Variance,
+                }),
+            AddCountLineOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            AddCountLineOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
+            _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["line"] = [result.Error!] }),
+        };
+    }
+
+    private static async Task<IResult> CloseCountAsync(
+        Guid countId,
+        CloseInventoryCount closeCount,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await closeCount.ExecuteAsync(countId, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            CloseCountOutcome.Closed => Results.Ok(new { generatedAdjustmentIds = result.GeneratedAdjustmentIds }),
+            CloseCountOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            _ => Results.Conflict(new { erro = result.Error }),
+        };
+    }
+
+    private static async Task<IResult> CancelCountAsync(
+        Guid countId,
+        CancelCountRequest request,
+        CancelInventoryCount cancelCount,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await cancelCount.ExecuteAsync(countId, request.Reason, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            CancelCountOutcome.Cancelled => Results.NoContent(),
+            CancelCountOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            CancelCountOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
+            _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["reason"] = [result.Error!] }),
+        };
+    }
+
     private static IResult MovementResult(RegisterMovementResult result, Guid itemId, string campo) =>
         result.Outcome switch
         {
@@ -269,3 +388,9 @@ public sealed record TransferStockRequest(
 public sealed record RegisterWarehouseRequest(string Code, string Name);
 
 public sealed record SetWarehouseStatusRequest(bool Active);
+
+public sealed record OpenCountRequest(Guid WarehouseId, DateOnly OccurredOn);
+
+public sealed record AddCountLineRequest(Guid ItemId, decimal CountedQuantity);
+
+public sealed record CancelCountRequest(string Reason);

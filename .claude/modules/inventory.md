@@ -81,6 +81,23 @@ se aplicável).
   identificador de grupo à parte). O total agregado do item nunca muda com
   uma transferência — só a distribuição por armazém.
 - Não há eliminação de Item nem de Armazém (BR-14) — só desactivação.
+- **2026-08-31 — Contagem.** `InventoryCount` é um agregado raiz próprio, não
+  filho de Item nem de Armazém — cobre muitos itens de um só armazém, o que
+  não cabe dentro de um único agregado Item. Âmbito é sempre um armazém: contar
+  é um acto físico, num local. Uma linha (`InventoryCountLine`) guarda a
+  quantidade esperada **congelada no momento em que nasce** (lida de
+  `QuantityOnHandAt`, nunca recalculada no fecho) e a quantidade contada —
+  variância é a diferença. O mesmo item não se conta duas vezes na mesma
+  sessão.
+- Fechar uma contagem sem nenhuma linha não tem o que confirmar — recusado.
+  Fechar uma contagem com linhas gera, **na mesma transacção**, um Ajuste por
+  cada linha com variância diferente de zero (mesma disciplina de "emitir
+  passa a lançar" em `finance`) — tudo ou nada: se um item recusar o ajuste
+  (por exemplo, ficou inactivo entretanto), nada fica gravado, nem o fecho da
+  contagem.
+- Cancelar uma contagem aberta exige motivo, mesma disciplina de um Ajuste
+  sem explicação. Uma contagem fechada é facto histórico (BR-14) — nunca se
+  cancela nem aceita linha nova depois de fechada.
 
 ## Sobreposição conhecida — resolvida (ADR-039)
 
@@ -118,9 +135,17 @@ como agregado raiz próprio (código único, nome, estado). Migração faz
 não escolha de negócio. Resolve a pergunta em aberto "Semântica de
 transferência entre armazéns".
 
-43 testes de domínio (`Rivo.Inventory.Domain.Tests` — 34 do agregado Item,
-9 de `Warehouse`); `scripts/verify-inventory.ps1` — **41/41 confirmados
-contra a stack local a 2026-08-31**, sem nenhuma falha, primeira corrida.
+**2026-08-31 — Contagem.** `InventoryCount` (agregado raiz próprio) +
+`InventoryCountLine` (filho, esperado congelado no momento em que a linha
+nasce). Abre-se num armazém, acumula uma linha por item contado, e o fecho
+gera um Ajuste por linha com variância — numa só transacção com o próprio
+fecho, tudo ou nada. Cancelar exige motivo; fechada é facto histórico
+(BR-14).
 
-⚠ **Continuam por fazer:** Contagem, valorização de stock. Permissões
-atribuídas a `AssetManager`, que deixou de estar vazio a 2026-08-29.
+64 testes de domínio (`Rivo.Inventory.Domain.Tests` — 34 do agregado Item,
+9 de `Warehouse`, 21 de `InventoryCount`); `scripts/verify-inventory.ps1` —
+**60/60 confirmados contra a stack local a 2026-08-31**, sem nenhuma falha,
+primeira corrida.
+
+⚠ **Continua por fazer:** valorização de stock. Permissões atribuídas a
+`AssetManager`, que deixou de estar vazio a 2026-08-29.

@@ -170,6 +170,10 @@ public static class InventoryAuditActions
     public const string WarehouseRegistered = "inventory.warehouse.registered";
     public const string WarehouseDeactivated = "inventory.warehouse.deactivated";
     public const string WarehouseReactivated = "inventory.warehouse.reactivated";
+    public const string CountOpened = "inventory.count.opened";
+    public const string CountLineAdded = "inventory.count.line_added";
+    public const string CountClosed = "inventory.count.closed";
+    public const string CountCancelled = "inventory.count.cancelled";
 }
 
 public static class InventoryAuditEntityTypes
@@ -177,4 +181,5 @@ public static class InventoryAuditEntityTypes
     public const string Item = "inventory.item";
     public const string Movement = "inventory.movement";
     public const string Warehouse = "inventory.warehouse";
+    public const string Count = "inventory.count";
 }

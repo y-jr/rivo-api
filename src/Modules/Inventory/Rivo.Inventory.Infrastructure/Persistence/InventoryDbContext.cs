@@ -12,6 +12,8 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
 
     public DbSet<Warehouse> Warehouses => Set<Warehouse>();
 
+    public DbSet<InventoryCount> InventoryCounts => Set<InventoryCount>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -85,6 +87,54 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
             warehouse.Property(w => w.Status).HasConversion<string>().HasMaxLength(20);
 
             warehouse.HasIndex(w => w.Code).IsUnique();
+        });
+
+        builder.Entity<InventoryCount>(count =>
+        {
+            count.ToTable("inventory_count");
+            count.HasKey(c => c.Id);
+
+            count.Property(c => c.Version).IsConcurrencyToken();
+
+            count.Property(c => c.Status).HasConversion<string>().HasMaxLength(20);
+            count.Property(c => c.CancellationReason).HasMaxLength(500);
+
+            count.HasIndex(c => c.WarehouseId);
+
+            // FK dentro do mesmo módulo (inventory → inventory), mesma nota
+            // de StockMovement.WarehouseId acima.
+            count.HasOne<Warehouse>()
+                .WithMany()
+                .HasForeignKey(c => c.WarehouseId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Linha é parte do agregado: nasce, e nunca vive sem a contagem.
+            count.HasMany(c => c.Lines)
+                .WithOne()
+                .HasForeignKey(l => l.CountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            count.Navigation(c => c.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        builder.Entity<InventoryCountLine>(line =>
+        {
+            line.ToTable("inventory_count_line");
+            line.HasKey(l => l.Id);
+
+            line.Property(l => l.Version).IsConcurrencyToken();
+
+            line.Property(l => l.ExpectedQuantity).HasPrecision(18, 4);
+            line.Property(l => l.CountedQuantity).HasPrecision(18, 4);
+            line.Ignore(l => l.Variance);
+
+            line.HasIndex(l => l.CountId);
+
+            // FK dentro do mesmo módulo, mesma nota acima.
+            line.HasOne<InventoryItem>()
+                .WithMany()
+                .HasForeignKey(l => l.ItemId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // As chaves são geradas pelo domínio (Guid.CreateVersion7), nunca pela

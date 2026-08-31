@@ -56,7 +56,7 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `payroll` | **Folha, itens, subsídios e Recibo, confirmado (2026-08-30/31).** `AddPayrollItem` pergunta a `fiscal` — nunca calcula por si — na ordem do artigo 7.º do CIRT: INSS do trabalhador, isenção de Alimentação/Transporte (até 30.000 Kz/mês cada, excesso tributado), matéria colectável, IRT por escalões; `NetSalary` sai sempre calculado, nunca recebido. Férias e Natal só compõem o recibo, sem isenção. Sem taxa/tabela/limiar em vigor, o item recusa (400) em vez de nascer com campo nulo. Recibo liga-se via `documents` (ADR-009, mesmo desenho de `hr`) a um item de folha Aprovada. Ligado a `approval` (submete pelo bruto). `verify-payroll.ps1` 26 casos. ⚠ A fonte dos valores fiscais continua o utilizador, não fiscalista nem Anexo I da lei |
 | `projects` | **Marco, Tarefa, Orçamento e Alocação de Recursos com regra de negócio, confirmado (2026-08-30/31).** Projecto como agregado — fecha, e fechado é facto histórico: nada se altera depois. Tarefa e Alocação verificam o recurso por contrato (ADR-010, BR-18) — Colaborador contra `hr`, Viatura contra `fleet` (`IVehicleDirectory`, novo). Alocação é distinta da atribuição de Tarefa: ao nível do projecto, não da tarefa; o mesmo recurso não se aloca duas vezes em aberto. Orçamento é zero ou um por projecto, moeda fixa na primeira vez (ADR-040). `verify-projects.ps1` 43/43 contra a stack local, sem falha. ⚠ Custos ao nível do projecto continuam de fora — postagem em `finance` é decisão em aberto |
 | `fleet` | **Manutenção, Atribuição e Plano de Manutenção com regra de negócio, confirmado (2026-08-30).** Viatura como agregado — um registo de manutenção aberto de cada vez, uma atribuição aberta de cada vez, vários planos activos ao mesmo tempo (sem exclusão mútua); nenhum dos três se exclui dos outros dois. Atribuição verifica o Colaborador contra `hr` (ADR-010, BR-18). Alerta de plano devido é consulta (`GET /fleet/maintenance-plans/due`), não notificação empurrada — `identity` não resolve "todos os AssetManager" ainda. **Primeiro contrato de leitura publicado a 2026-08-31** — `IVehicleDirectory`, consumido por `projects`. `verify-fleet.ps1` 38/38 contra a stack local, sem falha. ⚠ Registo de Viagem, Despesa de Frota e Seguros continuam por fazer |
-| `inventory` | **Movimento, Armazém e Transferência com regra de negócio, confirmado (2026-08-30/31).** Item como agregado — Recepção, Saída e Ajuste, agora todos com `WarehouseId` obrigatório (retrofit 2026-08-31); `QuantityOnHand` é o total agregado, `QuantityOnHandAt` a leitura por armazém, sempre a soma assinada, nunca negativa nesse armazém. `Warehouse` é agregado raiz próprio. Transferência é atómica — sem estado "em trânsito" — e nunca altera o total. Migração fez *backfill*: movimentos pré-existentes ganharam um armazém "Principal". `verify-inventory.ps1` 41/41 contra a stack local, sem falha. ⚠ Contagem e valorização de stock continuam por fazer |
+| `inventory` | **Movimento, Armazém, Transferência e Contagem com regra de negócio, confirmado (2026-08-30/31).** Item como agregado — Recepção, Saída e Ajuste, todos com `WarehouseId` obrigatório (retrofit 2026-08-31); `QuantityOnHand` é o total agregado, `QuantityOnHandAt` a leitura por armazém. `Warehouse` é agregado raiz próprio. Transferência é atómica — sem estado "em trânsito" — e nunca altera o total. `InventoryCount` (agregado raiz próprio) abre num armazém, acumula uma linha por item contado com o esperado congelado no momento em que nasce, e o fecho gera um Ajuste por linha com variância — tudo numa transacção, tudo ou nada. `verify-inventory.ps1` 60/60 contra a stack local, sem falha. ⚠ Valorização de stock continua por fazer |
 
 Detalhe com datas e ressalvas em [implemented.md](implemented.md).
 
@@ -95,11 +95,11 @@ superfície inteira é legível por quem estiver a ouvir.
 
 | Área | Estado |
 |---|---|
-| Código | 14 módulos, 70 projectos em `src/`, 344 ficheiros `.cs` |
-| Superfície HTTP | 202 endpoints em 14 grupos de rota, mais `/health` |
+| Código | 14 módulos, 70 projectos em `src/`, 351 ficheiros `.cs` |
+| Superfície HTTP | 208 endpoints em 14 grupos de rota, mais `/health` |
 | ADRs | 40, aceites |
-| Testes | **916** em 19 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). A 2026-08-30, `Rivo.Projects.Domain.Tests` cresceu de 29 (Marco e Tarefa) para 39 (+ Orçamento), `Rivo.Fleet.Domain.Tests` de 25 para 42 (+ Plano de Manutenção), nasceu `Rivo.Inventory.Domain.Tests` com 21 (Movimento), `Rivo.Fiscal.Domain.Tests` cresceu de 18 para 39 (+ `IncomeTaxSchedule`) e nasceu `Rivo.Payroll.Domain.Tests` com 16 (`ApplyCalculation` e o ciclo da folha), depois 22 (+ `PayrollItemDocument`, o Recibo). A 2026-08-31, `Rivo.Fiscal.Domain.Tests` cresceu de 39 para 50 (+ `SubsidyExemptionSchedule`), `Rivo.Payroll.Domain.Tests` de 22 para 30 (+ `PayrollItemAllowanceTests`, os subsídios), `Rivo.Projects.Domain.Tests` de 39 para 55 (+ `ProjectResourceAllocationTests`, a Alocação de Recursos), e `Rivo.Inventory.Domain.Tests` de 21 para 43 (+ `WarehouseTests` e o retrofit de `WarehouseId`/`Transfer` em `InventoryItemTests`) |
-| Verificação end-to-end | **17 suites** PowerShell, **436 casos** — a 2026-08-30, `verify-projects` cresceu de 14 para 33 (+ Orçamento), `verify-fleet` de 15 para 38 (+ Plano de Manutenção), `verify-inventory` de 13 para 25 (Movimento), `verify-fiscal` de 12 para 20 (+ motor de IRT/INSS) e `verify-payroll` de 5 para 17 (cálculo real), depois 22 (+ Recibo, mesmo dia). A 2026-08-31, `verify-fiscal` cresceu de 20 para 23 (+ limiares de subsídio), `verify-payroll` de 22 para 26 (+ dois cenários de subsídio ponta a ponta), `verify-projects` de 33 para 43 (+ Alocação de Recursos, confirmado 43/43), e `verify-inventory` de 25 para 41 (+ Armazém e Transferência, confirmado 41/41). **Corrida completa (`verify-all.ps1`) confirmada a 2026-08-30: 395/398** (antes do Recibo, dos subsídios, da Alocação de Recursos e do Armazém/Transferência) — as 3 falhas são todas o mesmo K20 (limpeza de política, sem causa de código em quatro investigações), em `verify-ledger`, `verify-payroll` e `verify-procurement`; zero regressão nova. A primeira ronda de `verify-fleet` (26 casos) apanhou dois defeitos reais (400 em vez de 409); a primeira ronda do motor de IRT/INSS apanhou um terceiro (`TaxKind` sem entrada no `switch` de tradução, 500 em vez de determinar); a primeira ronda dos subsídios apanhou um quarto, só visível ao subir a stack — migração de EF esquecida (`PendingModelChangesWarning` fatal no arranque). O Recibo, a Alocação de Recursos e o Armazém/Transferência, sozinhos, não apanharam nenhum defeito de aplicação — só um erro na própria suite de Alocação (contagem de eventos auditados), corrigido no mesmo dia |
+| Testes | **937** em 19 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). A 2026-08-30, `Rivo.Projects.Domain.Tests` cresceu de 29 (Marco e Tarefa) para 39 (+ Orçamento), `Rivo.Fleet.Domain.Tests` de 25 para 42 (+ Plano de Manutenção), nasceu `Rivo.Inventory.Domain.Tests` com 21 (Movimento), `Rivo.Fiscal.Domain.Tests` cresceu de 18 para 39 (+ `IncomeTaxSchedule`) e nasceu `Rivo.Payroll.Domain.Tests` com 16 (`ApplyCalculation` e o ciclo da folha), depois 22 (+ `PayrollItemDocument`, o Recibo). A 2026-08-31, `Rivo.Fiscal.Domain.Tests` cresceu de 39 para 50 (+ `SubsidyExemptionSchedule`), `Rivo.Payroll.Domain.Tests` de 22 para 30 (+ `PayrollItemAllowanceTests`, os subsídios), `Rivo.Projects.Domain.Tests` de 39 para 55 (+ `ProjectResourceAllocationTests`, a Alocação de Recursos), e `Rivo.Inventory.Domain.Tests` de 21 para 43 (+ `WarehouseTests` e o retrofit de `WarehouseId`/`Transfer` em `InventoryItemTests`), depois 64 (+ `InventoryCountTests`, a Contagem) |
+| Verificação end-to-end | **17 suites** PowerShell, **455 casos** — a 2026-08-30, `verify-projects` cresceu de 14 para 33 (+ Orçamento), `verify-fleet` de 15 para 38 (+ Plano de Manutenção), `verify-inventory` de 13 para 25 (Movimento), `verify-fiscal` de 12 para 20 (+ motor de IRT/INSS) e `verify-payroll` de 5 para 17 (cálculo real), depois 22 (+ Recibo, mesmo dia). A 2026-08-31, `verify-fiscal` cresceu de 20 para 23 (+ limiares de subsídio), `verify-payroll` de 22 para 26 (+ dois cenários de subsídio ponta a ponta), `verify-projects` de 33 para 43 (+ Alocação de Recursos, confirmado 43/43), `verify-inventory` de 25 para 41 (+ Armazém e Transferência, confirmado 41/41), depois de 41 para 60 (+ Contagem, confirmado 60/60). **Corrida completa (`verify-all.ps1`) confirmada a 2026-08-31 (antes da Contagem): 433/436** — as 3 falhas são todas o mesmo K20 (limpeza de política, sem causa de código), em `verify-ledger`, `verify-payroll` e `verify-procurement`; zero regressão nova. A primeira ronda de `verify-fleet` (26 casos) apanhou dois defeitos reais (400 em vez de 409); a primeira ronda do motor de IRT/INSS apanhou um terceiro (`TaxKind` sem entrada no `switch` de tradução, 500 em vez de determinar); a primeira ronda dos subsídios apanhou um quarto, só visível ao subir a stack — migração de EF esquecida (`PendingModelChangesWarning` fatal no arranque). O Recibo, a Alocação de Recursos e o Armazém/Transferência, sozinhos, não apanharam nenhum defeito de aplicação — só erros na própria suite (contagem de eventos auditados na Alocação; `itemId` aleatório em vez do item real num caso da Contagem, que mascarava 404 por 400), corrigidos no mesmo dia |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
@@ -217,14 +217,15 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    (via `documents`), ver abaixo. `projects`, `fleet` e `inventory` saíram
    da lista de esqueletos no mesmo dia (Orçamento de Projecto/ADR-040, Plano
    de Manutenção, Movimento). **O que fica por fazer não tem decisão
-   própria à espera** — é trabalho de engenharia sem bloqueio: Contagem em
-   `inventory`, Registo de Viagem/Despesa/Seguros em `fleet`. Alocação de
-   Recursos em `projects` e Armazém/Transferência em `inventory` saíram
-   desta lista a 2026-08-31 (ver "Fechado" abaixo) — a primeira com
-   Colaborador e Viatura feitos e custos de fora por decisão explícita
-   (postagem em `finance` depende de "tempo real ou em lote?"); a segunda
-   com retrofit de `WarehouseId` e transferência atómica. Ver o
-   "Seguimento" em cada `modules/*.md`.
+   própria à espera** — é trabalho de engenharia sem bloqueio: Registo de
+   Viagem/Despesa/Seguros em `fleet` é o único item de Fase 7 que ainda
+   resta. Alocação de Recursos e Armazém/Transferência/Contagem em
+   `inventory` saíram desta lista a 2026-08-31 (ver "Fechado" abaixo) — a
+   primeira com Colaborador e Viatura feitos e custos de fora por decisão
+   explícita (postagem em `finance` depende de "tempo real ou em lote?");
+   as últimas duas com retrofit de `WarehouseId`, transferência atómica, e
+   contagem que gera Ajuste no fecho. Ver o "Seguimento" em cada
+   `modules/*.md`.
 
 **Fechado a 2026-08-30 (payroll: os dois pontos de IRT/INSS que bloqueavam
 produção):** o utilizador confirmou, depois de reafirmar mais cedo no mesmo
@@ -463,6 +464,53 @@ origem, mesmo armazém dos dois lados, quantidade não positiva, armazém
 inexistente), e sobrevivência ao reinício da stack. **Confirmado 41/41
 contra a stack local, sem nenhuma falha, primeira corrida** — nenhum defeito
 de aplicação apanhado. Detalhe em [modules/inventory.md](../modules/inventory.md).
+
+**Fechado a 2026-08-31 (`inventory`: Contagem):** `InventoryCount` nasceu —
+agregado raiz próprio, não filho de Item nem de Armazém. Nenhuma pergunta
+ficou em aberto para o utilizador: as decisões de forma (âmbito por armazém,
+esperado congelado no momento em que a linha nasce, fecho atómico) foram
+inferidas por precedente já estabelecido no próprio módulo (mesma disciplina
+do retrofit de Armazém/Transferência do dia anterior), não fixadas por
+decisão de negócio.
+
+- **Âmbito é sempre um armazém** — contar é um acto físico, num local.
+- **Linha por item, esperado congelado no momento em que nasce.** A
+  quantidade esperada de cada linha é lida de `QuantityOnHandAt` no
+  instante em que a linha é acrescentada — nunca recalculada no fecho.
+  Recalcular absorveria em silêncio qualquer movimento acontecido durante a
+  contagem, escondendo exactamente a divergência que a contagem existe para
+  apanhar. O mesmo item não se conta duas vezes na mesma sessão.
+- **Fechar gera Ajuste por linha com variância, na mesma transacção do
+  próprio fecho — tudo ou nada.** `CloseInventoryCount` toca dois agregados
+  (`InventoryCount` e, por cada linha com variância, `InventoryItem`) e só
+  grava tudo junto no fim; se um item recusar o ajuste (por exemplo, ficou
+  inactivo entretanto), nada fica gravado, nem sequer o fecho da contagem —
+  mesma disciplina de "emitir passa a lançar, na mesma transacção" já usada
+  em `finance`. Fechar sem nenhuma linha é recusado (409) — não há o que
+  confirmar.
+- **Cancelar exige motivo** (mesma disciplina de Ajuste sem explicação);
+  fechada é facto histórico (BR-14) — não se cancela nem aceita linha nova.
+- **Múltiplas contagens simultaneamente abertas no mesmo armazém são
+  permitidas** — simplificação deliberada e documentada, não invariante
+  esquecida: o mesmo item podia em teoria ser contado em duas sessões
+  concorrentes sem que uma soubesse da outra. Aceite por agora; revisitar se
+  se tornar um problema real.
+
+Testes: `Rivo.Inventory.Domain.Tests` cresceu de 43 para 64
+(`InventoryCountTests`, 21 casos). `verify-inventory.ps1` cresceu de 41 para
+60 — abrir contagem (armazém inexistente 404, inactivo 409), acrescentar
+linha (item duplicado 409, quantidade negativa 400, contagem/item
+inexistente 404), fechar (sem linhas 409, gera ajuste e actualiza
+`quantityOnHandAt`, segundo fecho 409, linha nova depois de fechada 409),
+cancelar (com motivo, sem motivo 400, já fechada 409, duas vezes 409),
+listagem filtrada por armazém, sem eliminação, tudo auditado com actor.
+**Confirmado 60/60 contra a stack local, sem nenhuma falha** — um defeito
+apanhado, mas na própria suite, não na aplicação: um caso usava um `itemId`
+aleatório para testar quantidade negativa, e a aplicação (correctamente)
+verificava a existência do item antes da quantidade, devolvendo 404 em vez
+do 400 esperado — corrigido para reutilizar o item real da suite, que já
+tinha uma linha, provando que a validação de quantidade acontece antes da
+verificação de duplicado. Detalhe em [modules/inventory.md](../modules/inventory.md).
 
 **Fechado a 2026-08-30 (`fleet`: Plano de Manutenção):** `Vehicle` ganhou um
 terceiro filho no agregado, `MaintenancePlan` — calendário preventivo,

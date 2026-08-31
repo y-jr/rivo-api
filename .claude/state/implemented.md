@@ -1621,5 +1621,75 @@ sem nenhuma falha na primeira corrida** — nenhum defeito de aplicação
 apanhado, só a distinção 400/404/409 já aplicada correctamente desde a
 primeira escrita.
 
-**Continuam por fazer:** Contagem, valorização de stock.
+**Continuam por fazer (2026-08-31):** Contagem, valorização de stock — a
+primeira fechou mais tarde no mesmo dia, ver abaixo.
+
+_2026-08-31 — **Contagem de inventário.**_ Nenhuma pergunta de negócio ficou
+em aberto — as decisões de forma foram inferidas por precedente já
+estabelecido no próprio módulo, mesma disciplina do retrofit de
+Armazém/Transferência do dia anterior.
+
+`InventoryCount` nasceu — agregado raiz próprio (`WarehouseId`, `OccurredOn`,
+`Status` Open/Closed/Cancelled, `CancellationReason?`), **não filho de Item
+nem de Armazém**: uma contagem cobre muitos itens de um só armazém, o que não
+cabe dentro de um único agregado Item sem fragmentar a sessão. `InventoryCountLine`
+é filho do agregado (`ItemId`, `ExpectedQuantity`, `CountedQuantity`,
+`Variance` computado — nunca persistido, mera diferença entre os dois campos
+da própria linha).
+
+- **`Open(warehouseId, occurredOn)`** — nasce Open, sem linhas.
+- **`AddLine(itemId, countedQuantity, expectedQuantity)`** — `expectedQuantity`
+  é fornecido pela Application (lido de `InventoryItem.QuantityOnHandAt` no
+  momento em que a linha nasce), porque o agregado `InventoryCount` não
+  alcança outros agregados. Congelado ali, nunca recalculado no fecho — uma
+  contagem existe para comparar "o que o sistema achava quando se contou"
+  com "o que se encontrou fisicamente"; recalcular no fecho esconderia
+  exactamente a divergência que a contagem existe para apanhar. Quantidade
+  negativa recusada (400); mesmo item duas vezes na mesma sessão recusado
+  (409); só em contagem Open.
+- **`Close()`** — só transita o estado (Open→Closed), e só valida (≥1 linha,
+  ainda Open). Gerar os Ajustes de cada linha exige tocar no agregado
+  `InventoryItem` de cada uma, fora do alcance deste agregado — isso é
+  trabalho da Application.
+- **`Cancel(reason)`** — exige motivo (mesma disciplina de Ajuste sem
+  explicação); só em contagem Open.
+
+**`CloseInventoryCount` (Application) é quem gera os Ajustes, na mesma
+transacção do próprio fecho — tudo ou nada.** Chama `count.Close()`, depois,
+para cada linha com `Variance != 0`, carrega o `InventoryItem` e chama
+`RegisterAdjustment(warehouseId, variance, "Contagem {id}", occurredOn, agora)`
+— se qualquer um recusar (por exemplo, o item ficou inactivo entretanto),
+o método devolve erro sem nunca chamar `SaveChangesAsync`, e nada fica
+gravado, nem sequer o fecho da contagem em si (a mutação em memória do
+`Status` é descartada com o resto). Mesma disciplina de "emitir passa a
+lançar, na mesma transacção", já usada em `finance`. Uma contagem sem
+nenhuma linha não tem o que confirmar — fechar é recusado (409).
+
+**Simplificação deliberada, documentada:** múltiplas contagens
+simultaneamente abertas no mesmo armazém são permitidas — o mesmo item
+podia em teoria ser contado em duas sessões concorrentes sem que uma
+soubesse da outra. Não é uma invariante esquecida; é aceite por agora,
+gold-plating seria construir a verificação cruzada sem um caso real a pedi-la.
+
+`WarehouseGuard` (já existente do retrofit de Armazém) é reutilizado tal e
+qual para `OpenInventoryCount` — armazém inexistente 404, inactivo 409,
+mesmo tratamento de item.
+
+Seis endpoints novos, todos sob `inventory.items.read`/`inventory.items.write`
+(reutilizadas — Contagem é operação de inventário, não um perfil à parte):
+`GET/POST /inventory/counts`, `GET /inventory/counts/{id}`,
+`POST /inventory/counts/{id}/lines`, `POST /inventory/counts/{id}/close`,
+`POST /inventory/counts/{id}/cancellation` (nunca DELETE — BR-14).
+
+`Rivo.Inventory.Domain.Tests` cresceu de 43 para 64 (`InventoryCountTests`
+novo, 21 casos). `scripts/verify-inventory.ps1` cresceu de 41 para 60 casos
+e **confirmou 60/60 contra a stack local a 2026-08-31, sem nenhuma falha** —
+um defeito apanhado, mas na própria suite: um caso testava quantidade
+negativa com um `itemId` aleatório em vez do item real da suite, e a
+aplicação (correctamente) verificava a existência do item antes da
+quantidade, devolvendo 404 em vez do 400 esperado — corrigido reutilizando
+o item real, que já tinha uma linha na contagem, o que de caminho prova que
+a validação de quantidade acontece antes da verificação de duplicado.
+
+**Continua por fazer:** valorização de stock.
 
