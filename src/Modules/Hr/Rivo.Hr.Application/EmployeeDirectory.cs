@@ -19,12 +19,30 @@ public sealed class EmployeeDirectory(IHrStore store) : IEmployeeDirectory
     {
         var employee = await store.FindEmployeeAsync(employeeId, cancellationToken);
 
-        if (employee is null)
-        {
-            return null;
-        }
+        return employee is null ? null : await ToReferenceAsync(employee, asOf, cancellationToken);
+    }
 
-        var assignments = await store.ListAssignmentsForEmployeeAsync(employeeId, cancellationToken);
+    /// <summary>
+    /// Primeiro consumidor: o Portal do Colaborador, para resolver "o
+    /// próprio" (ADR-042). Mesma leitura de <see cref="FindAsync"/>, só
+    /// entrando pela conta em vez do colaborador.
+    /// </summary>
+    public async Task<EmployeeReference?> FindByUserIdAsync(
+        Guid userId,
+        DateTimeOffset asOf,
+        CancellationToken cancellationToken)
+    {
+        var employee = await store.FindEmployeeByUserIdAsync(userId, cancellationToken);
+
+        return employee is null ? null : await ToReferenceAsync(employee, asOf, cancellationToken);
+    }
+
+    private async Task<EmployeeReference> ToReferenceAsync(
+        Employee employee,
+        DateTimeOffset asOf,
+        CancellationToken cancellationToken)
+    {
+        var assignments = await store.ListAssignmentsForEmployeeAsync(employee.Id, cancellationToken);
         var position = await ResolvePositionAsync(assignments, asOf, cancellationToken);
 
         return Map(employee, position);

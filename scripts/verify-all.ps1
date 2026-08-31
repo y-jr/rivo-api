@@ -21,6 +21,12 @@ $suites = @(
     "verify-authorization",
     "verify-audit",
     "verify-hr",
+
+    # Camada de composicao (ADR-041/ADR-042), nao modulo -- so precisa de
+    # `identity` e `hr` de pe. Cria o seu proprio colaborador isolado
+    # ($stamp), por isso nao depende de estado deixado por `verify-hr`.
+    "verify-employee-portal",
+
     "verify-documents",
     "verify-notifications",
     "verify-fiscal",

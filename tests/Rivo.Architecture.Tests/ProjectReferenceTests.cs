@@ -152,6 +152,13 @@ public class ProjectReferenceTests
         // Configurações & Administração (domain-map.md §Read models):
         // perfis de acesso de `identity`, políticas de `approval`.
         ["Settings"] = ["Identity", "Approval"],
+
+        // Segunda camada de composição (ADR-042, Portal do Colaborador) —
+        // resolve "o próprio" pelo contrato de `hr`. Não depende de
+        // `Identity`: a conta autenticada chega já resolvida (o `sub` do
+        // token), lida directamente do `HttpContext` na camada Api, não por
+        // contrato.
+        ["EmployeePortal"] = ["Hr"],
     };
 
     /// <summary>
@@ -161,7 +168,8 @@ public class ProjectReferenceTests
     /// camada que realmente têm, `Api`, em vez de assumir `Domain` como todos
     /// os outros.
     /// </summary>
-    private static readonly HashSet<string> CamadasDeComposicao = new(StringComparer.Ordinal) { "Settings" };
+    private static readonly HashSet<string> CamadasDeComposicao =
+        new(StringComparer.Ordinal) { "Settings", "EmployeePortal" };
 
     [Fact]
     public void Module_ReferencesAnotherModuleOnlyThroughItsContracts()

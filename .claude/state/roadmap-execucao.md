@@ -36,7 +36,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
 | 6 | `payroll` | Motor de IRT/INSS ganhou regra de negócio real em 2026-08-30 — trave de **produção** continua por parecer fiscal, ver a nota da fase |
 | 7 | `projects`, `inventory`, `fleet` | **Fechada por completo a 2026-08-31.** Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). A 2026-08-31, `projects` ganhou Alocação de Recursos (Colaborador e Viatura, via `hr`/`fleet`), `inventory` ganhou Armazém, Transferência (retrofit do Movimento, transferência atómica) e Contagem (gera Ajuste no fecho, tudo numa transacção), e `fleet` ganhou Registo de Viagem, Despesa de Frota (sem abrir/fechar, ao contrário de Manutenção/Atribuição) e Seguros (`VehicleDocument`, ligação autónoma a `documents`) |
-| 8 | Camadas de composição e portais | **Iniciada 2026-08-31** — Configurações & Administração feita (ADR-041); as outras quatro por fazer |
+| 8 | Camadas de composição e portais | **Iniciada 2026-08-31** — Configurações & Administração (ADR-041) e Portal do Colaborador (ADR-042) feitos; Dashboard Executivo, Portal do Cliente e Analytics & IA por fazer |
 
 **Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
 arranca na Fase 3. Ver no fim.
@@ -493,12 +493,32 @@ por contrato publicado.
 > `scripts/verify-settings.ps1` (7 casos) confirmou 7/7 na primeira
 > corrida.
 >
-> **Fica por fazer, cada uma com a sua própria decisão em aberto:**
-> Dashboard Executivo (precisa de contratos de leitura que `finance`/
-> `commercial` ainda não publicam), Portal do Colaborador (precisa de "o
-> próprio a ver-se a si próprio"), Portal do Cliente (superfície externa,
-> autenticação de cliente separada) e Analytics & IA. Ver
-> `domain/domain-map.md` §Read models e ADR-041 §Consequences.
+> **Segunda, mesmo dia — Portal do Colaborador.** O utilizador respondeu
+> directamente à escolha de por onde continuar, e registou a decisão a
+> tomar: "próprio" resolve-se pelo vínculo Identity → Employee
+> (`hr.Employee.UserId`, já existia desde a Fase 0, nunca tinha
+> consumidor), **nunca por permissão nova** — é regra de contexto, não
+> autorização (ADR-042). Sem colaborador ligado, `GET /portal/me` devolve
+> 403, sem tentar adivinhar; não aceita `employeeId` nenhum, nunca vê o
+> colaborador de outra conta; Admin continua a usar os fluxos
+> administrativos existentes em vez de um atalho pelo portal.
+>
+> `Rivo.Hr.Contracts` ganhou `IEmployeeDirectory.FindByUserIdAsync`.
+> **Consequência necessária, não pedida:** `Employee.UserId` passou a ser
+> único quando preenchido (índice filtrado + verificação em
+> `HireEmployee`) — até aqui ninguém confiava em "no máximo um colaborador
+> por conta", porque não havia consumidor a assumi-lo.
+> `Rivo.EmployeePortal.Application.Tests` (4 casos),
+> `scripts/verify-employee-portal.ps1` (8 casos) e dois casos novos em
+> `verify-hr.ps1` (18→20) confirmaram tudo na primeira corrida.
+>
+> **Ordem para o resto da Fase 8, decidida pelo utilizador:** contratos de
+> leitura Finance/Commercial → Dashboard Executivo → decisão de identidade
+> externa → Portal do Cliente → Analytics & IA. Nenhum destes avança sem a
+> decisão que lhe falta — nomeadamente, não se volta ao plano de contas do
+> PGC só porque a Fase 8 está em curso; só se essa decisão bloquear
+> directamente algo que a Fase 8 precise. Ver
+> `domain/domain-map.md` §Read models, ADR-041 §Consequences e ADR-042.
 
 ---
 

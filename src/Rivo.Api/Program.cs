@@ -38,6 +38,7 @@ using Rivo.Inventory.Infrastructure;
 using Rivo.Fleet.Api;
 using Rivo.Fleet.Infrastructure;
 using Rivo.Settings.Api;
+using Rivo.EmployeePortal.Api;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -86,6 +87,11 @@ builder.Services.AddIdentityModule(builder.Configuration);
 // dois, e as policies de autorização que usa (`identity.roles.read`,
 // `approval.policies.read`) nascem do `AddAuthorization` de cada um deles.
 builder.Services.AddSettingsModule();
+
+// Segunda camada de composição (ADR-041/ADR-042) — depende só de `identity`
+// (para resolver a conta autenticada, já registada acima) e de `hr`, que
+// AddHrModule já registou.
+builder.Services.AddEmployeePortalModule();
 
 // Apresenta `hr` a `approval`, sem que nenhum dos dois conheça o outro.
 //
@@ -309,6 +315,7 @@ app.MapInventoryModule();
 app.MapFleetModule();
 app.MapNotificationsModule();
 app.MapSettingsModule();
+app.MapEmployeePortalModule();
 
 // Verifica que a aplicação está viva e que alcança a base de dados.
 app.MapGet("/health", async (RivoIdentityDbContext db, CancellationToken ct) =>

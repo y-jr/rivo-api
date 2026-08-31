@@ -1869,3 +1869,62 @@ tem uma das duas), sobrevivência ao reinício da stack.
 Detalhe da decisão arquitectural em
 [decisions/adr-041](../decisions/adr-041-camada-de-composicao-padrao.md).
 
+## employee-portal (camada de composição — Fase 8, não módulo)
+
+**⚠ Não é um dos catorze módulos.** Segunda camada de composição, mesmo dia
+de `settings`. Portal do Colaborador, do documento de produto — só a parte
+de "o próprio" está feita; recibos, férias, assiduidade e o resto de
+`docs/rivo-suite-descricao-modulos.md` §11 continuam por fazer, cada um
+como incremento sobre este mecanismo. Vive em
+`src/Composition/EmployeePortal/`.
+
+**2026-08-31 — `GET /portal/me`, decisão do utilizador (ADR-042).**
+"Próprio" resolve-se pelo vínculo Identity → Employee, **nunca por
+permissão nova**:
+
+- `CurrentUser` (a identidade autenticada) é a fonte de verdade. O
+  colaborador é resolvido a partir dela — o `sub` do token, lido
+  directamente do `HttpContext` na camada Api, nunca por contrato.
+- **Sem colaborador ligado, 403** — nunca tenta adivinhar por nome ou
+  e-mail parecido. Testado explicitamente com o próprio Admin do
+  bootstrap, que não tem `hr.Employee` ligado.
+- **Sem `employeeId` nenhum no pedido** — o endpoint devolve sempre e só
+  o colaborador do chamador. Estruturalmente impossível pedir o de outro:
+  não há parâmetro para isso.
+- Admin continua a usar os fluxos administrativos de `hr` — o portal não é
+  um atalho de RBAC.
+
+**`Rivo.Hr.Contracts` ganhou `IEmployeeDirectory.FindByUserIdAsync`** —
+mesma leitura de `FindAsync`, entrando pela conta em vez do colaborador
+(`EmployeeDirectory` refactorizado para partilhar a resolução de cargo
+actual entre os dois caminhos).
+
+**Consequência necessária, não pedida diretamente pelo utilizador, mas
+implícita em confiar no vínculo:** `Employee.UserId` passou a ser único
+quando preenchido — índice filtrado (`WHERE user_id IS NOT NULL`) em
+`HrDbContext`, mais a verificação em `HireEmployee` (409, "conta já
+associada a outro colaborador"). O campo existia desde a Fase 0 de `hr`
+(ADR-004), mas tolerava duplicados porque nunca tinha tido consumidor a
+assumir "no máximo um" — resolver "o próprio" por `FirstOrDefault` sobre um
+campo assim exporia dados de um colaborador a outra conta ligada ao mesmo
+`UserId`, por acidente. Migração `UniqueEmployeeUserId`, sem dados a
+migrar (nenhum duplicado na base local).
+
+`GetMyProfile` devolve nome, estado, departamento e cargo actual — a mesma
+forma de `EmployeeReference`, envolvida na sua própria vista
+(`MyProfileView`) em vez de reexportada directamente, mesma disciplina de
+`Rivo.Settings`.
+
+`Rivo.EmployeePortal.Application.Tests` (novo, 4 casos, fakes escritos à
+mão). `scripts/verify-employee-portal.ps1` (novo, 8 casos) **confirmou 8/8
+contra a stack local, sem nenhuma falha na primeira corrida** — 401 sem
+autenticação, Admin sem colaborador ligado devolve 403, perfil próprio com
+nome/departamento/estado correctos, `currentPosition` nulo sem cargo e
+presente com cargo, outro utilizador sem vínculo nunca vê o colaborador
+alheio, sobrevivência ao reinício da stack. `scripts/verify-hr.ps1` cresceu
+de 18 para 20 (+ conta duplicada recusada com 409, + índice único
+confirmado por SQL), confirmado sem regressão.
+
+Detalhe da decisão em
+[decisions/adr-042](../decisions/adr-042-portal-colaborador-proprio.md).
+

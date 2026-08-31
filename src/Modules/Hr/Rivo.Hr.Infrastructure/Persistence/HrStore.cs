@@ -9,6 +9,9 @@ public sealed class HrStore(HrDbContext context) : IHrStore
     public async Task<Employee?> FindEmployeeAsync(Guid employeeId, CancellationToken cancellationToken) =>
         await context.Employees.FirstOrDefaultAsync(e => e.Id == employeeId, cancellationToken);
 
+    public async Task<Employee?> FindEmployeeByUserIdAsync(Guid userId, CancellationToken cancellationToken) =>
+        await context.Employees.FirstOrDefaultAsync(e => e.UserId == userId, cancellationToken);
+
     public async Task<IReadOnlyList<Employee>> ListEmployeesAsync(CancellationToken cancellationToken) =>
         await context.Employees.AsNoTracking().OrderBy(e => e.FullName).ToListAsync(cancellationToken);
 

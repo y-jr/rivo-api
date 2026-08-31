@@ -300,7 +300,29 @@ Test-Case "17. Sem autenticacao -> 401; sem permissao -> 403" {
     "401 e 403 correctos"
 }
 
-Test-Case "18. Dados sobrevivem ao reinicio da stack" {
+$script:linkedUserId = $null
+Test-Case "18. Contratar com conta ja ligada a outro colaborador e recusado (ADR-042)" {
+    $e = "portal-$stamp@rivo.ao"
+    $b = @{ email = $e; password = $pass } | ConvertTo-Json
+    $script:linkedUserId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
+
+    $b = @{ fullName = "Primeiro Colaborador"; userId = $script:linkedUserId } | ConvertTo-Json
+    $primeiro = (Invoke-RestMethod "$base/hr/employees" -Method Post -Body $b -ContentType "application/json" -Headers $hrHeaders).employeeId
+    if (-not $primeiro) { throw "primeiro colaborador nao foi criado" }
+
+    $b = @{ fullName = "Segundo Colaborador"; userId = $script:linkedUserId } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/hr/employees" -Method Post -Body $b -ContentType "application/json" -Headers $hrHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    "409 -- a conta ja tem um colaborador, nao se liga a um segundo"
+}
+
+Test-Case "19. UserId e unico na base de dados" {
+    $dup = Invoke-Sql "select count(*) from hr.employee where user_id='$($script:linkedUserId)'"
+    if ($dup -ne "1") { throw "esperado exactamente 1 colaborador ligado, encontrados $dup -- indice unico nao impediu" }
+    "indice unico e a segunda linha; a verificacao no caso de uso e a primeira"
+}
+
+Test-Case "20. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)

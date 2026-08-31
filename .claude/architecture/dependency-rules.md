@@ -96,14 +96,17 @@ justificação e, se não for trivial, de ADR.
 | `documents` | audit | implementado |
 | `notifications` | — (fundacional) | implementado |
 | `Settings` ⚠ | identity, approval | camada de composição (ADR-041), não módulo — ver nota abaixo |
+| `EmployeePortal` ⚠ | hr | camada de composição (ADR-041/ADR-042), não módulo — ver nota abaixo |
 
-⚠ **`Settings` não é um módulo.** É a primeira camada de composição
-(ADR-041, Fase 8) — sem Domain, sem Infrastructure, sem base de dados
-própria. Fica na tabela porque `Modules_ReferenceOnlyDeclaredDirections`
-verifica-a da mesma forma que qualquer módulo (um consumidor de contratos é
+⚠ **`Settings` e `EmployeePortal` não são módulos.** São camadas de
+composição (ADR-041, Fase 8) — sem Domain, sem Infrastructure, sem base de
+dados própria. Ficam na tabela porque `Modules_ReferenceOnlyDeclaredDirections`
+verifica-as da mesma forma que qualquer módulo (um consumidor de contratos é
 um consumidor de contratos, tenha ele próprio Domain ou não) — não porque
-seja o décimo quinto bounded context. Vive em `src/Composition/Settings/`,
-não em `src/Modules/`.
+sejam bounded contexts. Vivem em `src/Composition/<Nome>/`, não em
+`src/Modules/`. `EmployeePortal` não depende de `identity` apesar de
+resolver "a conta autenticada": o `sub` do token chega já resolvido ao
+`HttpContext` na camada Api, lido directamente — não por contrato (ADR-042).
 
 Todas as dependências acima são sobre o assembly de **contratos** do módulo
 alvo, nunca sobre a sua implementação.

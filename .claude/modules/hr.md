@@ -64,6 +64,14 @@ Regras vinculativas:
   ou o contrato precisa de extensão explícita e versionada. Nunca leitura
   directa.
 
+### Resolução por conta de `identity`
+
+`FindByUserIdAsync` (desde 2026-08-31, ADR-042) — o colaborador ligado a
+uma conta, se existir. Primeiro consumidor: `Rivo.EmployeePortal` (Portal
+do Colaborador), para resolver "o próprio" sem permissão nova — é regra de
+contexto, não autorização. Nunca mais do que um por conta: `utilizador_id`
+passou a ser único quando preenchido.
+
 ### Resolução de Cargo
 
 "Quem ocupa o cargo X à data D" — usado por `approval` para resolver
@@ -100,6 +108,10 @@ Quem submete a atribuição não pode decidi-la (BR-2).
 ## Regras de negócio
 
 - Um colaborador pode existir sem utilizador associado.
+- **2026-08-31 — quando associado, o utilizador é único** (ADR-042): uma
+  conta liga-se, no máximo, a um colaborador. Contratar com uma conta já
+  ligada a outro é recusado (409) — verificado no caso de uso, e o índice
+  único em `HrDbContext` é a segunda linha de defesa.
 - Atribuição de Cargo é histórica; alterações não recalculam processos de
   aprovação em curso (BR-6).
 - Minimização e retenção de dados pessoais nos termos da Lei n.º 22/11
@@ -157,7 +169,9 @@ Um pedido pendente não é ausência.
 ⚠ **Sem saldo de férias.** Acumulação e carry-over continuam nas perguntas em
 aberto, e implementá-los seria inventar política de direito a férias.
 
-Verificado em `scripts/verify-hr.ps1` (16 casos) e em 129 testes de domínio.
+Verificado em `scripts/verify-hr.ps1` (20 casos, cresceu de 18 a
+2026-08-31 com a unicidade de `utilizador_id`, ADR-042) e em 129 testes de
+domínio.
 
 ### ✅ O `501` está fechado desde 2026-08-23
 

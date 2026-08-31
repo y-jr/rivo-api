@@ -21,6 +21,15 @@ public interface IEmployeeDirectory
     Task<EmployeeReference?> FindAsync(Guid employeeId, DateTimeOffset asOf, CancellationToken cancellationToken);
 
     /// <summary>
+    /// O colaborador ligado a uma conta de `identity`, se existir — nunca
+    /// mais do que um (ADR-042). É por aqui que uma camada de composição
+    /// resolve "o próprio": recebe o identificador da conta autenticada, e
+    /// devolve o colaborador que lhe corresponde, sem adivinhar quando não
+    /// há nenhum.
+    /// </summary>
+    Task<EmployeeReference?> FindByUserIdAsync(Guid userId, DateTimeOffset asOf, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Quem ocupa um Cargo a determinada data. É o que `approval` usará para
     /// resolver aprovadores.
     ///

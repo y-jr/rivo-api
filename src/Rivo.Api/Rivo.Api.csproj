@@ -46,9 +46,10 @@
     <ProjectReference Include="..\Modules\Fleet\Rivo.Fleet.Api\Rivo.Fleet.Api.csproj" />
     <ProjectReference Include="..\Modules\Fleet\Rivo.Fleet.Infrastructure\Rivo.Fleet.Infrastructure.csproj" />
 
-    <!-- Camada de composição (ADR-041): só `.Api` — não há `.Infrastructure`,
+    <!-- Camadas de composição (ADR-041): só `.Api` — não há `.Infrastructure`,
          não há base de dados nem migração a registar. -->
     <ProjectReference Include="..\Composition\Settings\Rivo.Settings.Api\Rivo.Settings.Api.csproj" />
+    <ProjectReference Include="..\Composition\EmployeePortal\Rivo.EmployeePortal.Api\Rivo.EmployeePortal.Api.csproj" />
   </ItemGroup>
 
 </Project>

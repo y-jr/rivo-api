@@ -274,6 +274,31 @@ re-litigação:
       isso o prazo já está estruturalmente satisfeito; um campo explícito
       de "retido até" ficaria sem consumidor e seria especulativo. Ver
       `modules/payroll.md`.
+- [x] ~~Ordem e bloqueios do resto da Fase 8~~ — **decidido pelo
+      utilizador a 2026-08-31**, em resposta directa à escolha de por onde
+      continuar depois de Configurações & Administração (ADR-041) e Portal
+      do Colaborador (ADR-042):
+      1. **Contratos de leitura Finance/Commercial** (receita, despesa,
+         AR/AP, top clientes) — pré-requisito do Dashboard Executivo, não
+         se calcula sobre entidades dos módulos directamente, e não se cria
+         um contrato guarda-chuva dentro de `finance`/`commercial` para
+         mascarar a ausência dos contratos fundamentais.
+      2. **Dashboard Executivo**, só depois de (1) existir e estar testado.
+      3. **Decisão de identidade externa** — identidade de cliente, ciclo
+         de vida da conta, autenticação, isolamento, recuperação, MFA,
+         relação Customer ↔ conta externa. Bloqueia (4); não improvisar
+         solução temporária.
+      4. **Portal do Cliente**, só depois de (3).
+      5. **Analytics & IA** — adiado até os módulos produtores terem
+         contratos e semântica estáveis; IA acrescenta governação e acesso
+         a dados que ainda não têm onde assentar.
+
+      **Princípio registado para não se repetir a pergunta:** não
+      interromper uma decisão arquitectural já fechada (como esta) para
+      resolver uma decisão de negócio que não bloqueia o trabalho actual —
+      por isso o plano de contas do PGC (acima) não volta a estar em cima
+      da mesa só por a Fase 8 estar em curso, a menos que alguma
+      funcionalidade da Fase 8 passe a depender directamente dele.
 
 ## Segurança
 

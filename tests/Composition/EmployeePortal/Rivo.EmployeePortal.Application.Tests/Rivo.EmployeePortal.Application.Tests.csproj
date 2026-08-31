@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Composition\EmployeePortal\Rivo.EmployeePortal.Application\Rivo.EmployeePortal.Application.csproj" />
+  </ItemGroup>
+
+</Project>

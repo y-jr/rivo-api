@@ -106,6 +106,10 @@
     <Project Path="src/Composition/Settings/Rivo.Settings.Api/Rivo.Settings.Api.csproj" />
     <Project Path="src/Composition/Settings/Rivo.Settings.Application/Rivo.Settings.Application.csproj" />
   </Folder>
+  <Folder Name="/src/Composition/EmployeePortal/">
+    <Project Path="src/Composition/EmployeePortal/Rivo.EmployeePortal.Api/Rivo.EmployeePortal.Api.csproj" />
+    <Project Path="src/Composition/EmployeePortal/Rivo.EmployeePortal.Application/Rivo.EmployeePortal.Application.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rivo.Api.Tests/Rivo.Api.Tests.csproj" />
     <Project Path="tests/Rivo.Architecture.Tests/Rivo.Architecture.Tests.csproj" />
@@ -158,5 +162,8 @@
   </Folder>
   <Folder Name="/tests/Settings/">
     <Project Path="tests/Composition/Settings/Rivo.Settings.Application.Tests/Rivo.Settings.Application.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/EmployeePortal/">
+    <Project Path="tests/Composition/EmployeePortal/Rivo.EmployeePortal.Application.Tests/Rivo.EmployeePortal.Application.Tests.csproj" />
   </Folder>
 </Solution>

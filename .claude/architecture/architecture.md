@@ -80,6 +80,10 @@ canais de apresentação, sem ownership de dados. Ver `domain-map.md`.
 `Application` e `Api`, sem Domain nem Infrastructure. Padrão fixado por
 ADR-041, para as outras quatro seguirem sem reabrir o desenho.
 
+**Mesmo dia — a segunda.** Portal do Colaborador é `Rivo.EmployeePortal`,
+em `src/Composition/EmployeePortal/`. "Próprio" resolve-se pelo vínculo
+Identity → Employee, nunca por permissão nova (ADR-042).
+
 ## Dados
 
 - Uma base de dados SQL Server, **um schema lógico por domínio**, ownership

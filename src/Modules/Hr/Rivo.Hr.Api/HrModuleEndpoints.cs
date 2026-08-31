@@ -220,9 +220,14 @@ public static class HrModuleEndpoints
             BuildAuditContext(http),
             cancellationToken);
 
-        return result.Succeeded
-            ? Results.Created($"/hr/employees/{result.EmployeeId}", new { employeeId = result.EmployeeId })
-            : Results.NotFound(new { erro = result.Error });
+        return result.Outcome switch
+        {
+            HireEmployeeOutcome.Hired =>
+                Results.Created($"/hr/employees/{result.EmployeeId}", new { employeeId = result.EmployeeId }),
+            HireEmployeeOutcome.DepartmentNotFound => Results.NotFound(new { erro = result.Error }),
+            HireEmployeeOutcome.UserAlreadyLinked => Results.Conflict(new { erro = result.Error }),
+            _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
+        };
     }
 
     private static async Task<IResult> ListDepartmentsAsync(

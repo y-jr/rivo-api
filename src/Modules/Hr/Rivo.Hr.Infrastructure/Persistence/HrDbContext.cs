@@ -49,7 +49,13 @@ public sealed class HrDbContext(DbContextOptions<HrDbContext> options) : DbConte
             // Sem chave estrangeira para identity.app_user: são schemas de
             // módulos distintos, e a ligação é opcional nos dois sentidos
             // (ADR-004). Guarda-se o identificador.
-            employee.HasIndex(e => e.UserId);
+            // Único quando preenchido — o SQL Server trata cada NULL como
+            // distinto, por isso vários colaboradores sem conta continuam a
+            // caber. Segunda linha de defesa: FindByUserIdAsync (ADR-042,
+            // Portal do Colaborador) passou a confiar em "no máximo um" —
+            // duas contas ligadas ao mesmo utilizador deixariam de ser um
+            // detalhe silencioso e passariam a expor dados de outrem.
+            employee.HasIndex(e => e.UserId).IsUnique();
             employee.HasIndex(e => e.DepartmentId);
         });
 

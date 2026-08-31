@@ -16,6 +16,15 @@ public interface IHrStore
 
     Task<Employee?> FindEmployeeAsync(Guid employeeId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// O colaborador ligado a uma conta de `identity`, se existir — é o
+    /// caminho por onde o Portal do Colaborador resolve "o próprio"
+    /// (ADR-042). Nunca mais do que um: <c>UserId</c> é único quando
+    /// preenchido (índice único em <c>HrDbContext</c>, segunda linha de
+    /// defesa da verificação em <c>HireEmployee</c>).
+    /// </summary>
+    Task<Employee?> FindEmployeeByUserIdAsync(Guid userId, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<Employee>> ListEmployeesAsync(CancellationToken cancellationToken);
 
     Task AddEmployeeAsync(Employee employee, CancellationToken cancellationToken);

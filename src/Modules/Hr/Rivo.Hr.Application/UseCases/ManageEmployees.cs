@@ -42,6 +42,15 @@ public sealed class HireEmployee(IHrStore store, IAuditTrail audit)
             return HireEmployeeResult.DepartmentNotFound();
         }
 
+        // Uma conta liga-se, no máximo, a um colaborador — é o que o Portal
+        // do Colaborador passa a confiar para resolver "o próprio" (ADR-042).
+        // Verificado aqui, primeira linha de defesa; o índice único em
+        // `HrDbContext` é a segunda.
+        if (userId is not null && await store.FindEmployeeByUserIdAsync(userId.Value, cancellationToken) is not null)
+        {
+            return HireEmployeeResult.UserAlreadyLinked();
+        }
+
         var employee = Employee.Hire(fullName, departmentId, userId, hiredOn);
 
         await store.AddEmployeeAsync(employee, cancellationToken);
@@ -59,12 +68,29 @@ public sealed class HireEmployee(IHrStore store, IAuditTrail audit)
     }
 }
 
-public sealed record HireEmployeeResult(bool Succeeded, Guid? EmployeeId, string? Error)
+public enum HireEmployeeOutcome
 {
-    public static HireEmployeeResult Success(Guid id) => new(true, id, null);
+    Hired,
+    DepartmentNotFound,
+    UserAlreadyLinked,
+}
+
+public sealed record HireEmployeeResult(HireEmployeeOutcome Outcome, Guid? EmployeeId, string? Error)
+{
+    public bool Succeeded => Outcome == HireEmployeeOutcome.Hired;
+
+    public static HireEmployeeResult Success(Guid id) => new(HireEmployeeOutcome.Hired, id, null);
 
     public static HireEmployeeResult DepartmentNotFound() =>
-        new(false, null, "Departamento não encontrado.");
+        new(HireEmployeeOutcome.DepartmentNotFound, null, "Departamento não encontrado.");
+
+    /// <summary>
+    /// A conta indicada já está ligada a outro colaborador — conflito com o
+    /// estado, não pedido malformado (400 seria para um `userId` que nem
+    /// sequer parece um identificador).
+    /// </summary>
+    public static HireEmployeeResult UserAlreadyLinked() =>
+        new(HireEmployeeOutcome.UserAlreadyLinked, null, "Esta conta já está associada a outro colaborador.");
 }
 
 /// <summary>Acções de `hr` registadas na trilha de auditoria.</summary>
