@@ -55,6 +55,16 @@ public sealed class ProjectsDbContext(DbContextOptions<ProjectsDbContext> option
                 .OnDelete(DeleteBehavior.Cascade);
 
             project.Navigation(p => p.Budget).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            // Alocação de Recursos: parte do agregado, mesma cascata de
+            // Marco e Tarefa. Várias abertas ao mesmo tempo são normais —
+            // um projecto tem vários recursos alocados em simultâneo.
+            project.HasMany(p => p.Allocations)
+                .WithOne()
+                .HasForeignKey(a => a.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            project.Navigation(p => p.Allocations).UsePropertyAccessMode(PropertyAccessMode.Field);
         });
 
         builder.Entity<Milestone>(milestone =>
@@ -100,6 +110,24 @@ public sealed class ProjectsDbContext(DbContextOptions<ProjectsDbContext> option
             budget.Property(b => b.Currency).HasMaxLength(3).IsRequired();
 
             budget.HasIndex(b => b.ProjectId).IsUnique();
+        });
+
+        builder.Entity<ProjectResourceAllocation>(allocation =>
+        {
+            allocation.ToTable("project_resource_allocation");
+            allocation.HasKey(a => a.Id);
+
+            allocation.Property(a => a.Version).IsConcurrencyToken();
+            allocation.Property(a => a.Kind).HasConversion<string>().HasMaxLength(20);
+
+            allocation.HasIndex(a => a.ProjectId);
+
+            // Sem FK para hr.employee nem fleet.vehicle: são identificadores
+            // de outros contextos, e uma FK entre schemas acoplaria o ciclo
+            // de vida dos dois lados (ADR-010) — mesma razão de
+            // ProjectTask.AssignedEmployeeId. Índice composto sim: é por
+            // aqui que se verifica se um recurso já está alocado.
+            allocation.HasIndex(a => new { a.Kind, a.ResourceId });
         });
 
         // As chaves são geradas pelo domínio (Guid.CreateVersion7), nunca pela

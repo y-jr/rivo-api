@@ -11,7 +11,8 @@ namespace Rivo.Projects.Infrastructure;
 /// <summary>
 /// Composição do módulo `projects` — ver `modules/projects.md`. Marco,
 /// Tarefa e Orçamento têm regra de negócio própria desde 2026-08-30;
-/// Alocação de Recursos continua por fazer.
+/// Alocação de Recursos (Colaborador via `hr`, Viatura via `fleet`) desde
+/// 2026-08-31.
 /// </summary>
 public static class ProjectsModuleExtensions
 {
@@ -41,6 +42,8 @@ public static class ProjectsModuleExtensions
         services.AddScoped<CompleteTask>();
         services.AddScoped<CancelTask>();
         services.AddScoped<SetProjectBudget>();
+        services.AddScoped<AllocateProjectResource>();
+        services.AddScoped<EndResourceAllocation>();
 
         services.AddAuthorization(options =>
         {

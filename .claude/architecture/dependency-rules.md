@@ -90,7 +90,7 @@ justificação e, se não for trivial, de ADR.
 | `commercial` | hr, fiscal, approval, documents, audit, notifications | por implementar |
 | `approval` | identity, hr, finance (leitura orçamental), audit, notifications | por implementar |
 | `fiscal` | finance, commercial, procurement, inventory, payroll — **apenas para relato** (ver nota) | por implementar |
-| `projects` | hr, finance, commercial, documents, audit, notifications | por implementar |
+| `projects` | hr, fleet, finance, commercial, documents, audit, notifications | Alocação de Recursos ligada a `hr`/`fleet` (2026-08-31); resto por implementar |
 | `fleet` | hr, finance, inventory, documents, audit, notifications | por implementar |
 | `inventory` | procurement, finance, documents, audit, notifications | por implementar |
 | `documents` | audit | implementado |

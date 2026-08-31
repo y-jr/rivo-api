@@ -4,19 +4,19 @@ namespace Rivo.Projects.Domain;
 /// Projecto — agregado raiz de `projects` (ver `modules/projects.md`).
 ///
 /// <para>
-/// <strong>Marco, Tarefa e Orçamento vivem aqui dentro</strong> (§Possui):
-/// nascem sempre por este agregado (<see cref="AddMilestone"/>,
-/// <see cref="AddTask"/>, <see cref="SetBudget"/>), e é ele que impõe a
-/// invariante comum a Marco e Tarefa — nada se acrescenta nem se altera
-/// depois de o projecto fechar (<see cref="EnsureActive"/>). Alocação de
-/// Recursos continua por fazer — ver "Perguntas em aberto" em
-/// `modules/projects.md`.
+/// <strong>Marco, Tarefa, Orçamento e Alocação de Recursos vivem aqui
+/// dentro</strong> (§Possui): nascem sempre por este agregado
+/// (<see cref="AddMilestone"/>, <see cref="AddTask"/>, <see cref="SetBudget"/>,
+/// <see cref="AllocateResource"/>), e é ele que impõe a invariante comum a
+/// todos — nada se acrescenta nem se altera depois de o projecto fechar
+/// (<see cref="EnsureActive"/>).
 /// </para>
 /// </summary>
 public sealed class Project
 {
     private readonly List<Milestone> _milestones = [];
     private readonly List<ProjectTask> _tasks = [];
+    private readonly List<ProjectResourceAllocation> _allocations = [];
     private ProjectBudget? _budget;
 
     private Project(Guid id, string name, DateOnly startDate)
@@ -46,6 +46,8 @@ public sealed class Project
     public IReadOnlyList<Milestone> Milestones => _milestones;
 
     public IReadOnlyList<ProjectTask> Tasks => _tasks;
+
+    public IReadOnlyList<ProjectResourceAllocation> Allocations => _allocations;
 
     /// <summary>Nulo até <see cref="SetBudget"/> ser chamado a primeira vez.</summary>
     public ProjectBudget? Budget => _budget;
@@ -204,6 +206,49 @@ public sealed class Project
         return _budget;
     }
 
+    /// <summary>
+    /// Aloca um recurso (Colaborador ou Viatura) ao projecto. Distinta da
+    /// atribuição de Tarefa — ver <see cref="ProjectResourceAllocation"/>.
+    ///
+    /// <para>
+    /// Quem verifica que o recurso existe é a camada Application, contra o
+    /// contrato do módulo dono (ADR-010) — o agregado só sabe que é um
+    /// identificador.
+    /// </para>
+    /// </summary>
+    public ProjectResourceAllocation AllocateResource(ResourceKind kind, Guid resourceId, DateOnly startsOn)
+    {
+        EnsureActive("alocar recursos");
+
+        if (resourceId == Guid.Empty)
+        {
+            throw new ArgumentException("Uma alocação precisa de um recurso.", nameof(resourceId));
+        }
+
+        if (startsOn < StartDate)
+        {
+            throw new ArgumentException(
+                "A alocação não pode começar antes do início do projecto.", nameof(startsOn));
+        }
+
+        if (_allocations.Any(a => a.IsOpen && a.Kind == kind && a.ResourceId == resourceId))
+        {
+            throw new InvalidOperationException(
+                "Este recurso já está alocado a este projecto — termine a alocação actual antes de alocar de novo.");
+        }
+
+        var alocacao = new ProjectResourceAllocation(Guid.CreateVersion7(), Id, kind, resourceId, startsOn);
+        _allocations.Add(alocacao);
+
+        return alocacao;
+    }
+
+    public void EndResourceAllocation(Guid allocationId, DateOnly endsOn)
+    {
+        EnsureActive("terminar alocações");
+        FindAllocation(allocationId).End(endsOn);
+    }
+
     private Milestone FindMilestone(Guid milestoneId) =>
         _milestones.FirstOrDefault(m => m.Id == milestoneId)
             ?? throw new InvalidOperationException("Marco não encontrado neste projecto.");
@@ -211,6 +256,10 @@ public sealed class Project
     private ProjectTask FindTask(Guid taskId) =>
         _tasks.FirstOrDefault(t => t.Id == taskId)
             ?? throw new InvalidOperationException("Tarefa não encontrada neste projecto.");
+
+    private ProjectResourceAllocation FindAllocation(Guid allocationId) =>
+        _allocations.FirstOrDefault(a => a.Id == allocationId)
+            ?? throw new InvalidOperationException("Alocação não encontrada neste projecto.");
 
     /// <summary>
     /// Fechado é facto histórico: nada se acrescenta nem se altera depois —

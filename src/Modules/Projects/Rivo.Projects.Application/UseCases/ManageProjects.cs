@@ -20,7 +20,8 @@ public sealed record ProjectView(
     DateOnly? EndDate,
     IReadOnlyList<MilestoneView> Milestones,
     IReadOnlyList<ProjectTaskView> Tasks,
-    ProjectBudgetView? Budget);
+    ProjectBudgetView? Budget,
+    IReadOnlyList<ResourceAllocationView> Allocations);
 
 public sealed record MilestoneView(
     Guid MilestoneId, string Name, string Status, DateOnly TargetDate, DateOnly? ReachedOn);
@@ -29,6 +30,9 @@ public sealed record ProjectTaskView(
     Guid TaskId, string Title, string Status, DateOnly? DueDate, Guid? AssignedEmployeeId);
 
 public sealed record ProjectBudgetView(decimal Amount, string Currency, DateTimeOffset SetAt);
+
+public sealed record ResourceAllocationView(
+    Guid AllocationId, string Kind, Guid ResourceId, DateOnly StartsOn, DateOnly? EndsOn);
 
 internal static class ProjectViews
 {
@@ -44,7 +48,9 @@ internal static class ProjectViews
             new ProjectTaskView(t.Id, t.Title, t.Status.ToString(), t.DueDate, t.AssignedEmployeeId))],
         projecto.Budget is { } orcamento
             ? new ProjectBudgetView(orcamento.Amount, orcamento.Currency, orcamento.SetAt)
-            : null);
+            : null,
+        [.. projecto.Allocations.Select(a =>
+            new ResourceAllocationView(a.Id, a.Kind.ToString(), a.ResourceId, a.StartsOn, a.EndsOn))]);
 }
 
 public sealed class ListProjects(IProjectStore store)
@@ -163,6 +169,8 @@ public static class ProjectsAuditActions
     public const string TaskCompleted = "projects.task.completed";
     public const string TaskCancelled = "projects.task.cancelled";
     public const string BudgetSet = "projects.budget.set";
+    public const string ResourceAllocated = "projects.resource_allocation.allocated";
+    public const string ResourceAllocationEnded = "projects.resource_allocation.ended";
 }
 
 public static class ProjectsAuditEntityTypes
@@ -171,4 +179,5 @@ public static class ProjectsAuditEntityTypes
     public const string Milestone = "projects.milestone";
     public const string Task = "projects.task";
     public const string Budget = "projects.budget";
+    public const string ResourceAllocation = "projects.resource_allocation";
 }

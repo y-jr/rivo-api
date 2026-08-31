@@ -51,6 +51,12 @@ public static class ProjectsModuleEndpoints
         group.MapPost("/{projectId:guid}/budget", SetBudgetAsync)
             .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
 
+        group.MapPost("/{projectId:guid}/allocations", AllocateResourceAsync)
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+
+        group.MapPost("/{projectId:guid}/allocations/{allocationId:guid}/end", EndAllocationAsync)
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+
         return endpoints;
     }
 
@@ -240,6 +246,67 @@ public static class ProjectsModuleEndpoints
         };
     }
 
+    private static async Task<IResult> AllocateResourceAsync(
+        Guid projectId,
+        AllocateResourceRequest request,
+        AllocateProjectResource allocate,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await allocate.ExecuteAsync(
+            projectId, request.Kind, request.ResourceId, request.StartsOn,
+            BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            AllocateResourceOutcome.Allocated => Results.Created(
+                $"/projects/{projectId}", new { allocationId = result.AllocationId }),
+
+            AllocateResourceOutcome.ProjectNotFound or AllocateResourceOutcome.ResourceNotFound =>
+                Results.NotFound(new { erro = result.Error }),
+
+            // 409: o mesmo recurso já está alocado, ou o projecto está
+            // fechado — conflito com o estado actual, não pedido malformado.
+            AllocateResourceOutcome.Conflict =>
+                Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
+
+            // 400: recurso vazio, ou data antes do início do projecto.
+            AllocateResourceOutcome.Rejected =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["alocacao"] = [result.Error!] }),
+
+            _ => Results.Problem("Resultado inesperado ao alocar o recurso."),
+        };
+    }
+
+    private static async Task<IResult> EndAllocationAsync(
+        Guid projectId,
+        Guid allocationId,
+        EndAllocationRequest request,
+        EndResourceAllocation endAllocation,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var outcome = await endAllocation.ExecuteAsync(
+            projectId, allocationId, request.EndsOn, BuildAuditContext(http), cancellationToken);
+
+        return outcome switch
+        {
+            EndAllocationOutcome.Applied => Results.NoContent(),
+            EndAllocationOutcome.ProjectNotFound => Results.NotFound(new { erro = "Projecto não encontrado." }),
+            EndAllocationOutcome.AllocationNotFound => Results.NotFound(new { erro = "Alocação não encontrada." }),
+
+            // 400: data de fim antes do início da alocação.
+            EndAllocationOutcome.Rejected =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["alocacao"] = ["Data de fim inválida."] }),
+
+            // 409: alocação já terminada, ou projecto fechado.
+            EndAllocationOutcome.Conflict =>
+                Results.Conflict(new { erro = "Não foi possível terminar a alocação." }),
+
+            _ => Results.Problem("Resultado inesperado ao terminar a alocação."),
+        };
+    }
+
     private static AuditContext BuildAuditContext(HttpContext http)
     {
         var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
@@ -265,3 +332,7 @@ public sealed record AddTaskRequest(string Title, DateOnly? DueDate, Guid? Assig
 public sealed record AssignTaskRequest(Guid? EmployeeId);
 
 public sealed record SetBudgetRequest(decimal Amount, string Currency);
+
+public sealed record AllocateResourceRequest(Rivo.Projects.Domain.ResourceKind Kind, Guid ResourceId, DateOnly StartsOn);
+
+public sealed record EndAllocationRequest(DateOnly EndsOn);

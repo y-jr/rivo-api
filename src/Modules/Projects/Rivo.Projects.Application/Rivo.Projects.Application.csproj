@@ -8,6 +8,10 @@
     <!-- Quem uma tarefa atribui é um Colaborador, e o acesso é exclusivamente
          pelo contrato (ADR-010). `projects` nunca lê tabelas de `hr`. -->
     <ProjectReference Include="..\..\Hr\Rivo.Hr.Contracts\Rivo.Hr.Contracts.csproj" />
+
+    <!-- Alocação de Recursos verifica a Viatura contra `fleet`, mesma razão
+         da referência a `hr` acima. -->
+    <ProjectReference Include="..\..\Fleet\Rivo.Fleet.Contracts\Rivo.Fleet.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -110,7 +110,7 @@ public class ProjectReferenceTests
         // faltam — `finance`, `commercial`, `fleet`, `documents`, `approval`,
         // `notifications` — pertencem a Orçamento de Projecto e Alocação de
         // Recursos, que ainda não estão feitos.
-        ["Projects"] = ["Audit", "Hr"],
+        ["Projects"] = ["Audit", "Hr", "Fleet"],
 
         // `fleet` ganhou Manutenção e Atribuição — 2026-08-30, mesma razão de
         // `projects`: atribuir uma viatura a um motorista referencia um

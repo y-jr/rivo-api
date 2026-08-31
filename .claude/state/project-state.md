@@ -54,8 +54,8 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `finance` | **Os cinco contextos existem, e os documentos lançam.** Venda (factura, nota de crédito, recibo, saldo), Contas a Pagar, Tesouraria com extracto append-only, Contabilidade & Fecho com postagem automática, Planeamento. **BR-1, BR-3, BR-5 e BR-8 impostas.** Anular uma factura, nota de crédito ou recibo estorna o lançamento (2026-08-29). ⚠ Contabilidade vazia até alguém carregar o plano; Activos Fixos sem código ainda — o K1 que os bloqueava fechou por ADR-039 (2026-08-30), falta escrevê-los |
 | `procurement` | **Os quatro agregados, e o 3-way match fecha.** Fornecedor com IBAN verificado (ISO 13616) e publicado a `finance`; requisição com linhas e decisão de `approval`; Ordem de Compra, que só nasce de requisição aprovada e não deixa encomendar acima do aprovado; Recepção parcial, acumulada por linha e nunca acima do encomendado. A factura liga-se à Ordem (`PurchaseOrderId`, opcional) e `GET .../match` mostra encomendado, recebido e facturado lado a lado — recusa ligar a uma ordem de outro fornecedor, mas **não bloqueia** divergência de valor: fica visível, não impede o registo |
 | `payroll` | **Folha, itens, subsídios e Recibo, confirmado (2026-08-30/31).** `AddPayrollItem` pergunta a `fiscal` — nunca calcula por si — na ordem do artigo 7.º do CIRT: INSS do trabalhador, isenção de Alimentação/Transporte (até 30.000 Kz/mês cada, excesso tributado), matéria colectável, IRT por escalões; `NetSalary` sai sempre calculado, nunca recebido. Férias e Natal só compõem o recibo, sem isenção. Sem taxa/tabela/limiar em vigor, o item recusa (400) em vez de nascer com campo nulo. Recibo liga-se via `documents` (ADR-009, mesmo desenho de `hr`) a um item de folha Aprovada. Ligado a `approval` (submete pelo bruto). `verify-payroll.ps1` 26 casos. ⚠ A fonte dos valores fiscais continua o utilizador, não fiscalista nem Anexo I da lei |
-| `projects` | **Marco, Tarefa e Orçamento com regra de negócio, confirmado (2026-08-30).** Projecto como agregado — fecha, e fechado é facto histórico: nem Marco, nem Tarefa, nem Orçamento se alteram depois. Tarefa atribuída verifica o Colaborador contra `hr` (ADR-010, BR-18); concluir/cancelar não reabre. Orçamento é zero ou um por projecto, moeda fixa na primeira vez (ADR-040). `verify-projects.ps1` 33/33 contra a stack local, sem falha. ⚠ Alocação de Recursos (pessoas além da atribuição, viaturas, custos) continua por fazer, sem decisão própria |
-| `fleet` | **Manutenção, Atribuição e Plano de Manutenção com regra de negócio, confirmado (2026-08-30).** Viatura como agregado — um registo de manutenção aberto de cada vez, uma atribuição aberta de cada vez, vários planos activos ao mesmo tempo (sem exclusão mútua); nenhum dos três se exclui dos outros dois. Atribuição verifica o Colaborador contra `hr` (ADR-010, BR-18). Alerta de plano devido é consulta (`GET /fleet/maintenance-plans/due`), não notificação empurrada — `identity` não resolve "todos os AssetManager" ainda. `verify-fleet.ps1` 38/38 contra a stack local, sem falha. ⚠ Registo de Viagem, Despesa de Frota e Seguros continuam por fazer |
+| `projects` | **Marco, Tarefa, Orçamento e Alocação de Recursos com regra de negócio, confirmado (2026-08-30/31).** Projecto como agregado — fecha, e fechado é facto histórico: nada se altera depois. Tarefa e Alocação verificam o recurso por contrato (ADR-010, BR-18) — Colaborador contra `hr`, Viatura contra `fleet` (`IVehicleDirectory`, novo). Alocação é distinta da atribuição de Tarefa: ao nível do projecto, não da tarefa; o mesmo recurso não se aloca duas vezes em aberto. Orçamento é zero ou um por projecto, moeda fixa na primeira vez (ADR-040). `verify-projects.ps1` 43/43 contra a stack local, sem falha. ⚠ Custos ao nível do projecto continuam de fora — postagem em `finance` é decisão em aberto |
+| `fleet` | **Manutenção, Atribuição e Plano de Manutenção com regra de negócio, confirmado (2026-08-30).** Viatura como agregado — um registo de manutenção aberto de cada vez, uma atribuição aberta de cada vez, vários planos activos ao mesmo tempo (sem exclusão mútua); nenhum dos três se exclui dos outros dois. Atribuição verifica o Colaborador contra `hr` (ADR-010, BR-18). Alerta de plano devido é consulta (`GET /fleet/maintenance-plans/due`), não notificação empurrada — `identity` não resolve "todos os AssetManager" ainda. **Primeiro contrato de leitura publicado a 2026-08-31** — `IVehicleDirectory`, consumido por `projects`. `verify-fleet.ps1` 38/38 contra a stack local, sem falha. ⚠ Registo de Viagem, Despesa de Frota e Seguros continuam por fazer |
 | `inventory` | **Movimento com regra de negócio, confirmado (2026-08-30).** Item como agregado — Recepção, Saída e Ajuste; `QuantityOnHand` é a soma assinada, nunca negativo; item inactivo não aceita movimentos novos. `verify-inventory.ps1` 25/25 contra a stack local, sem falha. ⚠ Armazém, Transferência, Contagem e valorização de stock continuam por fazer |
 
 Detalhe com datas e ressalvas em [implemented.md](implemented.md).
@@ -95,11 +95,11 @@ superfície inteira é legível por quem estiver a ouvir.
 
 | Área | Estado |
 |---|---|
-| Código | 14 módulos, 70 projectos em `src/`, 333 ficheiros `.cs` |
-| Superfície HTTP | 196 endpoints em 14 grupos de rota, mais `/health` |
+| Código | 14 módulos, 70 projectos em `src/`, 338 ficheiros `.cs` |
+| Superfície HTTP | 198 endpoints em 14 grupos de rota, mais `/health` |
 | ADRs | 40, aceites |
-| Testes | **878** em 19 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). A 2026-08-30, `Rivo.Projects.Domain.Tests` cresceu de 29 (Marco e Tarefa) para 39 (+ Orçamento), `Rivo.Fleet.Domain.Tests` de 25 para 42 (+ Plano de Manutenção), nasceu `Rivo.Inventory.Domain.Tests` com 21 (Movimento), `Rivo.Fiscal.Domain.Tests` cresceu de 18 para 39 (+ `IncomeTaxSchedule`) e nasceu `Rivo.Payroll.Domain.Tests` com 16 (`ApplyCalculation` e o ciclo da folha), depois 22 (+ `PayrollItemDocument`, o Recibo). A 2026-08-31, `Rivo.Fiscal.Domain.Tests` cresceu de 39 para 50 (+ `SubsidyExemptionSchedule`) e `Rivo.Payroll.Domain.Tests` de 22 para 30 (+ `PayrollItemAllowanceTests`, os subsídios) |
-| Verificação end-to-end | **17 suites** PowerShell, **410 casos** — a 2026-08-30, `verify-projects` cresceu de 14 para 33 (+ Orçamento), `verify-fleet` de 15 para 38 (+ Plano de Manutenção), `verify-inventory` de 13 para 25 (Movimento), `verify-fiscal` de 12 para 20 (+ motor de IRT/INSS) e `verify-payroll` de 5 para 17 (cálculo real), depois 22 (+ Recibo, mesmo dia). A 2026-08-31, `verify-fiscal` cresceu de 20 para 23 (+ limiares de subsídio) e `verify-payroll` de 22 para 26 (+ dois cenários de subsídio ponta a ponta). **Corrida completa (`verify-all.ps1`) confirmada a 2026-08-30: 395/398** (antes do Recibo e dos subsídios) — as 3 falhas são todas o mesmo K20 (limpeza de política, sem causa de código em quatro investigações), em `verify-ledger`, `verify-payroll` e `verify-procurement`; zero regressão nova. A primeira ronda de `verify-fleet` (26 casos) apanhou dois defeitos reais (400 em vez de 409); a primeira ronda do motor de IRT/INSS apanhou um terceiro (`TaxKind` sem entrada no `switch` de tradução, 500 em vez de determinar); a primeira ronda dos subsídios apanhou um quarto, só visível ao subir a stack — migração de EF esquecida (`PendingModelChangesWarning` fatal no arranque). O Recibo, sozinho, não apanhou nenhum. Todos corrigidos no próprio dia |
+| Testes | **894** em 19 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). A 2026-08-30, `Rivo.Projects.Domain.Tests` cresceu de 29 (Marco e Tarefa) para 39 (+ Orçamento), `Rivo.Fleet.Domain.Tests` de 25 para 42 (+ Plano de Manutenção), nasceu `Rivo.Inventory.Domain.Tests` com 21 (Movimento), `Rivo.Fiscal.Domain.Tests` cresceu de 18 para 39 (+ `IncomeTaxSchedule`) e nasceu `Rivo.Payroll.Domain.Tests` com 16 (`ApplyCalculation` e o ciclo da folha), depois 22 (+ `PayrollItemDocument`, o Recibo). A 2026-08-31, `Rivo.Fiscal.Domain.Tests` cresceu de 39 para 50 (+ `SubsidyExemptionSchedule`), `Rivo.Payroll.Domain.Tests` de 22 para 30 (+ `PayrollItemAllowanceTests`, os subsídios), e `Rivo.Projects.Domain.Tests` de 39 para 55 (+ `ProjectResourceAllocationTests`, a Alocação de Recursos) |
+| Verificação end-to-end | **17 suites** PowerShell, **420 casos** — a 2026-08-30, `verify-projects` cresceu de 14 para 33 (+ Orçamento), `verify-fleet` de 15 para 38 (+ Plano de Manutenção), `verify-inventory` de 13 para 25 (Movimento), `verify-fiscal` de 12 para 20 (+ motor de IRT/INSS) e `verify-payroll` de 5 para 17 (cálculo real), depois 22 (+ Recibo, mesmo dia). A 2026-08-31, `verify-fiscal` cresceu de 20 para 23 (+ limiares de subsídio), `verify-payroll` de 22 para 26 (+ dois cenários de subsídio ponta a ponta), e `verify-projects` de 33 para 43 (+ Alocação de Recursos, confirmado 43/43). **Corrida completa (`verify-all.ps1`) confirmada a 2026-08-30: 395/398** (antes do Recibo, dos subsídios e da Alocação de Recursos) — as 3 falhas são todas o mesmo K20 (limpeza de política, sem causa de código em quatro investigações), em `verify-ledger`, `verify-payroll` e `verify-procurement`; zero regressão nova. A primeira ronda de `verify-fleet` (26 casos) apanhou dois defeitos reais (400 em vez de 409); a primeira ronda do motor de IRT/INSS apanhou um terceiro (`TaxKind` sem entrada no `switch` de tradução, 500 em vez de determinar); a primeira ronda dos subsídios apanhou um quarto, só visível ao subir a stack — migração de EF esquecida (`PendingModelChangesWarning` fatal no arranque). O Recibo e a Alocação de Recursos, sozinhos, não apanharam nenhum defeito de aplicação — só um erro na própria suite de Alocação (contagem de eventos auditados), corrigido no mesmo dia |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
@@ -216,12 +216,14 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    negócio.~~ **Fechado a 2026-08-30** — motor de IRT/INSS, e depois Recibo
    (via `documents`), ver abaixo. `projects`, `fleet` e `inventory` saíram
    da lista de esqueletos no mesmo dia (Orçamento de Projecto/ADR-040, Plano
-   de Manutenção, Movimento). **O que fica por fazer nos quatro não tem
-   decisão própria à espera** — é trabalho de engenharia sem bloqueio:
-   Alocação de Recursos em `projects` (pessoas além da atribuição de Tarefa,
-   viaturas, custos), Armazém/Transferência/Contagem em `inventory`,
-   Registo de Viagem/Despesa/Seguros em `fleet`. Ver o "Seguimento" em cada
-   `modules/*.md`.
+   de Manutenção, Movimento). **O que fica por fazer não tem decisão
+   própria à espera** — é trabalho de engenharia sem bloqueio:
+   Armazém/Transferência/Contagem em `inventory`, Registo de
+   Viagem/Despesa/Seguros em `fleet`. Alocação de Recursos em `projects`
+   saiu desta lista a 2026-08-31 (ver "Fechado" abaixo) — Colaborador e
+   Viatura ficaram feitos; custos continuam de fora, decisão explícita
+   (postagem em `finance` depende de "tempo real ou em lote?"). Ver o
+   "Seguimento" em cada `modules/*.md`.
 
 **Fechado a 2026-08-30 (payroll: os dois pontos de IRT/INSS que bloqueavam
 produção):** o utilizador confirmou, depois de reafirmar mais cedo no mesmo
@@ -379,6 +381,40 @@ bloqueia eliminação física em todo o sistema — nenhum módulo publica rota
 mecanismo novo. Um campo explícito de "retido até" ficaria sem consumidor
 e seria especulativo.
 
+**Fechado a 2026-08-31 (`projects`+`fleet`: Alocação de Recursos):**
+`Project` ganhou `ProjectResourceAllocation` — Colaborador ou Viatura, com
+início e fim opcional — mesmo desenho de `Rivo.Fleet.Domain.VehicleAssignment`
+(`Assign`/`End`), com a diferença de que um projecto tem vários recursos
+alocados em simultâneo, ao contrário de uma viatura (um motorista de cada
+vez). O mesmo recurso (mesmo tipo+identificador) não se aloca duas vezes em
+aberto — termina a alocação actual primeiro.
+
+**Distinta da atribuição de Tarefa**: alocar é ao nível do projecto,
+"quem/o que está afecto", para planeamento de capacidade — não tem relação
+estrutural com nenhuma Tarefa concreta. `fleet` ganhou o seu primeiro
+contrato de leitura publicado, `IVehicleDirectory` (mesmo padrão de
+`IEmployeeDirectory` em `hr`, ADR-010), para `projects` verificar a Viatura
+sem lhe possuir o registo — a segunda direcção de dependência prevista em
+`modules/projects.md` desde 2026-08-29 e nunca antes ligada.
+
+**Custos ficam de fora, deliberadamente.** `modules/projects.md`
+§Conceitos lista "pessoas, viaturas, custos", mas atribuir um custo directo
+ao projecto implica postar em `finance`, e o mecanismo de postagem (tempo
+real ou em lote) é decisão em aberto (`state/pending-decisions.md`).
+Construir sem essa decisão seria especulativo — mesma disciplina do
+ADR-040 perante a validação cruzada com o orçamento de `finance`.
+
+Testes: `Rivo.Projects.Domain.Tests` cresceu de 39 para 55
+(`ProjectResourceAllocationTests`, 16 casos). `verify-projects.ps1` cresceu
+de 33 para 43 — colaborador e viatura alocados e verificados contra `hr`/
+`fleet`, recusa por data anterior ao início do projecto, recusa do mesmo
+recurso duas vezes em aberto, terminar alocação, recusa de terminar duas
+vezes, projecto fechado não aceita alocação nova, tudo auditado com actor.
+Um único defeito apanhado, na própria suite (não na aplicação): a
+contagem esperada de eventos auditados incluía tentativas recusadas, que
+correctamente não deixam registo — corrigido no mesmo dia. `verify-fleet.ps1`
+confirmado sem regressão, 38/38.
+
 **Fechado a 2026-08-30 (`fleet`: Plano de Manutenção):** `Vehicle` ganhou um
 terceiro filho no agregado, `MaintenancePlan` — calendário preventivo,
 distinto do registo histórico de Manutenção. Ao contrário de Manutenção e
@@ -446,7 +482,8 @@ implementa a entidade e a regra dentro de `projects`.
 10 testes de domínio novos (`Rivo.Projects.Domain.Tests` cresceu de 29 para
 39). `verify-projects.ps1` cresceu de 28 para 33 casos e **confirmou 33/33
 contra a stack local no mesmo dia, sem nenhuma falha na primeira corrida**.
-Alocação de Recursos continua por fazer, sem decisão própria. Detalhe em
+~~Alocação de Recursos continua por fazer, sem decisão própria.~~
+**Feita a 2026-08-31** — ver "Fechado" mais abaixo. Detalhe em
 [modules/projects.md](../modules/projects.md).
 
 **Fechado a 2026-08-30 (`projects`: Marco e Tarefa):** `Project` passou a

@@ -26,14 +26,17 @@ atribuição de custo ao nível do projecto.
 
 ## Depende de
 
-`hr` (`ReferenciaColaborador` para alocação — **ligado**, 2026-08-30: a
-atribuição de Tarefa verifica que o Colaborador existe antes de gravar),
-`finance` (centro de custo, custo real — **Orçamento de Projecto não liga a
-`finance` ainda**, ver ADR-040: a relação existe por decisão, o mecanismo
-fica por desenhar), `commercial` (facturação de projecto), `fleet` (alocação
-de viatura), `documents`, `approval`, `audit`, `notifications`. As direcções
-por ligar pertencem a Alocação de Recursos (pessoas além da atribuição de
-Tarefa, viaturas, custos), que ainda não está feita.
+`hr` (`ReferenciaColaborador` — **ligado**, 2026-08-30: a atribuição de
+Tarefa verifica que o Colaborador existe antes de gravar; Alocação de
+Recursos usa o mesmo contrato desde 2026-08-31), `fleet`
+(`IVehicleDirectory` — **ligado**, 2026-08-31: Alocação de Recursos verifica
+a Viatura antes de gravar, mesmo padrão de `hr`), `finance` (centro de
+custo, custo real — **Orçamento de Projecto não liga a `finance` ainda**,
+ver ADR-040: a relação existe por decisão, o mecanismo fica por desenhar),
+`commercial` (facturação de projecto), `documents`, `approval`, `audit`,
+`notifications`. **Custos ao nível do projecto continuam por ligar** —
+postar em `finance` depende de "tempo real ou em lote?", decisão em aberto
+(`state/pending-decisions.md`); ver "Não pode" abaixo.
 
 ## Consumido por
 
@@ -47,15 +50,36 @@ Tarefa, viaturas, custos), que ainda não está feita.
 ## Não pode
 
 - Possuir o registo de Colaborador ou de Viatura — referencia-os.
-- Copiar nome, departamento ou cargo de Colaborador (BR-18).
+- Copiar nome, departamento ou cargo de Colaborador (BR-18), nem matrícula
+  ou modelo de Viatura.
 - Possuir a factura gerada a partir do projecto — isso é `finance`/AR, com
   base fornecida por `commercial`.
+- **Atribuir um custo directo ao projecto sem postar em `finance`** — o
+  mecanismo de postagem (tempo real ou em lote) é decisão em aberto, e
+  construir sem ela seria especulativo. Por isso "custos" (§Conceitos) fica
+  fora da Alocação de Recursos implementada a 2026-08-31 — só Colaborador e
+  Viatura.
 
 ## Regras de negócio
 
 - Alocações referenciam recursos por id; atributos lêem-se por contrato.
 - Custos de projecto são postados em `finance`; `projects` não escreve no
   razão.
+- **Alocação de Recursos, ao nível do projecto, é distinta da atribuição de
+  Tarefa** (operacional, "quem faz isto até quando"). Uma pessoa pode estar
+  alocada ao projecto sem ter Tarefas; uma Tarefa pode ser atribuída a
+  alguém que não está alocado. Os dois não têm relação estrutural.
+- Uma Alocação referencia o recurso (Colaborador ou Viatura) só por
+  identificador (ADR-010); a Application verifica que existe no módulo
+  dono (`hr` ou `fleet`) antes de gravar.
+- O mesmo recurso (mesmo par tipo+identificador) não se aloca duas vezes em
+  aberto ao mesmo projecto — termina a alocação actual antes de alocar de
+  novo. Mesma leitura de `Vehicle.Assign` em `fleet` (uma viatura, um
+  motorista de cada vez).
+- Uma Alocação não pode começar antes do início do Projecto, nem terminar
+  antes de começar. Nem alocar nem terminar é possível depois de o Projecto
+  fechar (mesma leitura de Marco, Tarefa e Orçamento).
+- Terminar uma Alocação já terminada é recusado — não há reabertura.
 - Marco e Tarefa pertencem ao agregado Projecto — nascem, alteram-se e
   desaparecem com ele, nunca de forma independente.
 - Nem Marco nem Tarefa se acrescentam ou alteram depois de o projecto fechar:
@@ -93,17 +117,28 @@ desenhar quando o Orçamento de Projecto tiver código. Detalhe em
 
 ## Estado
 
-**Marco, Tarefa e Orçamento, com regra de negócio real — 2026-08-30.**
-`Project` (nome, datas, estado) nasceu esqueleto a 2026-08-29; ganhou Marco
-(data alvo, alcançar uma vez), Tarefa (título, prazo, atribuição a
-Colaborador verificada contra `hr`, concluir/cancelar sem reabrir) e
-Orçamento (valor e moeda, zero ou um por projecto, moeda fixa na primeira
-vez) como parte do mesmo agregado — nascem, alteram-se e desaparecem só com
-o Projecto, e nada se acrescenta nem altera depois de fechado. 39 testes de
-domínio (`Rivo.Projects.Domain.Tests`); verificação end-to-end em
-`scripts/verify-projects.ps1` — **33/33 confirmados contra a stack local a
-2026-08-30**, sem nenhuma falha, primeira corrida.
+**Marco, Tarefa, Orçamento e Alocação de Recursos, com regra de negócio
+real — 2026-08-30/31.** `Project` (nome, datas, estado) nasceu esqueleto a
+2026-08-29; ganhou Marco (data alvo, alcançar uma vez), Tarefa (título,
+prazo, atribuição a Colaborador verificada contra `hr`, concluir/cancelar
+sem reabrir), Orçamento (valor e moeda, zero ou um por projecto, moeda fixa
+na primeira vez) e, no dia seguinte, Alocação de Recursos — tudo parte do
+mesmo agregado: nasce, altera-se e desaparece só com o Projecto, e nada se
+acrescenta nem altera depois de fechado.
 
-⚠ **Continua por fazer:** Alocação de Recursos (pessoas além da atribuição
-de Tarefa, viaturas, custos), sem decisão própria ainda. Permissões
-atribuídas a `ProjectManager`, que deixou de estar vazio a 2026-08-29.
+**Alocação de Recursos** (`ProjectResourceAllocation`) — Colaborador ou
+Viatura, com data de início e fim opcional; mesmo desenho de
+`Rivo.Fleet.Domain.VehicleAssignment` (`Assign`/`End`), com a diferença de
+que um projecto tem vários recursos alocados em simultâneo — ao contrário
+de uma viatura, que só tem um motorista de cada vez. `fleet` ganhou o seu
+primeiro contrato de leitura publicado, `IVehicleDirectory`, mesmo padrão
+de `IEmployeeDirectory` em `hr`, para `projects` poder verificar a Viatura
+sem lhe possuir o registo. **Custos ficam de fora, de propósito** — ver
+"Não pode".
+
+55 testes de domínio (`Rivo.Projects.Domain.Tests`, 39 + 16 de
+`ProjectResourceAllocationTests`); verificação end-to-end em
+`scripts/verify-projects.ps1` — **43/43 confirmados contra a stack local a
+2026-08-31**, sem nenhuma falha depois de corrigido um erro na própria
+suite (contagem de eventos auditados). Permissões atribuídas a
+`ProjectManager`, que deixou de estar vazio a 2026-08-29.

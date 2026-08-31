@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Rivo.Fleet.Application;
 using Rivo.Fleet.Application.Abstractions;
 using Rivo.Fleet.Application.UseCases;
 using Rivo.Fleet.Contracts;
@@ -30,6 +31,10 @@ public static class FleetModuleExtensions
             .UseSnakeCaseNamingConvention());
 
         services.AddScoped<IVehicleStore, VehicleStore>();
+
+        // O contrato publicado. `projects` pergunta por aqui (Alocação de
+        // Recursos, 2026-08-31).
+        services.AddScoped<IVehicleDirectory, VehicleDirectory>();
 
         services.AddScoped<ListVehicles>();
         services.AddScoped<GetVehicle>();

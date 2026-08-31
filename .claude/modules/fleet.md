@@ -43,11 +43,15 @@ notificação empurrada. Ver "Estado".
 
 ## Consumido por
 
-`finance` (custos de manutenção e combustível), `projects` (alocação de
-viatura).
+`finance` (custos de manutenção e combustível), `projects` (Alocação de
+Recursos — **ligado**, 2026-08-31, via `IVehicleDirectory`).
 
 ## Contratos publicados
 
+- **`IVehicleDirectory`** — leitura de Viatura por identificador, sem posse
+  do registo. Publicado a 2026-08-31, primeiro contrato de leitura de
+  `fleet`; mesmo desenho de `IEmployeeDirectory` em `hr` (ADR-010). Único
+  consumidor até agora: `projects`.
 - Disponibilidade e atribuição de viatura.
 - Custo de frota por período e centro de custo.
 
@@ -107,6 +111,11 @@ nota ⚠ em "Depende de" sobre porquê não usar `notifications`.
 42 testes de domínio (`Rivo.Fleet.Domain.Tests`); `scripts/verify-fleet.ps1`
 — **38/38 confirmados contra a stack local a 2026-08-30**, sem nenhuma
 falha, primeira corrida.
+
+**2026-08-31 — `IVehicleDirectory` publicado**, para `projects` verificar a
+Viatura na Alocação de Recursos sem lhe possuir o registo (ADR-010) — ver
+`modules/projects.md`. Não altera nada do que já existia em `fleet`; só
+expõe leitura.
 
 ⚠ **Continuam por fazer:** Registo de Viagem, Despesa de Frota, Seguros.
 Permissões atribuídas a `AssetManager`, que deixou de estar vazio a

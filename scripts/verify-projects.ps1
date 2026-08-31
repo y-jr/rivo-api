@@ -5,8 +5,9 @@
 #
 # Deixou de ser esqueleto puro a 2026-08-30: Marco, Tarefa e Orçamento
 # ganharam regra de negócio (ver `modules/projects.md` §Possui e a nota
-# "Estado"). Alocação de Recursos continua por fazer — esta suite verifica o
-# que existe, não o que falta.
+# "Estado"). Alocação de Recursos (Colaborador via `hr`, Viatura via
+# `fleet`) desde 2026-08-31 — ver os casos 24-33. Custos ficam de fora de
+# propósito (postagem em `finance` é decisão em aberto).
 #
 # Re-executável: cada corrida abre um projecto com nome próprio, derivado do
 # carimbo temporal.
@@ -261,7 +262,101 @@ Test-Case "23. Rever orcamento com moeda diferente e recusado" {
     "409 -- a moeda fixa-se na primeira vez"
 }
 
-Test-Case "24. Marcos, tarefas e orcamento ficam na trilha, com actor" {
+Test-Case "24. Alocar colaborador ao projecto" {
+    $body = @{ kind = 0; resourceId = $colaborador; startsOn = "2026-09-01" } | ConvertTo-Json
+    $r = Invoke-RestMethod "$base/projects/$($script:projectId)/allocations" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
+    if (-not $r.allocationId) { throw "sem allocationId na resposta" }
+    $script:alocacaoColaborador = $r.allocationId
+
+    $p = Invoke-RestMethod "$base/projects/$($script:projectId)" -Headers $adminHeaders
+    $alocacao = $p.allocations | Where-Object { $_.allocationId -eq $script:alocacaoColaborador }
+    if ($alocacao.kind -ne "Employee") { throw "kind errado: $($alocacao.kind)" }
+    if ($alocacao.resourceId -ne $colaborador) { throw "resourceId errado" }
+    if ($null -ne $alocacao.endsOn) { throw "endsOn deveria ser nulo, veio $($alocacao.endsOn)" }
+    "alocacao $($script:alocacaoColaborador), Employee, aberta"
+}
+
+Test-Case "25. Alocar colaborador com data anterior ao inicio do projecto e recusado" {
+    $body = @{ kind = 0; resourceId = $colaborador2; startsOn = "2026-08-31" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/allocations" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "data anterior ao inicio do projecto -- 400"
+}
+
+Test-Case "26. Alocar o mesmo colaborador outra vez, ainda aberto, e recusado" {
+    $body = @{ kind = 0; resourceId = $colaborador; startsOn = "2026-09-01" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/allocations" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    "409 -- o mesmo recurso nao se aloca duas vezes em aberto"
+}
+
+Test-Case "27. Alocar colaborador inexistente devolve 404" {
+    $body = @{ kind = 0; resourceId = [Guid]::NewGuid().ToString(); startsOn = "2026-09-01" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/allocations" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+    "colaborador inexistente -- 404, verificado pelo contrato publicado de hr"
+}
+
+Test-Case "28. Registar viatura em fleet e aloca-la ao projecto" {
+    $placa = "PR-$stamp"
+    $bodyViatura = @{ plateNumber = $placa; model = "Hilux" } | ConvertTo-Json
+    $viatura = Invoke-RestMethod "$base/fleet/vehicles" -Method Post -Body $bodyViatura -ContentType "application/json" -Headers $adminHeaders
+    $script:vehicleId = $viatura.vehicleId
+    if (-not $script:vehicleId) { throw "sem vehicleId na resposta de fleet" }
+
+    $body = @{ kind = 1; resourceId = $script:vehicleId; startsOn = "2026-09-01" } | ConvertTo-Json
+    $r = Invoke-RestMethod "$base/projects/$($script:projectId)/allocations" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
+    $script:alocacaoViatura = $r.allocationId
+
+    $p = Invoke-RestMethod "$base/projects/$($script:projectId)" -Headers $adminHeaders
+    $alocacao = $p.allocations | Where-Object { $_.allocationId -eq $script:alocacaoViatura }
+    if ($alocacao.kind -ne "Vehicle") { throw "kind errado: $($alocacao.kind)" }
+    "viatura $placa alocada, alocacao $($script:alocacaoViatura)"
+}
+
+Test-Case "29. Alocar viatura inexistente devolve 404" {
+    $body = @{ kind = 1; resourceId = [Guid]::NewGuid().ToString(); startsOn = "2026-09-01" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/allocations" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+    "viatura inexistente -- 404, verificado pelo contrato publicado de fleet"
+}
+
+Test-Case "30. Terminar alocacao" {
+    $body = @{ endsOn = "2026-09-15" } | ConvertTo-Json
+    Invoke-RestMethod "$base/projects/$($script:projectId)/allocations/$($script:alocacaoColaborador)/end" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    $p = Invoke-RestMethod "$base/projects/$($script:projectId)" -Headers $adminHeaders
+    $alocacao = $p.allocations | Where-Object { $_.allocationId -eq $script:alocacaoColaborador }
+    if ($alocacao.endsOn -ne "2026-09-15") { throw "endsOn nao gravado: $($alocacao.endsOn)" }
+    "alocacao terminada em 2026-09-15"
+}
+
+Test-Case "31. Terminar a mesma alocacao outra vez e recusado" {
+    $body = @{ endsOn = "2026-09-20" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/allocations/$($script:alocacaoColaborador)/end" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    "409 -- ja tinha terminado"
+}
+
+Test-Case "32. Terminar alocacao com data anterior ao inicio e recusado" {
+    $body = @{ endsOn = "2026-07-01" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/allocations/$($script:alocacaoViatura)/end" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "data de fim anterior ao inicio -- 400"
+}
+
+Test-Case "33. Alocacoes ficam na trilha, com actor" {
+    # So as duas com sucesso (colaborador e viatura) auditam -- as
+    # tentativas recusadas nos casos 25/26/27/29 nao tem efeito, e por isso
+    # nao deixam registo.
+    $alocado = Invoke-Sql "select count(*) from audit.audit_event where action='projects.resource_allocation.allocated' and actor_id is not null"
+    if ([int]$alocado -lt 2) { throw "esperados >=2 registos de alocacao, obtidos $alocado" }
+    $terminado = Invoke-Sql "select count(*) from audit.audit_event where action='projects.resource_allocation.ended' and actor_id is not null"
+    if ([int]$terminado -lt 1) { throw "sem registo de fim de alocacao" }
+    "alocar e terminar auditados, ambos com actor"
+}
+
+Test-Case "34. Marcos, tarefas e orcamento ficam na trilha, com actor" {
     $acoes = @(
         "projects.milestone.added", "projects.milestone.reached",
         "projects.task.added", "projects.task.assigned",
@@ -274,14 +369,14 @@ Test-Case "24. Marcos, tarefas e orcamento ficam na trilha, com actor" {
     "sete tipos de evento de marco/tarefa/orcamento auditados, todos com actor"
 }
 
-Test-Case "25. Fechar com data anterior ao inicio e recusado" {
+Test-Case "35. Fechar com data anterior ao inicio e recusado" {
     $body = @{ endDate = "2026-08-01" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/closure" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "data de fecho anterior ao inicio recusada"
 }
 
-Test-Case "26. Fechar projecto" {
+Test-Case "36. Fechar projecto" {
     $body = @{ endDate = "2026-12-31" } | ConvertTo-Json
     Invoke-RestMethod "$base/projects/$($script:projectId)/closure" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
     $p = Invoke-RestMethod "$base/projects/$($script:projectId)" -Headers $adminHeaders
@@ -289,14 +384,14 @@ Test-Case "26. Fechar projecto" {
     "projecto fechado"
 }
 
-Test-Case "27. Fechar outra vez e recusado (nao ha reabertura)" {
+Test-Case "37. Fechar outra vez e recusado (nao ha reabertura)" {
     $body = @{ endDate = "2026-12-31" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/closure" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "409 no segundo fecho"
 }
 
-Test-Case "28. Projecto fechado nao aceita marco, tarefa nem orcamento novos" {
+Test-Case "38. Projecto fechado nao aceita marco, tarefa, orcamento nem alocacao novos" {
     # Conflito com o estado do projecto, nao pedido malformado -- 409, nao 400.
     $bodyMarco = @{ name = "Marco tardio"; targetDate = "2026-12-01" } | ConvertTo-Json
     $codeMarco = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/milestones" -Method Post -Body $bodyMarco -ContentType "application/json" -Headers $adminHeaders }
@@ -310,10 +405,14 @@ Test-Case "28. Projecto fechado nao aceita marco, tarefa nem orcamento novos" {
     $codeOrcamento = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/budget" -Method Post -Body $bodyOrcamento -ContentType "application/json" -Headers $adminHeaders }
     if ($codeOrcamento -ne 409) { throw "orcamento em projecto fechado: esperado 409, obtido $codeOrcamento" }
 
-    "projecto fechado e facto historico -- nem marco, nem tarefa, nem orcamento se alteram"
+    $bodyAlocacao = @{ kind = 0; resourceId = $colaborador2; startsOn = "2026-09-01" } | ConvertTo-Json
+    $codeAlocacao = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)/allocations" -Method Post -Body $bodyAlocacao -ContentType "application/json" -Headers $adminHeaders }
+    if ($codeAlocacao -ne 409) { throw "alocacao em projecto fechado: esperado 409, obtido $codeAlocacao" }
+
+    "projecto fechado e facto historico -- nem marco, nem tarefa, nem orcamento, nem alocacao se alteram"
 }
 
-Test-Case "29. Projecto fechado sai da listagem por omissao, includeClosed traz de volta" {
+Test-Case "39. Projecto fechado sai da listagem por omissao, includeClosed traz de volta" {
     $activos = Invoke-RestMethod "$base/projects" -Headers $adminHeaders
     if ($activos.projectId -contains $script:projectId) { throw "projecto fechado ainda aparece nos activos" }
 
@@ -322,7 +421,7 @@ Test-Case "29. Projecto fechado sai da listagem por omissao, includeClosed traz 
     "filtra por omissao; includeClosed mostra tudo"
 }
 
-Test-Case "30. Nao ha eliminacao de projecto" {
+Test-Case "40. Nao ha eliminacao de projecto" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/projects/$($script:projectId)" -Method Delete -Headers $adminHeaders }
     if ($code -ne 405 -and $code -ne 404) { throw "DELETE devia ser recusado, obtido $code" }
     $existe = Invoke-Sql "select count(*) from projects.project where id='$($script:projectId)'"
@@ -330,7 +429,7 @@ Test-Case "30. Nao ha eliminacao de projecto" {
     "DELETE recusado ($code); a linha continua la"
 }
 
-Test-Case "31. Abrir e fechar ficam na trilha, com actor" {
+Test-Case "41. Abrir e fechar ficam na trilha, com actor" {
     $abrir = Invoke-Sql "select count(*) from audit.audit_event where action='projects.project.opened' and entity_id='$($script:projectId)' and actor_id is not null"
     if ($abrir -ne "1") { throw "abertura nao auditada com actor" }
     $fechar = Invoke-Sql "select count(*) from audit.audit_event where action='projects.project.closed' and entity_id='$($script:projectId)' and actor_id is not null"
@@ -338,7 +437,7 @@ Test-Case "31. Abrir e fechar ficam na trilha, com actor" {
     "abertura e fecho na trilha, ambos com actor"
 }
 
-Test-Case "32. Autorizacao: sem token 401, sem perfil 403" {
+Test-Case "42. Autorizacao: sem token 401, sem perfil 403" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/projects" }
     if ($code -ne 401) { throw "sem token: esperado 401, obtido $code" }
 
@@ -347,7 +446,7 @@ Test-Case "32. Autorizacao: sem token 401, sem perfil 403" {
     "401 e 403 correctos"
 }
 
-Test-Case "33. Dados sobrevivem ao reinicio da stack" {
+Test-Case "43. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
@@ -360,7 +459,11 @@ Test-Case "33. Dados sobrevivem ao reinicio da stack" {
     $tarefa = $p.tasks | Where-Object { $_.taskId -eq $script:taskId }
     if ($tarefa.status -ne "Done") { throw "estado da tarefa perdido apos restart: $($tarefa.status)" }
     if ([decimal]$p.budget.amount -ne 650000) { throw "orcamento perdido apos restart: $($p.budget.amount)" }
-    "projecto '$nome', marco, tarefa e orcamento intactos apos restart"
+    $alocacaoColaborador = $p.allocations | Where-Object { $_.allocationId -eq $script:alocacaoColaborador }
+    if ($alocacaoColaborador.endsOn -ne "2026-09-15") { throw "fim da alocacao perdido apos restart: $($alocacaoColaborador.endsOn)" }
+    $alocacaoViatura = $p.allocations | Where-Object { $_.allocationId -eq $script:alocacaoViatura }
+    if ($alocacaoViatura.kind -ne "Vehicle") { throw "alocacao de viatura perdida apos restart" }
+    "projecto '$nome', marco, tarefa, orcamento e alocacoes intactos apos restart"
 }
 
 Write-Host ""

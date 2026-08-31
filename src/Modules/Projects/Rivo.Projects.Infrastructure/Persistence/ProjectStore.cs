@@ -11,6 +11,7 @@ public sealed class ProjectStore(ProjectsDbContext context) : IProjectStore
             .Include(p => p.Milestones)
             .Include(p => p.Tasks)
             .Include(p => p.Budget)
+            .Include(p => p.Allocations)
             .FirstOrDefaultAsync(p => p.Id == projectId, cancellationToken);
 
     public async Task<Project?> FindForUpdateAsync(Guid projectId, CancellationToken cancellationToken) =>
@@ -18,6 +19,7 @@ public sealed class ProjectStore(ProjectsDbContext context) : IProjectStore
             .Include(p => p.Milestones)
             .Include(p => p.Tasks)
             .Include(p => p.Budget)
+            .Include(p => p.Allocations)
             .FirstOrDefaultAsync(p => p.Id == projectId, cancellationToken);
 
     public async Task<IReadOnlyList<Project>> ListAsync(bool includeClosed, CancellationToken cancellationToken)
@@ -26,6 +28,7 @@ public sealed class ProjectStore(ProjectsDbContext context) : IProjectStore
             .Include(p => p.Milestones)
             .Include(p => p.Tasks)
             .Include(p => p.Budget)
+            .Include(p => p.Allocations)
             .AsQueryable();
 
         if (!includeClosed)

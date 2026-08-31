@@ -1329,9 +1329,63 @@ para 39). `scripts/verify-projects.ps1` cresceu de 28 para 33 casos e
 **confirmou 33/33 contra a stack local a 2026-08-30, sem nenhuma falha na
 primeira corrida**.
 
-**Continua por fazer:** Alocação de Recursos (pessoas além da atribuição de
-Tarefa, viaturas, custos) — sem decisão própria ainda, ver "Perguntas em
-aberto" em `modules/projects.md`.
+_2026-08-31 — **Alocação de Recursos: Colaborador e Viatura.**_ `Project`
+ganhou um quarto filho, `ProjectResourceAllocation` — mesmo desenho de
+`Rivo.Fleet.Domain.VehicleAssignment` (`Assign`/`End`), com uma diferença
+deliberada: uma viatura só tem um motorista de cada vez, mas um projecto
+tem vários recursos alocados em simultâneo, por isso `AllocateResource` só
+impede o **mesmo** par tipo+identificador de ter duas alocações abertas —
+não impede várias alocações diferentes ao mesmo tempo.
+
+**Distinta da atribuição de Tarefa, de propósito.** Atribuir uma Tarefa
+(`ProjectTask.AssignTo`, já existente) é operacional — "quem faz isto, até
+quando". Alocar um recurso é ao nível do projecto — "quem/o que está afecto
+a este projecto, neste período" — para planeamento de capacidade,
+independente de qualquer Tarefa concreta. Os dois não têm relação
+estrutural: uma pessoa alocada não precisa de Tarefas, e uma Tarefa pode
+ser atribuída a alguém que não está alocado.
+
+**`fleet` publicou o seu primeiro contrato de leitura**, `IVehicleDirectory`
+— mesmo desenho de `IEmployeeDirectory` (`hr`, ADR-010): devolve
+`VehicleReference?` por identificador, implementado em
+`Rivo.Fleet.Application.VehicleDirectory` sobre o `IVehicleStore` já
+existente. `projects` ganhou referência a `Rivo.Fleet.Contracts` —
+segunda direcção de dependência declarada em `dependency-rules.md` desde
+2026-08-29 (`fleet (alocação de viatura)`) e nunca antes ligada.
+`AllocateProjectResource` verifica o recurso por `IEmployeeDirectory` ou
+`IVehicleDirectory`, consoante o `ResourceKind`, antes de gravar — mesmo
+padrão de `AddTask`/`AssignTask` perante `hr`.
+
+**Custos ficam de fora, decisão explícita e não descoberta depois.**
+`modules/projects.md` §Conceitos lista "pessoas, viaturas, custos", mas
+atribuir um custo directo ao projecto implica postar em `finance`
+(`Regras de negócio`: "`projects` não escreve no razão"), e o mecanismo de
+postagem — tempo real ou em lote — é decisão em aberto
+(`state/pending-decisions.md`). Construir aqui sem essa decisão seria
+especulativo, mesma disciplina do ADR-040 perante a validação cruzada com
+o orçamento de `finance`.
+
+Dois endpoints novos, sob `projects.projects.write`:
+`POST /projects/{id}/allocations`,
+`POST /projects/{id}/allocations/{allocationId}/end`. `ProjectView` ganhou
+`Allocations` (`ResourceAllocationView`), mesmo padrão de
+`MilestoneView`/`ProjectTaskView`/`ProjectBudgetView`.
+
+**16 testes de domínio novos** (`Rivo.Projects.Domain.Tests` cresceu de 39
+para 55). `scripts/verify-projects.ps1` cresceu de 33 para 43 casos:
+colaborador e viatura alocados e verificados contra `hr`/`fleet`, recusa
+por data anterior ao início do projecto (400), recusa do mesmo recurso
+duas vezes em aberto (409), colaborador/viatura inexistente (404), terminar
+alocação, recusa de terminar duas vezes (409), recusa de data de fim
+anterior ao início (400), projecto fechado não aceita alocação nova (409),
+tudo auditado com actor, tudo sobrevive ao reinício da stack.
+
+**Um único defeito, na própria suite de verificação, não na aplicação**: a
+contagem esperada de eventos `projects.resource_allocation.allocated`
+incluía as tentativas recusadas (400/409/404) — que correctamente não
+deixam registo, porque não têm efeito nenhum. Corrigido no mesmo dia.
+**Confirmado 43/43 contra a stack local, sem nenhuma falha na aplicação**;
+`verify-fleet.ps1` confirmado sem regressão, 38/38.
 
 ## fleet
 
@@ -1433,6 +1487,14 @@ estado), corrigida mais cedo no mesmo dia (ver acima), já nasceu aplicada
 correctamente aqui.
 
 **Continuam por fazer:** Registo de Viagem, Despesa de Frota, Seguros.
+
+_2026-08-31, mesmo dia da Alocação de Recursos de `projects` —
+**`IVehicleDirectory`, primeiro contrato de leitura de `fleet`.**_ Mesmo
+desenho de `IEmployeeDirectory` (`hr`, ADR-010): `FindAsync(vehicleId, ct)`
+devolve `VehicleReference?` (id, matrícula, modelo, estado), implementado
+em `Rivo.Fleet.Application.VehicleDirectory` sobre o `IVehicleStore` já
+existente — sem tabela nova, sem migração. Único consumidor até agora:
+`projects`, ver a secção própria.
 
 ## inventory
 

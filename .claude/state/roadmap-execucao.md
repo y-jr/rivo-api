@@ -35,7 +35,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 4 | `finance` — o núcleo | ✅ **Critério de saída cumprido** em 2026-08-25 — os cinco contextos internos, BR-1/3/5/8 impostas, os documentos a lançar nos livros e (2026-08-29) a anular a estornar. Em dívida: o plano de contas, que é do contabilista |
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
 | 6 | `payroll` | Motor de IRT/INSS ganhou regra de negócio real em 2026-08-30 — trave de **produção** continua por parecer fiscal, ver a nota da fase |
-| 7 | `projects`, `inventory`, `fleet` | Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). Nenhum tem bloqueio de negócio; Armazém/Transferência/Contagem em `inventory`, Alocação de Recursos em `projects` e Registo de Viagem/Despesa/Seguros em `fleet` continuam por fazer |
+| 7 | `projects`, `inventory`, `fleet` | Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). `projects` ganhou Alocação de Recursos a 2026-08-31 (Colaborador e Viatura, via `hr`/`fleet`). Nenhum tem bloqueio de negócio; Armazém/Transferência/Contagem em `inventory` e Registo de Viagem/Despesa/Seguros em `fleet` continuam por fazer |
 | 8 | Camadas de composição e portais | Por iniciar |
 
 **Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
@@ -404,8 +404,19 @@ testes de arquitectura da Fase 0.
 > ADR-039, ADR-040 e `modules/fleet.md`.
 >
 > **Fica ainda por fazer, sem bloqueio de negócio:** Armazém, Transferência
-> e Contagem em `inventory`; Alocação de Recursos em `projects`; Registo de
-> Viagem, Despesa de Frota e Seguros em `fleet`.
+> e Contagem em `inventory`; Registo de Viagem, Despesa de Frota e Seguros
+> em `fleet`.
+>
+> **Alocação de Recursos em `projects` fechada a 2026-08-31** —
+> `ProjectResourceAllocation` (Colaborador ou Viatura), mesmo desenho de
+> `VehicleAssignment` em `fleet`, com vários recursos alocados em
+> simultâneo (ao contrário de uma viatura). `fleet` publicou o seu
+> primeiro contrato de leitura, `IVehicleDirectory`, para `projects`
+> verificar a Viatura sem lhe possuir o registo — a segunda direcção de
+> dependência prevista desde 2026-08-29. Custos ficam de fora, deliberado:
+> postar em `finance` depende de "tempo real ou em lote?", ainda em
+> aberto. `verify-projects.ps1` cresceu de 33 para 43, `verify-fleet.ps1`
+> confirmado sem regressão em 38/38.
 
 ---
 
