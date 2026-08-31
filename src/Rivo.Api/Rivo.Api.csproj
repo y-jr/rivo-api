@@ -50,6 +50,7 @@
          não há base de dados nem migração a registar. -->
     <ProjectReference Include="..\Composition\Settings\Rivo.Settings.Api\Rivo.Settings.Api.csproj" />
     <ProjectReference Include="..\Composition\EmployeePortal\Rivo.EmployeePortal.Api\Rivo.EmployeePortal.Api.csproj" />
+    <ProjectReference Include="..\Composition\Dashboard\Rivo.Dashboard.Api\Rivo.Dashboard.Api.csproj" />
   </ItemGroup>
 
 </Project>

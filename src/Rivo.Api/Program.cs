@@ -39,6 +39,7 @@ using Rivo.Fleet.Api;
 using Rivo.Fleet.Infrastructure;
 using Rivo.Settings.Api;
 using Rivo.EmployeePortal.Api;
+using Rivo.Dashboard.Api;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -92,6 +93,12 @@ builder.Services.AddSettingsModule();
 // (para resolver a conta autenticada, já registada acima) e de `hr`, que
 // AddHrModule já registou.
 builder.Services.AddEmployeePortalModule();
+
+// Terceira camada de composição (ADR-041) — o Dashboard Executivo. Depende
+// só de `finance` (`IReceivablesOverview`/`IPayablesOverview`, já
+// registados por `AddFinanceModule` acima) e regista a sua própria policy
+// de autorização (`dashboard.overview.read`).
+builder.Services.AddDashboardModule();
 
 // Apresenta `hr` a `approval`, sem que nenhum dos dois conheça o outro.
 //
@@ -316,6 +323,7 @@ app.MapFleetModule();
 app.MapNotificationsModule();
 app.MapSettingsModule();
 app.MapEmployeePortalModule();
+app.MapDashboardModule();
 
 // Verifica que a aplicação está viva e que alcança a base de dados.
 app.MapGet("/health", async (RivoIdentityDbContext db, CancellationToken ct) =>

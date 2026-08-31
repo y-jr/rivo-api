@@ -16,6 +16,11 @@
     <ProjectReference Include="..\..\Projects\Rivo.Projects.Contracts\Rivo.Projects.Contracts.csproj" />
     <ProjectReference Include="..\..\Inventory\Rivo.Inventory.Contracts\Rivo.Inventory.Contracts.csproj" />
     <ProjectReference Include="..\..\Fleet\Rivo.Fleet.Contracts\Rivo.Fleet.Contracts.csproj" />
+
+    <!-- Camada de composição (ADR-041), não módulo — mas `identity` é
+         consumidor da mesma forma: precisa do catálogo de permissões para
+         conceder `dashboard.overview.read` a um Perfil de Acesso. -->
+    <ProjectReference Include="..\..\..\Composition\Dashboard\Rivo.Dashboard.Contracts\Rivo.Dashboard.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

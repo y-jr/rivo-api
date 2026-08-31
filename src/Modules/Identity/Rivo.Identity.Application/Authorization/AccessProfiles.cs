@@ -11,6 +11,7 @@ using Rivo.Projects.Contracts;
 using Rivo.Inventory.Contracts;
 using Rivo.Fleet.Contracts;
 using Rivo.Identity.Contracts;
+using Rivo.Dashboard.Contracts;
 
 namespace Rivo.Identity.Application.Authorization;
 
@@ -61,7 +62,8 @@ public static class AccessProfiles
                 .. PayrollPermissions.All,
                 .. ProjectsPermissions.All,
                 .. InventoryPermissions.All,
-                .. FleetPermissions.All],
+                .. FleetPermissions.All,
+                .. DashboardPermissions.All],
 
             // `Manager` decide sobre pedidos de aprovação — incluindo pedidos de
             // pagamento — e regista facturas de compra e pede que sejam pagas.
@@ -70,9 +72,18 @@ public static class AccessProfiles
             // indirectamente o que pode aprovar sozinho) e **sem executar
             // pagamentos**: quem aprova não paga, e BR-3 começa aqui, no
             // catálogo, antes de o domínio a impor.
+            //
+            // **Vê o Dashboard Executivo** — é o próprio perfil que
+            // `docs/rivo-suite-descricao-modulos.md` nomeia para isso
+            // ("Manager | Dashboard, Frota, Projectos, Analytics,
+            // Aprovações"). Permissão à parte (`dashboard.overview.read`,
+            // Fase 8/ADR-041): `Manager` não tem `finance.invoices.read`
+            // (só `Finance` tem), e exigi-lo excluiria a audiência que o
+            // documento de produto nomeia — ver `Rivo.Dashboard.Contracts`.
             [Manager] = [
                 ApprovalPermissions.RequestsRead,
                 ApprovalPermissions.RequestsDecide,
+                DashboardPermissions.OverviewRead,
                 .. FinancePermissions.ForPayables,
 
                 // Elabora o orçamento do seu centro de custo. **Não o aprova**

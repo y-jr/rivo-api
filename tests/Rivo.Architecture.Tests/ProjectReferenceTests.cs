@@ -123,8 +123,11 @@ public class ProjectReferenceTests
 
         // `identity` compõe o catálogo de permissões a partir do que cada
         // módulo declara — cada um diz que permissões existem, `identity`
-        // decide que perfis as recebem (ADR-005).
-        ["Identity"] = ["Audit", "Hr", "Documents", "Notifications", "Approval", "Fiscal", "Commercial", "Finance", "Procurement", "Payroll", "Projects", "Inventory", "Fleet"],
+        // decide que perfis as recebem (ADR-005). `Dashboard` entra pela
+        // mesma razão a partir de 2026-08-31: uma camada de composição
+        // também declara o seu catálogo de permissões, e `identity` é
+        // consumidor dele da mesma forma que é de qualquer módulo.
+        ["Identity"] = ["Audit", "Hr", "Documents", "Notifications", "Approval", "Fiscal", "Commercial", "Finance", "Procurement", "Payroll", "Projects", "Inventory", "Fleet", "Dashboard"],
 
         // `approval` resolve aprovadores por Cargo, que é de `hr` (ADR-034).
         //
@@ -159,6 +162,10 @@ public class ProjectReferenceTests
         // token), lida directamente do `HttpContext` na camada Api, não por
         // contrato.
         ["EmployeePortal"] = ["Hr"],
+
+        // Terceira camada de composição — o Dashboard Executivo, primeiro
+        // consumidor de `IReceivablesOverview`/`IPayablesOverview`.
+        ["Dashboard"] = ["Finance"],
     };
 
     /// <summary>
@@ -169,7 +176,7 @@ public class ProjectReferenceTests
     /// os outros.
     /// </summary>
     private static readonly HashSet<string> CamadasDeComposicao =
-        new(StringComparer.Ordinal) { "Settings", "EmployeePortal" };
+        new(StringComparer.Ordinal) { "Settings", "EmployeePortal", "Dashboard" };
 
     [Fact]
     public void Module_ReferencesAnotherModuleOnlyThroughItsContracts()

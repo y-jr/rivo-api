@@ -51,7 +51,7 @@ gerar módulos**.
 
 | Item do documento de produto | O que é realmente | Estado |
 |---|---|---|
-| Dashboard Executivo | Read model agregado sobre Financeiro, Comercial e Analytics | Por fazer — precisa de contratos de leitura que `finance`/`commercial` ainda não publicam |
+| Dashboard Executivo | Read model agregado sobre Financeiro, Comercial e Analytics | **Implementado 2026-08-31** — `Rivo.Dashboard`, ADR-041 |
 | Portal do Colaborador | Canal self-service que compõe RH, Financeiro, Approval, Documentos, Notificações | **Iniciado 2026-08-31** — `Rivo.EmployeePortal`, ADR-042. "Próprio" resolvido; recibos/férias/assiduidade/documentos ainda por fazer |
 | Portal do Cliente | Canal self-service que compõe Comercial, Financeiro/AR, Documentos | Por fazer — superfície externa, precisa de autenticação de cliente própria |
 | Configurações & Administração | UI de gestão de Identity & Access e de políticas de aprovação | **Implementado 2026-08-31** — `Rivo.Settings`, ADR-041 |

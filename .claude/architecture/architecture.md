@@ -84,6 +84,15 @@ ADR-041, para as outras quatro seguirem sem reabrir o desenho.
 em `src/Composition/EmployeePortal/`. "Próprio" resolve-se pelo vínculo
 Identity → Employee, nunca por permissão nova (ADR-042).
 
+**Mesmo dia — a terceira.** Dashboard Executivo é `Rivo.Dashboard`, em
+`src/Composition/Dashboard/`. Primeira camada de composição a ganhar
+`Contracts` próprio (`DashboardPermissions`) — não porque algo a componha
+(ninguém compõe), mas porque `identity` precisa do catálogo para conceder
+`dashboard.overview.read` a `Manager`, exactamente como faz para qualquer
+módulo. `Rivo.Settings` e `Rivo.EmployeePortal` não precisaram disto porque
+reutilizaram permissões já existentes cuja audiência coincidia; aqui não
+coincidia (`Manager` não tem `finance.invoices.read`).
+
 ## Dados
 
 - Uma base de dados SQL Server, **um schema lógico por domínio**, ownership

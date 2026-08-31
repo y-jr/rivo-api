@@ -1982,3 +1982,73 @@ confirmado por SQL), confirmado sem regressão.
 Detalhe da decisão em
 [decisions/adr-042](../decisions/adr-042-portal-colaborador-proprio.md).
 
+## dashboard (camada de composição — Fase 8, não módulo)
+
+**⚠ Não é um dos catorze módulos.** Terceira camada de composição, mesmo
+dia de `settings` e `employee-portal` — Dashboard Executivo, item 1 do
+documento de produto. Vive em `src/Composition/Dashboard/`.
+
+**2026-08-31 — `GET /dashboard/overview`, âmbito confirmado directamente
+pelo utilizador: os cinco números do documento de produto** (receita,
+despesa, lucro, Contas a Receber, Contas a Pagar), mais os clientes que
+mais facturaram no período — tudo num só pedido.
+
+`GetExecutiveOverview` compõe os dois contratos publicados por `finance`
+na ronda anterior (`IReceivablesOverview`, `IPayablesOverview`). **Lucro é
+`Receita − Despesa`, calculado aqui, não um contrato à parte** — os dois
+lados já vêm no mesmo regime de compromisso, simétricos de propósito, por
+isso subtrair os dois números já publicados é a conta inteira; não é
+lucro contabilístico (sem plano de contas carregado), é a leitura honesta
+do que os documentos emitidos e registados dizem para o período.
+
+**Primeira camada de composição a ganhar `Rivo.Dashboard.Contracts`** —
+não porque algo a componha (ninguém compõe um Dashboard), mas porque
+`identity` precisa do catálogo de permissões para conceder
+`dashboard.overview.read`, exactamente como precisa de qualquer módulo. A
+razão para uma permissão própria, e não a soma de permissões existentes
+(mesmo padrão de `Rivo.Settings`): `docs/rivo-suite-descricao-modulos.md`
+nomeia `Manager` para ver o Dashboard, e `Manager` não tem
+`finance.invoices.read` (só `Finance` tem) — exigir os contratos
+subjacentes excluiria a audiência que o documento de produto nomeia.
+Concedida a `Admin` (via `DashboardPermissions.All`) e a `Manager`.
+
+**Um defeito real, só visível ao subir a stack:**
+`TopCustomersByInvoicedAsync` (`ISalesInvoiceStore`, ronda anterior)
+projectava `GroupBy` directamente para um registo de construtor
+posicional — o EF Core recusa-se a traduzir isso para SQL
+(`InvalidOperationException` em runtime, não em tempo de compilação). Os
+133 testes de `Rivo.Finance.Application.Tests` não apanharam, porque os
+fakes fazem LINQ-to-Objects, sem essa restrição. Corrigido projectando
+primeiro para um tipo anónimo, materializando com `ToListAsync`, e só
+depois mapeando para `CustomerInvoicedTotal` em memória.
+
+**Um bug na própria suite de verificação, também só visível ao correr
+duas vezes:** `scripts/verify-dashboard.ps1` usa uma moeda de teste
+isolada (`ZZZ`, que nenhuma outra suite factura) precisamente para os
+totais saírem exactos — mas a primeira versão assumia que essa moeda
+começava sempre a zero, o que só era verdade na primeira corrida do dia.
+Corrigido para asserções por **delta** (o que muda entre duas leituras,
+nunca um estado inicial que ninguém garante) — mesma disciplina de
+"re-executável" que `verify-finance.ps1` já aplicava a séries e códigos
+de taxa, agora estendida a agregados globais.
+
+`Rivo.Dashboard.Application.Tests` (novo, 5 casos, fakes escritos à mão)
+— os cinco números, lucro negativo quando a despesa excede a receita,
+janela invertida recusada, moeda e período propagados aos dois lados,
+top clientes devolvidos tal como o contrato os dá. `scripts/verify-dashboard.ps1`
+(novo, 9 casos) **confirmou 9/9 contra a stack local**, incluindo duas
+corridas seguidas para provar a re-executabilidade: 401 sem autenticação,
+403 para `Sales` (sem a permissão), 200 para `Manager`, receita/a-receber
+a subir exactamente o esperado ao facturar (delta), ordem correcta entre
+dois clientes no topo, despesa/a-pagar/lucro a moverem-se correctamente
+ao registar factura de compra (delta), janela invertida recusada (400),
+moeda e contagem de clientes com omissão (`AOA`, 5), sobrevivência ao
+reinício da stack. `verify-bootstrap` confirma Admin com 67 permissões
+(66 + `dashboard.overview.read`), sem regressão em `verify-finance`,
+`verify-payables`, `verify-settings` nem `verify-employee-portal`.
+
+Sem ADR novo — segue o padrão já fixado por ADR-041, com a extensão de
+que uma camada de composição também pode ter `Contracts` quando
+`identity` é consumidor do seu catálogo de permissões, mesma razão de
+qualquer módulo.
+

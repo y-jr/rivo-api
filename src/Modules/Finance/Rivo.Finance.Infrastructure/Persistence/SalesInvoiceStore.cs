@@ -165,8 +165,14 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
             .SumAsync(n => (decimal?)n.NetTotal, cancellationToken) ?? 0m;
 
     public async Task<IReadOnlyList<CustomerInvoicedTotal>> TopCustomersByInvoicedAsync(
-        DateOnly from, DateOnly to, string currency, int count, CancellationToken cancellationToken) =>
-        await context.Invoices
+        DateOnly from, DateOnly to, string currency, int count, CancellationToken cancellationToken)
+    {
+        // O SQL Server traduz `GroupBy` seguido de projecção para um tipo
+        // anónimo sem problema — para um registo (construtor posicional)
+        // já não, e o EF Core recusa-se a inventar client evaluation
+        // silencioso. Projecta-se para o tipo anónimo primeiro, e só depois
+        // de materializado é que vira `CustomerInvoicedTotal`.
+        var agregados = await context.Invoices
             .AsNoTracking()
             .Where(i => i.Status == InvoiceStatus.Normal
                 && i.Currency == currency
@@ -174,10 +180,13 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
                 && i.IssuedOn >= from
                 && i.IssuedOn <= to)
             .GroupBy(i => i.CustomerId!.Value)
-            .Select(g => new CustomerInvoicedTotal(g.Key, g.Sum(i => i.NetTotal)))
+            .Select(g => new { CustomerId = g.Key, NetTotal = g.Sum(i => i.NetTotal) })
             .OrderByDescending(c => c.NetTotal)
             .Take(count)
             .ToListAsync(cancellationToken);
+
+        return [.. agregados.Select(a => new CustomerInvoicedTotal(a.CustomerId, a.NetTotal))];
+    }
 
     public async Task<CreditNote?> FindCreditNoteAsync(Guid creditNoteId, CancellationToken cancellationToken) =>
         await context.CreditNotes

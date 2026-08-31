@@ -283,14 +283,14 @@ re-litigação:
          `IReceivablesOverview`/`IPayablesOverview`, ambos em `finance`
          (a única lacuna real; `commercial.ICustomerDirectory` já
          resolvia o nome do cliente). Ver `modules/finance.md`.
-      2. **Dashboard Executivo**, agora com (1) pronto e testado — 133
-         testes de Application em `finance`, sem regressão. Continua por
-         construir: a camada de composição em si (`Rivo.Dashboard` ou
-         nome semelhante), que consome os dois contratos.
+      2. ~~**Dashboard Executivo**~~ — **feito a 2026-08-31, mesmo dia**:
+         `Rivo.Dashboard` (`GET /dashboard/overview`), âmbito confirmado
+         directamente pelo utilizador ("os cinco chegam, um só endpoint").
+         Ver `state/implemented.md` §dashboard.
       3. **Decisão de identidade externa** — identidade de cliente, ciclo
          de vida da conta, autenticação, isolamento, recuperação, MFA,
          relação Customer ↔ conta externa. Bloqueia (4); não improvisar
-         solução temporária.
+         solução temporária. **Próximo item da ordem, ainda por decidir.**
       4. **Portal do Cliente**, só depois de (3).
       5. **Analytics & IA** — adiado até os módulos produtores terem
          contratos e semântica estáveis; IA acrescenta governação e acesso

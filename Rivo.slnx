@@ -110,6 +110,11 @@
     <Project Path="src/Composition/EmployeePortal/Rivo.EmployeePortal.Api/Rivo.EmployeePortal.Api.csproj" />
     <Project Path="src/Composition/EmployeePortal/Rivo.EmployeePortal.Application/Rivo.EmployeePortal.Application.csproj" />
   </Folder>
+  <Folder Name="/src/Composition/Dashboard/">
+    <Project Path="src/Composition/Dashboard/Rivo.Dashboard.Api/Rivo.Dashboard.Api.csproj" />
+    <Project Path="src/Composition/Dashboard/Rivo.Dashboard.Application/Rivo.Dashboard.Application.csproj" />
+    <Project Path="src/Composition/Dashboard/Rivo.Dashboard.Contracts/Rivo.Dashboard.Contracts.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rivo.Api.Tests/Rivo.Api.Tests.csproj" />
     <Project Path="tests/Rivo.Architecture.Tests/Rivo.Architecture.Tests.csproj" />
@@ -165,5 +170,8 @@
   </Folder>
   <Folder Name="/tests/EmployeePortal/">
     <Project Path="tests/Composition/EmployeePortal/Rivo.EmployeePortal.Application.Tests/Rivo.EmployeePortal.Application.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Dashboard/">
+    <Project Path="tests/Composition/Dashboard/Rivo.Dashboard.Application.Tests/Rivo.Dashboard.Application.Tests.csproj" />
   </Folder>
 </Solution>

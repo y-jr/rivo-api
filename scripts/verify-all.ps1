@@ -63,6 +63,12 @@ $suites = @(
     # nao depende de estado deixado por nenhuma suite anterior.
     "verify-settings",
 
+    # Terceira camada de composicao -- factura e regista despesa numa moeda
+    # propria (ZZZ) que nenhuma outra suite usa, por isso os totais saem
+    # exactos em vez de "pelo menos" mesmo correndo depois de
+    # verify-finance/verify-payables.
+    "verify-dashboard",
+
     "verify-procurement"
 )
 

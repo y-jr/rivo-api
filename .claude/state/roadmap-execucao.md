@@ -36,7 +36,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
 | 6 | `payroll` | Motor de IRT/INSS ganhou regra de negócio real em 2026-08-30 — trave de **produção** continua por parecer fiscal, ver a nota da fase |
 | 7 | `projects`, `inventory`, `fleet` | **Fechada por completo a 2026-08-31.** Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). A 2026-08-31, `projects` ganhou Alocação de Recursos (Colaborador e Viatura, via `hr`/`fleet`), `inventory` ganhou Armazém, Transferência (retrofit do Movimento, transferência atómica) e Contagem (gera Ajuste no fecho, tudo numa transacção), e `fleet` ganhou Registo de Viagem, Despesa de Frota (sem abrir/fechar, ao contrário de Manutenção/Atribuição) e Seguros (`VehicleDocument`, ligação autónoma a `documents`) |
-| 8 | Camadas de composição e portais | **Iniciada 2026-08-31** — Configurações & Administração (ADR-041) e Portal do Colaborador (ADR-042) feitos; Dashboard Executivo, Portal do Cliente e Analytics & IA por fazer |
+| 8 | Camadas de composição e portais | **2026-08-31** — Configurações & Administração (ADR-041), Portal do Colaborador (ADR-042) e Dashboard Executivo feitos; Portal do Cliente (bloqueado por decisão de identidade externa) e Analytics & IA por fazer |
 
 **Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
 arranca na Fase 3. Ver no fim.
@@ -535,6 +535,48 @@ por contrato publicado.
 > construir**, sem consumidor real ainda. 14 testes novos em
 > `Rivo.Finance.Application.Tests` (133 no total), sem regressão em
 > `verify-finance.ps1`/`verify-payables.ps1`.
+>
+> **Quarta, mesmo dia — o Dashboard Executivo, item 1 do documento de
+> produto.** O utilizador confirmou o âmbito directamente: os cinco
+> números do documento de produto (receita, despesa, lucro, Contas a
+> Receber, Contas a Pagar — mais os clientes que mais facturaram), num só
+> `GET /dashboard/overview`. `Rivo.Dashboard` compõe
+> `IReceivablesOverview`/`IPayablesOverview`; lucro é `Receita − Despesa`,
+> calculado aqui e não um contrato à parte — os dois lados já vêm no mesmo
+> regime (Fase 8, ronda anterior), por isso subtrair é a conta inteira.
+>
+> **Primeira camada de composição a ganhar `Contracts` próprio.** Não
+> porque algo a componha — ninguém compõe — mas porque `docs/rivo-suite-descricao-modulos.md`
+> nomeia `Manager` para ver o Dashboard, e `Manager` não tem
+> `finance.invoices.read` (só `Finance` tem). Exigir os contratos
+> subjacentes (mesmo padrão de `Rivo.Settings`) excluiria a audiência que
+> o documento de produto nomeia — por isso `dashboard.overview.read` é
+> permissão própria, publicada em `Rivo.Dashboard.Contracts` para
+> `identity` a conceder, mesmo mecanismo que qualquer módulo usa para o
+> seu catálogo.
+>
+> **Um defeito real, só visível ao subir a stack:** `TopCustomersByInvoicedAsync`
+> (`ISalesInvoiceStore`, ronda anterior) projectava `GroupBy` directamente
+> para um registo posicional — o EF Core recusa-se a traduzir isso para
+> SQL e lança em runtime; os 133 testes de Application não apanharam
+> porque os fakes fazem LINQ-to-Objects, sem essa restrição. Corrigido
+> projectando primeiro para um tipo anónimo, materializando, e só depois
+> mapeando para `CustomerInvoicedTotal`.
+>
+> `Rivo.Dashboard.Application.Tests` (novo, 5 casos).
+> `scripts/verify-dashboard.ps1` (novo, 9 casos) — moeda de teste própria
+> (`ZZZ`) para os totais saírem exactos mesmo depois de
+> `verify-finance`/`verify-payables` já terem corrido, e asserções por
+> **delta** em vez de zero absoluto, para a suite continuar re-executável
+> mesmo com dados de corridas anteriores na mesma moeda (descoberto ao
+> testar: uma corrida falhada anterior tinha deixado dados por trás).
+> Confirmado 9/9. `verify-bootstrap` confirma Admin com 67 permissões
+> (66 + `dashboard.overview.read`), sem regressão em `verify-settings`/
+> `verify-employee-portal`.
+>
+> **Fica por fazer da Fase 8:** Portal do Cliente (bloqueado pela decisão
+> de identidade externa) e Analytics & IA (adiado até os módulos
+> produtores terem contratos estáveis).
 
 ---
 

@@ -97,16 +97,26 @@ justificação e, se não for trivial, de ADR.
 | `notifications` | — (fundacional) | implementado |
 | `Settings` ⚠ | identity, approval | camada de composição (ADR-041), não módulo — ver nota abaixo |
 | `EmployeePortal` ⚠ | hr | camada de composição (ADR-041/ADR-042), não módulo — ver nota abaixo |
+| `Dashboard` ⚠ | finance | camada de composição (ADR-041), não módulo — ver nota abaixo |
 
-⚠ **`Settings` e `EmployeePortal` não são módulos.** São camadas de
-composição (ADR-041, Fase 8) — sem Domain, sem Infrastructure, sem base de
-dados própria. Ficam na tabela porque `Modules_ReferenceOnlyDeclaredDirections`
-verifica-as da mesma forma que qualquer módulo (um consumidor de contratos é
-um consumidor de contratos, tenha ele próprio Domain ou não) — não porque
-sejam bounded contexts. Vivem em `src/Composition/<Nome>/`, não em
-`src/Modules/`. `EmployeePortal` não depende de `identity` apesar de
-resolver "a conta autenticada": o `sub` do token chega já resolvido ao
-`HttpContext` na camada Api, lido directamente — não por contrato (ADR-042).
+⚠ **`Settings`, `EmployeePortal` e `Dashboard` não são módulos.** São
+camadas de composição (ADR-041, Fase 8) — sem Domain, sem Infrastructure,
+sem base de dados própria. Ficam na tabela porque
+`Modules_ReferenceOnlyDeclaredDirections` verifica-as da mesma forma que
+qualquer módulo (um consumidor de contratos é um consumidor de contratos,
+tenha ele próprio Domain ou não) — não porque sejam bounded contexts. Vivem
+em `src/Composition/<Nome>/`, não em `src/Modules/`. `EmployeePortal` não
+depende de `identity` apesar de resolver "a conta autenticada": o `sub` do
+token chega já resolvido ao `HttpContext` na camada Api, lido
+directamente — não por contrato (ADR-042).
+
+**`Dashboard` tem `Rivo.Dashboard.Contracts`, e é a primeira camada de
+composição a ter um.** Não porque outro módulo o componha — ninguém compõe
+— mas porque publica `DashboardPermissions` para `identity` conceder
+`dashboard.overview.read` a `Manager`, o mesmo motivo por que qualquer
+módulo tem um catálogo de permissões no seu `Contracts`. `identity` entrou
+na tabela de `Identity` como consumidor dele pela mesma razão que já é
+consumidor de todos os outros catálogos.
 
 Todas as dependências acima são sobre o assembly de **contratos** do módulo
 alvo, nunca sobre a sua implementação.
