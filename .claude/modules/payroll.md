@@ -16,7 +16,8 @@ relação de trabalho, `payroll` possui o cálculo.
 | Conceito | Notas |
 |---|---|
 | Folha de Pagamento (Run) | por período, com estado |
-| Item de Folha | por colaborador; vencimentos e descontos |
+| Item de Folha | por colaborador; bruto, composição de subsídios, vencimentos e descontos |
+| Subsídio (Alimentação, Transporte, Férias, Natal) | componente do bruto, não soma a ele; só Alimentação e Transporte têm limiar de isenção no IRT |
 | Recibo (Payslip) | gerado via `documents` |
 
 ## Possui
@@ -64,6 +65,8 @@ Confirmado no artigo 7.º do Código do IRT (Lei n.º 18/14, de 22 de Outubro):
 Salário Bruto
    − INSS do trabalhador (3%)
    − Componentes não sujeitas / isentas
+      = min(Subsídio de Alimentação, 30.000 Kz)
+      + min(Subsídio de Transporte, 30.000 Kz)
    = Matéria Colectável do IRT
    → identificar escalão
    → Parcela Fixa + Taxa × (MC − Excesso do escalão)
@@ -73,6 +76,14 @@ Salário Bruto
 **Deduz-se apenas a parcela do trabalhador (3%).** A contribuição patronal
 (8%) é custo da empresa e **nunca** é subtraída ao rendimento do trabalhador
 para efeitos de IRT.
+
+**"Componentes não sujeitas/isentas" tem conteúdo concreto desde
+2026-08-31**: Subsídio de Alimentação e Subsídio de Transporte, cada um
+isento até 30.000 Kz/mês (confirmado pelo utilizador, não fonte fiscal
+profissional — ver "Perguntas em aberto"); o excesso soma-se à matéria
+colectável, nunca perde a isenção da parte que cabe no limiar. Subsídio de
+Férias e Subsídio de Natal **não têm isenção nenhuma** — tributados
+normalmente, já fazem parte do bruto sem dedução.
 
 Errar isto afecta todos os recibos de vencimento. É invariante de domínio,
 com teste dedicado.
@@ -108,6 +119,11 @@ ninguém as "corrija".
 - Os valores de IRT e INSS que `fiscal` usa — mecanismo implementado desde
   2026-08-30, mas a fonte é o utilizador, não fonte fiscal profissional; ver
   `state/pending-decisions.md`.
+- ~~Tratamento de subsídios (alimentação, transporte, férias, Natal) em
+  IRT~~ — **confirmado pelo utilizador a 2026-08-31** e **implementado no
+  mesmo dia**: Alimentação e Transporte isentos até 30.000 Kz/mês cada,
+  excesso tributado; Férias e Natal sem isenção. Mesma reserva de fonte das
+  demais entradas — não é fiscalista nem texto legal primário.
 - Prazo de retenção legal do recibo (BR-15) — a ligação a `documents` existe,
   o prazo em si não está fixado em lado nenhum.
 - "Só depois de Aprovada" (regra acima) é inferência desta sessão, não
@@ -147,18 +163,27 @@ alterar-se o registo do item — e **só se anexa a um item de folha Aprovada**
 (400 → 409 antes disso, "Regras de negócio" acima). Um documento só se liga
 uma vez (índice único em `document_id`, mesma defesa de `hr`).
 
-Testes: 22 de domínio (`Rivo.Payroll.Domain.Tests`, 16 do motor de IRT/INSS +
-6 de `PayrollItemDocument`, novo a 2026-08-30) e verificação end-to-end
-(`scripts/verify-payroll.ps1`, 22 casos, incluindo o exemplo documentado
-bruto 250.000 → líquido 203.600 reproduzido como regressão, e o ciclo
-completo do recibo — recusa antes de Aprovada, anexar, listar com metadados
-de `documents`, documento inexistente devolve 404). Permissões atribuídas a
-`HR`.
+**Subsídios com tratamento fiscal, desde 2026-08-31.** `PayrollItem` ganhou
+`FoodAllowance`, `TransportAllowance`, `VacationAllowance`,
+`ChristmasAllowance` — componentes do bruto, não uma soma a ele
+(`Sum(subsídios) ≤ GrossSalary` é invariante do agregado). `AddPayrollItem`
+só pergunta o limiar de isenção a `fiscal` quando o subsídio correspondente
+é declarado (> 0) — um item sem alimentação nem transporte não depende de
+nenhum dos dois estar configurado. Férias e Natal ficam registados para o
+recibo os mostrar, mas não entram em nenhum cálculo de isenção: tributados
+normalmente, confirmado pelo utilizador.
+
+Testes: 30 de domínio (`Rivo.Payroll.Domain.Tests` — 16 do motor de
+IRT/INSS, 6 de `PayrollItemDocument`, 8 de `PayrollItemAllowanceTests`,
+novo a 2026-08-31) e verificação end-to-end (`scripts/verify-payroll.ps1`,
+26 casos, incluindo o exemplo documentado bruto 250.000 → líquido 203.600
+reproduzido como regressão, o ciclo completo do recibo — recusa antes de
+Aprovada, anexar, listar com metadados de `documents`, documento inexistente
+devolve 404 — e os dois cenários de subsídio: dentro do limiar (isenção
+total) e acima dele (excesso tributado, Férias/Natal sem isenção nenhuma)).
+Permissões atribuídas a `HR`.
 
 **A fonte dos valores continua a ser o utilizador, não o Anexo I da Lei
 n.º 14/25 nem parecer de fiscalista** — ver `state/pending-decisions.md`
-para a reserva completa; o que mudou a 2026-08-30 foi o mecanismo, não a
-proveniência do dado. Subsídios (alimentação, transporte, férias, Natal)
-continuam sem tratamento definido, e `PayrollItem` não distingue componentes
-do salário bruto — o cálculo aplica-se ao bruto inteiro enquanto isso não
-for decidido.
+para a reserva completa; o que mudou a 2026-08-30/31 foi o mecanismo, não a
+proveniência do dado.

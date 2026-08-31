@@ -1,6 +1,6 @@
 # Estado do Projecto
 
-_Última actualização: 2026-08-30_
+_Última actualização: 2026-08-31_
 
 ## Fase actual
 
@@ -49,11 +49,11 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `notifications` | Completo menos a entrega real. Fila com estado, worker, leitura e marcação (uma a uma ou todas) — **sem envio de e-mail** (K13) |
 | `hr` | Completo. Colaborador, Departamento, Cargo, Contrato, Assiduidade, Férias, Benefícios, Recrutamento, Onboarding/Offboarding |
 | `approval` | Completo para o âmbito fixado. Políticas (criar e desactivar), pedidos, decisões, BR-2/4/6/17, worker de reconciliação, cancelamento restrito a quem submeteu (K18) |
-| `fiscal` | ⚠ **Fatia mínima** (ADR-036), mais o motor de IRT/INSS (2026-08-30). Taxa plana com vigência e determinação (IVA, INSS); `IncomeTaxSchedule` — tabela de escalões progressivos, com o mesmo padrão de vigência — para o IRT. Continua a não ser o motor fiscal completo: sem SAF-T, sem declarações periódicas |
+| `fiscal` | ⚠ **Fatia mínima** (ADR-036), mais o motor de IRT/INSS (2026-08-30) e os limiares de isenção de subsídios (2026-08-31). Taxa plana com vigência e determinação (IVA, INSS); `IncomeTaxSchedule` — tabela de escalões progressivos — para o IRT; `SubsidyExemptionSchedule` — limiar em Kwanzas, mesmo padrão de vigência — para Alimentação e Transporte. Continua a não ser o motor fiscal completo: sem SAF-T, sem declarações periódicas |
 | `commercial` | ⚠ **Reduzido ao Cliente** (ADR-036). Sem funil comercial |
 | `finance` | **Os cinco contextos existem, e os documentos lançam.** Venda (factura, nota de crédito, recibo, saldo), Contas a Pagar, Tesouraria com extracto append-only, Contabilidade & Fecho com postagem automática, Planeamento. **BR-1, BR-3, BR-5 e BR-8 impostas.** Anular uma factura, nota de crédito ou recibo estorna o lançamento (2026-08-29). ⚠ Contabilidade vazia até alguém carregar o plano; Activos Fixos sem código ainda — o K1 que os bloqueava fechou por ADR-039 (2026-08-30), falta escrevê-los |
 | `procurement` | **Os quatro agregados, e o 3-way match fecha.** Fornecedor com IBAN verificado (ISO 13616) e publicado a `finance`; requisição com linhas e decisão de `approval`; Ordem de Compra, que só nasce de requisição aprovada e não deixa encomendar acima do aprovado; Recepção parcial, acumulada por linha e nunca acima do encomendado. A factura liga-se à Ordem (`PurchaseOrderId`, opcional) e `GET .../match` mostra encomendado, recebido e facturado lado a lado — recusa ligar a uma ordem de outro fornecedor, mas **não bloqueia** divergência de valor: fica visível, não impede o registo |
-| `payroll` | **Folha, itens e Recibo, confirmado (2026-08-30).** `AddPayrollItem` pergunta a `fiscal` — nunca calcula por si — na ordem do artigo 7.º do CIRT: INSS do trabalhador à data do fim do período, matéria colectável, IRT por escalões; `NetSalary` sai sempre calculado, nunca recebido. Sem taxa/tabela em vigor, o item recusa (400) em vez de nascer com campo nulo. Recibo liga-se via `documents` (ADR-009, mesmo desenho de `hr`) a um item de folha Aprovada. Ligado a `approval` (submete pelo bruto). `verify-payroll.ps1` 22 casos. ⚠ A fonte dos valores de IRT/INSS continua o utilizador, não fiscalista nem Anexo I da lei |
+| `payroll` | **Folha, itens, subsídios e Recibo, confirmado (2026-08-30/31).** `AddPayrollItem` pergunta a `fiscal` — nunca calcula por si — na ordem do artigo 7.º do CIRT: INSS do trabalhador, isenção de Alimentação/Transporte (até 30.000 Kz/mês cada, excesso tributado), matéria colectável, IRT por escalões; `NetSalary` sai sempre calculado, nunca recebido. Férias e Natal só compõem o recibo, sem isenção. Sem taxa/tabela/limiar em vigor, o item recusa (400) em vez de nascer com campo nulo. Recibo liga-se via `documents` (ADR-009, mesmo desenho de `hr`) a um item de folha Aprovada. Ligado a `approval` (submete pelo bruto). `verify-payroll.ps1` 26 casos. ⚠ A fonte dos valores fiscais continua o utilizador, não fiscalista nem Anexo I da lei |
 | `projects` | **Marco, Tarefa e Orçamento com regra de negócio, confirmado (2026-08-30).** Projecto como agregado — fecha, e fechado é facto histórico: nem Marco, nem Tarefa, nem Orçamento se alteram depois. Tarefa atribuída verifica o Colaborador contra `hr` (ADR-010, BR-18); concluir/cancelar não reabre. Orçamento é zero ou um por projecto, moeda fixa na primeira vez (ADR-040). `verify-projects.ps1` 33/33 contra a stack local, sem falha. ⚠ Alocação de Recursos (pessoas além da atribuição, viaturas, custos) continua por fazer, sem decisão própria |
 | `fleet` | **Manutenção, Atribuição e Plano de Manutenção com regra de negócio, confirmado (2026-08-30).** Viatura como agregado — um registo de manutenção aberto de cada vez, uma atribuição aberta de cada vez, vários planos activos ao mesmo tempo (sem exclusão mútua); nenhum dos três se exclui dos outros dois. Atribuição verifica o Colaborador contra `hr` (ADR-010, BR-18). Alerta de plano devido é consulta (`GET /fleet/maintenance-plans/due`), não notificação empurrada — `identity` não resolve "todos os AssetManager" ainda. `verify-fleet.ps1` 38/38 contra a stack local, sem falha. ⚠ Registo de Viagem, Despesa de Frota e Seguros continuam por fazer |
 | `inventory` | **Movimento com regra de negócio, confirmado (2026-08-30).** Item como agregado — Recepção, Saída e Ajuste; `QuantityOnHand` é a soma assinada, nunca negativo; item inactivo não aceita movimentos novos. `verify-inventory.ps1` 25/25 contra a stack local, sem falha. ⚠ Armazém, Transferência, Contagem e valorização de stock continuam por fazer |
@@ -95,11 +95,11 @@ superfície inteira é legível por quem estiver a ouvir.
 
 | Área | Estado |
 |---|---|
-| Código | 14 módulos, 70 projectos em `src/`, 324 ficheiros `.cs` |
-| Superfície HTTP | 193 endpoints em 14 grupos de rota, mais `/health` |
+| Código | 14 módulos, 70 projectos em `src/`, 333 ficheiros `.cs` |
+| Superfície HTTP | 196 endpoints em 14 grupos de rota, mais `/health` |
 | ADRs | 40, aceites |
-| Testes | **859** em 19 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). A 2026-08-30, `Rivo.Projects.Domain.Tests` cresceu de 29 (Marco e Tarefa) para 39 (+ Orçamento), `Rivo.Fleet.Domain.Tests` de 25 para 42 (+ Plano de Manutenção), nasceu `Rivo.Inventory.Domain.Tests` com 21 (Movimento), `Rivo.Fiscal.Domain.Tests` cresceu de 18 para 39 (+ `IncomeTaxSchedule`, 21 casos) e nasceu `Rivo.Payroll.Domain.Tests`, que cresceu de 16 (`ApplyCalculation` e o ciclo da folha) para 22 (+ `PayrollItemDocument`, o Recibo) — o último dos quatro esqueletos de 2026-08-29 a ganhar projecto de teste próprio |
-| Verificação end-to-end | **17 suites** PowerShell, **403 casos** — a 2026-08-30, `verify-projects` cresceu de 14 para 33 (+ Orçamento), `verify-fleet` de 15 para 38 (+ Plano de Manutenção), `verify-inventory` de 13 para 25 (Movimento), `verify-fiscal` de 12 para 20 (+ motor de IRT/INSS: semeia INSS e a tabela de escalões, idempotente por desenho) e `verify-payroll` de 5 para 17 (cálculo real) e depois para 22 (+ Recibo, mesmo dia). **Corrida completa (`verify-all.ps1`) confirmada a 2026-08-30: 395/398** (antes do Recibo) — as 3 falhas são todas o mesmo K20 (limpeza de política, sem causa de código em quatro investigações), em `verify-ledger`, `verify-payroll` e `verify-procurement`; zero regressão nova, e a mesma suite de `verify-payroll` isolada confirmou 21/22 depois do Recibo (só o K20, renumerado). A primeira ronda de `verify-fleet` (26 casos) apanhou dois defeitos reais (400 em vez de 409), corrigidos no mesmo dia; a primeira ronda do motor de IRT/INSS apanhou um terceiro — `TaxKind.EmployeeSocialSecurity`/`EmployerSocialSecurity` sem entrada no `switch` exaustivo de `ListTaxRates.ToDomain`/`ToContract` (500 em vez de determinar), corrigido antes de fechar. O Recibo não apanhou nenhum — todos os casos novos passaram à primeira |
+| Testes | **878** em 19 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). A 2026-08-30, `Rivo.Projects.Domain.Tests` cresceu de 29 (Marco e Tarefa) para 39 (+ Orçamento), `Rivo.Fleet.Domain.Tests` de 25 para 42 (+ Plano de Manutenção), nasceu `Rivo.Inventory.Domain.Tests` com 21 (Movimento), `Rivo.Fiscal.Domain.Tests` cresceu de 18 para 39 (+ `IncomeTaxSchedule`) e nasceu `Rivo.Payroll.Domain.Tests` com 16 (`ApplyCalculation` e o ciclo da folha), depois 22 (+ `PayrollItemDocument`, o Recibo). A 2026-08-31, `Rivo.Fiscal.Domain.Tests` cresceu de 39 para 50 (+ `SubsidyExemptionSchedule`) e `Rivo.Payroll.Domain.Tests` de 22 para 30 (+ `PayrollItemAllowanceTests`, os subsídios) |
+| Verificação end-to-end | **17 suites** PowerShell, **410 casos** — a 2026-08-30, `verify-projects` cresceu de 14 para 33 (+ Orçamento), `verify-fleet` de 15 para 38 (+ Plano de Manutenção), `verify-inventory` de 13 para 25 (Movimento), `verify-fiscal` de 12 para 20 (+ motor de IRT/INSS) e `verify-payroll` de 5 para 17 (cálculo real), depois 22 (+ Recibo, mesmo dia). A 2026-08-31, `verify-fiscal` cresceu de 20 para 23 (+ limiares de subsídio) e `verify-payroll` de 22 para 26 (+ dois cenários de subsídio ponta a ponta). **Corrida completa (`verify-all.ps1`) confirmada a 2026-08-30: 395/398** (antes do Recibo e dos subsídios) — as 3 falhas são todas o mesmo K20 (limpeza de política, sem causa de código em quatro investigações), em `verify-ledger`, `verify-payroll` e `verify-procurement`; zero regressão nova. A primeira ronda de `verify-fleet` (26 casos) apanhou dois defeitos reais (400 em vez de 409); a primeira ronda do motor de IRT/INSS apanhou um terceiro (`TaxKind` sem entrada no `switch` de tradução, 500 em vez de determinar); a primeira ronda dos subsídios apanhou um quarto, só visível ao subir a stack — migração de EF esquecida (`PendingModelChangesWarning` fatal no arranque). O Recibo, sozinho, não apanhou nenhum. Todos corrigidos no próprio dia |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
@@ -292,9 +292,9 @@ nulos", mais um caso novo para a recusa por falta de dados fiscais.
 
 **A reserva de fonte não muda.** O mecanismo está pronto e testado; os
 valores continuam a depender do utilizador, não de fiscalista nem do Anexo I
-da Lei n.º 14/25. Tratamento de subsídios em IRT continua sem resposta, e
-`PayrollItem` não distingue componentes do salário bruto — o cálculo
-aplica-se ao bruto inteiro enquanto isso não for decidido.
+da Lei n.º 14/25. ~~Tratamento de subsídios em IRT continua sem resposta, e
+`PayrollItem` não distingue componentes do salário bruto~~ — **resolvido a
+2026-08-31**, ver abaixo.
 
 **Fechado a 2026-08-30 (`payroll`: Recibo, ligado a `documents`):** com o
 motor de IRT/INSS fechado (acima), no mesmo dia `payroll` ganhou
@@ -324,6 +324,44 @@ memória, documento inexistente devolve 404, e o anexo fica na trilha com
 actor. Todos passaram à primeira corrida — zero defeito apanhado nesta
 ronda, ao contrário das duas anteriores do mesmo dia (`fleet` e o motor de
 IRT/INSS).
+
+**Fechado a 2026-08-31 (`fiscal`+`payroll`: subsídios com tratamento
+fiscal):** última incógnita do IRT por resolver (`docs/rivo-fiscal-regras-angola-v1.md`
+§1.9). O utilizador confirmou directamente, sem fonte fiscal profissional:
+Subsídio de Alimentação e Subsídio de Transporte isentos até **30.000
+Kz/mês cada**, excesso soma-se à matéria colectável; Subsídio de Férias e
+Subsídio de Natal **sem isenção nenhuma**, tributados normalmente.
+
+`fiscal` ganhou `SubsidyExemptionSchedule` — mesmo padrão série+versão de
+`TaxRateSchedule`, mas guarda um `Amount` (Kwanzas) em vez de uma
+`Percentage`; não coube no agregado existente sem forçar o campo. Uma série
+por `SubsidyKind` (só `FoodAllowance`/`TransportAllowance` — Férias e Natal
+não têm limiar nenhum, por isso nem entram no enum). `payroll` ganhou
+`PayrollItem.FoodAllowance`/`TransportAllowance`/`VacationAllowance`/`ChristmasAllowance`
+— **componentes do bruto, não uma soma a ele** (`Sum(subsídios) ≤
+GrossSalary` é invariante nova). `AddPayrollItem` só pergunta o limiar a
+`fiscal` quando o subsídio é declarado (> 0), para não obrigar um item sem
+subsídios a depender de configuração que não usa.
+
+**Um defeito real, só visível ao subir a stack**: a migração de EF para as
+quatro colunas novas de `payroll_item` nunca foi gerada — `dotnet test`
+passou inteiro sem o apanhar, porque nenhum teste sobe o container Docker;
+a API entrou em crash loop no arranque com `PendingModelChangesWarning`
+promovido a excepção fatal. Corrigido no mesmo dia: migração
+`AddPayrollItemAllowances` gerada e aplicada, com `defaultValue: 0m` para as
+linhas já existentes.
+
+Testes: `Rivo.Fiscal.Domain.Tests` cresceu de 39 para 50
+(`SubsidyExemptionScheduleTests`); `Rivo.Payroll.Domain.Tests` de 22 para 30
+(`PayrollItemAllowanceTests`). `verify-fiscal.ps1` cresceu de 20 para 23
+(semeia os dois limiares, idempotente); `verify-payroll.ps1` de 22 para 26
+— dois cenários ponta a ponta (subsídios dentro do limiar, isenção total;
+acima do limiar, excesso tributado, Férias/Natal sem isenção) mais duas
+recusas de validação (subsídio negativo, soma acima do bruto), todas 400.
+
+**A trave de produção não muda**: o mecanismo está pronto e testado, a
+fonte dos valores continua o utilizador, não fiscalista nem texto legal
+primário.
 
 **Fechado a 2026-08-30 (`fleet`: Plano de Manutenção):** `Vehicle` ganhou um
 terceiro filho no agregado, `MaintenancePlan` — calendário preventivo,

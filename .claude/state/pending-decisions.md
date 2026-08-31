@@ -207,8 +207,17 @@ re-litigação:
       ao Estado) — não existe na DS.120 v1.4. Até haver, bloquear emissão;
       **não inventar `M87`**.
 - [ ] Outras taxas reduzidas de IVA além dos 5% de equipamento industrial.
-- [ ] Tratamento de subsídios em IRT (alimentação, transporte, férias,
-      Natal).
+- [x] ~~Tratamento de subsídios em IRT (alimentação, transporte, férias,
+      Natal)~~ — **confirmado pelo utilizador a 2026-08-31**: Subsídio de
+      Alimentação e Subsídio de Transporte isentos até **30.000 Kz/mês
+      cada**; o excesso soma-se à matéria colectável (não perde a isenção
+      da parte dentro do limiar). Subsídio de Férias e Subsídio de Natal
+      **sem isenção nenhuma** — tributados normalmente, somam-se ao
+      salário do mês em que são pagos. **A fonte é o utilizador, não
+      fonte fiscal profissional** — mesma reserva das entradas
+      equivalentes de IRT/INSS acima. Implementado no mesmo dia:
+      `SubsidyExemptionSchedule` em `fiscal` (ADR-011), `PayrollItem` com
+      os quatro componentes.
 - [x] ~~Tecto contributivo no INSS~~ — **confirmado pelo utilizador a
       2026-08-30: sem tecto.** Os 3%/8% incidem sobre o salário bruto
       inteiro, sem limite superior. Fonte é o utilizador, não texto legal

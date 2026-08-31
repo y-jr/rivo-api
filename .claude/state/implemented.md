@@ -1,6 +1,6 @@
 # Implementado
 
-_Última actualização: 2026-08-30._
+_Última actualização: 2026-08-31._
 
 Funcionalidade concluída e a funcionar, por módulo. Actualizar como parte de
 terminar uma funcionalidade (passo 8 do fluxo em [CLAUDE.md](../CLAUDE.md)).
@@ -515,6 +515,16 @@ incluir `verify-procurement`. As cinco últimas linhas nasceram a 2026-08-29.
 > falhas são o K20 (limpeza de política), em `verify-ledger` (caso 45),
 > `verify-payroll` (caso 16, renumerado — era 15) e `verify-procurement`
 > (caso 58), nenhuma nova.
+>
+> **Continuado, mesmo dia — Recibo.** `verify-payroll` cresceu de 17 para 22
+> (anexar documento a um item de folha Aprovada via `documents`, ver secção
+> `payroll` acima). **403 casos ao todo.**
+>
+> **Continuado a 2026-08-31 — subsídios.** `verify-fiscal` cresceu de 20
+> para 23 (limiares de Alimentação/Transporte, idempotente) e
+> `verify-payroll` de 22 para 26 (dois cenários ponta a ponta — dentro e
+> acima do limiar — mais duas recusas de validação); ver as secções
+> `fiscal` e `payroll` acima. **410 casos ao todo** (era 336 a 2026-08-29).
 
 `verify-finance` corre por último e **monta os seus pré-requisitos pelas rotas
 de `fiscal` e `commercial`** — taxa, vigências e cliente. Não há atalho por SQL
@@ -687,6 +697,21 @@ exactas da Tabela B). `verify-fiscal.ps1` cresceu de 12 para 20 — semeia o
 INSS e a Tabela B **de forma idempotente por código e vigência reais**
 (2020-01-01 em diante), ao contrário dos casos 1-12 da mesma suite, que usam
 um código por corrida. Consumido por `payroll` — ver secção própria.
+
+_2026-08-31 — **limiares de isenção de subsídios (Alimentação, Transporte).**_
+Última incógnita fiscal do IRT resolvida. Novo agregado
+`SubsidyExemptionSchedule` — mesmo padrão série+versão de `TaxRateSchedule`,
+mas guarda um `Amount` (Kwanzas) em vez de uma `Percentage`; uma série por
+`SubsidyKind`, só `FoodAllowance`/`TransportAllowance` (Férias e Natal não
+têm limiar — tributados normalmente, confirmado pelo utilizador). Novo
+contrato `ISubsidyExemptionDetermination`: devolve o limiar, não um cálculo
+— `payroll` é quem aplica `Math.Min`. Rotas novas:
+`GET/POST /fiscal/subsidy-exemptions[/versions]`, `GET .../determination`.
+
+Testes: `Rivo.Fiscal.Domain.Tests` cresceu de 39 para 50
+(`SubsidyExemptionScheduleTests`). `verify-fiscal.ps1` cresceu de 20 para
+23 — semeia os dois limiares (30.000 Kz/mês cada) de forma idempotente,
+mesmo padrão do INSS/IRT. Consumido por `payroll` — ver secção própria.
 
 ## commercial
 
@@ -1171,6 +1196,55 @@ documento inexistente (404), e o anexo auditado com actor. Todos passaram à
 primeira corrida contra a stack local — zero defeito apanhado, ao contrário
 das duas rondas anteriores do mesmo dia (`fleet`, e o motor de IRT/INSS
 acima).
+
+_2026-08-31 — **subsídios com tratamento fiscal (Alimentação, Transporte,
+Férias, Natal).**_ Última incógnita do IRT por resolver — o utilizador
+confirmou directamente (não fonte fiscal profissional): Alimentação e
+Transporte isentos até **30.000 Kz/mês cada**, excesso soma-se à matéria
+colectável; Férias e Natal **sem isenção nenhuma**, tributados normalmente.
+
+Em `fiscal`, novo agregado `SubsidyExemptionSchedule` — mesmo padrão
+série+versão de `TaxRateSchedule`, mas cada versão guarda um `Amount`
+(Kwanzas) em vez de uma `Percentage`; não coube em `TaxRateSchedule` sem
+forçar o campo. Uma série por `SubsidyKind` (`FoodAllowance`,
+`TransportAllowance` — só os dois com isenção; Férias e Natal nunca
+aparecem aqui, porque não têm limiar nenhum). Novo contrato
+`ISubsidyExemptionDetermination`, que devolve o **limiar**, não um cálculo
+— `Math.Min(valor, limiar)` não é regra fiscal, o limiar é. Rotas novas:
+`GET/POST /fiscal/subsidy-exemptions[/versions]`,
+`GET .../determination`.
+
+Em `payroll`, `PayrollItem` ganhou `FoodAllowance`, `TransportAllowance`,
+`VacationAllowance`, `ChristmasAllowance` — **componentes do bruto, não uma
+soma a ele**: `Sum(subsídios) ≤ GrossSalary` é invariante nova do agregado
+(um item com bruto 350.000 e alimentação 30.000 recebe 350.000, dos quais
+30.000 têm esse título — não 380.000). `AddPayrollItem` só pergunta o
+limiar a `fiscal` quando o subsídio correspondente é declarado (> 0): um
+item sem alimentação nem transporte não depende de nenhum dos dois estar
+configurado. Férias e Natal ficam registados (para o recibo os mostrar),
+sem entrar em nenhum cálculo de isenção.
+
+**Um defeito real, apanhado só ao subir a stack**: a migração de EF para as
+quatro colunas novas de `payroll_item` nunca foi gerada — `PayrollDbContext`
+ganhou o mapeamento (`HasPrecision`), mas `dotnet ef migrations add` não foi
+corrido antes do primeiro redeploy. A API arrancou com
+`PendingModelChangesWarning` promovido a excepção fatal
+(`InvalidOperationException` no arranque, container em crash loop) — nunca
+apanhado por `dotnet test`, porque nenhum teste sobe o container Docker.
+Corrigido no mesmo dia: migração `AddPayrollItemAllowances` gerada e
+aplicada, com `defaultValue: 0m` nas quatro colunas para as linhas já
+existentes.
+
+Testes: `Rivo.Payroll.Domain.Tests` cresceu de 22 para 30
+(`PayrollItemAllowanceTests` — composição, subsídio negativo recusado,
+soma que não cabe no bruto recusada). `Rivo.Fiscal.Domain.Tests` cresceu de
+39 para 50 (`SubsidyExemptionScheduleTests`, mesmo desenho de
+`TaxRateScheduleTests`). `verify-fiscal` cresceu de 20 para 23 (semeia os
+dois limiares, idempotente, mesmo padrão dos casos de INSS/IRT).
+`verify-payroll` cresceu de 22 para 26: dois cenários completos ponta a
+ponta (subsídios dentro do limiar — isenção total; acima do limiar —
+excesso tributado, Férias/Natal sem isenção) mais subsídio negativo e soma
+acima do bruto, ambos 400.
 
 ## projects
 

@@ -75,6 +75,7 @@ public static class PayrollModuleEndpoints
 
     private static PayrollItemView ToView(PayrollItem item) => new(
         item.Id, item.EmployeeId, item.GrossSalary,
+        item.FoodAllowance, item.TransportAllowance, item.VacationAllowance, item.ChristmasAllowance,
         item.NetSalary, item.WithholdingTax, item.SocialSecurityContribution);
 
     private static async Task<IResult> OpenAsync(
@@ -100,7 +101,10 @@ public static class PayrollModuleEndpoints
         CancellationToken cancellationToken)
     {
         var result = await addItem.ExecuteAsync(
-            runId, request.EmployeeId, request.GrossSalary, BuildAuditContext(http), cancellationToken);
+            runId, request.EmployeeId, request.GrossSalary,
+            request.FoodAllowance ?? 0m, request.TransportAllowance ?? 0m,
+            request.VacationAllowance ?? 0m, request.ChristmasAllowance ?? 0m,
+            BuildAuditContext(http), cancellationToken);
 
         return result.Outcome switch
         {
@@ -213,7 +217,13 @@ public static class PayrollModuleEndpoints
 
 public sealed record OpenRunRequest(int Year, int Month, Guid OpenedByEmployeeId);
 
-public sealed record AddItemRequest(Guid EmployeeId, decimal GrossSalary);
+public sealed record AddItemRequest(
+    Guid EmployeeId,
+    decimal GrossSalary,
+    decimal? FoodAllowance = null,
+    decimal? TransportAllowance = null,
+    decimal? VacationAllowance = null,
+    decimal? ChristmasAllowance = null);
 
 public sealed record AttachPayrollDocumentRequest(Guid DocumentId, string Category);
 
@@ -231,6 +241,10 @@ public sealed record PayrollItemView(
     Guid ItemId,
     Guid EmployeeId,
     decimal GrossSalary,
+    decimal FoodAllowance,
+    decimal TransportAllowance,
+    decimal VacationAllowance,
+    decimal ChristmasAllowance,
     decimal? NetSalary,
     decimal? WithholdingTax,
     decimal? SocialSecurityContribution);

@@ -12,7 +12,11 @@
 # (mesma dependência de ordem que `verify-payables` → `verify-ledger`).
 #
 # Recibo, desde 2026-08-30: anexar um documento já carregado a um Item de
-# Folha, mesmo desenho de `hr` (ADR-009) — ver os casos 6 e 15-18.
+# Folha, mesmo desenho de `hr` (ADR-009) — ver os casos 6 e 19-22.
+#
+# Subsídios (alimentação, transporte, férias, Natal), desde 2026-08-31: a
+# dedução "componentes não sujeitas/isentas" do artigo 7.º do CIRT,
+# finalmente implementada — ver os casos 9-12.
 #
 # Re-executável: cada corrida usa um período próprio (mês derivado do
 # carimbo temporal) e limpa a política de `payroll.payroll_run` que cria.
@@ -65,7 +69,7 @@ $ano = 2026
 $adminHeaders = @{ Authorization = "Bearer " + (Get-Token $dotenv["BOOTSTRAP_ADMIN_EMAIL"] $dotenv["BOOTSTRAP_ADMIN_PASSWORD"]) }
 
 # Utilizador com perfil HR -- e quem tem payroll.runs.read/write (caso 2) e
-# documents.write (para o recibo, casos 6 e 15-18): HR nao precisa do Admin
+# documents.write (para o recibo, casos 6 e 19-22): HR nao precisa do Admin
 # para nenhum dos dois.
 $hrEmail = "rh-pl-$stamp@rivo.ao"
 $hrUserId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body (@{ email = $hrEmail; password = $pass } | ConvertTo-Json) -ContentType "application/json").userId
@@ -95,7 +99,7 @@ $cargo = (Invoke-RestMethod "$base/hr/positions" -Method Post -ContentType "appl
 Invoke-RestMethod "$base/hr/employees/$aprovador/positions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
     -Body (@{ positionId = $cargo } | ConvertTo-Json) | Out-Null
 
-# **Estado determinista antes de comecar** -- o caso 9 verifica a recusa
+# **Estado determinista antes de comecar** -- o caso 13 verifica a recusa
 # quando nao ha politica nenhuma para payroll.payroll_run.
 #
 # `@(...)` a forcar array: defesa documentada contra um modo de falha real
@@ -103,7 +107,7 @@ Invoke-RestMethod "$base/hr/employees/$aprovador/positions" -Method Post -Conten
 # implemented.md).
 # Clear-RivoApprovalPolicies (_ambiente.ps1) repete ate confirmar por SQL: uma
 # unica tentativa tolerava o K20 (known-issues.md) na propria suite, mas
-# deixava a politica activa para tras -- e a submissao do caso 10 recusaria
+# deixava a politica activa para tras -- e a submissao do caso 14 recusaria
 # por ambiguidade (duas politicas igualmente especificas) se uma corrida
 # anterior tivesse ficado exactamente assim.
 Clear-RivoApprovalPolicies -ProcessType "payroll.payroll_run" -Headers $adminHeaders
@@ -216,7 +220,84 @@ Test-Case "8. Sem INSS/IRT em vigor a data, o item e recusado (recusa, nao omiss
     "2019/06 fora da vigencia semeada -- recusado, sem item a nascer"
 }
 
-Test-Case "9. Sem politica configurada, submeter recusa e a folha continua Draft" {
+Test-Case "9. Subsidios dentro do limiar: isencao total, sem excesso tributado" {
+    # 25.000 de alimentacao e 20.000 de transporte, os dois abaixo do limiar
+    # de 30.000 semeado por verify-fiscal.ps1 -- isentos por inteiro.
+    $folhaSub = Invoke-RestMethod "$base/payroll/runs" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+        -Body (@{ year = $ano; month = (($mes % 12) + 1); openedByEmployeeId = $rh } | ConvertTo-Json)
+
+    $body = @{ employeeId = $colaborador; grossSalary = 300000; foodAllowance = 25000; transportAllowance = 20000 } | ConvertTo-Json
+    Invoke-RestMethod "$base/payroll/runs/$($folhaSub.runId)/items" -Method Post -Body $body -ContentType "application/json" -Headers $hrHeaders | Out-Null
+
+    $folha = Invoke-RestMethod "$base/payroll/runs/$($folhaSub.runId)" -Headers $hrHeaders
+    $item = $folha.items[0]
+
+    # INSS = 300.000 x 3% = 9.000. Materia colectavel = 300.000 - 9.000 -
+    # 25.000 - 20.000 = 246.000, no escalao 200.001-300.000: IRT = 31.250 +
+    # (246.000-200.000) x 18% = 39.530. Liquido = 300.000 - 39.530 - 9.000 =
+    # 251.470.
+    if ([decimal]$item.foodAllowance -ne 25000) { throw "alimentacao errada: $($item.foodAllowance)" }
+    if ([decimal]$item.transportAllowance -ne 20000) { throw "transporte errado: $($item.transportAllowance)" }
+    if ([decimal]$item.withholdingTax -ne 39530) { throw "IRT errado: $($item.withholdingTax)" }
+    if ([decimal]$item.netSalary -ne 251470) { throw "liquido errado: $($item.netSalary)" }
+    "bruto 300000, subsidios isentos por inteiro, IRT 39530, liquido 251470"
+}
+
+Test-Case "10. Subsidios acima do limiar: o excesso soma-se a materia colectavel" {
+    # 40.000 de alimentacao (10.000 acima do limiar) e 35.000 de transporte
+    # (5.000 acima) -- so os 30.000 de cada ficam isentos, o resto tributa-se
+    # normalmente. Ferias e Natal (sem isencao nenhuma, confirmado pelo
+    # utilizador) entram so como composicao, sem reduzir a materia colectavel.
+    $folhaSub = Invoke-RestMethod "$base/payroll/runs" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+        -Body (@{ year = $ano; month = (($mes % 12) + 1); openedByEmployeeId = $rh } | ConvertTo-Json)
+
+    $body = @{
+        employeeId          = $colaborador
+        grossSalary         = 300000
+        foodAllowance       = 40000
+        transportAllowance  = 35000
+        vacationAllowance   = 10000
+        christmasAllowance  = 10000
+    } | ConvertTo-Json
+    Invoke-RestMethod "$base/payroll/runs/$($folhaSub.runId)/items" -Method Post -Body $body -ContentType "application/json" -Headers $hrHeaders | Out-Null
+
+    $folha = Invoke-RestMethod "$base/payroll/runs/$($folhaSub.runId)" -Headers $hrHeaders
+    $item = $folha.items[0]
+
+    # INSS = 9.000. Materia colectavel = 300.000 - 9.000 - 30.000 (limiar,
+    # nao os 40.000 declarados) - 30.000 (limiar, nao os 35.000) = 231.000,
+    # no escalao 200.001-300.000: IRT = 31.250 + (231.000-200.000) x 18% =
+    # 36.830. Liquido = 300.000 - 36.830 - 9.000 = 254.170.
+    if ([decimal]$item.vacationAllowance -ne 10000) { throw "ferias errada: $($item.vacationAllowance)" }
+    if ([decimal]$item.christmasAllowance -ne 10000) { throw "natal errado: $($item.christmasAllowance)" }
+    if ([decimal]$item.withholdingTax -ne 36830) { throw "IRT errado: $($item.withholdingTax)" }
+    if ([decimal]$item.netSalary -ne 254170) { throw "liquido errado: $($item.netSalary)" }
+    "excesso de 10.000 (alimentacao) e 5.000 (transporte) tributado; ferias/Natal sem isencao; IRT 36830, liquido 254170"
+}
+
+Test-Case "11. Subsidio negativo e recusado com 400" {
+    $folhaSub = Invoke-RestMethod "$base/payroll/runs" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+        -Body (@{ year = $ano; month = (($mes % 12) + 1); openedByEmployeeId = $rh } | ConvertTo-Json)
+
+    $body = @{ employeeId = $colaborador; grossSalary = 300000; foodAllowance = -1 } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/payroll/runs/$($folhaSub.runId)/items" -Method Post -Body $body -ContentType "application/json" -Headers $hrHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "subsidio negativo -- 400"
+}
+
+Test-Case "12. Subsidios que nao cabem no bruto sao recusados com 400" {
+    # O bruto e o total, nao a soma do bruto com os subsidios -- ver
+    # PayrollItem. 60.000 + 60.000 excede o bruto de 100.000.
+    $folhaSub = Invoke-RestMethod "$base/payroll/runs" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+        -Body (@{ year = $ano; month = (($mes % 12) + 1); openedByEmployeeId = $rh } | ConvertTo-Json)
+
+    $body = @{ employeeId = $colaborador; grossSalary = 100000; foodAllowance = 60000; transportAllowance = 60000 } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/payroll/runs/$($folhaSub.runId)/items" -Method Post -Body $body -ContentType "application/json" -Headers $hrHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "subsidios (120000) nao cabem no bruto (100000) -- 400"
+}
+
+Test-Case "13. Sem politica configurada, submeter recusa e a folha continua Draft" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/payroll/runs/$($script:runId)/submission" -Method Post -Headers $hrHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
 
@@ -225,7 +306,7 @@ Test-Case "9. Sem politica configurada, submeter recusa e a folha continua Draft
     "409 sem politica; folha continua Draft"
 }
 
-Test-Case "10. Com politica, submeter cria o processo em approval" {
+Test-Case "14. Com politica, submeter cria o processo em approval" {
     $politica = Invoke-RestMethod "$base/approval/policies" -Method Post -ContentType "application/json" -Headers $adminHeaders `
         -Body (@{ processType = "payroll.payroll_run"; steps = @(@{ approverPositionId = $cargo }) } | ConvertTo-Json -Depth 5)
     $script:politicaId = $politica.policyId
@@ -246,20 +327,20 @@ Test-Case "10. Com politica, submeter cria o processo em approval" {
     "processo $($script:processoId), 350000 de bruto, aprovador atribuido"
 }
 
-Test-Case "11. Depois de submetida, acrescentar item e recusado" {
+Test-Case "15. Depois de submetida, acrescentar item e recusado" {
     $body = @{ employeeId = $colaborador; grossSalary = 100000 } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/payroll/runs/$($script:runId)/items" -Method Post -Body $body -ContentType "application/json" -Headers $hrHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "409 -- ja nao esta em Draft"
 }
 
-Test-Case "12. Enquanto ninguem decide, aplicar a decisao mantem PendingApproval" {
+Test-Case "16. Enquanto ninguem decide, aplicar a decisao mantem PendingApproval" {
     $r = Invoke-RestMethod "$base/payroll/runs/$($script:runId)/decision" -Method Post -Headers $hrHeaders
     if ($r.status -ne "PendingApproval") { throw "estado '$($r.status)'" }
     "continua PendingApproval"
 }
 
-Test-Case "13. Decidida em approval, o efeito e aplicado em payroll" {
+Test-Case "17. Decidida em approval, o efeito e aplicado em payroll" {
     $body = @{ decidedByEmployeeId = $aprovador; action = "Approved"; notes = "Folha conferida." } | ConvertTo-Json
     Invoke-RestMethod "$base/approval/requests/$($script:processoId)/decisions" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
 
@@ -273,7 +354,7 @@ Test-Case "13. Decidida em approval, o efeito e aplicado em payroll" {
     "aprovada em approval, e so aplicada quando payroll pergunta"
 }
 
-Test-Case "14. Aplicar a decisao outra vez nao falha nem duplica" {
+Test-Case "18. Aplicar a decisao outra vez nao falha nem duplica" {
     $r = Invoke-RestMethod "$base/payroll/runs/$($script:runId)/decision" -Method Post -Headers $hrHeaders
     if ($r.status -ne "Approved") { throw "estado '$($r.status)' na segunda chamada" }
 
@@ -282,14 +363,14 @@ Test-Case "14. Aplicar a decisao outra vez nao falha nem duplica" {
     "segunda chamada devolve Approved, e a trilha nao duplica"
 }
 
-Test-Case "15. Folha Aprovada: anexar o mesmo recibo agora e aceite" {
+Test-Case "19. Folha Aprovada: anexar o mesmo recibo agora e aceite" {
     $body = @{ documentId = $script:reciboDocumentId; category = "recibo" } | ConvertTo-Json
     $r = Invoke-RestMethod "$base/payroll/runs/$($script:runId)/items/$($script:itemId)/documents" -Method Post -Body $body -ContentType "application/json" -Headers $hrHeaders
     if (-not $r.linkId) { throw "sem linkId na resposta" }
     "recibo anexado ao item, folha ja Aprovada"
 }
 
-Test-Case "16. Listar documentos do item mostra o recibo, com metadados de documents" {
+Test-Case "20. Listar documentos do item mostra o recibo, com metadados de documents" {
     $docs = @(Invoke-RestMethod "$base/payroll/runs/$($script:runId)/items/$($script:itemId)/documents" -Headers $hrHeaders)
     if ($docs.Count -ne 1) { throw "esperado 1 documento, obtido $($docs.Count)" }
     if ($docs[0].documentId -ne $script:reciboDocumentId) { throw "documentId errado" }
@@ -298,20 +379,20 @@ Test-Case "16. Listar documentos do item mostra o recibo, com metadados de docum
     "1 documento, categoria 'recibo', metadados de documents presentes"
 }
 
-Test-Case "17. Anexar documento inexistente devolve 404" {
+Test-Case "21. Anexar documento inexistente devolve 404" {
     $body = @{ documentId = [Guid]::NewGuid().ToString(); category = "recibo" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/payroll/runs/$($script:runId)/items/$($script:itemId)/documents" -Method Post -Body $body -ContentType "application/json" -Headers $hrHeaders }
     if ($code -ne 404) { throw "esperado 404, obtido $code" }
     "documento inexistente -- 404, verificado pelo contrato publicado de documents"
 }
 
-Test-Case "18. Anexar recibo fica na trilha, com actor" {
+Test-Case "22. Anexar recibo fica na trilha, com actor" {
     $n = Invoke-Sql "select count(*) from audit.audit_event where action='payroll.item.document_attached' and entity_id='$($script:itemId)' and actor_id is not null"
     if ($n -ne "1") { throw "$n registos de anexo na trilha, esperado 1, com actor" }
     "1 registo, com actor"
 }
 
-Test-Case "19. Autorizacao: sem token 401, sem perfil 403" {
+Test-Case "23. Autorizacao: sem token 401, sem perfil 403" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/payroll/runs" }
     if ($code -ne 401) { throw "sem token: esperado 401, obtido $code" }
 
@@ -320,7 +401,7 @@ Test-Case "19. Autorizacao: sem token 401, sem perfil 403" {
     "401 e 403 correctos"
 }
 
-Test-Case "20. Abertura, submissao e aprovacao ficam na trilha, com actor" {
+Test-Case "24. Abertura, submissao e aprovacao ficam na trilha, com actor" {
     $abrir = Invoke-Sql "select count(*) from audit.audit_event where action='payroll.run.opened' and entity_id='$($script:runId)' and actor_id is not null"
     if ($abrir -ne "1") { throw "abertura nao auditada com actor" }
     $submeter = Invoke-Sql "select count(*) from audit.audit_event where action='payroll.run.submitted' and entity_id='$($script:runId)' and actor_id is not null"
@@ -328,7 +409,7 @@ Test-Case "20. Abertura, submissao e aprovacao ficam na trilha, com actor" {
     "abertura e submissao na trilha, ambas com actor"
 }
 
-Test-Case "21. A suite nao deixa politica de payroll activa atras de si" {
+Test-Case "25. A suite nao deixa politica de payroll activa atras de si" {
     @(Invoke-RestMethod "$base/approval/policies" -Headers $adminHeaders) |
     Where-Object { $_.processType -eq "payroll.payroll_run" -and $_.isActive } |
     ForEach-Object {
@@ -341,7 +422,7 @@ Test-Case "21. A suite nao deixa politica de payroll activa atras de si" {
     "nenhuma politica de payroll.payroll_run activa"
 }
 
-Test-Case "22. Dados sobrevivem ao reinicio da stack" {
+Test-Case "26. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)

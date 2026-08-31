@@ -43,6 +43,15 @@ public static class FiscalModuleExtensions
         services.AddScoped<GetIncomeTaxSchedule>();
         services.AddScoped<IntroduceIncomeTaxScheduleVersion>();
 
+        services.AddScoped<ISubsidyExemptionStore, SubsidyExemptionStore>();
+
+        // O contrato publicado de limiares de subsídio. `payroll` pergunta
+        // por aqui.
+        services.AddScoped<ISubsidyExemptionDetermination, SubsidyExemptionDeterminationService>();
+
+        services.AddScoped<GetSubsidyExemptionSchedule>();
+        services.AddScoped<IntroduceSubsidyExemptionVersion>();
+
         // Cada módulo regista as policies das suas permissões (ADR-014).
         services.AddAuthorization(options =>
         {

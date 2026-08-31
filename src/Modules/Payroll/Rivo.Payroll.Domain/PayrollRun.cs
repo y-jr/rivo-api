@@ -72,10 +72,17 @@ public sealed class PayrollRun
     }
 
     /// <summary>
-    /// Acrescenta um item. **Só o salário bruto** — ver o porquê no comentário
-    /// da classe.
+    /// Acrescenta um item, com o bruto e a composição de subsídios que têm
+    /// tratamento próprio no IRT — ver `PayrollItem` para a validação e
+    /// `modules/payroll.md` para o porquê de cada um.
     /// </summary>
-    public PayrollItem AddItem(Guid employeeId, decimal grossSalary)
+    public PayrollItem AddItem(
+        Guid employeeId,
+        decimal grossSalary,
+        decimal foodAllowance = 0m,
+        decimal transportAllowance = 0m,
+        decimal vacationAllowance = 0m,
+        decimal christmasAllowance = 0m)
     {
         if (Status is not PayrollRunStatus.Draft)
         {
@@ -83,7 +90,8 @@ public sealed class PayrollRun
                 $"Só se acrescentam itens a uma folha em rascunho. Esta está em {Status}.");
         }
 
-        var item = PayrollItem.Register(Id, employeeId, grossSalary);
+        var item = PayrollItem.Register(
+            Id, employeeId, grossSalary, foodAllowance, transportAllowance, vacationAllowance, christmasAllowance);
         _items.Add(item);
 
         return item;
@@ -159,19 +167,47 @@ public enum PayrollRunStatus
 }
 
 /// <summary>
-/// Item de folha, por colaborador. Nasce só com o bruto; o cálculo fiscal
-/// (INSS e IRT) é aplicado depois, via <see cref="ApplyCalculation"/>, pelo
-/// caso de uso que pergunta a `fiscal` — ver o comentário em
-/// <see cref="PayrollRun"/>.
+/// Item de folha, por colaborador. Nasce com o bruto e a composição de
+/// subsídios; o cálculo fiscal (INSS e IRT) é aplicado depois, via
+/// <see cref="ApplyCalculation"/>, pelo caso de uso que pergunta a `fiscal`
+/// — ver o comentário em <see cref="PayrollRun"/>.
+///
+/// <para>
+/// <strong>Bruto é o total, os subsídios são componentes dele</strong> —
+/// não se somam ao bruto, descrevem-no. Um item com bruto 350.000 e
+/// alimentação 30.000 não recebe 380.000: recebe 350.000, dos quais 30.000
+/// são a título de subsídio de alimentação. É essa leitura que faz
+/// <c>Sum(subsídios) ≤ GrossSalary</c> ser a invariante certa.
+/// </para>
+///
+/// <para>
+/// <strong>Só Alimentação e Transporte têm tratamento fiscal próprio.</strong>
+/// Férias e Natal são tributados normalmente — confirmado pelo utilizador,
+/// não inventado — por isso ficam registados aqui (para o recibo os
+/// mostrar), mas não entram em nenhum cálculo de isenção; ver
+/// `AddPayrollItem` (Application) para onde a isenção de facto se aplica.
+/// </para>
 /// </summary>
 public sealed class PayrollItem
 {
-    private PayrollItem(Guid id, Guid runId, Guid employeeId, decimal grossSalary)
+    private PayrollItem(
+        Guid id,
+        Guid runId,
+        Guid employeeId,
+        decimal grossSalary,
+        decimal foodAllowance,
+        decimal transportAllowance,
+        decimal vacationAllowance,
+        decimal christmasAllowance)
     {
         Id = id;
         RunId = runId;
         EmployeeId = employeeId;
         GrossSalary = grossSalary;
+        FoodAllowance = foodAllowance;
+        TransportAllowance = transportAllowance;
+        VacationAllowance = vacationAllowance;
+        ChristmasAllowance = christmasAllowance;
     }
 
     /// <summary>Construtor sem parâmetros para materialização pelo ORM.</summary>
@@ -187,6 +223,18 @@ public sealed class PayrollItem
 
     public decimal GrossSalary { get; private set; }
 
+    /// <summary>Subsídio de alimentação — isento até um limiar (`fiscal`), o resto tributável.</summary>
+    public decimal FoodAllowance { get; private set; }
+
+    /// <summary>Subsídio de transporte — isento até um limiar (`fiscal`), o resto tributável.</summary>
+    public decimal TransportAllowance { get; private set; }
+
+    /// <summary>Subsídio de férias — tributado normalmente, sem isenção. Só composição do recibo.</summary>
+    public decimal VacationAllowance { get; private set; }
+
+    /// <summary>Subsídio de Natal — tributado normalmente, sem isenção. Só composição do recibo.</summary>
+    public decimal ChristmasAllowance { get; private set; }
+
     /// <summary>Nulo até <see cref="ApplyCalculation"/>.</summary>
     public decimal? NetSalary { get; private set; }
 
@@ -199,7 +247,14 @@ public sealed class PayrollItem
     /// <summary>Concorrência optimista (ADR-025). O domínio nunca lhe toca.</summary>
     public int Version { get; private set; }
 
-    internal static PayrollItem Register(Guid runId, Guid employeeId, decimal grossSalary)
+    internal static PayrollItem Register(
+        Guid runId,
+        Guid employeeId,
+        decimal grossSalary,
+        decimal foodAllowance,
+        decimal transportAllowance,
+        decimal vacationAllowance,
+        decimal christmasAllowance)
     {
         if (grossSalary <= 0)
         {
@@ -207,7 +262,33 @@ public sealed class PayrollItem
                 nameof(grossSalary), "O salário bruto tem de ser positivo.");
         }
 
-        return new PayrollItem(Guid.CreateVersion7(), runId, employeeId, grossSalary);
+        foreach (var (nome, valor) in new[]
+                 {
+                     (nameof(foodAllowance), foodAllowance),
+                     (nameof(transportAllowance), transportAllowance),
+                     (nameof(vacationAllowance), vacationAllowance),
+                     (nameof(christmasAllowance), christmasAllowance),
+                 })
+        {
+            if (valor < 0)
+            {
+                throw new ArgumentOutOfRangeException(nome, valor, "Um subsídio não pode ser negativo.");
+            }
+        }
+
+        var somaDosSubsidios = foodAllowance + transportAllowance + vacationAllowance + christmasAllowance;
+
+        if (somaDosSubsidios > grossSalary)
+        {
+            throw new ArgumentException(
+                $"Os subsídios ({somaDosSubsidios}) não cabem no bruto ({grossSalary}) — são componentes " +
+                "dele, não uma soma à parte.",
+                nameof(grossSalary));
+        }
+
+        return new PayrollItem(
+            Guid.CreateVersion7(), runId, employeeId, grossSalary,
+            foodAllowance, transportAllowance, vacationAllowance, christmasAllowance);
     }
 
     /// <summary>

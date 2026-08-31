@@ -66,15 +66,19 @@ public sealed record OpenRunResult(bool Succeeded, Guid? RunId, string? Error)
 /// <para>
 /// <strong>`payroll` pergunta, `fiscal` responde.</strong> A ordem é a do
 /// artigo 7.º do Código do IRT: primeiro desconta-se o INSS a cargo do
-/// trabalhador, depois calcula-se o IRT sobre a matéria colectável já líquida
-/// de INSS — nunca sobre o bruto. Ambas as perguntas são feitas à data do
-/// facto gerador (o fim do período da folha, <see cref="PayrollRun.PeriodEndDate"/>),
-/// nunca à data corrente (ADR-011 §3).
+/// trabalhador, depois deduzem-se os subsídios isentos (Alimentação e
+/// Transporte, cada um até o limiar em vigor — Férias e Natal não têm
+/// isenção, ver `PayrollItem`), e só depois se calcula o IRT sobre a
+/// matéria colectável resultante — nunca sobre o bruto. Todas as perguntas
+/// são feitas à data do facto gerador (o fim do período da folha,
+/// <see cref="PayrollRun.PeriodEndDate"/>), nunca à data corrente
+/// (ADR-011 §3).
 /// </para>
 ///
 /// <para>
-/// <strong>Recusa, não omissão.</strong> Se `fiscal` não tiver taxa de INSS
-/// ou tabela de IRT em vigor para a data, o item não nasce — mesmo padrão de
+/// <strong>Recusa, não omissão.</strong> Se `fiscal` não tiver taxa de INSS,
+/// tabela de IRT, ou limiar de isenção (só quando o subsídio correspondente
+/// é declarado) em vigor para a data, o item não nasce — mesmo padrão de
 /// `IssueSalesInvoice` perante `TaxDeterminationOutcome.NoRateInForce`:
 /// inventar o valor seria pior do que recusar.
 /// </para>
@@ -83,12 +87,17 @@ public sealed class AddPayrollItem(
     IPayrollRunStore store,
     ITaxDetermination taxes,
     IIncomeTaxDetermination incomeTax,
+    ISubsidyExemptionDetermination subsidyExemptions,
     IAuditTrail audit)
 {
     public async Task<AddItemOutcome> ExecuteAsync(
         Guid runId,
         Guid employeeId,
         decimal grossSalary,
+        decimal foodAllowance,
+        decimal transportAllowance,
+        decimal vacationAllowance,
+        decimal christmasAllowance,
         AuditContext context,
         CancellationToken cancellationToken)
     {
@@ -113,7 +122,47 @@ public sealed class AddPayrollItem(
         }
 
         var inssTrabalhador = grossSalary * (inss.Determination!.Percentage / 100m);
-        var materiaColectavel = grossSalary - inssTrabalhador;
+
+        // Só se pergunta o limiar quando há subsídio declarado — um item sem
+        // alimentação nem transporte não depende de nenhum dos dois estar
+        // configurado.
+        var isencaoAlimentacao = 0m;
+
+        if (foodAllowance > 0)
+        {
+            var limiar = await subsidyExemptions.DetermineAsync(
+                new SubsidyExemptionRequest(SubsidyKind.FoodAllowance, facto), cancellationToken);
+
+            if (limiar.Outcome is not SubsidyExemptionOutcome.Determined)
+            {
+                return AddItemOutcome.FiscalDataMissing(
+                    $"Não há limiar de isenção de subsídio de alimentação em vigor a {facto:yyyy-MM-dd}. " +
+                    "Configure o limiar em /fiscal/subsidy-exemptions antes de calcular a folha.");
+            }
+
+            isencaoAlimentacao = Math.Min(foodAllowance, limiar.Exemption!.Amount);
+        }
+
+        var isencaoTransporte = 0m;
+
+        if (transportAllowance > 0)
+        {
+            var limiar = await subsidyExemptions.DetermineAsync(
+                new SubsidyExemptionRequest(SubsidyKind.TransportAllowance, facto), cancellationToken);
+
+            if (limiar.Outcome is not SubsidyExemptionOutcome.Determined)
+            {
+                return AddItemOutcome.FiscalDataMissing(
+                    $"Não há limiar de isenção de subsídio de transporte em vigor a {facto:yyyy-MM-dd}. " +
+                    "Configure o limiar em /fiscal/subsidy-exemptions antes de calcular a folha.");
+            }
+
+            isencaoTransporte = Math.Min(transportAllowance, limiar.Exemption!.Amount);
+        }
+
+        // Férias e Natal não entram aqui — tributados normalmente, já fazem
+        // parte do bruto sem dedução nenhuma (confirmado pelo utilizador).
+        var materiaColectavel = grossSalary - inssTrabalhador - isencaoAlimentacao - isencaoTransporte;
 
         var irt = await incomeTax.DetermineAsync(
             new IncomeTaxDeterminationRequest(materiaColectavel, facto),
@@ -130,11 +179,13 @@ public sealed class AddPayrollItem(
 
         try
         {
-            item = folha.AddItem(employeeId, grossSalary);
+            item = folha.AddItem(
+                employeeId, grossSalary, foodAllowance, transportAllowance, vacationAllowance, christmasAllowance);
         }
-        catch (ArgumentOutOfRangeException error)
+        catch (Exception error) when (error is ArgumentOutOfRangeException or ArgumentException)
         {
-            // Campo mal preenchido (salário bruto não positivo) — 400.
+            // Campo mal preenchido (bruto não positivo, subsídio negativo, ou
+            // subsídios que não cabem no bruto) — 400.
             return AddItemOutcome.Rejected(error.Message);
         }
         catch (InvalidOperationException error)
@@ -156,7 +207,7 @@ public sealed class AddPayrollItem(
                 folha.Id.ToString(),
                 context,
                 NewValue: $$"""
-                    {"employeeId":"{{employeeId}}","grossSalary":{{grossSalary}},"withholdingTax":{{item.WithholdingTax}},"socialSecurityContribution":{{item.SocialSecurityContribution}},"netSalary":{{item.NetSalary}}}
+                    {"employeeId":"{{employeeId}}","grossSalary":{{grossSalary}},"foodAllowance":{{foodAllowance}},"transportAllowance":{{transportAllowance}},"vacationAllowance":{{vacationAllowance}},"christmasAllowance":{{christmasAllowance}},"withholdingTax":{{item.WithholdingTax}},"socialSecurityContribution":{{item.SocialSecurityContribution}},"netSalary":{{item.NetSalary}}}
                     """),
             cancellationToken);
 

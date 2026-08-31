@@ -42,6 +42,18 @@ public static class FiscalModuleEndpoints
         group.MapGet("/income-tax-schedule/determination", DetermineIncomeTaxAsync)
             .RequireAuthorization(FiscalPermissions.RatesRead);
 
+        group.MapGet("/subsidy-exemptions", GetSubsidyExemptionScheduleAsync)
+            .RequireAuthorization(FiscalPermissions.RatesRead);
+
+        // Escrita de limiar é configuração sensível: altera a matéria
+        // colectável de IRT de todas as folhas calculadas a partir da data
+        // escolhida (ADR-011 §5).
+        group.MapPost("/subsidy-exemptions/versions", IntroduceSubsidyExemptionVersionAsync)
+            .RequireAuthorization(FiscalPermissions.RatesWrite);
+
+        group.MapGet("/subsidy-exemptions/determination", DetermineSubsidyExemptionAsync)
+            .RequireAuthorization(FiscalPermissions.RatesRead);
+
         return endpoints;
     }
 
@@ -207,6 +219,75 @@ public static class FiscalModuleEndpoints
         };
     }
 
+    private static async Task<IResult> GetSubsidyExemptionScheduleAsync(
+        SubsidyKind kind,
+        GetSubsidyExemptionSchedule getSchedule,
+        CancellationToken cancellationToken)
+    {
+        var serie = await getSchedule.ExecuteAsync(kind, cancellationToken);
+
+        return serie is null
+            ? Results.NotFound(new { erro = $"Ainda não existe limiar de isenção para '{kind}'." })
+            : Results.Ok(serie);
+    }
+
+    private static async Task<IResult> IntroduceSubsidyExemptionVersionAsync(
+        IntroduceSubsidyExemptionVersionRequest request,
+        IntroduceSubsidyExemptionVersion introduceVersion,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await introduceVersion.ExecuteAsync(
+            request.Kind,
+            request.Amount,
+            request.EffectiveFrom,
+            request.EffectiveTo,
+            request.LegalInstrument,
+            BuildAuditContext(http),
+            cancellationToken);
+
+        return result.Outcome switch
+        {
+            IntroduceSubsidyExemptionOutcome.Introduced =>
+                Results.Created("/fiscal/subsidy-exemptions", new { versionId = result.VersionId }),
+
+            // 409 e não 400: a sobreposição não é um campo mal preenchido, é
+            // conflito com o que já lá está.
+            IntroduceSubsidyExemptionOutcome.Overlaps =>
+                Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
+
+            // 400: instrumento legal em branco, montante negativo, vigência
+            // invertida.
+            IntroduceSubsidyExemptionOutcome.Rejected =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["limiar"] = [result.Error!] }),
+
+            _ => Results.Problem("Resultado inesperado ao introduzir o limiar de isenção."),
+        };
+    }
+
+    private static async Task<IResult> DetermineSubsidyExemptionAsync(
+        ISubsidyExemptionDetermination determination,
+        SubsidyKind kind,
+        DateOnly taxPointDate,
+        CancellationToken cancellationToken)
+    {
+        var result = await determination.DetermineAsync(
+            new SubsidyExemptionRequest(kind, taxPointDate), cancellationToken);
+
+        return result.Outcome switch
+        {
+            SubsidyExemptionOutcome.Determined => Results.Ok(result.Exemption),
+
+            // 404: não há limiar em vigor para esta data. Recusar é a
+            // resposta certa — recair no limiar mais próximo inventaria o
+            // valor (mesma regra de `TaxDeterminationOutcome.NoRateInForce`).
+            SubsidyExemptionOutcome.NoThresholdInForce =>
+                Results.NotFound(new { erro = "Não há limiar de isenção em vigor para este subsídio à data indicada." }),
+
+            _ => Results.Problem("Resultado inesperado na determinação do limiar de isenção."),
+        };
+    }
+
     private static AuditContext BuildAuditContext(HttpContext http)
     {
         var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
@@ -229,6 +310,13 @@ public sealed record IntroduceRateRequest(
 
 public sealed record IntroduceIncomeTaxScheduleVersionRequest(
     IReadOnlyList<Rivo.Fiscal.Domain.NewIncomeTaxBracket> Brackets,
+    DateOnly EffectiveFrom,
+    DateOnly? EffectiveTo,
+    string LegalInstrument);
+
+public sealed record IntroduceSubsidyExemptionVersionRequest(
+    SubsidyKind Kind,
+    decimal Amount,
     DateOnly EffectiveFrom,
     DateOnly? EffectiveTo,
     string LegalInstrument);

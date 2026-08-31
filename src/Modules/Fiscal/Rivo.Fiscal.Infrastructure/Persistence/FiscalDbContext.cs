@@ -12,6 +12,8 @@ public sealed class FiscalDbContext(DbContextOptions<FiscalDbContext> options) :
 
     public DbSet<IncomeTaxSchedule> IncomeTaxSchedules => Set<IncomeTaxSchedule>();
 
+    public DbSet<SubsidyExemptionSchedule> SubsidyExemptionSchedules => Set<SubsidyExemptionSchedule>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -116,6 +118,44 @@ public sealed class FiscalDbContext(DbContextOptions<FiscalDbContext> options) :
 
             // A taxa é percentagem, mesma precisão de `TaxRateVersion.Percentage`.
             bracket.Property(b => b.Rate).HasPrecision(5, 2);
+        });
+
+        builder.Entity<SubsidyExemptionSchedule>(schedule =>
+        {
+            schedule.ToTable("subsidy_exemption_schedule");
+            schedule.HasKey(s => s.Id);
+
+            schedule.Property(s => s.Version).IsConcurrencyToken();
+            schedule.Property(s => s.Kind).HasConversion<string>().HasMaxLength(30);
+
+            // Uma série por subsídio — não há Code aqui, ao contrário de
+            // TaxRateSchedule: o tipo de subsídio já identifica a série
+            // sozinho.
+            schedule.HasIndex(s => s.Kind).IsUnique();
+
+            schedule.HasMany(s => s.Versions)
+                .WithOne()
+                .HasForeignKey("subsidy_exemption_schedule_id")
+                .OnDelete(DeleteBehavior.Cascade);
+
+            schedule.Navigation(s => s.Versions)
+                .HasField("_versions")
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        builder.Entity<SubsidyExemptionVersion>(version =>
+        {
+            version.ToTable("subsidy_exemption_version");
+            version.HasKey(v => v.Id);
+
+            // 18,2: mesma precisão que os outros valores monetários de fiscal
+            // (IncomeTaxBracket.LowerBound/FixedPortion) — é um "isento até"
+            // em Kwanzas.
+            version.Property(v => v.Amount).HasPrecision(18, 2);
+            version.Property(v => v.LegalInstrument).HasMaxLength(200).IsRequired();
+
+            // A consulta da determinação: que versão cobria esta data.
+            version.HasIndex(v => v.EffectiveFrom);
         });
 
         // As chaves são geradas pelo domínio (`Guid.CreateVersion7`), nunca

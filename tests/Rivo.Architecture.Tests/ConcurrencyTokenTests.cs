@@ -108,6 +108,12 @@ public class ConcurrencyTokenTests
             "escalão é introduzir uma versão nova da tabela inteira, não editar um escalão isolado. " +
             "A raiz (IncomeTaxSchedule) tem o contador.",
 
+        ["SubsidyExemptionVersion"] =
+            "Imutável depois de introduzida, mesma razão de TaxRateVersion e IncomeTaxScheduleVersion: " +
+            "é facto histórico, e alterá-la mudaria retroactivamente a matéria colectável de folhas já " +
+            "calculadas. Corrigir é fechar esta e introduzir outra (ADR-011). A série que a contém tem " +
+            "o contador.",
+
         ["BillingAddress"] =
             "Objecto de valor, não agregado: substitui-se inteira e não tem identidade nem ciclo de " +
             "vida próprio. As colunas vivem na tabela de `Customer`, que tem o contador.",

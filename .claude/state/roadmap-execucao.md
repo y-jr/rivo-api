@@ -362,6 +362,19 @@ condicionada ao parecer, por decisão explícita e registada.
 > sessão, não requisito confirmado, registada como tal em
 > `modules/payroll.md`). `verify-payroll.ps1` cresceu de 17 para 22 casos,
 > todos a passar à primeira corrida contra a stack local.
+>
+> **2026-08-31 — subsídios, a última incógnita fiscal do IRT.** O
+> utilizador confirmou directamente: Alimentação e Transporte isentos até
+> 30.000 Kz/mês cada, excesso soma-se à matéria colectável; Férias e Natal
+> tributados normalmente, sem isenção. `fiscal` ganhou `SubsidyExemptionSchedule`
+> (mesmo padrão de vigência de `TaxRateSchedule`, com um montante em vez de
+> uma percentagem); `PayrollItem` ganhou os quatro componentes, como parte
+> do bruto e não uma soma a ele. `verify-fiscal.ps1` cresceu de 20 para 23,
+> `verify-payroll.ps1` de 22 para 26. Um defeito real apanhado só ao subir
+> a stack (migração de EF esquecida — `PendingModelChangesWarning` fatal no
+> arranque), corrigido no mesmo dia. **A trave de produção continua de
+> pé**, mesma razão de cima: mecanismo pronto e testado, fonte por
+> confirmar profissionalmente.
 
 ---
 

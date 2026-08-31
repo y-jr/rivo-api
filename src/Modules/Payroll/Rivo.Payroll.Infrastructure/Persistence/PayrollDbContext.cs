@@ -50,6 +50,10 @@ public sealed class PayrollDbContext(DbContextOptions<PayrollDbContext> options)
             item.Property(i => i.Version).IsConcurrencyToken();
 
             item.Property(i => i.GrossSalary).HasPrecision(18, 2);
+            item.Property(i => i.FoodAllowance).HasPrecision(18, 2);
+            item.Property(i => i.TransportAllowance).HasPrecision(18, 2);
+            item.Property(i => i.VacationAllowance).HasPrecision(18, 2);
+            item.Property(i => i.ChristmasAllowance).HasPrecision(18, 2);
             item.Property(i => i.NetSalary).HasPrecision(18, 2);
             item.Property(i => i.WithholdingTax).HasPrecision(18, 2);
             item.Property(i => i.SocialSecurityContribution).HasPrecision(18, 2);

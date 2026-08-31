@@ -5,14 +5,15 @@
 #
 # Âmbito reduzido pelo ADR-036: taxa com vigência e determinação à data do
 # facto gerador. Exportação SAF-T e declarações periódicas continuam adiadas
-# — mas o motor de IRT/INSS existe desde 2026-08-30 (ver casos 13-19).
+# — mas o motor de IRT/INSS existe desde 2026-08-30 (ver casos 13-19), e os
+# limiares de isenção de subsídios desde 2026-08-31 (casos 20-22).
 #
 # Re-executável: cada corrida usa um código de taxa próprio, derivado do
 # carimbo temporal, para os casos que exercitam a série em si (1-12). Os
-# casos 13-19 semeiam INSS e a tabela de IRT com os códigos e datas
-# *reais* que `payroll` consome — por isso são idempotentes por desenho, e
-# não por código único: uma segunda corrida encontra-os já semeados e
-# confirma-o em vez de os duplicar.
+# casos 13-22 semeiam INSS, a tabela de IRT e os limiares de subsídio com os
+# códigos e datas *reais* que `payroll` consome — por isso são idempotentes
+# por desenho, e não por código único: uma segunda corrida encontra-os já
+# semeados e confirma-o em vez de os duplicar.
 #
 # **Carrega-se antes de `verify-payroll`** (verify-all.ps1): sem INSS e IRT
 # em vigor, `AddPayrollItem` recusa por `NoRateInForce`/`NoScheduleInForce`
@@ -301,7 +302,54 @@ Test-Case "19. Exemplo documentado: bruto 250.000, materia colectavel 242.500, I
     "242.500 -> escalao 200.001-300.000, IRT=38.900 (docs/rivo-fiscal-regras-angola-v1.md 1.6)"
 }
 
-Test-Case "20. Dados sobrevivem ao reinicio da stack" {
+Test-Case "20. Semear o limiar de isencao do subsidio de alimentacao (30.000 Kz)" {
+    $existe = (Invoke-Sql "select id from fiscal.subsidy_exemption_schedule where kind='FoodAllowance'").Trim()
+    if ($existe) {
+        "ja semeado por uma corrida anterior ($existe)"
+    }
+    else {
+        # 0 = SubsidyKind.FoodAllowance no corpo JSON -- mesma nota do caso 13
+        # sobre o enum sem JsonStringEnumConverter. Vigencia aberta desde
+        # antes de qualquer folha que verify-payroll.ps1 processe.
+        $body = @{
+            kind            = 0
+            amount          = 30000
+            effectiveFrom   = "2020-01-01"
+            legalInstrument = "Confirmado pelo utilizador em 2026-08-31 (isento ate 30.000 Kz/mes, excesso soma-se a materia colectavel); nao fonte fiscal profissional"
+        } | ConvertTo-Json
+        Invoke-RestMethod "$base/fiscal/subsidy-exemptions/versions" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+        "semeado agora: isento ate 30.000 Kz/mes"
+    }
+}
+
+Test-Case "21. Semear o limiar de isencao do subsidio de transporte (30.000 Kz)" {
+    $existe = (Invoke-Sql "select id from fiscal.subsidy_exemption_schedule where kind='TransportAllowance'").Trim()
+    if ($existe) {
+        "ja semeado por uma corrida anterior ($existe)"
+    }
+    else {
+        # 1 = SubsidyKind.TransportAllowance.
+        $body = @{
+            kind            = 1
+            amount          = 30000
+            effectiveFrom   = "2020-01-01"
+            legalInstrument = "Confirmado pelo utilizador em 2026-08-31 (isento ate 30.000 Kz/mes, excesso soma-se a materia colectavel); nao fonte fiscal profissional"
+        } | ConvertTo-Json
+        Invoke-RestMethod "$base/fiscal/subsidy-exemptions/versions" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+        "semeado agora: isento ate 30.000 Kz/mes"
+    }
+}
+
+Test-Case "22. Determinacao do limiar de isencao devolve 30.000 Kz para os dois subsidios" {
+    $alimentacao = Invoke-RestMethod "$base/fiscal/subsidy-exemptions/determination?kind=FoodAllowance&taxPointDate=2026-08-31" -Headers $adminHeaders
+    if ($alimentacao.amount -ne 30000) { throw "alimentacao: esperado 30000, obtido $($alimentacao.amount)" }
+
+    $transporte = Invoke-RestMethod "$base/fiscal/subsidy-exemptions/determination?kind=TransportAllowance&taxPointDate=2026-08-31" -Headers $adminHeaders
+    if ($transporte.amount -ne 30000) { throw "transporte: esperado 30000, obtido $($transporte.amount)" }
+    "alimentacao=30.000, transporte=30.000"
+}
+
+Test-Case "23. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
@@ -312,7 +360,10 @@ Test-Case "20. Dados sobrevivem ao reinicio da stack" {
 
     $irt = Invoke-RestMethod "$base/fiscal/income-tax-schedule/determination?taxableIncome=242500&taxPointDate=2026-08-31" -Headers $adminHeaders
     if ($irt.amount -ne 38900) { throw "IRT perdido ou alterado: $($irt.amount)" }
-    "determinacao de IVA e de IRT intactas apos restart"
+
+    $alimentacao = Invoke-RestMethod "$base/fiscal/subsidy-exemptions/determination?kind=FoodAllowance&taxPointDate=2026-08-31" -Headers $adminHeaders
+    if ($alimentacao.amount -ne 30000) { throw "limiar de alimentacao perdido ou alterado: $($alimentacao.amount)" }
+    "determinacao de IVA, IRT e limiares de subsidio intactas apos restart"
 }
 
 Write-Host ""

@@ -238,6 +238,8 @@ public static class FiscalAuditActions
     public const string RateIntroduced = "fiscal.tax_rate.introduced";
 
     public const string IncomeTaxScheduleVersionIntroduced = "fiscal.income_tax_schedule.version_introduced";
+
+    public const string SubsidyExemptionVersionIntroduced = "fiscal.subsidy_exemption.version_introduced";
 }
 
 public static class FiscalAuditEntityTypes
@@ -245,4 +247,6 @@ public static class FiscalAuditEntityTypes
     public const string TaxRateSchedule = "fiscal.tax_rate_schedule";
 
     public const string IncomeTaxSchedule = "fiscal.income_tax_schedule";
+
+    public const string SubsidyExemptionSchedule = "fiscal.subsidy_exemption_schedule";
 }

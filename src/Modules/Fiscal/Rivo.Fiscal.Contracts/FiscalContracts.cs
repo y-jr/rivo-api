@@ -157,6 +157,68 @@ public sealed record IncomeTaxDetermination(
     string LegalInstrument);
 
 /// <summary>
+/// Determina o limiar de isenção de IRT de um subsídio — a dedução
+/// "componentes não sujeitas/isentas" do artigo 7.º do CIRT, que o cálculo
+/// do IRT aplica depois do INSS (`modules/fiscal.md` §"Matéria colectável").
+///
+/// <para>
+/// <strong>Só Alimentação e Transporte têm limiar</strong>
+/// (<see cref="SubsidyKind"/>) — Férias e Natal são tributados normalmente,
+/// sem excepção, confirmado pelo utilizador (`state/pending-decisions.md`).
+/// Devolve um <strong>montante</strong>, não uma taxa: quem pergunta aplica
+/// <c>Math.Min(valorDoSubsídio, limiar)</c> — essa aritmética não é regra
+/// fiscal, o limiar em si é.
+/// </para>
+/// </summary>
+public interface ISubsidyExemptionDetermination
+{
+    Task<SubsidyExemptionResult> DetermineAsync(
+        SubsidyExemptionRequest request,
+        CancellationToken cancellationToken);
+}
+
+/// <param name="TaxPointDate">Data do facto gerador — o fim do período da folha.</param>
+public sealed record SubsidyExemptionRequest(SubsidyKind Kind, DateOnly TaxPointDate);
+
+public sealed record SubsidyExemptionResult(SubsidyExemptionOutcome Outcome, SubsidyExemption? Exemption)
+{
+    public static SubsidyExemptionResult Determined(SubsidyExemption exemption) =>
+        new(SubsidyExemptionOutcome.Determined, exemption);
+
+    public static SubsidyExemptionResult NoThresholdInForce() =>
+        new(SubsidyExemptionOutcome.NoThresholdInForce, null);
+}
+
+public enum SubsidyExemptionOutcome
+{
+    Determined,
+
+    /// <summary>
+    /// Não há limiar em vigor à data pedida. Recusa, não omissão — mesma
+    /// razão de <see cref="TaxDeterminationOutcome.NoRateInForce"/>.
+    /// </summary>
+    NoThresholdInForce,
+}
+
+/// <param name="Amount">O "isento até", em Kwanzas por mês.</param>
+/// <param name="LegalInstrument">
+/// A fonte que fixou este limiar (ADR-011 §4) — aqui, tipicamente, a data em
+/// que o utilizador o confirmou directamente, não um diploma: ver a reserva
+/// em `state/pending-decisions.md`.
+/// </param>
+public sealed record SubsidyExemption(decimal Amount, string LegalInstrument);
+
+/// <summary>
+/// Os subsídios com limiar de isenção próprio no IRT. Ver
+/// <see cref="ISubsidyExemptionDetermination"/>.
+/// </summary>
+public enum SubsidyKind
+{
+    FoodAllowance,
+    TransportAllowance,
+}
+
+/// <summary>
 /// Impostos que `fiscal` determina.
 ///
 /// <para>

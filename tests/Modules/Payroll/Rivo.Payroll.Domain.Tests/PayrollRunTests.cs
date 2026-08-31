@@ -160,3 +160,89 @@ public class PayrollItemCalculationTests
         Assert.Null(item.SocialSecurityContribution);
     }
 }
+
+/// <summary>
+/// A composição de subsídios de um item — Alimentação, Transporte, Férias e
+/// Natal, confirmados pelo utilizador em 2026-08-31. O bruto é o total: os
+/// subsídios são componentes dele, não uma soma à parte. O cálculo da
+/// isenção fiscal (só Alimentação e Transporte têm) não vive aqui — é
+/// `AddPayrollItem` (Application) que pergunta a `fiscal`; este agregado só
+/// impõe que a composição seja coerente com o bruto.
+/// </summary>
+public class PayrollItemAllowanceTests
+{
+    private static PayrollRun Aberta() => PayrollRun.Open(2026, 8, Guid.CreateVersion7());
+
+    [Fact]
+    public void SubsidiosDeclarados_FicamNoItem()
+    {
+        var folha = Aberta();
+
+        var item = folha.AddItem(
+            Guid.CreateVersion7(), grossSalary: 350_000m,
+            foodAllowance: 30_000m, transportAllowance: 30_000m,
+            vacationAllowance: 20_000m, christmasAllowance: 20_000m);
+
+        Assert.Equal(30_000m, item.FoodAllowance);
+        Assert.Equal(30_000m, item.TransportAllowance);
+        Assert.Equal(20_000m, item.VacationAllowance);
+        Assert.Equal(20_000m, item.ChristmasAllowance);
+    }
+
+    [Fact]
+    public void SemSubsidiosDeclarados_FicamTodosAZero()
+    {
+        var folha = Aberta();
+
+        var item = folha.AddItem(Guid.CreateVersion7(), 350_000m);
+
+        Assert.Equal(0m, item.FoodAllowance);
+        Assert.Equal(0m, item.TransportAllowance);
+        Assert.Equal(0m, item.VacationAllowance);
+        Assert.Equal(0m, item.ChristmasAllowance);
+    }
+
+    [Theory]
+    [InlineData(-1, 0, 0, 0)]
+    [InlineData(0, -1, 0, 0)]
+    [InlineData(0, 0, -1, 0)]
+    [InlineData(0, 0, 0, -1)]
+    public void SubsidioNegativo_ERecusado(
+        decimal alimentacao, decimal transporte, decimal ferias, decimal natal)
+    {
+        var folha = Aberta();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => folha.AddItem(
+            Guid.CreateVersion7(), grossSalary: 350_000m,
+            foodAllowance: alimentacao, transportAllowance: transporte,
+            vacationAllowance: ferias, christmasAllowance: natal));
+    }
+
+    /// <summary>
+    /// O bruto é o total, não a soma do bruto com os subsídios — por isso
+    /// subsídios que ultrapassam o bruto não cabem em lado nenhum.
+    /// </summary>
+    [Fact]
+    public void SomaDosSubsidiosMaiorQueOBruto_ERecusada()
+    {
+        var folha = Aberta();
+
+        var erro = Assert.Throws<ArgumentException>(() => folha.AddItem(
+            Guid.CreateVersion7(), grossSalary: 100_000m,
+            foodAllowance: 60_000m, transportAllowance: 60_000m));
+
+        Assert.Contains("não cabem no bruto", erro.Message);
+    }
+
+    [Fact]
+    public void SomaDosSubsidiosIgualAoBruto_EAceite()
+    {
+        var folha = Aberta();
+
+        var item = folha.AddItem(
+            Guid.CreateVersion7(), grossSalary: 100_000m,
+            foodAllowance: 50_000m, transportAllowance: 50_000m);
+
+        Assert.Equal(100_000m, item.GrossSalary);
+    }
+}

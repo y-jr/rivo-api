@@ -161,9 +161,13 @@ Detalhe e estado de confiança em `docs/rivo-fiscal-regras-angola-v1.md` §5.
   o SAF-T exige `TaxExemptionReason` **e** `TaxExemptionCode` em cada linha
   isenta.
 - Outras taxas reduzidas de IVA além dos 5% para equipamento industrial.
-- Tratamento de subsídios (alimentação, transporte, férias, Natal) em IRT —
-  continua sem resposta; `PayrollItem` não distingue componentes do salário
-  bruto ainda.
+- ~~Tratamento de subsídios (alimentação, transporte, férias, Natal) em
+  IRT~~ — **confirmado pelo utilizador a 2026-08-31**: Alimentação e
+  Transporte isentos até 30.000 Kz/mês cada (excesso soma-se à matéria
+  colectável); Férias e Natal tributados normalmente, sem isenção. **A
+  fonte é o utilizador, não fonte fiscal profissional** — mesma reserva das
+  demais entradas; ver `state/pending-decisions.md`. **Implementado a
+  2026-08-31** (`SubsidyExemptionSchedule`, ADR-011).
 - Prazo de entrega do INSS; regras de expatriados — continuam sem resposta.
 - Prazos e formatos das **declarações periódicas** à AGT.
 - **Processo de certificação de software** junto da AGT
@@ -174,8 +178,9 @@ Detalhe e estado de confiança em `docs/rivo-fiscal-regras-angola-v1.md` §5.
 ## Estado
 
 **Fatia mínima iniciada em 2026-08-24 — ADR-036. Motor de IRT/INSS
-acrescentado em 2026-08-30**, depois de o utilizador confirmar directamente
-os valores até então por confirmar.
+acrescentado em 2026-08-30, limiares de isenção de subsídios em
+2026-08-31** — em ambos os casos, depois de o utilizador confirmar
+directamente os valores até então por confirmar.
 
 **As cinco camadas existem desde 2026-08-24**, com schema `fiscal`, migração
 aplicada e rotas alcançáveis.
@@ -186,8 +191,9 @@ uma taxa com vigência e um contrato de determinação.
 
 ### O que existe
 
-`Rivo.Fiscal.Contracts` e `Rivo.Fiscal.Domain`, com 39 testes de domínio (18
-de `TaxRateSchedule`, 21 de `IncomeTaxSchedule`).
+`Rivo.Fiscal.Contracts` e `Rivo.Fiscal.Domain`, com 50 testes de domínio (18
+de `TaxRateSchedule`, 21 de `IncomeTaxSchedule`, 11 de
+`SubsidyExemptionSchedule`).
 
 | Peça | O que impõe |
 |---|---|
@@ -200,13 +206,19 @@ de `TaxRateSchedule`, 21 de `IncomeTaxSchedule`).
 | `IncomeTaxSchedule` | Série de versões da tabela de escalões de IRT — mesmo padrão de `TaxRateSchedule`, mas cada versão é um conjunto de escalões (Parcela Fixa + Taxa × Excesso de), não um único número |
 | `SelectBracket`/`Compute` | O escalão de maior "excesso de" que a matéria colectável ainda ultrapassa, nunca iguala — é o que faz 150.000 cair na isenção e 150.001 já não |
 | `IIncomeTaxDetermination` | Devolve o **montante já calculado**, ao contrário de `ITaxDetermination`. A fórmula do escalão é regra fiscal (`modules/fiscal.md` — "nenhum outro módulo implementa regra de imposto"); percentagem × montante não é |
+| `SubsidyExemptionSchedule` | Série de versões do limiar de isenção de um subsídio (`SubsidyKind.FoodAllowance`/`TransportAllowance`) — mesmo padrão de `TaxRateSchedule`, com um montante em vez de uma percentagem |
+| `ISubsidyExemptionDetermination` | Devolve o **limiar** ("isento até"), não um cálculo — quem pede aplica `Math.Min(valor, limiar)`; essa aritmética não é regra fiscal, o limiar é |
 
 **Desde 2026-08-30, `TaxKind` tem `EmployeeSocialSecurity` e
 `EmployerSocialSecurity`** além de `ValueAdded` — o INSS usa o mecanismo de
 `TaxRateSchedule` sem alteração, porque é uma taxa plana como o IVA. O IRT
 precisou de um agregado novo (`IncomeTaxSchedule`), porque é uma tabela de
 escalões, não um número: `TaxRateSchedule` não conseguia modelar isso sem
-distorcer o que "vigência" significa.
+distorcer o que "vigência" significa. **Desde 2026-08-31**, os limiares de
+isenção de subsídios (Alimentação, Transporte) reaproveitam o padrão
+série+versão de `TaxRateSchedule` num agregado próprio
+(`SubsidyExemptionSchedule`), porque guardam um montante em Kwanzas, não
+uma percentagem — não cabiam em `TaxRateSchedule` sem forçar o campo.
 
 ### Códigos: só ISE e NS
 
@@ -241,9 +253,12 @@ utilizador, não fiscalista nem Anexo I da lei; ver "Perguntas em aberto".
 | GET | `/fiscal/income-tax-schedule` | `fiscal.rates.read` |
 | POST | `/fiscal/income-tax-schedule/versions` | `fiscal.rates.write` |
 | GET | `/fiscal/income-tax-schedule/determination?taxableIncome=&taxPointDate=` | `fiscal.rates.read` |
+| GET | `/fiscal/subsidy-exemptions?kind=` | `fiscal.rates.read` |
+| POST | `/fiscal/subsidy-exemptions/versions` | `fiscal.rates.write` |
+| GET | `/fiscal/subsidy-exemptions/determination?kind=&taxPointDate=` | `fiscal.rates.read` |
 
 Três códigos com significado, verificados contra a API a correr — o mesmo
-padrão nas duas famílias de rotas (taxa plana e escalões):
+padrão nas três famílias de rotas (taxa plana, escalões, limiar de subsídio):
 
 - **`409`** ao introduzir uma versão que se sobrepõe. Não é campo mal
   preenchido — é conflito com o que já lá está, e corrige-se fechando a versão
