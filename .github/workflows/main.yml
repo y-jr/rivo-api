@@ -1,60 +1,107 @@
-script: |
-  set -e  # Para em qualquer erro
-  
-  # Configurar Git
-  git config --global --add safe.directory /opt/projects/rivo
-  
-  # Ir para o diretório
-  cd /opt/projects/rivo
-  
-  echo "📦 Diretório: $(pwd)"
-  
-  # Verificar se há alterações no docker-compose.yml
-  if git status --porcelain docker-compose.yml | grep -q .; then
-    echo "📝 Guardando alterações locais do docker-compose.yml"
-    git stash push -m "config-vps-$(date +%Y%m%d-%H%M%S)" docker-compose.yml
-  else
-    echo "✅ Sem alterações locais no docker-compose.yml"
-  fi
-  
-  # Puxar atualizações
-  echo "⬇️  Puxando atualizações do repositório..."
-  git pull origin main
-  
-  # Reaplicar configurações locais se existirem
-  if git stash list | grep -q "config-vps"; then
-    echo "🔄 Reaplicando configurações locais..."
-    if git stash pop; then
-      echo "✅ Configurações locais reaplicadas com sucesso"
-    else
-      echo "❌ Conflito no docker-compose.yml!"
-      echo "Resolva o conflito manualmente na VPS:"
-      echo "  cd /opt/projects/rivo"
-      echo "  cat docker-compose.yml"
-      exit 1
-    fi
-  fi
-  
-  # Fazer deploy
-  echo "🐳 Subindo containers..."
-  docker compose up -d --build
-  
-  # Limpar imagens antigas
-  echo "🧹 Limpando imagens não utilizadas..."
-  docker image prune -f
-  
-  # Health check
-  echo "🏥 Aguardando aplicação ficar saudável..."
-  for i in $(seq 1 30); do
-    if docker run --rm --network proxy curlimages/curl:latest \
-         -fsS http://rivo-api:8080/health > /dev/null 2>&1; then
-      echo "✅ Saudável ao fim de ${i} tentativas."
-      exit 0
-    fi
-    echo "⏳ Tentativa $i/30..."
-    sleep 10
-  done
-  
-  echo "❌ Aplicação não respondeu em 5 minutos."
-  docker compose logs --tail 200 api
-  exit 1
+name: Deploy VPS
+
+# Publica na VPS o que entrar em `main`.
+#
+# Separado do CI de propósito. O CI responde "isto está correcto?" e bloqueia
+# PRs; este responde "isto está a correr?" e não bloqueia nada — misturá-los
+# faria uma falha de deployment parecer uma falha de código.
+#
+# O deployment é `git pull` + `docker compose up --build` na máquina de
+# destino (ADR-031). Não há registo de imagens: a VPS constrói a sua.
+#
+# Pressupõe, na VPS:
+#   - o repositório clonado em /opt/projects/rivo, com acesso de leitura ao
+#     remoto;
+#   - /opt/projects/rivo/.env preenchido à mão (ver .env.example) — este
+#     workflow nunca lhe toca;
+#   - a rede `proxy` criada (`docker network create proxy`) e um reverse proxy
+#     ligado a ela.
+#
+# Segredos necessários: VPS_HOST, VPS_USER, VPS_SSH_KEY, PORT.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Dois deployments em simultâneo aplicariam migrações concorrentes ao mesmo
+# schema. Sem cancelamento — um deployment a meio não se interrompe.
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Publicar na VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Executar deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.PORT }}
+
+          # `set -e`: sem isto, um `git pull` falhado não impede o resto do
+          # script de correr, e o deployment ficava verde a reconstruir código
+          # antigo.
+          script: |
+
+            set -e
+            git config --global --add safe.directory /opt/projects/rivo
+            cd /opt/projects/rivo
+
+            # Guarda as alterações locais do docker-compose.yml
+            if git status --porcelain docker-compose.yml | grep -q .; then
+            git stash push -m "config-vps-$(date +%Y%m%d-%H%M%S)" docker-compose.yml
+            else
+              echo "Sem alterações locais no docker-compose.yml"
+            fi
+      
+            # Puxa as atualizações do repositório
+            git pull origin main
+            
+            # Reaplica as alterações locais (se houver conflito, resolve)
+            # Tenta aplicar o stash
+            if git stash pop; then
+              echo "✅ Configurações locais reaplicadas com sucesso"
+            else
+              echo "⚠️ Conflito no docker-compose.yml - resolvendo manualmente..."
+              # Mostra o conflito
+              cat docker-compose.yml
+              exit 1
+            fi
+            
+            # Sobe a aplicação
+            docker compose up -d --build
+
+            docker image prune -f
+
+            # A API migra e semeia no arranque (ADR-030), o que demora mais do
+            # que subir o processo. Sondar /health é o que distingue "container
+            # a correr" de "aplicação utilizável" — e é o que faz o deployment
+            # ficar vermelho quando a migração falha.
+            #
+            # A sonda corre num container descartável dentro da rede `proxy`,
+            # porque a API não publica porto no host e a imagem de runtime do
+            # .NET não traz `curl` lá dentro.
+            for i in $(seq 1 30); do
+              if docker run --rm --network proxy curlimages/curl:latest \
+                   -fsS http://rivo-api:8080/health > /dev/null 2>&1; then
+                echo "Saudável ao fim de ${i} tentativas."
+                exit 0
+              fi
+              sleep 10
+            done
+
+            echo "A aplicação não respondeu em 5 minutos."
+            docker compose logs --tail 200 api
+            exit 1
