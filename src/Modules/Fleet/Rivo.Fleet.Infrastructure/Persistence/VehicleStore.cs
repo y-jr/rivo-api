@@ -11,6 +11,8 @@ public sealed class VehicleStore(FleetDbContext context) : IVehicleStore
             .Include(v => v.Maintenances)
             .Include(v => v.Assignments)
             .Include(v => v.Plans)
+            .Include(v => v.Trips)
+            .Include(v => v.Expenses)
             .FirstOrDefaultAsync(v => v.Id == vehicleId, cancellationToken);
 
     public async Task<Vehicle?> FindForUpdateAsync(Guid vehicleId, CancellationToken cancellationToken) =>
@@ -18,6 +20,8 @@ public sealed class VehicleStore(FleetDbContext context) : IVehicleStore
             .Include(v => v.Maintenances)
             .Include(v => v.Assignments)
             .Include(v => v.Plans)
+            .Include(v => v.Trips)
+            .Include(v => v.Expenses)
             .FirstOrDefaultAsync(v => v.Id == vehicleId, cancellationToken);
 
     public async Task<Vehicle?> FindByPlateNumberAsync(string plateNumber, CancellationToken cancellationToken) =>
@@ -29,6 +33,8 @@ public sealed class VehicleStore(FleetDbContext context) : IVehicleStore
             .Include(v => v.Maintenances)
             .Include(v => v.Assignments)
             .Include(v => v.Plans)
+            .Include(v => v.Trips)
+            .Include(v => v.Expenses)
             .AsQueryable();
 
         if (!includeInactive)
@@ -53,6 +59,16 @@ public sealed class VehicleStore(FleetDbContext context) : IVehicleStore
 
     public async Task AddAsync(Vehicle vehicle, CancellationToken cancellationToken) =>
         await context.Vehicles.AddAsync(vehicle, cancellationToken);
+
+    public async Task AddVehicleDocumentAsync(VehicleDocument link, CancellationToken cancellationToken) =>
+        await context.VehicleDocuments.AddAsync(link, cancellationToken);
+
+    public async Task<IReadOnlyList<VehicleDocument>> ListVehicleDocumentsAsync(
+        Guid vehicleId, CancellationToken cancellationToken) =>
+        await context.VehicleDocuments.AsNoTracking()
+            .Where(l => l.VehicleId == vehicleId)
+            .OrderByDescending(l => l.AttachedAt)
+            .ToListAsync(cancellationToken);
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) =>
         context.SaveChangesAsync(cancellationToken);

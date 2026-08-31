@@ -19,7 +19,9 @@ public sealed record VehicleView(
     string Status,
     IReadOnlyList<MaintenanceRecordView> Maintenances,
     IReadOnlyList<VehicleAssignmentView> Assignments,
-    IReadOnlyList<MaintenancePlanView> Plans);
+    IReadOnlyList<MaintenancePlanView> Plans,
+    IReadOnlyList<VehicleTripView> Trips,
+    IReadOnlyList<FleetExpenseView> Expenses);
 
 public sealed record MaintenanceRecordView(
     Guid MaintenanceId, string Type, string Description, DateOnly StartedOn, DateOnly? EndedOn);
@@ -29,6 +31,19 @@ public sealed record VehicleAssignmentView(
 
 public sealed record MaintenancePlanView(
     Guid PlanId, string Description, int IntervalDays, DateOnly NextDueOn, bool IsActive, bool IsOverdue);
+
+public sealed record VehicleTripView(
+    Guid TripId,
+    Guid? DriverId,
+    DateOnly StartedOn,
+    DateOnly EndedOn,
+    decimal StartOdometer,
+    decimal EndOdometer,
+    decimal Distance,
+    string? Purpose);
+
+public sealed record FleetExpenseView(
+    Guid ExpenseId, string Category, decimal Amount, DateOnly OccurredOn, string? Description);
 
 internal static class VehicleViews
 {
@@ -42,7 +57,11 @@ internal static class VehicleViews
         [.. veiculo.Assignments.Select(a =>
             new VehicleAssignmentView(a.Id, a.EmployeeId, a.StartedOn, a.EndedOn))],
         [.. veiculo.Plans.Select(p =>
-            new MaintenancePlanView(p.Id, p.Description, p.IntervalDays, p.NextDueOn, p.IsActive, p.IsOverdue(asOf)))]);
+            new MaintenancePlanView(p.Id, p.Description, p.IntervalDays, p.NextDueOn, p.IsActive, p.IsOverdue(asOf)))],
+        [.. veiculo.Trips.Select(t =>
+            new VehicleTripView(t.Id, t.DriverId, t.StartedOn, t.EndedOn, t.StartOdometer, t.EndOdometer, t.Distance, t.Purpose))],
+        [.. veiculo.Expenses.Select(e =>
+            new FleetExpenseView(e.Id, e.Category.ToString(), e.Amount, e.OccurredOn, e.Description))]);
 }
 
 public sealed class ListVehicles(IVehicleStore store, TimeProvider clock)
@@ -157,6 +176,9 @@ public static class FleetAuditActions
     public const string PlanScheduled = "fleet.maintenance_plan.scheduled";
     public const string PlanCycleCompleted = "fleet.maintenance_plan.cycle_completed";
     public const string PlanCancelled = "fleet.maintenance_plan.cancelled";
+    public const string TripRegistered = "fleet.trip.registered";
+    public const string ExpenseRegistered = "fleet.expense.registered";
+    public const string DocumentAttached = "fleet.vehicle.document_attached";
 }
 
 public static class FleetAuditEntityTypes
@@ -165,4 +187,6 @@ public static class FleetAuditEntityTypes
     public const string Maintenance = "fleet.maintenance";
     public const string Assignment = "fleet.assignment";
     public const string MaintenancePlan = "fleet.maintenance_plan";
+    public const string Trip = "fleet.trip";
+    public const string Expense = "fleet.expense";
 }

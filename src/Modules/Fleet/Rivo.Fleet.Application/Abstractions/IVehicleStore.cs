@@ -26,5 +26,11 @@ public interface IVehicleStore
 
     Task AddAsync(Vehicle vehicle, CancellationToken cancellationToken);
 
+    // --- Documentos anexados (ADR-009: a ligação vive aqui, não em `documents`) ---
+
+    Task AddVehicleDocumentAsync(VehicleDocument link, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<VehicleDocument>> ListVehicleDocumentsAsync(Guid vehicleId, CancellationToken cancellationToken);
+
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

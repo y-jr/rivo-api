@@ -56,6 +56,18 @@ public static class FleetModuleEndpoints
         group.MapGet("/maintenance-plans/due", ListDuePlansAsync)
             .RequireAuthorization(FleetPermissions.VehiclesRead);
 
+        group.MapPost("/vehicles/{vehicleId:guid}/trips", RegisterTripAsync)
+            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+
+        group.MapPost("/vehicles/{vehicleId:guid}/expenses", RegisterExpenseAsync)
+            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+
+        group.MapGet("/vehicles/{vehicleId:guid}/documents", ListDocumentsAsync)
+            .RequireAuthorization(FleetPermissions.VehiclesRead);
+
+        group.MapPost("/vehicles/{vehicleId:guid}/documents", AttachDocumentAsync)
+            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+
         return endpoints;
     }
 
@@ -254,6 +266,90 @@ public static class FleetModuleEndpoints
         _ => Results.Problem($"Resultado inesperado ao {acto}."),
     };
 
+    private static async Task<IResult> RegisterTripAsync(
+        Guid vehicleId,
+        RegisterTripRequest request,
+        RegisterTrip registerTrip,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await registerTrip.ExecuteAsync(
+            vehicleId, request.DriverId, request.StartedOn, request.EndedOn,
+            request.StartOdometer, request.EndOdometer, request.Purpose,
+            BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            RegisterTripOutcome.Registered => Results.Created(
+                $"/fleet/vehicles/{vehicleId}", new { tripId = result.TripId, distance = result.Distance }),
+            RegisterTripOutcome.VehicleNotFound => Results.NotFound(new { erro = result.Error }),
+            RegisterTripOutcome.DriverNotFound => Results.NotFound(new { erro = result.Error }),
+            RegisterTripOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
+            _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["viagem"] = [result.Error!] }),
+        };
+    }
+
+    private static async Task<IResult> RegisterExpenseAsync(
+        Guid vehicleId,
+        RegisterExpenseRequest request,
+        RegisterExpense registerExpense,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        if (!Enum.TryParse<FleetExpenseCategory>(request.Category, ignoreCase: true, out var categoria))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["categoria"] = [$"Categoria de despesa desconhecida: '{request.Category}'. Use Fuel, Toll ou Parking."],
+            });
+        }
+
+        var result = await registerExpense.ExecuteAsync(
+            vehicleId, categoria, request.Amount, request.OccurredOn, request.Description,
+            BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            RegisterExpenseOutcome.Registered => Results.Created(
+                $"/fleet/vehicles/{vehicleId}", new { expenseId = result.ExpenseId }),
+            RegisterExpenseOutcome.VehicleNotFound => Results.NotFound(new { erro = result.Error }),
+            RegisterExpenseOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
+            _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["despesa"] = [result.Error!] }),
+        };
+    }
+
+    private static async Task<IResult> ListDocumentsAsync(
+        Guid vehicleId,
+        ListVehicleDocuments listDocuments,
+        CancellationToken cancellationToken)
+    {
+        var documentos = await listDocuments.ExecuteAsync(vehicleId, cancellationToken);
+
+        return documentos is null
+            ? Results.NotFound(new { erro = "Viatura não encontrada." })
+            : Results.Ok(documentos);
+    }
+
+    private static async Task<IResult> AttachDocumentAsync(
+        Guid vehicleId,
+        AttachVehicleDocumentRequest request,
+        AttachDocumentToVehicle attachDocument,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await attachDocument.ExecuteAsync(
+            vehicleId, request.DocumentId, request.Category, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            AttachVehicleDocumentOutcome.Attached => Results.Created(
+                $"/fleet/vehicles/{vehicleId}/documents", new { linkId = result.LinkId }),
+            AttachVehicleDocumentOutcome.VehicleNotFound => Results.NotFound(new { erro = result.Error }),
+            AttachVehicleDocumentOutcome.DocumentNotFound => Results.NotFound(new { erro = result.Error }),
+            _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["documento"] = [result.Error!] }),
+        };
+    }
+
     private static async Task<IResult> ListDuePlansAsync(
         ListDueMaintenancePlans listDuePlans,
         int? withinDays,
@@ -288,3 +384,11 @@ public sealed record EndAssignmentRequest(DateOnly EndedOn);
 public sealed record SchedulePlanRequest(string Description, int IntervalDays, DateOnly FirstDueOn);
 
 public sealed record CompletePlanCycleRequest(DateOnly CompletedOn);
+
+public sealed record RegisterTripRequest(
+    Guid? DriverId, DateOnly StartedOn, DateOnly EndedOn, decimal StartOdometer, decimal EndOdometer, string? Purpose);
+
+public sealed record RegisterExpenseRequest(
+    string Category, decimal Amount, DateOnly OccurredOn, string? Description);
+
+public sealed record AttachVehicleDocumentRequest(Guid DocumentId, string Category);

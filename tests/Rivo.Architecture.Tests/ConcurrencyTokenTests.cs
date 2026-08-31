@@ -46,6 +46,9 @@ public class ConcurrencyTokenTests
         ["PayrollItemDocument"] =
             "Linha de ligação: cria-se e elimina-se, nunca se altera. Mesma razão de EmployeeDocument.",
 
+        ["VehicleDocument"] =
+            "Linha de ligação: cria-se e elimina-se, nunca se altera. Mesma razão de EmployeeDocument.",
+
         ["Decision"] =
             "Imutável por BR-17 e pelo ADR-034: uma decisão de aprovação é facto histórico, " +
             "e corrigi-la é decidir outra vez, não reescrever. Mesma razão de AuditEvent.",

@@ -5,8 +5,8 @@
 #
 # Deixou de ser esqueleto puro a 2026-08-30: Manutenção, Atribuição e Plano
 # de Manutenção ganharam regra de negócio (ver `modules/fleet.md` §Possui e a
-# nota "Estado"). Registo de Viagem, Despesa de Frota e Seguros continuam
-# por fazer — esta suite verifica o que existe, não o que falta.
+# nota "Estado"). Registo de Viagem, Despesa de Frota e Seguros desde
+# 2026-08-31 — esta suite verifica o que existe, não o que falta.
 #
 # Re-executável: cada corrida usa uma matrícula própria, derivada do carimbo
 # temporal.
@@ -51,7 +51,24 @@ function Get-Token {
 $pass = "Rivo!Password2026"
 $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 
-$adminHeaders = @{ Authorization = "Bearer " + (Get-Token $dotenv["BOOTSTRAP_ADMIN_EMAIL"] $dotenv["BOOTSTRAP_ADMIN_PASSWORD"]) }
+$adminToken = Get-Token $dotenv["BOOTSTRAP_ADMIN_EMAIL"] $dotenv["BOOTSTRAP_ADMIN_PASSWORD"]
+$adminHeaders = @{ Authorization = "Bearer $adminToken" }
+
+# Upload de documento (seguro), mesmo mecanismo de verify-documents.ps1 -- ver
+# ali o porque da portabilidade Windows/Linux (curl.exe vs curl, NUL vs /dev/null).
+$temp = [System.IO.Path]::GetTempPath()
+$curl = if (Get-Command curl.exe -ErrorAction SilentlyContinue) { "curl.exe" } else { "curl" }
+$tempFile = Join-Path $temp "rivo-seguro-$stamp.txt"
+Set-Content -Path $tempFile -Value "Apolice de seguro de teste - $stamp" -NoNewline -Encoding UTF8
+
+function Invoke-Upload {
+    param([string]$FilePath, [string]$Category, [string]$Token)
+
+    return (& $curl -s -X POST "$base/documents" `
+        -H "Authorization: Bearer $Token" `
+        -F "file=@$FilePath" `
+        -F "category=$Category" 2>$null)
+}
 
 $semPerfilEmail = "semperfil-fl-$stamp@rivo.ao"
 Invoke-RestMethod "$base/identity/register" -Method Post -Body (@{ email = $semPerfilEmail; password = $pass } | ConvertTo-Json) -ContentType "application/json" | Out-Null
@@ -317,7 +334,106 @@ Test-Case "30. Planos ficam na trilha, com actor" {
     "tres tipos de evento de plano auditados, todos com actor"
 }
 
-Test-Case "31. Desactivar esconde da listagem, includeInactive traz de volta" {
+# --- Registo de Viagem ------------------------------------------------------
+
+Test-Case "31. Registar viagem com motorista" {
+    $body = @{ driverId = $motorista; startedOn = "2026-09-12"; endedOn = "2026-09-12"; startOdometer = 10000; endOdometer = 10120; purpose = "Entrega em Viana" } | ConvertTo-Json
+    $r = Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/trips" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
+    if (-not $r.tripId) { throw "sem tripId na resposta" }
+    if ([decimal]$r.distance -ne 120) { throw "distancia esperada 120, obtida $($r.distance)" }
+    "viagem de 120 km, com motorista"
+}
+
+Test-Case "32. Registar viagem sem motorista (opcional)" {
+    $body = @{ startedOn = "2026-09-13"; endedOn = "2026-09-13"; startOdometer = 10120; endOdometer = 10200 } | ConvertTo-Json
+    $r = Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/trips" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
+    if ([decimal]$r.distance -ne 80) { throw "distancia esperada 80, obtida $($r.distance)" }
+    "viagem de 80 km, sem motorista"
+}
+
+Test-Case "33. Viagem com motorista inexistente devolve 404" {
+    $body = @{ driverId = [guid]::NewGuid(); startedOn = "2026-09-13"; endedOn = "2026-09-13"; startOdometer = 10200; endOdometer = 10210 } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/trips" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+    "motorista inexistente: 404"
+}
+
+Test-Case "34. Viagem com data de fim anterior ao inicio e recusada" {
+    $body = @{ startedOn = "2026-09-13"; endedOn = "2026-09-12"; startOdometer = 10200; endOdometer = 10210 } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/trips" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "data de fim anterior ao inicio recusada"
+}
+
+Test-Case "35. Viagem com odometro final menor que o inicial e recusada" {
+    $body = @{ startedOn = "2026-09-13"; endedOn = "2026-09-13"; startOdometer = 10200; endOdometer = 10100 } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/trips" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "odometro final menor que o inicial recusado"
+}
+
+Test-Case "36. Viagens ficam na trilha, com actor" {
+    $n = Invoke-Sql "select count(*) from audit.audit_event where action='fleet.trip.registered' and actor_id is not null"
+    if ([int]$n -lt 2) { throw "esperavam-se pelo menos 2 viagens auditadas, obtidas $n" }
+    "viagens auditadas, com actor"
+}
+
+# --- Despesa de Frota --------------------------------------------------------
+
+Test-Case "37. Registar despesa de combustivel" {
+    $body = @{ category = "Fuel"; amount = 15000; occurredOn = "2026-09-12"; description = "Posto Sonangol" } | ConvertTo-Json
+    $r = Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/expenses" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
+    if (-not $r.expenseId) { throw "sem expenseId na resposta" }
+    "despesa de combustivel registada"
+}
+
+Test-Case "38. Despesa com categoria desconhecida e recusada" {
+    $body = @{ category = "Multa"; amount = 5000; occurredOn = "2026-09-12" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/expenses" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "categoria desconhecida recusada -- so Fuel, Toll ou Parking"
+}
+
+Test-Case "39. Despesa com valor nao positivo e recusada" {
+    $body = @{ category = "Toll"; amount = 0; occurredOn = "2026-09-12" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/expenses" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "valor zero recusado"
+}
+
+Test-Case "40. Despesas ficam na trilha, com actor" {
+    $n = Invoke-Sql "select count(*) from audit.audit_event where action='fleet.expense.registered' and actor_id is not null"
+    if ([int]$n -lt 1) { throw "sem evento auditado para despesa" }
+    "despesa auditada, com actor"
+}
+
+# --- Seguros e documentacao legal -------------------------------------------
+
+Test-Case "41. Anexar documento (seguro) a viatura, listagem mostra metadados" {
+    $upload = Invoke-Upload $tempFile "seguro" $adminToken | ConvertFrom-Json
+    $script:seguroDocumentId = $upload.documentId
+    if (-not $script:seguroDocumentId) { throw "upload sem documentId" }
+
+    $body = @{ documentId = $script:seguroDocumentId; category = "seguro" } | ConvertTo-Json
+    $r = Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/documents" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
+    if (-not $r.linkId) { throw "sem linkId na resposta" }
+
+    $lista = Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/documents" -Headers $adminHeaders
+    $ligacao = $lista | Where-Object { $_.documentId -eq $script:seguroDocumentId }
+    if (-not $ligacao) { throw "documento nao aparece na listagem" }
+    if ($ligacao.category -ne "seguro") { throw "categoria nao gravada: $($ligacao.category)" }
+    if (-not $ligacao.fileName) { throw "metadados de documents em falta (fileName)" }
+    "documento anexado, categoria 'seguro', metadados de documents presentes"
+}
+
+Test-Case "42. Anexar documento inexistente devolve 404" {
+    $body = @{ documentId = [guid]::NewGuid(); category = "seguro" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/documents" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+    "documento inexistente -- 404, verificado pelo contrato publicado de documents"
+}
+
+Test-Case "43. Desactivar esconde da listagem, includeInactive traz de volta" {
     Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/deactivation" -Method Post -Headers $adminHeaders | Out-Null
 
     $activos = Invoke-RestMethod "$base/fleet/vehicles" -Headers $adminHeaders
@@ -328,7 +444,7 @@ Test-Case "31. Desactivar esconde da listagem, includeInactive traz de volta" {
     "Inactive sai da listagem por omissao; InMaintenance nao saia (caso 9)"
 }
 
-Test-Case "32. Viatura inactiva nao aceita manutencao, atribuicao nem plano novos" {
+Test-Case "44. Viatura inactiva nao aceita manutencao, atribuicao, plano, viagem nem despesa novos" {
     # Conflito com o estado da viatura, nao pedido malformado -- 409, nao 400.
     $bodyManut = @{ type = "Preventive"; description = "Revisao tardia"; startedOn = "2026-09-12" } | ConvertTo-Json
     $codeManut = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/maintenance" -Method Post -Body $bodyManut -ContentType "application/json" -Headers $adminHeaders }
@@ -342,10 +458,18 @@ Test-Case "32. Viatura inactiva nao aceita manutencao, atribuicao nem plano novo
     $codePlano = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/maintenance-plans" -Method Post -Body $bodyPlano -ContentType "application/json" -Headers $adminHeaders }
     if ($codePlano -ne 409) { throw "plano em viatura inactiva: esperado 409, obtido $codePlano" }
 
-    "viatura inactiva recusa nova manutencao, nova atribuicao e novo plano"
+    $bodyViagem = @{ startedOn = "2026-09-14"; endedOn = "2026-09-14"; startOdometer = 10200; endOdometer = 10210 } | ConvertTo-Json
+    $codeViagem = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/trips" -Method Post -Body $bodyViagem -ContentType "application/json" -Headers $adminHeaders }
+    if ($codeViagem -ne 409) { throw "viagem em viatura inactiva: esperado 409, obtido $codeViagem" }
+
+    $bodyDespesa = @{ category = "Parking"; amount = 500; occurredOn = "2026-09-14" } | ConvertTo-Json
+    $codeDespesa = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/expenses" -Method Post -Body $bodyDespesa -ContentType "application/json" -Headers $adminHeaders }
+    if ($codeDespesa -ne 409) { throw "despesa em viatura inactiva: esperado 409, obtido $codeDespesa" }
+
+    "viatura inactiva recusa nova manutencao, nova atribuicao, novo plano, nova viagem e nova despesa"
 }
 
-Test-Case "33. Cancelar plano de viatura inactiva continua permitido" {
+Test-Case "45. Cancelar plano de viatura inactiva continua permitido" {
     # Cancelar planos de uma viatura que acabou de ficar inactiva e o que se
     # espera -- nao ha guarda de Status aqui, ao contrario dos outros tres.
     Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/maintenance-plans/$($script:planFiltroId)/cancellation" -Method Post -Headers $adminHeaders | Out-Null
@@ -355,7 +479,7 @@ Test-Case "33. Cancelar plano de viatura inactiva continua permitido" {
     "cancelamento permitido mesmo com a viatura inactiva"
 }
 
-Test-Case "34. Nao ha eliminacao de viatura" {
+Test-Case "46. Nao ha eliminacao de viatura" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)" -Method Delete -Headers $adminHeaders }
     if ($code -ne 405 -and $code -ne 404) { throw "DELETE devia ser recusado, obtido $code" }
     $existe = Invoke-Sql "select count(*) from fleet.vehicle where id='$($script:vehicleId)'"
@@ -363,7 +487,7 @@ Test-Case "34. Nao ha eliminacao de viatura" {
     "DELETE recusado ($code); a linha continua la"
 }
 
-Test-Case "35. Registo e desactivacao ficam na trilha, com actor" {
+Test-Case "47. Registo e desactivacao ficam na trilha, com actor" {
     $reg = Invoke-Sql "select count(*) from audit.audit_event where action='fleet.vehicle.registered' and entity_id='$($script:vehicleId)' and actor_id is not null"
     if ($reg -ne "1") { throw "registo nao auditado com actor" }
     $desact = Invoke-Sql "select count(*) from audit.audit_event where action='fleet.vehicle.deactivated' and entity_id='$($script:vehicleId)' and actor_id is not null"
@@ -371,7 +495,7 @@ Test-Case "35. Registo e desactivacao ficam na trilha, com actor" {
     "registo e desactivacao na trilha, ambos com actor"
 }
 
-Test-Case "36. Autorizacao: sem token 401, sem perfil 403" {
+Test-Case "48. Autorizacao: sem token 401, sem perfil 403" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles" }
     if ($code -ne 401) { throw "sem token: esperado 401, obtido $code" }
 
@@ -380,13 +504,13 @@ Test-Case "36. Autorizacao: sem token 401, sem perfil 403" {
     "401 e 403 correctos"
 }
 
-Test-Case "37. Matricula e unica na base de dados" {
+Test-Case "49. Matricula e unica na base de dados" {
     $dup = Invoke-Sql "select count(*) from (select plate_number from fleet.vehicle group by plate_number having count(*)>1) d"
     if ($dup -ne "0") { throw "$dup matriculas repetidas" }
     "indice unico e a segunda linha; a verificacao no caso de uso e a primeira"
 }
 
-Test-Case "38. Dados sobrevivem ao reinicio da stack" {
+Test-Case "50. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
@@ -400,7 +524,13 @@ Test-Case "38. Dados sobrevivem ao reinicio da stack" {
     if (-not $segunda -or $segunda.endedOn) { throw "segunda atribuicao (ainda aberta) perdida apos restart" }
     $oleo = $v.plans | Where-Object { $_.planId -eq $script:planOleoId }
     if ($oleo.nextDueOn -notmatch "2026-11-28") { throw "plano de oleo perdido apos restart" }
-    "viatura $placa, manutencao, atribuicoes e planos intactos apos restart"
+    if (@($v.trips).Count -lt 2) { throw "viagens perdidas apos restart" }
+    if (@($v.expenses).Count -lt 1) { throw "despesas perdidas apos restart" }
+
+    $documentos = Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/documents" -Headers $adminHeaders
+    if ($documentos.documentId -notcontains $script:seguroDocumentId) { throw "documento de seguro perdido apos restart" }
+
+    "viatura $placa, manutencao, atribuicoes, planos, viagens, despesas e documentos intactos apos restart"
 }
 
 Write-Host ""

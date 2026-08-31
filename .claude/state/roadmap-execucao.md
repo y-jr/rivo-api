@@ -35,7 +35,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 4 | `finance` — o núcleo | ✅ **Critério de saída cumprido** em 2026-08-25 — os cinco contextos internos, BR-1/3/5/8 impostas, os documentos a lançar nos livros e (2026-08-29) a anular a estornar. Em dívida: o plano de contas, que é do contabilista |
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
 | 6 | `payroll` | Motor de IRT/INSS ganhou regra de negócio real em 2026-08-30 — trave de **produção** continua por parecer fiscal, ver a nota da fase |
-| 7 | `projects`, `inventory`, `fleet` | Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). A 2026-08-31, `projects` ganhou Alocação de Recursos (Colaborador e Viatura, via `hr`/`fleet`) e `inventory` ganhou Armazém, Transferência (retrofit do Movimento, transferência atómica) e Contagem (gera Ajuste no fecho, tudo numa transacção). Nenhum tem bloqueio de negócio; só Registo de Viagem/Despesa/Seguros em `fleet` continua por fazer |
+| 7 | `projects`, `inventory`, `fleet` | **Fechada por completo a 2026-08-31.** Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). A 2026-08-31, `projects` ganhou Alocação de Recursos (Colaborador e Viatura, via `hr`/`fleet`), `inventory` ganhou Armazém, Transferência (retrofit do Movimento, transferência atómica) e Contagem (gera Ajuste no fecho, tudo numa transacção), e `fleet` ganhou Registo de Viagem, Despesa de Frota (sem abrir/fechar, ao contrário de Manutenção/Atribuição) e Seguros (`VehicleDocument`, ligação autónoma a `documents`) |
 | 8 | Camadas de composição e portais | Por iniciar |
 
 **Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
@@ -403,8 +403,9 @@ testes de arquitectura da Fase 0.
 > destinatário ainda. Detalhe em `pending-decisions.md` §Domínio e negócio,
 > ADR-039, ADR-040 e `modules/fleet.md`.
 >
-> **Fica ainda por fazer, sem bloqueio de negócio:** Registo de Viagem,
-> Despesa de Frota e Seguros em `fleet`.
+> **Fica ainda por fazer, sem bloqueio de negócio (a 2026-08-30):** Registo
+> de Viagem, Despesa de Frota e Seguros em `fleet` — fecharam a 2026-08-31,
+> ver abaixo.
 >
 > **Alocação de Recursos em `projects` fechada a 2026-08-31** —
 > `ProjectResourceAllocation` (Colaborador ou Viatura), mesmo desenho de
@@ -437,6 +438,20 @@ testes de arquitectura da Fase 0.
 > decisões de forma vieram do precedente já estabelecido no módulo no dia
 > anterior. `verify-inventory.ps1` cresceu de 41 para 60, confirmado
 > 60/60. Fecha a Fase 7 de `inventory` por completo.
+>
+> **Registo de Viagem, Despesa de Frota e Seguros em `fleet` fechados a
+> 2026-08-31, mesmo dia — fecha a Fase 7 inteira.** `VehicleTrip` e
+> `FleetExpense` nasceram como filhos do agregado Viatura, mesma disciplina
+> de Manutenção/Atribuição/Plano, mas **sem abrir/fechar** — registam-se já
+> concluídos, mesma forma de `StockMovement` em `inventory`. Motorista da
+> viagem é opcional, ao contrário da Atribuição formal. Despesa cobre só as
+> três categorias que o documento de produto nomeia (combustível, portagem,
+> estacionamento), sem moeda (sempre AOA) e sem postagem automática no
+> razão — mesma decisão que deixou Custos de fora da Alocação de Recursos.
+> `VehicleDocument` (Seguros) é ligação autónoma a `documents`, fora do
+> agregado, mesmo desenho de `EmployeeDocument` em `hr` (ADR-009). Nenhuma
+> pergunta de negócio ficou em aberto. `verify-fleet.ps1` cresceu de 38
+> para 50, confirmado 50/50.
 
 ---
 

@@ -115,11 +115,11 @@ public class ProjectReferenceTests
         // `fleet` ganhou Manutenção e Atribuição — 2026-08-30, mesma razão de
         // `projects`: atribuir uma viatura a um motorista referencia um
         // Colaborador pelo contrato de `hr` (ADR-010), nunca por leitura de
-        // tabela. As direcções que `modules/fleet.md` lista e que faltam —
-        // `finance`, `inventory`, `documents`, `notifications` — pertencem ao
-        // Plano de Manutenção, Registo de Viagem, Despesa de Frota e Seguros,
-        // que ainda não estão feitos.
-        ["Fleet"] = ["Audit", "Hr"],
+        // tabela. A 2026-08-31, Seguros e documentação legal ligaram-se a
+        // `documents` (ADR-009, mesmo desenho de `hr`). As direcções que
+        // `modules/fleet.md` lista e que faltam — `finance`, `inventory`,
+        // `notifications` — pertencem a partes ainda por implementar.
+        ["Fleet"] = ["Audit", "Hr", "Documents"],
 
         // `identity` compõe o catálogo de permissões a partir do que cada
         // módulo declara — cada um diz que permissões existem, `identity`

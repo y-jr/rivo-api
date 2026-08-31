@@ -4,11 +4,14 @@ namespace Rivo.Fleet.Domain;
 /// Viatura — agregado raiz de `fleet` (ver `modules/fleet.md`).
 ///
 /// <para>
-/// <strong>Manutenção, Atribuição e Plano de Manutenção vivem aqui
-/// dentro</strong> (§Possui): nascem sempre por este agregado
-/// (<see cref="OpenMaintenance"/>, <see cref="Assign"/>,
-/// <see cref="SchedulePlan"/>). Registo de Viagem, Despesa de Frota e
-/// Seguros continuam por fazer.
+/// <strong>Manutenção, Atribuição, Plano de Manutenção, Registo de Viagem e
+/// Despesa de Frota vivem aqui dentro</strong> (§Possui): nascem sempre por
+/// este agregado (<see cref="OpenMaintenance"/>, <see cref="Assign"/>,
+/// <see cref="SchedulePlan"/>, <see cref="RegisterTrip"/>,
+/// <see cref="RegisterExpense"/>). Seguros e documentação legal vivem à
+/// parte, em <see cref="VehicleDocument"/> — não têm invariante que dependa
+/// dos outros filhos, por isso não precisam do limite de consistência do
+/// agregado (mesma razão de <c>EmployeeDocument</c> em `hr`).
 /// </para>
 /// </summary>
 public sealed class Vehicle
@@ -16,6 +19,8 @@ public sealed class Vehicle
     private readonly List<MaintenanceRecord> _maintenances = [];
     private readonly List<VehicleAssignment> _assignments = [];
     private readonly List<MaintenancePlan> _plans = [];
+    private readonly List<VehicleTrip> _trips = [];
+    private readonly List<FleetExpense> _expenses = [];
 
     private Vehicle(Guid id, string plateNumber, string model)
     {
@@ -46,6 +51,10 @@ public sealed class Vehicle
     public IReadOnlyList<VehicleAssignment> Assignments => _assignments;
 
     public IReadOnlyList<MaintenancePlan> Plans => _plans;
+
+    public IReadOnlyList<VehicleTrip> Trips => _trips;
+
+    public IReadOnlyList<FleetExpense> Expenses => _expenses;
 
     /// <summary>Concorrência optimista (ADR-025). O domínio nunca lhe toca.</summary>
     public int Version { get; private set; }
@@ -183,6 +192,72 @@ public sealed class Vehicle
     private MaintenancePlan FindPlan(Guid planId) =>
         _plans.FirstOrDefault(p => p.Id == planId)
             ?? throw new InvalidOperationException("Plano de manutenção não encontrado nesta viatura.");
+
+    /// <summary>
+    /// Regista uma viagem já concluída — controlo de quilometragem, não um
+    /// itinerário. Ao contrário de Manutenção e Atribuição, não há
+    /// abrir/fechar: a viagem entra já com início e fim.
+    ///
+    /// <para>
+    /// <paramref name="driverId"/> é opcional; quando indicado, quem verifica
+    /// que é um Colaborador que existe é a Application, contra o contrato de
+    /// `hr` (ADR-010) — o agregado só sabe que é um identificador.
+    /// </para>
+    /// </summary>
+    public VehicleTrip RegisterTrip(
+        Guid? driverId, DateOnly startedOn, DateOnly endedOn, decimal startOdometer, decimal endOdometer, string? purpose)
+    {
+        EnsureNotInactive("registar uma viagem");
+
+        if (driverId is { } id && id == Guid.Empty)
+        {
+            throw new ArgumentException("O motorista, quando indicado, tem de ser um identificador válido.", nameof(driverId));
+        }
+
+        if (endedOn < startedOn)
+        {
+            throw new ArgumentException("A data de fim não pode ser anterior ao início da viagem.", nameof(endedOn));
+        }
+
+        if (startOdometer < 0)
+        {
+            throw new ArgumentException("O odómetro inicial não pode ser negativo.", nameof(startOdometer));
+        }
+
+        if (endOdometer < startOdometer)
+        {
+            throw new ArgumentException(
+                "O odómetro final não pode ser anterior ao inicial.", nameof(endOdometer));
+        }
+
+        var viagem = new VehicleTrip(
+            Guid.CreateVersion7(), Id, driverId, startedOn, endedOn, startOdometer, endOdometer, purpose?.Trim());
+        _trips.Add(viagem);
+
+        return viagem;
+    }
+
+    /// <summary>
+    /// Regista uma despesa de frota — combustível, portagem ou
+    /// estacionamento. Facto operacional, sem postagem automática no razão
+    /// (`modules/fleet.md` §Não pode) — ver a nota em
+    /// <see cref="FleetExpense"/>.
+    /// </summary>
+    public FleetExpense RegisterExpense(
+        FleetExpenseCategory category, decimal amount, DateOnly occurredOn, string? description)
+    {
+        EnsureNotInactive("registar uma despesa");
+
+        if (amount <= 0)
+        {
+            throw new ArgumentException("A despesa tem de ter um valor positivo.", nameof(amount));
+        }
+
+        var despesa = new FleetExpense(Guid.CreateVersion7(), Id, category, amount, occurredOn, description?.Trim());
+        _expenses.Add(despesa);
+
+        return despesa;
+    }
 
     public void Deactivate()
     {

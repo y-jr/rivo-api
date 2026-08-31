@@ -1486,7 +1486,8 @@ corrida** — a distinção 400 (pedido malformado) vs. 409 (conflito de
 estado), corrigida mais cedo no mesmo dia (ver acima), já nasceu aplicada
 correctamente aqui.
 
-**Continuam por fazer:** Registo de Viagem, Despesa de Frota, Seguros.
+**Continuam por fazer (2026-08-30):** Registo de Viagem, Despesa de Frota,
+Seguros — os três fecharam mais tarde, ver abaixo.
 
 _2026-08-31, mesmo dia da Alocação de Recursos de `projects` —
 **`IVehicleDirectory`, primeiro contrato de leitura de `fleet`.**_ Mesmo
@@ -1495,6 +1496,78 @@ devolve `VehicleReference?` (id, matrícula, modelo, estado), implementado
 em `Rivo.Fleet.Application.VehicleDirectory` sobre o `IVehicleStore` já
 existente — sem tabela nova, sem migração. Único consumidor até agora:
 `projects`, ver a secção própria.
+
+_2026-08-31 — **Registo de Viagem, Despesa de Frota e Seguros.**_ Últimos
+três itens de engenharia da Fase 7. Nenhuma pergunta de negócio ficou em
+aberto — as decisões de forma vieram do precedente já estabelecido no
+módulo no mesmo dia (retrofit de Armazém/Transferência/Contagem em
+`inventory`).
+
+`VehicleTrip` e `FleetExpense` nasceram como filhos do agregado `Vehicle`,
+mesma forma de `MaintenanceRecord`/`VehicleAssignment`/`MaintenancePlan` —
+uma viatura inactiva não aceita nenhum dos dois novos. **Ao contrário de
+Manutenção e Atribuição, não têm `Open`/`Close`** — `RegisterTrip` e
+`RegisterExpense` recebem tudo de uma vez e produzem um facto já concluído,
+mesma disciplina de `StockMovement` em `inventory`: nunca se alteram nem se
+eliminam depois (BR-9, BR-14).
+
+- **`Vehicle.RegisterTrip(driverId?, startedOn, endedOn, startOdometer, endOdometer, purpose?)`**
+  — `driverId` é **opcional**, ao contrário de `Assign` (a Atribuição
+  formal): uma viatura pode ser usada sem atribuição, e o registo de viagem
+  existe para captar isso também. Quando indicado, a Application verifica-o
+  contra `hr.IEmployeeDirectory` antes de gravar (ADR-010), nunca copia
+  nome nem cargo (BR-18) — 404 se não existir. Valida `endedOn >= startedOn`,
+  `startOdometer >= 0`, `endOdometer >= startOdometer` (400 se não).
+  `VehicleTrip.Distance` é `EndOdometer - StartOdometer`, computado, nunca
+  persistido.
+- **`Vehicle.RegisterExpense(category, amount, occurredOn, description?)`**
+  — `FleetExpenseCategory` tem exactamente três valores (`Fuel`, `Toll`,
+  `Parking`), os que `docs/rivo-suite-descricao-modulos.md` nomeia, nenhum
+  outro. `amount` tem de ser positivo (400 se não). Sem campo de moeda, de
+  propósito — é sempre AOA, mesma simplificação de `NetSalary` em `payroll`:
+  não há caso de uso real de despesa de frota em moeda estrangeira a pedir
+  o contrário. Sem postagem automática no razão (`modules/fleet.md` §Não
+  pode) — mesma decisão que manteve Custos de fora da Alocação de Recursos
+  em `projects` (postagem em `finance` depende de "tempo real ou em lote?",
+  `pending-decisions.md`).
+
+**`VehicleDocument` (Seguros e documentação legal) não é filho do agregado
+`Vehicle`** — mesmo desenho de `EmployeeDocument` em `hr` (ADR-009): a
+ligação vive em `fleet`, não em `documents` (chave polimórfica perderia
+integridade referencial num contexto com prazo de retenção), com FK real
+entre schemas para `documents.document(id)` declarada por SQL numa migração
+própria (`AddCrossSchemaDocumentForeignKey`, mesmo padrão de `hr`,
+2026-08-20) — o EF Core não a consegue exprimir porque `Document` pertence
+a outro `DbContext` (ADR-017). Sem invariante que dependa dos outros filhos
+da viatura (não há "só um de cada vez", não há estado a verificar), por
+isso fora do limite de consistência do agregado; sem guarda de `Status` —
+uma viatura inactiva continua a aceitar documento novo. `AttachDocumentToVehicle`
+verifica o documento pelo contrato publicado `IDocumentCatalogue.FindAsync`
+(404 se não existir), nunca por consulta às tabelas de `documents`.
+`ListVehicleDocuments` junta em memória os metadados de `documents`
+(`FindManyAsync`, consulta em lote) com as ligações de `fleet`.
+
+`VehicleTripView`/`FleetExpenseView` entraram em `VehicleView`, mesma forma
+de Maintenances/Assignments/Plans. Seis endpoints novos, todos sob
+`fleet.vehicles.read`/`fleet.vehicles.write` (reutilizadas — Seguros é
+operação de viatura, não um perfil à parte):
+`POST /fleet/vehicles/{id}/trips`, `POST /fleet/vehicles/{id}/expenses`,
+`GET/POST /fleet/vehicles/{id}/documents`.
+
+`Rivo.Fleet.Domain.Tests` cresceu de 42 para 58 no agregado `Vehicle`
+(Viagem/Despesa), mais `VehicleDocumentTests` novo (5 casos) — 63 no total.
+`scripts/verify-fleet.ps1` cresceu de 38 para 50 casos e **confirmou 50/50
+contra a stack local a 2026-08-31, sem nenhuma falha na primeira corrida** —
+um defeito apanhado, mas nos testes de arquitectura, não na suite E2E:
+`ConcurrencyTokenTests.EveryAggregate_HasAConcurrencyCounterOrADocumentedExemption`
+falhou porque `VehicleDocument` não tinha a isenção documentada do contador
+de concorrência (K14/ADR-019) — corrigida acrescentando a entrada à lista
+`IsentosPorDesenho`, mesma razão de `EmployeeDocument`: "linha de ligação,
+cria-se e elimina-se, nunca se altera".
+
+**Fecha a Fase 7 de `fleet` por completo — e a Fase 7 inteira**, junto com
+Armazém/Transferência/Contagem em `inventory` e Alocação de Recursos em
+`projects`, todos fechados no mesmo dia.
 
 ## inventory
 

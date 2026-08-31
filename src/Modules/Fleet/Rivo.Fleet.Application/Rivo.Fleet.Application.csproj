@@ -9,6 +9,10 @@
          exclusivamente pelo contrato (ADR-010). `fleet` nunca lê tabelas de
          `hr`. -->
     <ProjectReference Include="..\..\Hr\Rivo.Hr.Contracts\Rivo.Hr.Contracts.csproj" />
+
+    <!-- Seguros e documentação legal anexam-se via `documents` (ADR-009),
+         mesmo desenho de `hr`. -->
+    <ProjectReference Include="..\..\Documents\Rivo.Documents.Contracts\Rivo.Documents.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

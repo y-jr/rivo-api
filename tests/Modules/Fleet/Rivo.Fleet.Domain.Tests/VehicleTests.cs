@@ -423,4 +423,131 @@ public class VehicleTests
 
         Assert.False(plano.IsActive);
     }
+
+    // --- Registo de Viagem ------------------------------------------------
+
+    [Fact]
+    public void RegisterTrip_RecordsDistanceAndDriver()
+    {
+        var viatura = Registada();
+        var motorista = Guid.CreateVersion7();
+
+        var viagem = viatura.RegisterTrip(motorista, Hoje, Hoje, 1000m, 1080m, "Entrega em Viana");
+
+        Assert.Equal(motorista, viagem.DriverId);
+        Assert.Equal(80m, viagem.Distance);
+        Assert.Equal("Entrega em Viana", viagem.Purpose);
+        Assert.Same(viagem, Assert.Single(viatura.Trips));
+    }
+
+    [Fact]
+    public void RegisterTrip_WithoutDriver_IsAllowed()
+    {
+        var viatura = Registada();
+
+        var viagem = viatura.RegisterTrip(null, Hoje, Hoje, 1000m, 1050m, null);
+
+        Assert.Null(viagem.DriverId);
+        Assert.Equal(50m, viagem.Distance);
+    }
+
+    [Fact]
+    public void RegisterTrip_WithEmptyDriverId_Throws()
+    {
+        var viatura = Registada();
+
+        Assert.Throws<ArgumentException>(() => viatura.RegisterTrip(Guid.Empty, Hoje, Hoje, 1000m, 1050m, null));
+    }
+
+    [Fact]
+    public void RegisterTrip_EndedBeforeStarted_Throws()
+    {
+        var viatura = Registada();
+
+        Assert.Throws<ArgumentException>(
+            () => viatura.RegisterTrip(null, Hoje, Hoje.AddDays(-1), 1000m, 1050m, null));
+    }
+
+    [Fact]
+    public void RegisterTrip_NegativeStartOdometer_Throws()
+    {
+        var viatura = Registada();
+
+        Assert.Throws<ArgumentException>(() => viatura.RegisterTrip(null, Hoje, Hoje, -1m, 50m, null));
+    }
+
+    [Fact]
+    public void RegisterTrip_EndOdometerBeforeStart_Throws()
+    {
+        var viatura = Registada();
+
+        Assert.Throws<ArgumentException>(() => viatura.RegisterTrip(null, Hoje, Hoje, 1000m, 900m, null));
+    }
+
+    [Fact]
+    public void RegisterTrip_ExactlySameOdometer_HasZeroDistance()
+    {
+        var viatura = Registada();
+
+        var viagem = viatura.RegisterTrip(null, Hoje, Hoje, 1000m, 1000m, null);
+
+        Assert.Equal(0m, viagem.Distance);
+    }
+
+    [Fact]
+    public void RegisterTrip_OnInactiveVehicle_Throws()
+    {
+        var viatura = Registada();
+        viatura.Deactivate();
+
+        Assert.Throws<InvalidOperationException>(() => viatura.RegisterTrip(null, Hoje, Hoje, 1000m, 1050m, null));
+    }
+
+    // --- Despesa de Frota ---------------------------------------------------
+
+    [Fact]
+    public void RegisterExpense_RecordsCategoryAndAmount()
+    {
+        var viatura = Registada();
+
+        var despesa = viatura.RegisterExpense(FleetExpenseCategory.Fuel, 15000m, Hoje, "Posto Sonangol");
+
+        Assert.Equal(FleetExpenseCategory.Fuel, despesa.Category);
+        Assert.Equal(15000m, despesa.Amount);
+        Assert.Equal("Posto Sonangol", despesa.Description);
+        Assert.Same(despesa, Assert.Single(viatura.Expenses));
+    }
+
+    [Theory]
+    [InlineData(FleetExpenseCategory.Fuel)]
+    [InlineData(FleetExpenseCategory.Toll)]
+    [InlineData(FleetExpenseCategory.Parking)]
+    public void RegisterExpense_AcceptsAllThreeCategories(FleetExpenseCategory categoria)
+    {
+        var viatura = Registada();
+
+        var despesa = viatura.RegisterExpense(categoria, 1000m, Hoje, null);
+
+        Assert.Equal(categoria, despesa.Category);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void RegisterExpense_NonPositiveAmount_Throws(decimal valor)
+    {
+        var viatura = Registada();
+
+        Assert.Throws<ArgumentException>(() => viatura.RegisterExpense(FleetExpenseCategory.Toll, valor, Hoje, null));
+    }
+
+    [Fact]
+    public void RegisterExpense_OnInactiveVehicle_Throws()
+    {
+        var viatura = Registada();
+        viatura.Deactivate();
+
+        Assert.Throws<InvalidOperationException>(
+            () => viatura.RegisterExpense(FleetExpenseCategory.Parking, 500m, Hoje, null));
+    }
 }

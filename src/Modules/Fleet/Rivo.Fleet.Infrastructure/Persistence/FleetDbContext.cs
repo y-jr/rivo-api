@@ -10,6 +10,8 @@ public sealed class FleetDbContext(DbContextOptions<FleetDbContext> options) : D
 
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
 
+    public DbSet<VehicleDocument> VehicleDocuments => Set<VehicleDocument>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -54,6 +56,22 @@ public sealed class FleetDbContext(DbContextOptions<FleetDbContext> options) : D
                 .OnDelete(DeleteBehavior.Cascade);
 
             vehicle.Navigation(v => v.Plans).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            // Registo de Viagem e Despesa de Frota são parte do agregado,
+            // mesma forma de Manutenção/Atribuição/Plano acima.
+            vehicle.HasMany(v => v.Trips)
+                .WithOne()
+                .HasForeignKey(t => t.VehicleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            vehicle.Navigation(v => v.Trips).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            vehicle.HasMany(v => v.Expenses)
+                .WithOne()
+                .HasForeignKey(e => e.VehicleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            vehicle.Navigation(v => v.Expenses).UsePropertyAccessMode(PropertyAccessMode.Field);
         });
 
         builder.Entity<MaintenanceRecord>(maintenance =>
@@ -99,6 +117,59 @@ public sealed class FleetDbContext(DbContextOptions<FleetDbContext> options) : D
             // É por aqui que a consulta de "alerta" filtra — ver
             // `IVehicleStore.ListWithDuePlansAsync`.
             plan.HasIndex(p => new { p.IsActive, p.NextDueOn });
+        });
+
+        builder.Entity<VehicleTrip>(trip =>
+        {
+            trip.ToTable("vehicle_trip");
+            trip.HasKey(t => t.Id);
+
+            trip.Property(t => t.Version).IsConcurrencyToken();
+
+            trip.Property(t => t.StartOdometer).HasPrecision(18, 2);
+            trip.Property(t => t.EndOdometer).HasPrecision(18, 2);
+            trip.Property(t => t.Purpose).HasMaxLength(500);
+            trip.Ignore(t => t.Distance);
+
+            trip.HasIndex(t => t.VehicleId);
+
+            // Sem FK para `hr.employee` — mesma nota de `VehicleAssignment`
+            // acima (ADR-010). Índice sim, para listar as viagens de um
+            // motorista.
+            trip.HasIndex(t => t.DriverId);
+        });
+
+        builder.Entity<FleetExpense>(expense =>
+        {
+            expense.ToTable("fleet_expense");
+            expense.HasKey(e => e.Id);
+
+            expense.Property(e => e.Version).IsConcurrencyToken();
+
+            expense.Property(e => e.Category).HasConversion<string>().HasMaxLength(20);
+            expense.Property(e => e.Amount).HasPrecision(18, 2);
+            expense.Property(e => e.Description).HasMaxLength(500);
+
+            expense.HasIndex(e => e.VehicleId);
+        });
+
+        builder.Entity<VehicleDocument>(link =>
+        {
+            link.ToTable("vehicle_document");
+            link.HasKey(l => l.Id);
+            link.Property(l => l.Category).HasMaxLength(100).IsRequired();
+
+            link.HasOne<Vehicle>()
+                .WithMany()
+                .HasForeignKey(l => l.VehicleId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Chave estrangeira para documents.document(id) declarada por SQL
+            // na migração seguinte, e não por navegação de EF: a entidade
+            // Document pertence a `documents` e não pode ser referenciada a
+            // partir daqui (ADR-017) — mesma nota de `EmployeeDocument` em `hr`.
+            link.HasIndex(l => l.VehicleId);
+            link.HasIndex(l => l.DocumentId).IsUnique();
         });
 
         // As chaves são geradas pelo domínio (Guid.CreateVersion7), nunca pela

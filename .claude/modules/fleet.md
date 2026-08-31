@@ -27,11 +27,14 @@ Despesa de Frota, Seguros e documentação legal (ficheiros via `documents`).
 ## Depende de
 
 `hr` (`ReferenciaColaborador` do motorista — **ligado**, 2026-08-30: a
-atribuição verifica que o Colaborador existe antes de gravar), `finance`
-(centro de custo, postagem de custos), `inventory` (peças e consumíveis, se
-geridos como inventário geral), `documents`, `audit`, `notifications`. As
-direcções por ligar pertencem a Registo de Viagem, Despesa de Frota e
-Seguros, que ainda não estão feitos.
+atribuição verifica que o Colaborador existe antes de gravar; 2026-08-31: o
+Registo de Viagem também, quando o motorista é indicado — opcional, ao
+contrário da Atribuição), `documents` (Seguros e documentação legal —
+**ligado**, 2026-08-31, mesmo desenho ADR-009 de `hr`), `finance` (centro de
+custo, postagem de custos), `inventory` (peças e consumíveis, se geridos como
+inventário geral), `audit`, `notifications`. As direcções por ligar
+pertencem à postagem de Despesa de Frota em `finance` — facto operacional
+por agora, sem publicar (ver "Regras de negócio").
 
 ⚠ **`notifications` não está ligado, apesar de o Plano de Manutenção ter
 "alertas".** `INotifier.QueueAsync` entrega a um `RecipientUserId` de
@@ -87,6 +90,26 @@ Recursos — **ligado**, 2026-08-31, via `IVehicleDirectory`).
   o que se espera ao desactivar.
 - Cancelar um Plano nunca o elimina (BR-14) — fica como facto histórico, e
   deixa de contar como devido.
+- **2026-08-31 — Registo de Viagem e Despesa de Frota pertencem ao agregado
+  Viatura**, mesma disciplina de Manutenção/Atribuição/Plano — uma viatura
+  inactiva não aceita nenhum dos dois. Ao contrário de Manutenção e
+  Atribuição, **não têm abrir/fechar**: registam-se já como facto concluído
+  (mesma disciplina de `StockMovement` em `inventory`), e nunca se alteram
+  nem se eliminam depois (BR-9, BR-14).
+- O motorista de uma Viagem é **opcional** (ao contrário do de uma
+  Atribuição) — uma viatura pode ser usada sem atribuição formal. Quando
+  indicado, verifica-se contra `hr` como qualquer outra referência de
+  Colaborador (ADR-010, BR-18).
+- Despesa de Frota cobre exactamente três categorias — combustível, portagem,
+  estacionamento — as que `docs/rivo-suite-descricao-modulos.md` nomeia,
+  nenhuma outra. Sem campo de moeda: é sempre AOA, mesma simplificação de
+  `NetSalary` em `payroll`.
+- **Seguros e documentação legal não são filhos do agregado Viatura** — vivem
+  em `VehicleDocument`, uma ligação autónoma (mesmo desenho de
+  `EmployeeDocument` em `hr`, ADR-009): não há invariante de Viatura que
+  dependa de quantos documentos existem, por isso não precisam do limite de
+  consistência do agregado. Sem guarda de estado — uma viatura inactiva
+  continua a aceitar documento novo (ex.: encerramento administrativo).
 
 ## Perguntas em aberto
 
@@ -117,6 +140,17 @@ Viatura na Alocação de Recursos sem lhe possuir o registo (ADR-010) — ver
 `modules/projects.md`. Não altera nada do que já existia em `fleet`; só
 expõe leitura.
 
-⚠ **Continuam por fazer:** Registo de Viagem, Despesa de Frota, Seguros.
+**2026-08-31 — Registo de Viagem, Despesa de Frota e Seguros.** `VehicleTrip`
+e `FleetExpense` nasceram como filhos do agregado Viatura (sem abrir/fechar,
+registam-se já concluídos); `VehicleDocument` nasceu como ligação autónoma a
+`documents`, mesmo desenho de `EmployeeDocument` em `hr`. Fecha a Fase 7 de
+`fleet` por completo — nenhuma pergunta de negócio ficou em aberto: as
+decisões de forma vieram do precedente já estabelecido no módulo.
+
+63 testes de domínio (`Rivo.Fleet.Domain.Tests` — cresceu de 42 para 58 no
+agregado Viatura com Viagem e Despesa, mais 5 de `VehicleDocument`);
+`scripts/verify-fleet.ps1` — **50/50 confirmados contra a stack local a
+2026-08-31**, sem nenhuma falha, primeira corrida.
+
 Permissões atribuídas a `AssetManager`, que deixou de estar vazio a
 2026-08-29.
