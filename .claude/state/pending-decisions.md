@@ -278,12 +278,15 @@ re-litigação:
       utilizador a 2026-08-31**, em resposta directa à escolha de por onde
       continuar depois de Configurações & Administração (ADR-041) e Portal
       do Colaborador (ADR-042):
-      1. **Contratos de leitura Finance/Commercial** (receita, despesa,
-         AR/AP, top clientes) — pré-requisito do Dashboard Executivo, não
-         se calcula sobre entidades dos módulos directamente, e não se cria
-         um contrato guarda-chuva dentro de `finance`/`commercial` para
-         mascarar a ausência dos contratos fundamentais.
-      2. **Dashboard Executivo**, só depois de (1) existir e estar testado.
+      1. ~~**Contratos de leitura Finance/Commercial**~~ (receita, despesa,
+         AR/AP, top clientes) — **feito a 2026-08-31**:
+         `IReceivablesOverview`/`IPayablesOverview`, ambos em `finance`
+         (a única lacuna real; `commercial.ICustomerDirectory` já
+         resolvia o nome do cliente). Ver `modules/finance.md`.
+      2. **Dashboard Executivo**, agora com (1) pronto e testado — 133
+         testes de Application em `finance`, sem regressão. Continua por
+         construir: a camada de composição em si (`Rivo.Dashboard` ou
+         nome semelhante), que consome os dois contratos.
       3. **Decisão de identidade externa** — identidade de cliente, ciclo
          de vida da conta, autenticação, isolamento, recuperação, MFA,
          relação Customer ↔ conta externa. Bloqueia (4); não improvisar

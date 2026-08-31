@@ -101,6 +101,86 @@ public enum BudgetCheckOutcome
 }
 
 /// <summary>
+/// Leitura agregada de AR (Contas a Receber) — receita facturada, saldo em
+/// aberto, e os clientes que mais facturaram. Primeiro passo do Dashboard
+/// Executivo (Fase 8): sem isto, nada compõe.
+///
+/// <para>
+/// <strong>Moeda sempre explícita, nunca somada entre moedas</strong> —
+/// mesma disciplina de <see cref="BudgetCheck"/>. Um total em AOA e um em
+/// USD não são um número: são dois. Quem chama pergunta por uma de cada
+/// vez; o consumidor decide como as mostra lado a lado.
+/// </para>
+///
+/// <para>
+/// <strong>Só o corrente, nunca um saldo a uma data passada.</strong> Uma
+/// factura vencida há um mês está tão em aberto hoje como estava — o que
+/// varia é se há factura nova ou recebimento novo desde então. Reconstruir
+/// "quanto se devia no dia X" exigiria somar todos os movimentos até essa
+/// data, um problema maior sem consumidor real a pedi-lo (mesma fronteira
+/// que `GET /inventory/valuation` já traça em `modules/inventory.md`).
+/// </para>
+/// </summary>
+public interface IReceivablesOverview
+{
+    /// <summary>
+    /// Receita facturada no período: soma do valor líquido (sem imposto —
+    /// imposto cobrado é passivo perante o Estado, não receita) das
+    /// facturas de venda emitidas no período, menos o das notas de crédito
+    /// emitidas no período — ambos <strong>não anulados</strong>. Uma nota
+    /// de crédito reduz a receita do período em que é emitida, não do
+    /// período da factura original.
+    /// </summary>
+    Task<decimal> GetNetRevenueAsync(DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// O que falta receber, agora, de todas as facturas não anuladas nesta
+    /// moeda — a mesma conta de <c>GetInvoiceBalance</c> (Application),
+    /// somada sobre o conjunto em vez de por factura.
+    /// </summary>
+    Task<decimal> GetOutstandingReceivablesAsync(string currency, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Os clientes que mais facturaram no período, por valor líquido — só
+    /// os com <c>CustomerId</c> real. Consumidor final fica de fora: são
+    /// vendas anónimas de balcão, não uma relação com um cliente para
+    /// ranquear.
+    /// </summary>
+    Task<IReadOnlyList<CustomerRevenueView>> GetTopCustomersAsync(
+        DateOnly from, DateOnly to, string currency, int count, CancellationToken cancellationToken);
+}
+
+public sealed record CustomerRevenueView(Guid CustomerId, string CustomerName, decimal NetRevenue);
+
+/// <summary>
+/// Leitura agregada de AP (Contas a Pagar) — despesa facturada e saldo em
+/// aberto. Separada de <see cref="IReceivablesOverview"/> pela mesma razão
+/// que <c>IPayablesStore</c> é separada de <c>ISalesInvoiceStore</c>
+/// internamente: são dois contextos distintos, e juntá-los daria um
+/// contrato que ninguém consegue implementar sem conhecer os dois.
+/// </summary>
+public interface IPayablesOverview
+{
+    /// <summary>
+    /// Despesa facturada no período: soma do valor líquido das facturas de
+    /// compra <strong>registadas</strong> no período (regime de
+    /// compromisso — quando a factura entra, não quando se paga), não
+    /// anuladas. Simétrico a <see cref="IReceivablesOverview.GetNetRevenueAsync"/>:
+    /// os dois lados do dashboard medem-se da mesma forma, ou "lucro"
+    /// (receita − despesa) misturaria regimes sem ninguém reparar.
+    /// </summary>
+    Task<decimal> GetNetExpensesAsync(DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// O que falta pagar, agora, de todas as facturas de compra não
+    /// anuladas nesta moeda — o total, menos o que já foi
+    /// <strong>executado</strong> (pedidos só aceites ou submetidos não
+    /// reduzem o que ainda se deve; o dinheiro não saiu).
+    /// </summary>
+    Task<decimal> GetOutstandingPayablesAsync(string currency, CancellationToken cancellationToken);
+}
+
+/// <summary>
 /// Superfície publicada de `finance`. Assembly sem dependências (ADR-017).
 ///
 /// <para>

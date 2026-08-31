@@ -62,6 +62,41 @@ compra), `commercial` (cliente),
   contrato explícito e versionado.
 - Estado de pagamento/recebimento.
 - Custo por centro de custo e período.
+- **`IReceivablesOverview` e `IPayablesOverview`** (desde 2026-08-31,
+  Fase 8/ADR-041) — leitura agregada para composição, primeiro consumidor
+  previsto o Dashboard Executivo (ainda por construir). Cinco decisões de
+  desenho que valem registo:
+  - **Separados um do outro**, mesma fronteira de `ISalesInvoiceStore` vs.
+    `IPayablesStore` internamente — juntá-los daria um contrato que
+    ninguém implementa sem conhecer os dois contextos.
+  - **Moeda sempre parâmetro explícito, nunca somada entre moedas** —
+    mesma disciplina de `BudgetCheck`. Pedir "AOA" e "USD" são duas
+    perguntas, nunca uma soma.
+  - **Só saldos correntes** (`GetOutstandingReceivablesAsync`/
+    `GetOutstandingPayablesAsync`), nunca "quanto se devia numa data
+    passada" — reconstruir isso exigiria somar todos os movimentos até
+    essa data, mesma fronteira que `GET /inventory/valuation` já traça.
+  - **Receita/Despesa em valor líquido** (sem imposto — imposto cobrado é
+    passivo perante o Estado, não é receita); **saldos em valor bruto**
+    (o cliente deve o total, imposto incluído). Duas perguntas diferentes,
+    duas bases diferentes, de propósito.
+  - **Regime de compromisso dos dois lados, por simetria**: receita conta
+    facturas de venda emitidas no período; despesa conta facturas de
+    compra registadas no período — nenhum dos dois espera pelo
+    recebimento/pagamento em dinheiro. Se um lado fosse por competência e
+    o outro por caixa, "lucro" (receita − despesa) misturaria regimes sem
+    ninguém reparar.
+  - **`GetOutstandingPayablesAsync` só desconta o executado**, nunca o
+    submetido/aceite — diferente de `CommittedAsync` (uso interno, evita
+    sobre-pedir), que conta os dois. O dinheiro só sai na execução; até
+    lá, a dívida ao fornecedor continua inteira.
+  - **Top clientes usa o nome corrente de `commercial`**, não o retrato
+    congelado na factura — BR-18 protege o documento fiscal, não um KPI
+    de gestão; aqui o nome de hoje é o que interessa mostrar. Consumidor
+    Final fica fora do ranking — venda anónima, não uma relação a
+    ranquear.
+  - **Nota de crédito reduz a receita do período em que é emitida**, não
+    do período da factura original — é quando a correcção acontece.
 
 ## Eventos
 
@@ -752,3 +787,26 @@ por exemplo — não há nada a estornar, e isso não bloqueia a anulação.
   emparelhar movimentos. Depende do formato, que é decisão do banco.
 - **Câmbio multi-moeda** — candidato BNA, sem fonte fixada.
 - ~~Postagem automática nos livros~~ — **feita a 2026-08-25**, ver acima.
+
+### Fase 8 — leitura agregada para composição (2026-08-31)
+
+`IReceivablesOverview` e `IPayablesOverview` — os contratos que o Dashboard
+Executivo vai consumir, pedidos directamente pelo utilizador na sequência
+que fixou para o resto da Fase 8 (ver `state/pending-decisions.md`).
+Detalhe do desenho em "Contratos publicados" acima.
+
+`ISalesInvoiceStore` ganhou `SumOutstandingAsync`, `SumNetInvoicedAsync`,
+`SumNetCreditedAsync`, `TopCustomersByInvoicedAsync` — três agregações de
+base de dados em vez de somar por factura em memória, mesma disciplina de
+`OutstandingAsync` (evitar `join` que multiplicaria linhas e inflacionaria
+o total). `IPayablesStore` ganhou `SumNetExpensesAsync` e
+`SumOutstandingPayablesAsync`, mesmo padrão.
+
+**Só o desenho e os contratos ficam feitos nesta ronda — não o Dashboard.**
+Nenhum endpoint novo: `IReceivablesOverview`/`IPayablesOverview` são
+consumidos por C#, ainda sem consumidor real (o Dashboard continua por
+construir), mesma disciplina de não publicar superfície antes de haver
+quem a peça. 14 testes novos em `Rivo.Finance.Application.Tests`
+(`ReceivablesOverviewTests`, `PayablesOverviewTests`) — sem caso de
+`verify-finance.ps1`/`verify-payables.ps1` novo, porque não há nada visível
+por HTTP para verificar ainda.

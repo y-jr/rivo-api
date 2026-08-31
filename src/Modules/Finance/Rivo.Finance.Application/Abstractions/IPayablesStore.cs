@@ -96,6 +96,23 @@ public interface IPayablesStore
     /// </summary>
     Task<decimal> CommittedAsync(Guid purchaseInvoiceId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Soma do valor líquido das facturas de compra registadas
+    /// (<c>IssuedOn</c>) no período, nesta moeda, não anuladas. Primeiro
+    /// consumidor: <c>IPayablesOverview</c> (Fase 8, ADR-041).
+    /// </summary>
+    Task<decimal> SumNetExpensesAsync(
+        DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// O que falta pagar, agora, de todas as facturas de compra não
+    /// anuladas nesta moeda — o total, menos só o que já foi
+    /// <strong>executado</strong>. Diferente de <see cref="CommittedAsync"/>,
+    /// que também conta pedidos ainda não executados — aqui o dinheiro tem
+    /// de ter saído mesmo para deixar de contar como em falta.
+    /// </summary>
+    Task<decimal> SumOutstandingPayablesAsync(string currency, CancellationToken cancellationToken);
+
     Task AddPaymentRequestAsync(PaymentRequest request, CancellationToken cancellationToken);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);

@@ -120,6 +120,60 @@ internal sealed class FakeSalesInvoiceStore : ISalesInvoiceStore
         return Task.FromResult(factura.GrossTotal - creditado - recebido);
     }
 
+    public Task<decimal> SumOutstandingAsync(string currency, CancellationToken cancellationToken)
+    {
+        var facturado = _invoices.Values
+            .Where(i => i.Status is not InvoiceStatus.Cancelled && i.Currency == currency)
+            .Sum(i => i.GrossTotal);
+
+        var creditado = _creditNotes
+            .Where(n => n.Status is not InvoiceStatus.Cancelled && n.Currency == currency)
+            .Sum(n => n.GrossTotal);
+
+        var recebido = _receipts
+            .Where(r => r.Status is not InvoiceStatus.Cancelled && r.Currency == currency)
+            .SelectMany(r => r.Lines)
+            .Sum(s => s.Amount);
+
+        return Task.FromResult(facturado - creditado - recebido);
+    }
+
+    public Task<decimal> SumNetInvoicedAsync(
+        DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
+        Task.FromResult(_invoices.Values
+            .Where(i => i.Status is not InvoiceStatus.Cancelled
+                && i.Currency == currency
+                && i.IssuedOn >= from
+                && i.IssuedOn <= to)
+            .Sum(i => i.NetTotal));
+
+    public Task<decimal> SumNetCreditedAsync(
+        DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
+        Task.FromResult(_creditNotes
+            .Where(n => n.Status is not InvoiceStatus.Cancelled
+                && n.Currency == currency
+                && n.IssuedOn >= from
+                && n.IssuedOn <= to)
+            .Sum(n => n.NetTotal));
+
+    public Task<IReadOnlyList<CustomerInvoicedTotal>> TopCustomersByInvoicedAsync(
+        DateOnly from, DateOnly to, string currency, int count, CancellationToken cancellationToken)
+    {
+        var topo = _invoices.Values
+            .Where(i => i.Status is not InvoiceStatus.Cancelled
+                && i.Currency == currency
+                && i.CustomerId is not null
+                && i.IssuedOn >= from
+                && i.IssuedOn <= to)
+            .GroupBy(i => i.CustomerId!.Value)
+            .Select(g => new CustomerInvoicedTotal(g.Key, g.Sum(i => i.NetTotal)))
+            .OrderByDescending(c => c.NetTotal)
+            .Take(count)
+            .ToList();
+
+        return Task.FromResult<IReadOnlyList<CustomerInvoicedTotal>>(topo);
+    }
+
     public Task<CreditNote?> FindCreditNoteAsync(Guid creditNoteId, CancellationToken cancellationToken) =>
         Task.FromResult(_creditNotes.FirstOrDefault(n => n.Id == creditNoteId));
 
@@ -279,6 +333,28 @@ internal sealed class FakePayablesStore : IPayablesStore
                 && r.Status is not PaymentRequestStatus.Cancelled)
             .Sum(r => r.Amount));
 
+    public Task<decimal> SumNetExpensesAsync(
+        DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
+        Task.FromResult(_invoices.Values
+            .Where(i => i.Status is not InvoiceStatus.Cancelled
+                && i.Currency == currency
+                && i.IssuedOn >= from
+                && i.IssuedOn <= to)
+            .Sum(i => i.NetTotal));
+
+    public Task<decimal> SumOutstandingPayablesAsync(string currency, CancellationToken cancellationToken)
+    {
+        var facturado = _invoices.Values
+            .Where(i => i.Status is not InvoiceStatus.Cancelled && i.Currency == currency)
+            .Sum(i => i.GrossTotal);
+
+        var pago = _requests.Values
+            .Where(r => r.Status is PaymentRequestStatus.Executed && r.Currency == currency)
+            .Sum(r => r.Amount);
+
+        return Task.FromResult(facturado - pago);
+    }
+
     public Task AddPaymentRequestAsync(PaymentRequest request, CancellationToken cancellationToken)
     {
         _requests[request.Id] = request;
@@ -403,10 +479,27 @@ internal sealed class FakePlanningStore : IPlanningStore
     }
 }
 
-internal sealed class FakeCustomerDirectory(CustomerReference? customer = null) : ICustomerDirectory
+internal sealed class FakeCustomerDirectory : ICustomerDirectory
 {
+    private readonly Dictionary<Guid, CustomerReference> _customers = [];
+
+    public FakeCustomerDirectory(CustomerReference? customer = null)
+    {
+        if (customer is not null)
+        {
+            _customers[customer.CustomerId] = customer;
+        }
+    }
+
+    /// <summary>Para os testes com mais de um cliente — o único construtor não chega.</summary>
+    public FakeCustomerDirectory With(CustomerReference customer)
+    {
+        _customers[customer.CustomerId] = customer;
+        return this;
+    }
+
     public Task<CustomerReference?> FindAsync(Guid customerId, CancellationToken cancellationToken) =>
-        Task.FromResult(customer is not null && customer.CustomerId == customerId ? customer : null);
+        Task.FromResult(_customers.GetValueOrDefault(customerId));
 }
 
 internal sealed class FakeSupplierDirectory(SupplierReference? supplier = null) : ISupplierDirectory

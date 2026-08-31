@@ -52,6 +52,10 @@ public static class FinanceModuleExtensions
         services.AddScoped<GetReceipt>();
         services.AddScoped<GetInvoiceBalance>();
 
+        // O contrato publicado de AR para composição (Fase 8, ADR-041) —
+        // primeiro consumidor previsto, o Dashboard Executivo.
+        services.AddScoped<IReceivablesOverview, ReceivablesOverview>();
+
         // Contas a Pagar e Tesouraria.
         services.AddScoped<IPayablesStore, PayablesStore>();
         services.AddScoped<OpenBankAccount>();
@@ -69,6 +73,9 @@ public static class FinanceModuleExtensions
         services.AddScoped<GetPaymentRequest>();
         services.AddScoped<CancelPaymentRequest>();
         services.AddScoped<ExecutePayment>();
+
+        // O contrato publicado de AP para composição (Fase 8, ADR-041).
+        services.AddScoped<IPayablesOverview, PayablesOverview>();
 
         // Contabilidade & Fecho.
         services.AddScoped<ILedgerStore, LedgerStore>();

@@ -941,6 +941,60 @@ decisão arquitectural já tinha sido tomada, isto foi aplicá-la.
 `verify-payables` (30, casos 5 a 7, a seguir ao que já cobria o número do
 fornecedor e o índice único).
 
+**2026-08-31 — `IReceivablesOverview` e `IPayablesOverview`, os
+contratos de leitura que a Fase 8 pediu.** O utilizador escolheu
+directamente avançar para aqui depois do Portal do Colaborador (ADR-042),
+fixando a ordem do resto da Fase 8: estes dois contratos são o
+pré-requisito do Dashboard Executivo, que continua por construir.
+
+`Rivo.Commercial.Contracts` já resolvia o que faltava do lado de
+`commercial` (`ICustomerDirectory`, para o nome do cliente) — a lacuna
+real era inteiramente de `finance`.
+
+- **`IReceivablesOverview`** (AR) — `GetNetRevenueAsync` (facturas menos
+  notas de crédito emitidas no período, valor líquido, não anulados),
+  `GetOutstandingReceivablesAsync` (saldo corrente, valor bruto),
+  `GetTopCustomersAsync` (por valor líquido facturado, nome resolvido pelo
+  contrato de `commercial`, Consumidor Final excluído do ranking).
+- **`IPayablesOverview`** (AP) — `GetNetExpensesAsync` (facturas de compra
+  registadas no período, valor líquido, não anuladas — mesmo regime de
+  compromisso da receita, para "lucro" não misturar regimes),
+  `GetOutstandingPayablesAsync` (saldo corrente, só desconta o
+  **executado**, diferente de `CommittedAsync` que também conta
+  pedidos ainda não pagos).
+
+**Separados um do outro**, mesma fronteira interna de `ISalesInvoiceStore`
+vs. `IPayablesStore` — "são dois contextos internos distintos, juntá-los
+daria uma interface que ninguém consegue implementar sem conhecer tudo"
+já valia para os stores, e passou a valer para os contratos publicados
+também. **Moeda sempre parâmetro explícito**, nunca somada entre moedas —
+mesma disciplina de `BudgetCheck` em `approval`. **Só saldos correntes**,
+nunca uma reconstrução a uma data passada — mesma fronteira que
+`GET /inventory/valuation` já tinha traçado (Fase 7).
+
+`ISalesInvoiceStore` ganhou `SumOutstandingAsync`, `SumNetInvoicedAsync`,
+`SumNetCreditedAsync`, `TopCustomersByInvoicedAsync` — agregações de base
+de dados, não um somatório por factura em memória (a mesma razão de
+`OutstandingAsync` evitar `join`, documentada ali, aplicada agora ao
+conjunto). `IPayablesStore` ganhou `SumNetExpensesAsync` e
+`SumOutstandingPayablesAsync`.
+
+**Só o desenho e os contratos ficam feitos — não há endpoint novo, nem
+suite de verificação end-to-end nova.** `IReceivablesOverview`/
+`IPayablesOverview` são consumidos por C#, sem consumidor real ainda (o
+Dashboard Executivo continua por construir) — mesma disciplina de não
+publicar superfície HTTP antes de haver quem a peça, já aplicada a
+`GET /inventory/valuation` quando nasceu.
+
+`Rivo.Finance.Application.Tests` cresceu de 119 para 133
+(`ReceivablesOverviewTests`, `PayablesOverviewTests`) — cobrindo período,
+moeda, facturas/notas anuladas fora da conta, ranking e limite de "top
+clientes", e a diferença entre pedido submetido e executado no saldo de
+Contas a Pagar. `verify-finance.ps1` (29/29) e `verify-payables.ps1`
+(30/30) confirmados sem regressão — as stores que mudaram são as mesmas
+que essas suites já exercitam. Detalhe completo do desenho em
+[modules/finance.md](../modules/finance.md).
+
 ## procurement
 
 _2026-08-27 — **os quatro agregados**. A cadeia pára no 3-way match._

@@ -519,6 +519,22 @@ por contrato publicado.
 > PGC só porque a Fase 8 está em curso; só se essa decisão bloquear
 > directamente algo que a Fase 8 precise. Ver
 > `domain/domain-map.md` §Read models, ADR-041 §Consequences e ADR-042.
+>
+> **Terceira, mesmo dia — os contratos de leitura de `finance`.** Primeiro
+> passo da ordem acima: sem eles, o Dashboard Executivo não tinha o que
+> compor. `Rivo.Commercial.Contracts` já resolvia o nome do cliente
+> (`ICustomerDirectory`) — a lacuna real era inteiramente do lado de
+> `finance`. `IReceivablesOverview` (receita líquida, saldo de Contas a
+> Receber, top clientes) e `IPayablesOverview` (despesa líquida, saldo de
+> Contas a Pagar) — separados um do outro, mesma fronteira interna de
+> `ISalesInvoiceStore`/`IPayablesStore`; moeda sempre explícita, nunca
+> somada entre moedas (mesma disciplina de `BudgetCheck`); só saldos
+> correntes, nunca reconstrução a uma data passada (mesma fronteira de
+> `GET /inventory/valuation`). Detalhe completo do desenho em
+> `modules/finance.md`. **Só os contratos — o Dashboard em si continua por
+> construir**, sem consumidor real ainda. 14 testes novos em
+> `Rivo.Finance.Application.Tests` (133 no total), sem regressão em
+> `verify-finance.ps1`/`verify-payables.ps1`.
 
 ---
 

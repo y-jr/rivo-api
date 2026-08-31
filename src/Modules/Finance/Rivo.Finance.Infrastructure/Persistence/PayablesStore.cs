@@ -167,6 +167,37 @@ public sealed class PayablesStore(FinanceDbContext context) : IPayablesStore
                 && r.Status != PaymentRequestStatus.Cancelled)
             .SumAsync(r => (decimal?)r.Amount, cancellationToken) ?? 0m;
 
+    public async Task<decimal> SumNetExpensesAsync(
+        DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
+        await context.PurchaseInvoices
+            .AsNoTracking()
+            .Where(i => i.Status == InvoiceStatus.Normal
+                && i.Currency == currency
+                && i.IssuedOn >= from
+                && i.IssuedOn <= to)
+            .SumAsync(i => (decimal?)i.NetTotal, cancellationToken) ?? 0m;
+
+    /// <summary>
+    /// Diferente de <see cref="CommittedAsync"/> de propósito: aqui só o
+    /// <strong>executado</strong> reduz o que falta pagar. Um pedido só
+    /// aceite ou submetido ainda não tirou dinheiro nenhum da conta — a
+    /// dívida ao fornecedor continua inteira até à execução.
+    /// </summary>
+    public async Task<decimal> SumOutstandingPayablesAsync(string currency, CancellationToken cancellationToken)
+    {
+        var facturado = await context.PurchaseInvoices
+            .AsNoTracking()
+            .Where(i => i.Status == InvoiceStatus.Normal && i.Currency == currency)
+            .SumAsync(i => (decimal?)i.GrossTotal, cancellationToken) ?? 0m;
+
+        var pago = await context.PaymentRequests
+            .AsNoTracking()
+            .Where(r => r.Status == PaymentRequestStatus.Executed && r.Currency == currency)
+            .SumAsync(r => (decimal?)r.Amount, cancellationToken) ?? 0m;
+
+        return facturado - pago;
+    }
+
     public async Task AddPaymentRequestAsync(PaymentRequest request, CancellationToken cancellationToken) =>
         await context.PaymentRequests.AddAsync(request, cancellationToken);
 

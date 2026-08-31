@@ -118,6 +118,67 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
         return factura.GrossTotal - creditado - recebido;
     }
 
+    /// <summary>
+    /// A mesma conta de <see cref="OutstandingAsync"/>, sobre o conjunto —
+    /// três agregações (facturado, creditado, recebido), mesma razão de
+    /// evitar `join` que a fica documentada ali.
+    /// </summary>
+    public async Task<decimal> SumOutstandingAsync(string currency, CancellationToken cancellationToken)
+    {
+        var facturado = await context.Invoices
+            .AsNoTracking()
+            .Where(i => i.Status == InvoiceStatus.Normal && i.Currency == currency)
+            .SumAsync(i => (decimal?)i.GrossTotal, cancellationToken) ?? 0m;
+
+        var creditado = await context.CreditNotes
+            .AsNoTracking()
+            .Where(n => n.Status == InvoiceStatus.Normal && n.Currency == currency)
+            .SumAsync(n => (decimal?)n.GrossTotal, cancellationToken) ?? 0m;
+
+        var recebido = await context.Receipts
+            .AsNoTracking()
+            .Where(r => r.Status == InvoiceStatus.Normal && r.Currency == currency)
+            .SelectMany(r => r.Lines)
+            .SumAsync(l => (decimal?)l.Amount, cancellationToken) ?? 0m;
+
+        return facturado - creditado - recebido;
+    }
+
+    public async Task<decimal> SumNetInvoicedAsync(
+        DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
+        await context.Invoices
+            .AsNoTracking()
+            .Where(i => i.Status == InvoiceStatus.Normal
+                && i.Currency == currency
+                && i.IssuedOn >= from
+                && i.IssuedOn <= to)
+            .SumAsync(i => (decimal?)i.NetTotal, cancellationToken) ?? 0m;
+
+    public async Task<decimal> SumNetCreditedAsync(
+        DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
+        await context.CreditNotes
+            .AsNoTracking()
+            .Where(n => n.Status == InvoiceStatus.Normal
+                && n.Currency == currency
+                && n.IssuedOn >= from
+                && n.IssuedOn <= to)
+            .SumAsync(n => (decimal?)n.NetTotal, cancellationToken) ?? 0m;
+
+    public async Task<IReadOnlyList<CustomerInvoicedTotal>> TopCustomersByInvoicedAsync(
+        DateOnly from, DateOnly to, string currency, int count, CancellationToken cancellationToken) =>
+        await context.Invoices
+            .AsNoTracking()
+            .Where(i => i.Status == InvoiceStatus.Normal
+                && i.Currency == currency
+                && i.CustomerId != null
+                && i.IssuedOn >= from
+                && i.IssuedOn <= to)
+            .GroupBy(i => i.CustomerId!.Value)
+            .Select(g => new CustomerInvoicedTotal(g.Key, g.Sum(i => i.NetTotal)))
+            .OrderByDescending(c => c.NetTotal)
+            .Take(count)
+            .ToListAsync(cancellationToken);
+
     public async Task<CreditNote?> FindCreditNoteAsync(Guid creditNoteId, CancellationToken cancellationToken) =>
         await context.CreditNotes
             .AsNoTracking()

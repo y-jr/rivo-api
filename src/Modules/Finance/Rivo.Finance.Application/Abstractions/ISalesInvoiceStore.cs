@@ -58,6 +58,37 @@ public interface ISalesInvoiceStore
     /// </summary>
     Task<decimal> OutstandingAsync(Guid invoiceId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// A mesma conta de <see cref="OutstandingAsync"/>, somada sobre todas as
+    /// facturas não anuladas nesta moeda — três agregações de base de dados
+    /// (facturado, creditado, recebido), não uma consulta por factura.
+    /// Primeiro consumidor: <c>IReceivablesOverview</c> (Fase 8, ADR-041).
+    /// </summary>
+    Task<decimal> SumOutstandingAsync(string currency, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Soma do valor líquido das facturas de venda emitidas no período,
+    /// nesta moeda, não anuladas.
+    /// </summary>
+    Task<decimal> SumNetInvoicedAsync(
+        DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Soma do valor líquido das notas de crédito emitidas no período,
+    /// nesta moeda, não anuladas.
+    /// </summary>
+    Task<decimal> SumNetCreditedAsync(
+        DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Os clientes (com <c>CustomerId</c> real — consumidor final fica de
+    /// fora) que mais facturaram no período, nesta moeda, por valor
+    /// líquido não anulado. Devolve só o identificador e o total: o nome
+    /// resolve-se pelo contrato de `commercial`, não se copia aqui.
+    /// </summary>
+    Task<IReadOnlyList<CustomerInvoicedTotal>> TopCustomersByInvoicedAsync(
+        DateOnly from, DateOnly to, string currency, int count, CancellationToken cancellationToken);
+
     Task<CreditNote?> FindCreditNoteAsync(Guid creditNoteId, CancellationToken cancellationToken);
 
     Task<CreditNote?> FindCreditNoteForUpdateAsync(Guid creditNoteId, CancellationToken cancellationToken);
@@ -82,3 +113,6 @@ public interface ISalesInvoiceStore
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
+
+/// <summary>Um cliente e o que facturou num período — sem o nome, que vem de `commercial`.</summary>
+public sealed record CustomerInvoicedTotal(Guid CustomerId, decimal NetTotal);
