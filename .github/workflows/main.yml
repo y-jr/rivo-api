@@ -54,6 +54,8 @@ jobs:
           # script de correr, e o deployment ficava verde a reconstruir código
           # antigo.
           script: |
+
+            git config --global --add safe.directory /opt/projects/***
             set -e
             cd /opt/projects/rivo
 
