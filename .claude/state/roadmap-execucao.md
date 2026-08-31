@@ -452,6 +452,20 @@ testes de arquitectura da Fase 0.
 > agregado, mesmo desenho de `EmployeeDocument` em `hr` (ADR-009). Nenhuma
 > pergunta de negócio ficou em aberto. `verify-fleet.ps1` cresceu de 38
 > para 50, confirmado 50/50.
+>
+> **Valorização de stock por custo médio ponderado em `inventory`, fechada
+> a 2026-08-31, mesmo dia — última decisão de negócio em aberto da Fase 7.**
+> O utilizador confirmou directamente: custo médio ponderado, sem fonte
+> fiscal a verificar (é escolha de gestão, não facto legal). `AverageCost`
+> é por item, recalculado só na Recepção; Saída, Ajuste e Transferência
+> congelam o custo corrente no próprio movimento, sem o alterar.
+> `GET /inventory/valuation?from=&to=` soma o valor movimentado num
+> período, deliberadamente sem reconstruir quantidade/valor num ponto no
+> tempo passado. `verify-inventory.ps1` cresceu de 60 para 66, confirmado
+> 66/66 na segunda corrida — a primeira apanhou um defeito real
+> (`averageCost` em falta na resposta da API de Transferência), corrigido
+> no mesmo dia. Fecha a Fase 7 de `inventory` por inteiro, sem nenhuma
+> pergunta de negócio por resolver.
 
 ---
 

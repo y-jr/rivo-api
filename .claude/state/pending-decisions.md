@@ -239,7 +239,14 @@ re-litigação:
       activo físico/operacional, `finance` do activo contabilístico, relação
       explícita e idealmente 1:1 quando é o mesmo bem. Nem todo item de
       `inventory` é Activo Fixo. Fecha o K1.
-- [ ] Método de valorização de stock (FIFO / custo médio ponderado / outro).
+- [x] ~~Método de valorização de stock (FIFO / custo médio ponderado /
+      outro)~~ — **confirmado pelo utilizador a 2026-08-31: custo médio
+      ponderado.** Mesma reserva das demais decisões de negócio directas ao
+      utilizador nesta lista — não há fonte fiscal a verificar aqui, é
+      escolha de gestão, não facto legal. Implementado no mesmo dia:
+      `InventoryItem.AverageCost`, recalculado só na Recepção; Saída, Ajuste
+      e Transferência congelam o custo corrente sem o alterar. Ver
+      `modules/inventory.md`.
 - [ ] Âmbito exacto de `payroll` — o cálculo salarial completo é in-scope?
 - [ ] Peças e consumíveis de frota: stock próprio de `fleet` ou itens de
       `inventory`?

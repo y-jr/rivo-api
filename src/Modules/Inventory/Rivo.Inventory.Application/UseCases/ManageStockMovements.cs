@@ -45,6 +45,7 @@ public sealed class RegisterReceipt(IInventoryItemStore store, IWarehouseStore w
         Guid itemId,
         Guid warehouseId,
         decimal quantity,
+        decimal unitCost,
         string? reason,
         DateOnly occurredOn,
         AuditContext context,
@@ -69,7 +70,7 @@ public sealed class RegisterReceipt(IInventoryItemStore store, IWarehouseStore w
 
         try
         {
-            movimento = item.RegisterReceipt(warehouseId, quantity, reason, occurredOn, clock.GetUtcNow());
+            movimento = item.RegisterReceipt(warehouseId, quantity, unitCost, reason, occurredOn, clock.GetUtcNow());
         }
         catch (ArgumentException error)
         {
@@ -88,10 +89,11 @@ public sealed class RegisterReceipt(IInventoryItemStore store, IWarehouseStore w
                 InventoryAuditEntityTypes.Movement,
                 movimento.Id.ToString(),
                 context,
-                NewValue: $$"""{"itemId":"{{itemId}}","warehouseId":"{{warehouseId}}","quantity":{{movimento.Quantity}},"quantityOnHand":{{item.QuantityOnHand}}}"""),
+                NewValue: $$"""{"itemId":"{{itemId}}","warehouseId":"{{warehouseId}}","quantity":{{movimento.Quantity}},"unitCost":{{unitCost}},"quantityOnHand":{{item.QuantityOnHand}},"averageCost":{{item.AverageCost}}}"""),
             cancellationToken);
 
-        return RegisterMovementResult.Success(movimento.Id, item.QuantityOnHand, item.QuantityOnHandAt(warehouseId));
+        return RegisterMovementResult.Success(
+            movimento.Id, item.QuantityOnHand, item.QuantityOnHandAt(warehouseId), item.AverageCost);
     }
 }
 
@@ -149,7 +151,8 @@ public sealed class RegisterIssue(IInventoryItemStore store, IWarehouseStore war
                 NewValue: $$"""{"itemId":"{{itemId}}","warehouseId":"{{warehouseId}}","quantity":{{movimento.Quantity}},"quantityOnHand":{{item.QuantityOnHand}}}"""),
             cancellationToken);
 
-        return RegisterMovementResult.Success(movimento.Id, item.QuantityOnHand, item.QuantityOnHandAt(warehouseId));
+        return RegisterMovementResult.Success(
+            movimento.Id, item.QuantityOnHand, item.QuantityOnHandAt(warehouseId), item.AverageCost);
     }
 }
 
@@ -206,7 +209,8 @@ public sealed class RegisterAdjustment(IInventoryItemStore store, IWarehouseStor
                 NewValue: $$"""{"itemId":"{{itemId}}","warehouseId":"{{warehouseId}}","quantity":{{movimento.Quantity}},"reason":"{{movimento.Reason}}","quantityOnHand":{{item.QuantityOnHand}}}"""),
             cancellationToken);
 
-        return RegisterMovementResult.Success(movimento.Id, item.QuantityOnHand, item.QuantityOnHandAt(warehouseId));
+        return RegisterMovementResult.Success(
+            movimento.Id, item.QuantityOnHand, item.QuantityOnHandAt(warehouseId), item.AverageCost);
     }
 }
 
@@ -277,24 +281,30 @@ public sealed class TransferStock(IInventoryItemStore store, IWarehouseStore war
             cancellationToken);
 
         return TransferResult.Success(
-            pernas.Out.Id, pernas.In.Id, item.QuantityOnHandAt(fromWarehouseId), item.QuantityOnHandAt(toWarehouseId));
+            pernas.Out.Id, pernas.In.Id, item.QuantityOnHandAt(fromWarehouseId), item.QuantityOnHandAt(toWarehouseId), item.AverageCost);
     }
 }
 
 public sealed record RegisterMovementResult(
-    RegisterMovementOutcome Outcome, Guid? MovementId, decimal? QuantityOnHand, decimal? QuantityAtWarehouse, string? Error)
+    RegisterMovementOutcome Outcome,
+    Guid? MovementId,
+    decimal? QuantityOnHand,
+    decimal? QuantityAtWarehouse,
+    decimal? AverageCost,
+    string? Error)
 {
-    public static RegisterMovementResult Success(Guid movementId, decimal quantityOnHand, decimal quantityAtWarehouse) =>
-        new(RegisterMovementOutcome.Registered, movementId, quantityOnHand, quantityAtWarehouse, null);
+    public static RegisterMovementResult Success(
+        Guid movementId, decimal quantityOnHand, decimal quantityAtWarehouse, decimal averageCost) =>
+        new(RegisterMovementOutcome.Registered, movementId, quantityOnHand, quantityAtWarehouse, averageCost, null);
 
     public static RegisterMovementResult NotFound(string error) =>
-        new(RegisterMovementOutcome.NotFound, null, null, null, error);
+        new(RegisterMovementOutcome.NotFound, null, null, null, null, error);
 
     public static RegisterMovementResult Rejected(string error) =>
-        new(RegisterMovementOutcome.Rejected, null, null, null, error);
+        new(RegisterMovementOutcome.Rejected, null, null, null, null, error);
 
     public static RegisterMovementResult Conflict(string error) =>
-        new(RegisterMovementOutcome.Conflict, null, null, null, error);
+        new(RegisterMovementOutcome.Conflict, null, null, null, null, error);
 }
 
 public enum RegisterMovementOutcome
@@ -315,20 +325,21 @@ public sealed record TransferResult(
     Guid? InMovementId,
     decimal? QuantityAtSource,
     decimal? QuantityAtDestination,
+    decimal? AverageCost,
     string? Error)
 {
     public static TransferResult Success(
-        Guid outMovementId, Guid inMovementId, decimal quantityAtSource, decimal quantityAtDestination) =>
-        new(TransferOutcome.Registered, outMovementId, inMovementId, quantityAtSource, quantityAtDestination, null);
+        Guid outMovementId, Guid inMovementId, decimal quantityAtSource, decimal quantityAtDestination, decimal averageCost) =>
+        new(TransferOutcome.Registered, outMovementId, inMovementId, quantityAtSource, quantityAtDestination, averageCost, null);
 
     public static TransferResult NotFound(string error) =>
-        new(TransferOutcome.NotFound, null, null, null, null, error);
+        new(TransferOutcome.NotFound, null, null, null, null, null, error);
 
     public static TransferResult Rejected(string error) =>
-        new(TransferOutcome.Rejected, null, null, null, null, error);
+        new(TransferOutcome.Rejected, null, null, null, null, null, error);
 
     public static TransferResult Conflict(string error) =>
-        new(TransferOutcome.Conflict, null, null, null, null, error);
+        new(TransferOutcome.Conflict, null, null, null, null, null, error);
 }
 
 public enum TransferOutcome

@@ -33,6 +33,8 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
             item.Property(i => i.Name).HasMaxLength(200).IsRequired();
             item.Property(i => i.Unit).HasMaxLength(20).IsRequired();
             item.Property(i => i.QuantityOnHand).HasPrecision(18, 4);
+            item.Property(i => i.AverageCost).HasPrecision(18, 4);
+            item.Ignore(i => i.TotalValue);
             item.Property(i => i.Status).HasConversion<string>().HasMaxLength(20);
 
             item.HasIndex(i => i.Sku).IsUnique();
@@ -57,6 +59,8 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
 
             movement.Property(m => m.Type).HasConversion<string>().HasMaxLength(20);
             movement.Property(m => m.Quantity).HasPrecision(18, 4);
+            movement.Property(m => m.UnitCost).HasPrecision(18, 4);
+            movement.Ignore(m => m.Value);
             movement.Property(m => m.Reason).HasMaxLength(500);
 
             movement.HasIndex(m => m.ItemId);

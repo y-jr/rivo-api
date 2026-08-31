@@ -37,7 +37,12 @@ se aplicável).
 ## Contratos publicados
 
 - Disponibilidade de item.
-- Valorização de stock por período.
+- **Valorização de stock por período** — implementada a 2026-08-31
+  (`GET /inventory/valuation?from=&to=`), mas ainda **não** como contrato de
+  leitura entre módulos (`IStockValuationProvider`-like): `finance` continua
+  sem a consumir por C#, só por HTTP se algum dia precisar. Publicar como
+  contrato fica para quando `finance` tiver mesmo um consumidor real —
+  mesma disciplina de não inventar direcção antes de haver quem a peça.
 
 ## Eventos
 
@@ -98,6 +103,14 @@ se aplicável).
 - Cancelar uma contagem aberta exige motivo, mesma disciplina de um Ajuste
   sem explicação. Uma contagem fechada é facto histórico (BR-14) — nunca se
   cancela nem aceita linha nova depois de fechada.
+- **2026-08-31 — custo médio ponderado** (decisão de negócio do utilizador,
+  sem fonte fiscal verificada para decidir por conta própria). `AverageCost`
+  é por item, nunca por armazém — o mesmo item vale o mesmo, esteja onde
+  estiver. **Recalculado só na Recepção**, o único movimento que traz custo
+  de compra novo; Saída, Ajuste e Transferência consomem ao custo médio
+  corrente, sem o alterar, e ficam com esse custo congelado no próprio
+  movimento (`StockMovement.UnitCost`, nunca recalculado depois). Custo
+  unitário zero é permitido (amostra, doação) — negativo não.
 
 ## Sobreposição conhecida — resolvida (ADR-039)
 
@@ -114,8 +127,7 @@ concreto da ligação (o campo, o sentido) fica por desenhar para quando
 
 ## Perguntas em aberto
 
-- Método de valorização (FIFO / custo médio ponderado / outro) — decisão de
-  negócio, não assumir por omissão.
+Nenhuma pergunta em aberto neste momento.
 
 ## Estado
 
@@ -142,10 +154,22 @@ gera um Ajuste por linha com variância — numa só transacção com o próprio
 fecho, tudo ou nada. Cancelar exige motivo; fechada é facto histórico
 (BR-14).
 
-64 testes de domínio (`Rivo.Inventory.Domain.Tests` — 34 do agregado Item,
-9 de `Warehouse`, 21 de `InventoryCount`); `scripts/verify-inventory.ps1` —
-**60/60 confirmados contra a stack local a 2026-08-31**, sem nenhuma falha,
-primeira corrida.
+**2026-08-31 — Valorização de stock por custo médio ponderado.** Decisão de
+negócio do utilizador ("Custo médio ponderado (Recomendado)"), sem fonte
+fiscal verificada para decidir por conta própria. `InventoryItem.AverageCost`
+recalculado só na Recepção; Saída/Ajuste/Transferência congelam o custo
+corrente no próprio `StockMovement.UnitCost`, sem o alterar.
+`GET /inventory/valuation?from=&to=` soma o `Value` (`Quantity × UnitCost`)
+dos movimentos no período — deliberadamente não reconstrói quantidade/valor
+num ponto no tempo passado, só o que se moveu na janela. *Retrofit* com
+backfill honesto a zero para movimentos e itens já existentes (sem custo de
+compra capturado antes desta migração).
 
-⚠ **Continua por fazer:** valorização de stock. Permissões atribuídas a
-`AssetManager`, que deixou de estar vazio a 2026-08-29.
+73 testes de domínio (`Rivo.Inventory.Domain.Tests` — 43 do agregado Item,
+9 de `Warehouse`, 21 de `InventoryCount`); `scripts/verify-inventory.ps1` —
+**66/66 confirmados contra a stack local a 2026-08-31**, sem nenhuma falha,
+segunda corrida (a primeira apanhou um defeito real: `averageCost` em falta
+na resposta da API de Transferência, corrigido).
+
+Permissões atribuídas a `AssetManager`, que deixou de estar vazio a
+2026-08-29.

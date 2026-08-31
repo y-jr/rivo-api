@@ -1764,5 +1764,54 @@ quantidade, devolvendo 404 em vez do 400 esperado — corrigido reutilizando
 o item real, que já tinha uma linha na contagem, o que de caminho prova que
 a validação de quantidade acontece antes da verificação de duplicado.
 
-**Continua por fazer:** valorização de stock.
+_2026-08-31 — **Valorização de stock por custo médio ponderado, mesmo dia —
+fecha a Fase 7 de `inventory` por inteiro.**_ Decisão de negócio do
+utilizador ("Custo médio ponderado (Recomendado)"), sem fonte fiscal
+verificada para decidir por conta própria — pergunta que ficava em aberto
+desde que `inventory` nasceu esqueleto.
+
+`InventoryItem` ganhou `AverageCost` (por item, nunca por armazém — o mesmo
+item vale o mesmo em qualquer armazém) e `TotalValue`/`ValueAt(warehouseId)`
+computados, nunca escritos. `StockMovement` ganhou `UnitCost` (congelado no
+próprio movimento, nunca recalculado depois) e `Value` (`Quantity × UnitCost`,
+assinado — negativo numa Saída, positivo numa Recepção).
+
+**`RegisterReceipt` é o único método que recalcula `AverageCost`** — é o
+único movimento que traz custo de compra novo:
+`AverageCost = (QuantityOnHand × AverageCost_antigo + quantity × unitCost) / (QuantityOnHand + quantity)`,
+depois de o movimento entrar. Auto-corrige-se sem caso especial quando o
+item estava a zero (esgotado e recebido de novo): `0 × qualquer coisa = 0`
+faz o novo custo tornar-se sozinho o custo médio — confirmado por um teste
+dedicado (`RegisterReceipt_AfterFullyDepleted_UsesOnlyNewCost`).
+`RegisterIssue`, `RegisterAdjustment` e `Transfer` passam `AverageCost`
+corrente para o movimento que criam, sem o alterar — snapshot, não
+recálculo. Custo unitário negativo é recusado (400); zero é permitido
+(amostra, doação).
+
+**`GET /inventory/valuation?from=&to=`** (novo use case,
+`GetStockValuationByPeriod`) soma `Value` de todos os movimentos de um item
+dentro da janela — "quanto valor se moveu neste período", deliberadamente
+**não** reconstrução de quantidade/valor num ponto no tempo passado (exigiria
+somar todos os movimentos até uma data arbitrária, um problema maior, sem
+consumidor real a pedi-lo agora). Janela invertida (`from > to`) recusada
+(400); janela vazia devolve zero, não erro.
+
+**Migração fez *backfill* honesto a zero**, mesmo padrão das anteriores desta
+sessão: `unit_cost` (`stock_movement`) e `average_cost` (`item`) nascem a
+zero para dados já existentes na base local — não há custo de compra
+capturado antes da migração, e zero é a leitura honesta de "sem dado", não
+um valor inventado. Documentado no próprio ficheiro da migração
+(`AddStockValuation`).
+
+`Rivo.Inventory.Domain.Tests` cresceu de 64 para 73 (nove casos novos sobre
+`AverageCost`: primeira recepção, recepções sucessivas, esgotar e receber de
+novo, custo negativo recusado, custo zero aceite, snapshot inalterado em
+Saída/Ajuste/Transferência). `scripts/verify-inventory.ps1` cresceu de 60
+para 66 casos e **confirmou 66/66 contra a stack local a 2026-08-31**, na
+segunda corrida — a primeira apanhou um defeito real: a resposta da API de
+Transferência esquecia `averageCost` (só o helper de Recepção/Saída/Ajuste o
+tinha), corrigido no mesmo dia.
+
+Fecha a Fase 7 de `inventory` por inteiro — nenhuma pergunta de negócio
+continua em aberto no módulo.
 

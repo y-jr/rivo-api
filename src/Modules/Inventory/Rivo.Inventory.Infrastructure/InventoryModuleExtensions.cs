@@ -10,8 +10,8 @@ namespace Rivo.Inventory.Infrastructure;
 
 /// <summary>
 /// Composição do módulo `inventory` — ver `modules/inventory.md`. Movimento
-/// tem regra de negócio própria desde 2026-08-30; Armazém, Transferência e
-/// Contagem desde 2026-08-31. Valorização de stock continua por fazer.
+/// tem regra de negócio própria desde 2026-08-30; Armazém, Transferência,
+/// Contagem e Valorização (custo médio ponderado) desde 2026-08-31.
 /// </summary>
 public static class InventoryModuleExtensions
 {
@@ -50,6 +50,7 @@ public static class InventoryModuleExtensions
         services.AddScoped<AddInventoryCountLine>();
         services.AddScoped<CloseInventoryCount>();
         services.AddScoped<CancelInventoryCount>();
+        services.AddScoped<GetStockValuationByPeriod>();
 
         services.AddAuthorization(options =>
         {

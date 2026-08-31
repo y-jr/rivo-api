@@ -8,8 +8,9 @@
 # ver `modules/inventory.md`). Armazém e Transferência entre armazéns desde
 # 2026-08-31 — retrofit: todo o movimento passou a exigir armazém, e
 # QuantityOnHand ganhou uma leitura por armazém além do total agregado.
-# Contagem (inventariação periódica, com geração de Ajuste no fecho) também
-# desde 2026-08-31. Valorização de stock continua por fazer.
+# Contagem (inventariação periódica, com geração de Ajuste no fecho) e
+# Valorização (custo médio ponderado, decisão de negócio do utilizador)
+# também desde 2026-08-31.
 #
 # Re-executável: cada corrida usa um SKU e códigos de armazém próprios,
 # derivados do carimbo temporal.
@@ -97,11 +98,13 @@ Test-Case "4. SKU normalizado em maiusculas; nasce sem movimentos" {
     "SKU '$($item.sku)', sem movimentos"
 }
 
-Test-Case "5. Quantidade em mao nasce a zero, sem armazens ainda" {
+Test-Case "5. Quantidade em mao e custo nascem a zero, sem armazens ainda" {
     $item = Invoke-RestMethod "$base/inventory/items/$($script:itemId)" -Headers $adminHeaders
     if ([decimal]$item.quantityOnHand -ne 0) { throw "quantidade nao nasceu a zero: $($item.quantityOnHand)" }
+    if ([decimal]$item.averageCost -ne 0) { throw "averageCost nao nasceu a zero: $($item.averageCost)" }
+    if ([decimal]$item.totalValue -ne 0) { throw "totalValue nao nasceu a zero: $($item.totalValue)" }
     if (@($item.quantitiesByWarehouse).Count -ne 0) { throw "quantitiesByWarehouse devia estar vazio" }
-    "quantityOnHand=0, sem repartição por armazém"
+    "quantityOnHand=0, averageCost=0, sem repartição por armazém"
 }
 
 Test-Case "6. SKU duplicado devolve 409 com o id do existente" {
@@ -160,39 +163,48 @@ Test-Case "12. Listar e obter armazem" {
     "listagem e leitura individual correctas"
 }
 
-# --- Movimento (agora exige armazem) --------------------------------------
+# --- Movimento (agora exige armazem e, na Recepção, custo unitario) --------
 
 Test-Case "13. Registar recepcao no armazem A" {
-    $body = @{ warehouseId = $script:warehouseAId; quantity = 20; reason = "Compra inicial"; occurredOn = "2026-09-01" } | ConvertTo-Json
+    $body = @{ warehouseId = $script:warehouseAId; quantity = 20; unitCost = 100; reason = "Compra inicial"; occurredOn = "2026-09-01" } | ConvertTo-Json
     $r = Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
     if (-not $r.movementId) { throw "sem movementId na resposta" }
     if ([decimal]$r.quantityOnHand -ne 20) { throw "quantityOnHand esperado 20, obtido $($r.quantityOnHand)" }
     if ([decimal]$r.quantityAtWarehouse -ne 20) { throw "quantityAtWarehouse esperado 20, obtido $($r.quantityAtWarehouse)" }
-    "recepcao de 20 no armazem A, quantityOnHand=20"
+    if ([decimal]$r.averageCost -ne 100) { throw "averageCost esperado 100 (primeira recepcao), obtido $($r.averageCost)" }
+    "recepcao de 20 a 100/un no armazem A, quantityOnHand=20, averageCost=100"
 }
 
 Test-Case "14. Recepcao com quantidade nao positiva e recusada" {
-    $body = @{ warehouseId = $script:warehouseAId; quantity = 0; reason = $null; occurredOn = "2026-09-01" } | ConvertTo-Json
+    $body = @{ warehouseId = $script:warehouseAId; quantity = 0; unitCost = 100; reason = $null; occurredOn = "2026-09-01" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 400) { throw "esperado 400, obtido $code" }
     "quantidade zero recusada"
 }
 
-Test-Case "15. Recepcao num armazem inexistente devolve 404" {
-    $body = @{ warehouseId = [guid]::NewGuid().ToString(); quantity = 1; reason = $null; occurredOn = "2026-09-01" } | ConvertTo-Json
+Test-Case "15. Recepcao com custo unitario negativo e recusada" {
+    $body = @{ warehouseId = $script:warehouseAId; quantity = 1; unitCost = -1; reason = $null; occurredOn = "2026-09-01" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "custo unitario negativo recusado"
+}
+
+Test-Case "16. Recepcao num armazem inexistente devolve 404" {
+    $body = @{ warehouseId = [guid]::NewGuid().ToString(); quantity = 1; unitCost = 100; reason = $null; occurredOn = "2026-09-01" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 404) { throw "esperado 404, obtido $code" }
     "armazem inexistente -- 404"
 }
 
-Test-Case "16. Registar saida no armazem A" {
+Test-Case "17. Registar saida no armazem A" {
     $body = @{ warehouseId = $script:warehouseAId; quantity = 5; reason = "Consumo interno"; occurredOn = "2026-09-02" } | ConvertTo-Json
     $r = Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/issues" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
     if ([decimal]$r.quantityOnHand -ne 15) { throw "quantityOnHand esperado 15, obtido $($r.quantityOnHand)" }
-    "saida de 5, quantityOnHand=15"
+    if ([decimal]$r.averageCost -ne 100) { throw "averageCost nao devia mudar numa saida, obtido $($r.averageCost)" }
+    "saida de 5, quantityOnHand=15, averageCost continua 100"
 }
 
-Test-Case "17. Saida maior que a quantidade nesse armazem e recusada" {
+Test-Case "18. Saida maior que a quantidade nesse armazem e recusada" {
     $body = @{ warehouseId = $script:warehouseAId; quantity = 100; reason = $null; occurredOn = "2026-09-02" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/issues" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
@@ -201,49 +213,49 @@ Test-Case "17. Saida maior que a quantidade nesse armazem e recusada" {
     "409 -- sem quantidade suficiente; quantityOnHand nao mudou"
 }
 
-Test-Case "18. Saida com quantidade nao positiva e recusada" {
+Test-Case "19. Saida com quantidade nao positiva e recusada" {
     $body = @{ warehouseId = $script:warehouseAId; quantity = -1; reason = $null; occurredOn = "2026-09-02" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/issues" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 400) { throw "esperado 400, obtido $code" }
     "quantidade negativa recusada"
 }
 
-Test-Case "19. Registar ajuste positivo no armazem A" {
+Test-Case "20. Registar ajuste positivo no armazem A" {
     $body = @{ warehouseId = $script:warehouseAId; quantityDelta = 3; reason = "Contagem fisica encontrou mais 3"; occurredOn = "2026-09-03" } | ConvertTo-Json
     $r = Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/adjustments" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
     if ([decimal]$r.quantityOnHand -ne 18) { throw "quantityOnHand esperado 18, obtido $($r.quantityOnHand)" }
     "ajuste +3, quantityOnHand=18"
 }
 
-Test-Case "20. Registar ajuste negativo no armazem A" {
+Test-Case "21. Registar ajuste negativo no armazem A" {
     $body = @{ warehouseId = $script:warehouseAId; quantityDelta = -4; reason = "Contagem fisica encontrou menos 4"; occurredOn = "2026-09-03" } | ConvertTo-Json
     $r = Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/adjustments" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
     if ([decimal]$r.quantityOnHand -ne 14) { throw "quantityOnHand esperado 14, obtido $($r.quantityOnHand)" }
     "ajuste -4, quantityOnHand=14"
 }
 
-Test-Case "21. Ajuste sem variacao e recusado" {
+Test-Case "22. Ajuste sem variacao e recusado" {
     $body = @{ warehouseId = $script:warehouseAId; quantityDelta = 0; reason = "Nada mudou"; occurredOn = "2026-09-03" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/adjustments" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 400) { throw "esperado 400, obtido $code" }
     "variacao zero recusada"
 }
 
-Test-Case "22. Ajuste sem motivo e recusado" {
+Test-Case "23. Ajuste sem motivo e recusado" {
     $body = @{ warehouseId = $script:warehouseAId; quantityDelta = 2; reason = ""; occurredOn = "2026-09-03" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/adjustments" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 400) { throw "esperado 400, obtido $code" }
     "ajuste sem motivo recusado -- uma correccao sem explicacao nao se aceita"
 }
 
-Test-Case "23. Ajuste que puxaria a quantidade nesse armazem para negativo e recusado" {
+Test-Case "24. Ajuste que puxaria a quantidade nesse armazem para negativo e recusado" {
     $body = @{ warehouseId = $script:warehouseAId; quantityDelta = -100; reason = "Contagem absurda"; occurredOn = "2026-09-03" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/adjustments" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "409 -- quantidade em mao nesse armazem nunca fica negativa"
 }
 
-Test-Case "24. Saida no armazem B e recusada mesmo havendo quantidade no armazem A" {
+Test-Case "25. Saida no armazem B e recusada mesmo havendo quantidade no armazem A" {
     # 14 no armazem A, 0 no armazem B -- nao se pode "emprestar" de outro
     # armazem numa saida. E exactamente o que o retrofit de Armazem existe
     # para impedir.
@@ -253,10 +265,10 @@ Test-Case "24. Saida no armazem B e recusada mesmo havendo quantidade no armazem
     "409 -- armazem B nao tem quantidade propria, apesar do total ser 14"
 }
 
-Test-Case "25. Movimento num armazem inactivo e recusado" {
+Test-Case "26. Movimento num armazem inactivo e recusado" {
     Invoke-RestMethod "$base/inventory/warehouses/$($script:warehouseBId)/status" -Method Post -Body (@{ active = $false } | ConvertTo-Json) -ContentType "application/json" -Headers $adminHeaders | Out-Null
 
-    $body = @{ warehouseId = $script:warehouseBId; quantity = 1; reason = $null; occurredOn = "2026-09-03" } | ConvertTo-Json
+    $body = @{ warehouseId = $script:warehouseBId; quantity = 1; unitCost = 100; reason = $null; occurredOn = "2026-09-03" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
 
@@ -267,40 +279,41 @@ Test-Case "25. Movimento num armazem inactivo e recusado" {
 
 # --- Transferencia ---------------------------------------------------------
 
-Test-Case "26. Transferencia atomica move quantidade entre armazens, sem alterar o total" {
+Test-Case "27. Transferencia atomica move quantidade entre armazens, sem alterar o total nem o custo medio" {
     $body = @{ fromWarehouseId = $script:warehouseAId; toWarehouseId = $script:warehouseBId; quantity = 6; reason = "Reorganizacao"; occurredOn = "2026-09-04" } | ConvertTo-Json
     $r = Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/transfers" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
     if (-not $r.outMovementId -or -not $r.inMovementId) { throw "sem outMovementId/inMovementId na resposta" }
     if ([decimal]$r.quantityAtSource -ne 8) { throw "quantityAtSource esperado 8, obtido $($r.quantityAtSource)" }
     if ([decimal]$r.quantityAtDestination -ne 6) { throw "quantityAtDestination esperado 6, obtido $($r.quantityAtDestination)" }
+    if ([decimal]$r.averageCost -ne 100) { throw "averageCost nao devia mudar numa transferencia, obtido $($r.averageCost)" }
 
     $item = Invoke-RestMethod "$base/inventory/items/$($script:itemId)" -Headers $adminHeaders
     if ([decimal]$item.quantityOnHand -ne 14) { throw "total agregado mudou com a transferencia: $($item.quantityOnHand)" }
-    "A=8, B=6, total continua 14"
+    "A=8, B=6, total continua 14, averageCost continua 100"
 }
 
-Test-Case "27. Transferencia maior que a quantidade na origem e recusada" {
+Test-Case "28. Transferencia maior que a quantidade na origem e recusada" {
     $body = @{ fromWarehouseId = $script:warehouseAId; toWarehouseId = $script:warehouseBId; quantity = 100; reason = $null; occurredOn = "2026-09-04" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/transfers" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "409 -- sem quantidade suficiente na origem"
 }
 
-Test-Case "28. Transferencia com armazem de origem igual ao de destino e recusada" {
+Test-Case "29. Transferencia com armazem de origem igual ao de destino e recusada" {
     $body = @{ fromWarehouseId = $script:warehouseAId; toWarehouseId = $script:warehouseAId; quantity = 1; reason = $null; occurredOn = "2026-09-04" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/transfers" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 400) { throw "esperado 400, obtido $code" }
     "400 -- origem e destino nao podem ser o mesmo armazem"
 }
 
-Test-Case "29. Transferencia com quantidade nao positiva e recusada" {
+Test-Case "30. Transferencia com quantidade nao positiva e recusada" {
     $body = @{ fromWarehouseId = $script:warehouseAId; toWarehouseId = $script:warehouseBId; quantity = 0; reason = $null; occurredOn = "2026-09-04" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/transfers" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 400) { throw "esperado 400, obtido $code" }
     "quantidade zero recusada"
 }
 
-Test-Case "30. Transferencia de/para armazem inexistente devolve 404" {
+Test-Case "31. Transferencia de/para armazem inexistente devolve 404" {
     $body = @{ fromWarehouseId = [guid]::NewGuid().ToString(); toWarehouseId = $script:warehouseBId; quantity = 1; reason = $null; occurredOn = "2026-09-04" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/transfers" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 404) { throw "esperado 404, obtido $code" }
@@ -309,7 +322,7 @@ Test-Case "30. Transferencia de/para armazem inexistente devolve 404" {
 
 # --- Invariantes -----------------------------------------------------------
 
-Test-Case "31. Quantidade em mao e sempre a soma assinada dos movimentos" {
+Test-Case "32. Quantidade em mao e sempre a soma assinada dos movimentos" {
     $item = Invoke-RestMethod "$base/inventory/items/$($script:itemId)" -Headers $adminHeaders
     $soma = Invoke-Sql "select sum(quantity) from inventory.stock_movement where item_id='$($script:itemId)'"
     if ([decimal]$soma -ne [decimal]$item.quantityOnHand) { throw "soma na BD ($soma) nao bate com quantityOnHand ($($item.quantityOnHand))" }
@@ -317,7 +330,7 @@ Test-Case "31. Quantidade em mao e sempre a soma assinada dos movimentos" {
     "soma dos movimentos = quantityOnHand = 14"
 }
 
-Test-Case "32. Quantidade por armazem bate com a soma dos movimentos desse armazem" {
+Test-Case "33. Quantidade por armazem bate com a soma dos movimentos desse armazem" {
     $somaA = Invoke-Sql "select sum(quantity) from inventory.stock_movement where item_id='$($script:itemId)' and warehouse_id='$($script:warehouseAId)'"
     $somaB = Invoke-Sql "select sum(quantity) from inventory.stock_movement where item_id='$($script:itemId)' and warehouse_id='$($script:warehouseBId)'"
     if ([decimal]$somaA -ne 8) { throw "armazem A esperado 8, obtido $somaA" }
@@ -328,10 +341,12 @@ Test-Case "32. Quantidade por armazem bate com a soma dos movimentos desse armaz
     $vistaB = $item.quantitiesByWarehouse | Where-Object { $_.warehouseId -eq $script:warehouseBId }
     if ([decimal]$vistaA.quantityOnHand -ne 8) { throw "vista do armazem A esperada 8, obtida $($vistaA.quantityOnHand)" }
     if ([decimal]$vistaB.quantityOnHand -ne 6) { throw "vista do armazem B esperada 6, obtida $($vistaB.quantityOnHand)" }
-    "A=8, B=6 -- BD e vista concordam"
+    if ([decimal]$vistaA.value -ne 800) { throw "valor do armazem A esperado 800, obtido $($vistaA.value)" }
+    if ([decimal]$vistaB.value -ne 600) { throw "valor do armazem B esperado 600, obtido $($vistaB.value)" }
+    "A=8, B=6 -- BD e vista concordam; valores 800 e 600 (a 100/un)"
 }
 
-Test-Case "33. Movimentos ficam na trilha, com actor" {
+Test-Case "34. Movimentos ficam na trilha, com actor" {
     $acoes = @("inventory.movement.receipt", "inventory.movement.issue", "inventory.movement.adjustment", "inventory.movement.transfer")
     foreach ($accao in $acoes) {
         $n = Invoke-Sql "select count(*) from audit.audit_event where action='$accao' and actor_id is not null"
@@ -340,7 +355,7 @@ Test-Case "33. Movimentos ficam na trilha, com actor" {
     "quatro tipos de evento de movimento auditados, todos com actor"
 }
 
-Test-Case "34. Registo e (des)activacao de armazem ficam na trilha, com actor" {
+Test-Case "35. Registo e (des)activacao de armazem ficam na trilha, com actor" {
     $acoes = @("inventory.warehouse.registered", "inventory.warehouse.deactivated", "inventory.warehouse.reactivated")
     foreach ($accao in $acoes) {
         $n = Invoke-Sql "select count(*) from audit.audit_event where action='$accao' and actor_id is not null"
@@ -351,9 +366,9 @@ Test-Case "34. Registo e (des)activacao de armazem ficam na trilha, com actor" {
 
 # --- Contagem --------------------------------------------------------------
 # Estado antes desta seccao: item activo, quantityOnHandAt(A)=8, at(B)=6,
-# quantityOnHand global=14 (herdado da transferencia do caso 26).
+# quantityOnHand global=14, averageCost=100 (herdado da recepcao do caso 13).
 
-Test-Case "35. Abrir contagem no armazem A" {
+Test-Case "36. Abrir contagem no armazem A" {
     $body = @{ warehouseId = $script:warehouseAId; occurredOn = "2026-09-05" } | ConvertTo-Json
     $r = Invoke-RestMethod "$base/inventory/counts" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
     if (-not $r.countId) { throw "sem countId na resposta" }
@@ -361,14 +376,14 @@ Test-Case "35. Abrir contagem no armazem A" {
     "contagem $($script:countId) aberta no armazem A"
 }
 
-Test-Case "36. Abrir contagem num armazem inexistente devolve 404" {
+Test-Case "37. Abrir contagem num armazem inexistente devolve 404" {
     $body = @{ warehouseId = [guid]::NewGuid().ToString(); occurredOn = "2026-09-05" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/counts" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 404) { throw "esperado 404, obtido $code" }
     "armazem inexistente -- 404"
 }
 
-Test-Case "37. Abrir contagem num armazem inactivo e recusado" {
+Test-Case "38. Abrir contagem num armazem inactivo e recusado" {
     Invoke-RestMethod "$base/inventory/warehouses/$($script:warehouseBId)/status" -Method Post -Body (@{ active = $false } | ConvertTo-Json) -ContentType "application/json" -Headers $adminHeaders | Out-Null
 
     $body = @{ warehouseId = $script:warehouseBId; occurredOn = "2026-09-05" } | ConvertTo-Json
@@ -379,7 +394,7 @@ Test-Case "37. Abrir contagem num armazem inactivo e recusado" {
     "409 -- armazem inactivo recusa contagem; reactivado para os casos seguintes"
 }
 
-Test-Case "38. Acrescentar linha contada" {
+Test-Case "39. Acrescentar linha contada" {
     $body = @{ itemId = $script:itemId; countedQuantity = 5 } | ConvertTo-Json
     $r = Invoke-RestMethod "$base/inventory/counts/$($script:countId)/lines" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
     if (-not $r.lineId) { throw "sem lineId na resposta" }
@@ -389,15 +404,15 @@ Test-Case "38. Acrescentar linha contada" {
     "esperado 8, contado 5, variancia -3"
 }
 
-Test-Case "39. Acrescentar o mesmo item outra vez na mesma contagem e recusado" {
+Test-Case "40. Acrescentar o mesmo item outra vez na mesma contagem e recusado" {
     $body = @{ itemId = $script:itemId; countedQuantity = 6 } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/counts/$($script:countId)/lines" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "409 -- nao se conta o mesmo item duas vezes na mesma sessao"
 }
 
-Test-Case "40. Linha com quantidade contada negativa e recusada" {
-    # Reutiliza o item ja contado no caso 38 -- a validacao da quantidade
+Test-Case "41. Linha com quantidade contada negativa e recusada" {
+    # Reutiliza o item ja contado no caso 39 -- a validacao da quantidade
     # acontece antes da verificacao de duplicado, por isso confirma
     # exactamente o 400 esperado, e nao um 409 por outro motivo.
     $body = @{ itemId = $script:itemId; countedQuantity = -1 } | ConvertTo-Json
@@ -406,21 +421,21 @@ Test-Case "40. Linha com quantidade contada negativa e recusada" {
     "quantidade negativa recusada"
 }
 
-Test-Case "41. Acrescentar linha numa contagem inexistente devolve 404" {
+Test-Case "42. Acrescentar linha numa contagem inexistente devolve 404" {
     $body = @{ itemId = $script:itemId; countedQuantity = 1 } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/counts/$([guid]::NewGuid())/lines" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 404) { throw "esperado 404, obtido $code" }
     "contagem inexistente -- 404"
 }
 
-Test-Case "42. Acrescentar linha de item inexistente devolve 404" {
+Test-Case "43. Acrescentar linha de item inexistente devolve 404" {
     $body = @{ itemId = [guid]::NewGuid().ToString(); countedQuantity = 1 } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/counts/$($script:countId)/lines" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 404) { throw "esperado 404, obtido $code" }
     "item inexistente -- 404"
 }
 
-Test-Case "43. Obter contagem mostra a linha, com esperado/contado/variancia" {
+Test-Case "44. Obter contagem mostra a linha, com esperado/contado/variancia" {
     $contagem = Invoke-RestMethod "$base/inventory/counts/$($script:countId)" -Headers $adminHeaders
     if (@($contagem.lines).Count -ne 1) { throw "esperada 1 linha, obtidas $(@($contagem.lines).Count)" }
     $linha = $contagem.lines[0]
@@ -429,7 +444,7 @@ Test-Case "43. Obter contagem mostra a linha, com esperado/contado/variancia" {
     "1 linha, item certo, variancia -3"
 }
 
-Test-Case "44. Fechar contagem sem nenhuma linha e recusado" {
+Test-Case "45. Fechar contagem sem nenhuma linha e recusado" {
     $body = @{ warehouseId = $script:warehouseAId; occurredOn = "2026-09-05" } | ConvertTo-Json
     $vazia = Invoke-RestMethod "$base/inventory/counts" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
 
@@ -438,7 +453,7 @@ Test-Case "44. Fechar contagem sem nenhuma linha e recusado" {
     "409 -- uma contagem sem linhas nao tem o que confirmar"
 }
 
-Test-Case "45. Fechar contagem com variancia gera ajuste, tudo na mesma transaccao" {
+Test-Case "46. Fechar contagem com variancia gera ajuste, tudo na mesma transaccao" {
     $r = Invoke-RestMethod "$base/inventory/counts/$($script:countId)/close" -Method Post -Headers $adminHeaders
     if (@($r.generatedAdjustmentIds).Count -ne 1) { throw "esperado 1 ajuste gerado, obtidos $(@($r.generatedAdjustmentIds).Count)" }
 
@@ -446,26 +461,27 @@ Test-Case "45. Fechar contagem com variancia gera ajuste, tudo na mesma transacc
     $vistaA = $item.quantitiesByWarehouse | Where-Object { $_.warehouseId -eq $script:warehouseAId }
     if ([decimal]$vistaA.quantityOnHand -ne 5) { throw "armazem A esperado 5 apos o ajuste, obtido $($vistaA.quantityOnHand)" }
     if ([decimal]$item.quantityOnHand -ne 11) { throw "quantityOnHand global esperado 11, obtido $($item.quantityOnHand)" }
+    if ([decimal]$item.averageCost -ne 100) { throw "averageCost nao devia mudar num ajuste, obtido $($item.averageCost)" }
 
     $contagem = Invoke-RestMethod "$base/inventory/counts/$($script:countId)" -Headers $adminHeaders
     if ($contagem.status -ne "Closed") { throw "estado esperado Closed, obtido $($contagem.status)" }
-    "1 ajuste gerado; armazem A passa a 5, total passa a 11"
+    "1 ajuste gerado; armazem A passa a 5, total passa a 11, averageCost continua 100"
 }
 
-Test-Case "46. Fechar a mesma contagem outra vez e recusado" {
+Test-Case "47. Fechar a mesma contagem outra vez e recusado" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/counts/$($script:countId)/close" -Method Post -Headers $adminHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "409 no segundo fecho"
 }
 
-Test-Case "47. Acrescentar linha numa contagem ja fechada e recusado" {
+Test-Case "48. Acrescentar linha numa contagem ja fechada e recusado" {
     $body = @{ itemId = $script:itemId; countedQuantity = 5 } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/counts/$($script:countId)/lines" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "409 -- contagem fechada nao aceita linha nova"
 }
 
-Test-Case "48. Cancelar uma contagem aberta, com motivo" {
+Test-Case "49. Cancelar uma contagem aberta, com motivo" {
     $body = @{ warehouseId = $script:warehouseAId; occurredOn = "2026-09-05" } | ConvertTo-Json
     $aberta = Invoke-RestMethod "$base/inventory/counts" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
     $script:cancelledCountId = $aberta.countId
@@ -479,7 +495,7 @@ Test-Case "48. Cancelar uma contagem aberta, com motivo" {
     "contagem cancelada, com motivo gravado"
 }
 
-Test-Case "49. Cancelar sem motivo e recusado" {
+Test-Case "50. Cancelar sem motivo e recusado" {
     $body = @{ warehouseId = $script:warehouseAId; occurredOn = "2026-09-05" } | ConvertTo-Json
     $outra = Invoke-RestMethod "$base/inventory/counts" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
 
@@ -489,27 +505,27 @@ Test-Case "49. Cancelar sem motivo e recusado" {
     "sem motivo recusado"
 }
 
-Test-Case "50. Cancelar uma contagem ja fechada e recusado" {
+Test-Case "51. Cancelar uma contagem ja fechada e recusado" {
     $cancelBody = @{ reason = "Tarde demais" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/counts/$($script:countId)/cancellation" -Method Post -Body $cancelBody -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "409 -- contagem fechada e facto historico"
 }
 
-Test-Case "51. Cancelar a mesma contagem cancelada outra vez e recusado" {
+Test-Case "52. Cancelar a mesma contagem cancelada outra vez e recusado" {
     $cancelBody = @{ reason = "Segundo motivo" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/counts/$($script:cancelledCountId)/cancellation" -Method Post -Body $cancelBody -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "409 no segundo cancelamento"
 }
 
-Test-Case "52. Listar contagens filtradas por armazem" {
+Test-Case "53. Listar contagens filtradas por armazem" {
     $todas = Invoke-RestMethod "$base/inventory/counts?warehouseId=$($script:warehouseAId)" -Headers $adminHeaders
     if ($todas.countId -notcontains $script:countId) { throw "contagem fechada nao aparece na listagem filtrada" }
     "listagem filtrada por armazem inclui a contagem fechada"
 }
 
-Test-Case "53. Nao ha eliminacao de contagem, e fica na trilha com actor" {
+Test-Case "54. Nao ha eliminacao de contagem, e fica na trilha com actor" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/counts/$($script:countId)" -Method Delete -Headers $adminHeaders }
     if ($code -ne 405 -and $code -ne 404) { throw "DELETE devia ser recusado, obtido $code" }
 
@@ -521,7 +537,58 @@ Test-Case "53. Nao ha eliminacao de contagem, e fica na trilha com actor" {
     "DELETE recusado ($code); quatro tipos de evento de contagem auditados, todos com actor"
 }
 
-Test-Case "54. Desactivar item esconde da listagem e recusa movimentos novos, includeInactive traz de volta" {
+# --- Valorização (custo médio ponderado) ------------------------------------
+# Estado antes desta seccao: item activo, quantityOnHandAt(A)=5, at(B)=6,
+# quantityOnHand global=11, averageCost=100 (herdado da recepcao do caso 13
+# -- nem Saida, Ajuste, Transferencia nem Contagem o alteraram).
+
+Test-Case "55. Segunda recepcao recalcula o custo medio ponderado" {
+    # (11 a 100 = 1100) + (9 a 300 = 2700) = 3800 / 20 = 190.
+    $body = @{ warehouseId = $script:warehouseAId; quantity = 9; unitCost = 300; reason = "Segunda compra, preco subiu"; occurredOn = "2026-09-06" } | ConvertTo-Json
+    $r = Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
+    if ([decimal]$r.quantityOnHand -ne 20) { throw "quantityOnHand esperado 20, obtido $($r.quantityOnHand)" }
+    if ([decimal]$r.averageCost -ne 190) { throw "averageCost esperado 190, obtido $($r.averageCost)" }
+
+    $item = Invoke-RestMethod "$base/inventory/items/$($script:itemId)" -Headers $adminHeaders
+    if ([decimal]$item.totalValue -ne 3800) { throw "totalValue esperado 3800, obtido $($item.totalValue)" }
+    "11 a 100 + 9 a 300 -- averageCost recalculado para 190, totalValue=3800"
+}
+
+Test-Case "56. Saida nao muda o custo medio, mas fica registada ao custo corrente" {
+    $body = @{ warehouseId = $script:warehouseAId; quantity = 4; reason = "Consumo apos a segunda compra"; occurredOn = "2026-09-06" } | ConvertTo-Json
+    $r = Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/issues" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
+    if ([decimal]$r.quantityOnHand -ne 16) { throw "quantityOnHand esperado 16, obtido $($r.quantityOnHand)" }
+    if ([decimal]$r.averageCost -ne 190) { throw "averageCost nao devia mudar, obtido $($r.averageCost)" }
+
+    $item = Invoke-RestMethod "$base/inventory/items/$($script:itemId)" -Headers $adminHeaders
+    $ultimo = $item.movements | Sort-Object recordedAt | Select-Object -Last 1
+    if ([decimal]$ultimo.unitCost -ne 190) { throw "unitCost do movimento esperado 190, obtido $($ultimo.unitCost)" }
+    if ([decimal]$ultimo.value -ne -760) { throw "value do movimento esperado -760, obtido $($ultimo.value)" }
+    "saida de 4 ao custo corrente (190); movimento vale -760"
+}
+
+Test-Case "57. Valorizacao por periodo soma o valor dos movimentos na janela" {
+    $entradas = Invoke-RestMethod "$base/inventory/valuation?from=2026-09-06&to=2026-09-06" -Headers $adminHeaders
+    $entrada = $entradas | Where-Object { $_.itemId -eq $script:itemId }
+    if (-not $entrada) { throw "item nao aparece na valorizacao do periodo" }
+    # Recepcao (+9 a 300 = 2700) e Saida (-4 a 190 = -760) -- 2700 - 760 = 1940.
+    if ([decimal]$entrada.periodValue -ne 1940) { throw "periodValue esperado 1940, obtido $($entrada.periodValue)" }
+    "periodo 2026-09-06: recepcao (+2700) e saida (-760) -- periodValue=1940"
+}
+
+Test-Case "58. Janela invertida na valorizacao e recusada" {
+    $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/valuation?from=2026-09-06&to=2026-09-01" -Headers $adminHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "data inicial depois da final -- 400"
+}
+
+Test-Case "59. Valorizacao exclui itens sem movimento na janela" {
+    $entradas = Invoke-RestMethod "$base/inventory/valuation?from=2027-01-01&to=2027-01-31" -Headers $adminHeaders
+    if (@($entradas | Where-Object { $_.itemId -eq $script:itemId }).Count -ne 0) { throw "item apareceu numa janela sem movimento nenhum" }
+    "janela sem movimento -- item nao aparece"
+}
+
+Test-Case "60. Desactivar item esconde da listagem e recusa movimentos novos, includeInactive traz de volta" {
     Invoke-RestMethod "$base/inventory/items/$($script:itemId)/status" -Method Post -Body (@{ active = $false } | ConvertTo-Json) -ContentType "application/json" -Headers $adminHeaders | Out-Null
 
     $activos = Invoke-RestMethod "$base/inventory/items" -Headers $adminHeaders
@@ -530,14 +597,14 @@ Test-Case "54. Desactivar item esconde da listagem e recusa movimentos novos, in
     $todos = Invoke-RestMethod "$base/inventory/items?includeInactive=true" -Headers $adminHeaders
     if ($todos.itemId -notcontains $script:itemId) { throw "item desactivado nao aparece com includeInactive" }
 
-    $body = @{ warehouseId = $script:warehouseAId; quantity = 1; reason = $null; occurredOn = "2026-09-05" } | ConvertTo-Json
+    $body = @{ warehouseId = $script:warehouseAId; quantity = 1; unitCost = 100; reason = $null; occurredOn = "2026-09-07" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/items/$($script:itemId)/movements/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 409) { throw "recepcao em item inactivo: esperado 409, obtido $code" }
 
     "desactivar filtra e recusa movimentos novos (409)"
 }
 
-Test-Case "55. Nao ha eliminacao de item nem de armazem" {
+Test-Case "61. Nao ha eliminacao de item nem de armazem" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/items/$($script:itemId)" -Method Delete -Headers $adminHeaders }
     if ($code -ne 405 -and $code -ne 404) { throw "DELETE de item devia ser recusado, obtido $code" }
     $existeItem = Invoke-Sql "select count(*) from inventory.item where id='$($script:itemId)'"
@@ -551,13 +618,13 @@ Test-Case "55. Nao ha eliminacao de item nem de armazem" {
     "DELETE recusado em item e armazem ($code); as linhas continuam la"
 }
 
-Test-Case "56. Registo e auditado, com actor" {
+Test-Case "62. Registo e auditado, com actor" {
     $n = Invoke-Sql "select count(*) from audit.audit_event where action='inventory.item.registered' and entity_id='$($script:itemId)' and actor_id is not null"
     if ($n -ne "1") { throw "registo nao auditado com actor" }
     "registo na trilha, com actor"
 }
 
-Test-Case "57. Autorizacao: sem token 401, sem perfil 403" {
+Test-Case "63. Autorizacao: sem token 401, sem perfil 403" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/inventory/items" }
     if ($code -ne 401) { throw "sem token: esperado 401, obtido $code" }
 
@@ -566,19 +633,19 @@ Test-Case "57. Autorizacao: sem token 401, sem perfil 403" {
     "401 e 403 correctos"
 }
 
-Test-Case "58. SKU e unico na base de dados" {
+Test-Case "64. SKU e unico na base de dados" {
     $dup = Invoke-Sql "select count(*) from (select sku from inventory.item group by sku having count(*)>1) d"
     if ($dup -ne "0") { throw "$dup SKUs repetidos" }
     "indice unico e a segunda linha; a verificacao no caso de uso e a primeira"
 }
 
-Test-Case "59. Codigo de armazem e unico na base de dados" {
+Test-Case "65. Codigo de armazem e unico na base de dados" {
     $dup = Invoke-Sql "select count(*) from (select code from inventory.warehouse group by code having count(*)>1) d"
     if ($dup -ne "0") { throw "$dup codigos repetidos" }
     "indice unico e a segunda linha; a verificacao no caso de uso e a primeira"
 }
 
-Test-Case "60. Dados sobrevivem ao reinicio da stack" {
+Test-Case "66. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
@@ -587,7 +654,8 @@ Test-Case "60. Dados sobrevivem ao reinicio da stack" {
     $item = Invoke-RestMethod "$base/inventory/items/$($script:itemId)" -Headers $adminHeaders
     if ($item.sku -ne $sku.ToUpperInvariant()) { throw "item perdido ou alterado" }
     if ($item.status -ne "Inactive") { throw "estado perdido apos restart: $($item.status)" }
-    if ([decimal]$item.quantityOnHand -ne 11) { throw "quantityOnHand perdido apos restart: $($item.quantityOnHand)" }
+    if ([decimal]$item.quantityOnHand -ne 16) { throw "quantityOnHand perdido apos restart: $($item.quantityOnHand)" }
+    if ([decimal]$item.averageCost -ne 190) { throw "averageCost perdido apos restart: $($item.averageCost)" }
 
     $armazem = Invoke-RestMethod "$base/inventory/warehouses/$($script:warehouseBId)" -Headers $adminHeaders
     if ($armazem.status -ne "Active") { throw "estado do armazem B perdido apos restart: $($armazem.status)" }
@@ -595,7 +663,7 @@ Test-Case "60. Dados sobrevivem ao reinicio da stack" {
     $contagem = Invoke-RestMethod "$base/inventory/counts/$($script:countId)" -Headers $adminHeaders
     if ($contagem.status -ne "Closed") { throw "estado da contagem perdido apos restart: $($contagem.status)" }
 
-    "item $sku, armazens e contagem intactos apos restart"
+    "item $sku, armazens, contagem e custo medio intactos apos restart"
 }
 
 Write-Host ""

@@ -24,6 +24,16 @@ namespace Rivo.Inventory.Domain;
 /// outro lado da mesma transferência, dando rastreabilidade sem precisar de
 /// um identificador de grupo à parte.
 /// </para>
+///
+/// <para>
+/// <strong>2026-08-31 — valorização por custo médio ponderado.</strong>
+/// <see cref="UnitCost"/> é o custo unitário aplicável a este movimento —
+/// congelado no momento em que nasce, nunca recalculado. Na Recepção é o
+/// custo de compra indicado por quem regista; nos restantes tipos é o
+/// <see cref="InventoryItem.AverageCost"/> corrente no momento (só a
+/// Recepção traz informação de custo nova). <see cref="Value"/> é a soma
+/// que este movimento representa, com o mesmo sinal de <see cref="Quantity"/>.
+/// </para>
 /// </summary>
 public sealed class StockMovement
 {
@@ -33,6 +43,7 @@ public sealed class StockMovement
         StockMovementType type,
         Guid warehouseId,
         decimal quantity,
+        decimal unitCost,
         string? reason,
         DateOnly occurredOn,
         DateTimeOffset recordedAt,
@@ -43,6 +54,7 @@ public sealed class StockMovement
         Type = type;
         WarehouseId = warehouseId;
         Quantity = quantity;
+        UnitCost = unitCost;
         Reason = reason;
         OccurredOn = occurredOn;
         RecordedAt = recordedAt;
@@ -83,6 +95,15 @@ public sealed class StockMovement
     /// zero) em <see cref="StockMovementType.Adjustment"/>.
     /// </summary>
     public decimal Quantity { get; private set; }
+
+    /// <summary>
+    /// Custo unitário aplicável a este movimento, congelado no momento em
+    /// que nasce — ver a nota de valorização acima.
+    /// </summary>
+    public decimal UnitCost { get; private set; }
+
+    /// <summary>A soma que este movimento representa — <see cref="Quantity"/> vezes <see cref="UnitCost"/>, com o mesmo sinal.</summary>
+    public decimal Value => Quantity * UnitCost;
 
     /// <summary>
     /// Obrigatório em <see cref="StockMovementType.Adjustment"/> — uma

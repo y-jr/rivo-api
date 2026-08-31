@@ -19,6 +19,8 @@ public class InventoryItemTests
         var item = Registado();
 
         Assert.Equal(0m, item.QuantityOnHand);
+        Assert.Equal(0m, item.AverageCost);
+        Assert.Equal(0m, item.TotalValue);
         Assert.Equal(InventoryItemStatus.Active, item.Status);
         Assert.Empty(item.Movements);
     }
@@ -38,7 +40,7 @@ public class InventoryItemTests
     {
         var item = Registado();
 
-        var movimento = item.RegisterReceipt(ArmazemA, 10m, "Compra inicial", Hoje, Agora);
+        var movimento = item.RegisterReceipt(ArmazemA, 10m, 100m, "Compra inicial", Hoje, Agora);
 
         Assert.Equal(10m, item.QuantityOnHand);
         Assert.Equal(10m, item.QuantityOnHandAt(ArmazemA));
@@ -54,8 +56,8 @@ public class InventoryItemTests
     {
         var item = Registado();
 
-        item.RegisterReceipt(ArmazemA, 10m, null, Hoje, Agora);
-        item.RegisterReceipt(ArmazemA, 5m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 5m, 100m, null, Hoje, Agora);
 
         Assert.Equal(15m, item.QuantityOnHand);
         Assert.Equal(2, item.Movements.Count);
@@ -68,7 +70,28 @@ public class InventoryItemTests
     {
         var item = Registado();
 
-        Assert.Throws<ArgumentException>(() => item.RegisterReceipt(ArmazemA, quantity, null, Hoje, Agora));
+        Assert.Throws<ArgumentException>(() => item.RegisterReceipt(ArmazemA, quantity, 100m, null, Hoje, Agora));
+    }
+
+    [Fact]
+    public void RegisterReceipt_NegativeUnitCost_Throws()
+    {
+        var item = Registado();
+
+        Assert.Throws<ArgumentException>(() => item.RegisterReceipt(ArmazemA, 10m, -1m, null, Hoje, Agora));
+    }
+
+    [Fact]
+    public void RegisterReceipt_ZeroUnitCost_IsAllowed()
+    {
+        // Uma amostra grátis ou doação é um caso de negócio válido — custo
+        // zero não é o mesmo que custo em falta.
+        var item = Registado();
+
+        var movimento = item.RegisterReceipt(ArmazemA, 10m, 0m, null, Hoje, Agora);
+
+        Assert.Equal(0m, movimento.UnitCost);
+        Assert.Equal(0m, item.AverageCost);
     }
 
     [Fact]
@@ -77,7 +100,7 @@ public class InventoryItemTests
         var item = Registado();
         item.Deactivate();
 
-        Assert.Throws<InvalidOperationException>(() => item.RegisterReceipt(ArmazemA, 10m, null, Hoje, Agora));
+        Assert.Throws<InvalidOperationException>(() => item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora));
     }
 
     [Fact]
@@ -85,7 +108,83 @@ public class InventoryItemTests
     {
         var item = Registado();
 
-        Assert.Throws<ArgumentException>(() => item.RegisterReceipt(Guid.Empty, 10m, null, Hoje, Agora));
+        Assert.Throws<ArgumentException>(() => item.RegisterReceipt(Guid.Empty, 10m, 100m, null, Hoje, Agora));
+    }
+
+    // --- Custo médio ponderado ---------------------------------------------
+
+    [Fact]
+    public void RegisterReceipt_FirstReceipt_AverageCostIsTheUnitCost()
+    {
+        var item = Registado();
+
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
+
+        Assert.Equal(100m, item.AverageCost);
+        Assert.Equal(1000m, item.TotalValue);
+    }
+
+    [Fact]
+    public void RegisterReceipt_SecondReceipt_RecomputesWeightedAverage()
+    {
+        var item = Registado();
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora); // 10 a 100 = 1000
+        item.RegisterReceipt(ArmazemA, 10m, 200m, null, Hoje, Agora); // +10 a 200 = 2000; total 3000/20
+
+        Assert.Equal(150m, item.AverageCost);
+        Assert.Equal(3000m, item.TotalValue);
+    }
+
+    [Fact]
+    public void RegisterIssue_DoesNotChangeAverageCost()
+    {
+        var item = Registado();
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
+
+        var movimento = item.RegisterIssue(ArmazemA, 4m, null, Hoje, Agora);
+
+        Assert.Equal(100m, item.AverageCost);
+        Assert.Equal(100m, movimento.UnitCost);
+        Assert.Equal(-400m, movimento.Value);
+    }
+
+    [Fact]
+    public void RegisterAdjustment_UsesCurrentAverageCostAsSnapshot()
+    {
+        var item = Registado();
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
+
+        var movimento = item.RegisterAdjustment(ArmazemA, 3m, "Contagem física encontrou mais 3", Hoje, Agora);
+
+        Assert.Equal(100m, item.AverageCost);
+        Assert.Equal(100m, movimento.UnitCost);
+        Assert.Equal(300m, movimento.Value);
+    }
+
+    [Fact]
+    public void RegisterReceipt_AfterFullyDepleted_UsesOnlyNewCost()
+    {
+        // Quando a quantidade em mão chega a zero, o novo custo não fica
+        // contaminado pelo custo médio antigo — a fórmula corrige-se sozinha
+        // porque a quantidade antes da nova recepção é zero.
+        var item = Registado();
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
+        item.RegisterIssue(ArmazemA, 10m, null, Hoje, Agora);
+
+        item.RegisterReceipt(ArmazemA, 5m, 50m, null, Hoje, Agora);
+
+        Assert.Equal(50m, item.AverageCost);
+    }
+
+    [Fact]
+    public void ValueAt_IsQuantityAtWarehouseTimesAverageCost()
+    {
+        var item = Registado();
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemB, 5m, 100m, null, Hoje, Agora);
+
+        Assert.Equal(1000m, item.ValueAt(ArmazemA));
+        Assert.Equal(500m, item.ValueAt(ArmazemB));
     }
 
     // --- Saída ---------------------------------------------------------
@@ -94,7 +193,7 @@ public class InventoryItemTests
     public void RegisterIssue_DecreasesQuantityOnHand()
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 10m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
 
         var movimento = item.RegisterIssue(ArmazemA, 4m, "Consumo interno", Hoje, Agora);
 
@@ -108,7 +207,7 @@ public class InventoryItemTests
     public void RegisterIssue_ExceedingQuantityOnHand_Throws()
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 5m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 5m, 100m, null, Hoje, Agora);
 
         Assert.Throws<InvalidOperationException>(() => item.RegisterIssue(ArmazemA, 6m, null, Hoje, Agora));
 
@@ -120,7 +219,7 @@ public class InventoryItemTests
     public void RegisterIssue_ExactlyAllOnHand_IsAllowed()
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 5m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 5m, 100m, null, Hoje, Agora);
 
         item.RegisterIssue(ArmazemA, 5m, null, Hoje, Agora);
 
@@ -133,7 +232,7 @@ public class InventoryItemTests
     public void RegisterIssue_NonPositiveQuantity_Throws(decimal quantity)
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 10m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
 
         Assert.Throws<ArgumentException>(() => item.RegisterIssue(ArmazemA, quantity, null, Hoje, Agora));
     }
@@ -142,7 +241,7 @@ public class InventoryItemTests
     public void RegisterIssue_OnInactiveItem_Throws()
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 10m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
         item.Deactivate();
 
         Assert.Throws<InvalidOperationException>(() => item.RegisterIssue(ArmazemA, 1m, null, Hoje, Agora));
@@ -152,7 +251,7 @@ public class InventoryItemTests
     public void RegisterIssue_EnoughStockGloballyButNotInThatWarehouse_Throws()
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 10m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
 
         // Há 10 no total (armazém A), mas nada no armazém B — não se pode
         // "emprestar" de outro armazém numa saída.
@@ -166,7 +265,7 @@ public class InventoryItemTests
     public void RegisterAdjustment_Positive_IncreasesQuantityOnHand()
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 10m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
 
         var movimento = item.RegisterAdjustment(ArmazemA, 3m, "Contagem física encontrou mais 3", Hoje, Agora);
 
@@ -179,7 +278,7 @@ public class InventoryItemTests
     public void RegisterAdjustment_Negative_DecreasesQuantityOnHand()
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 10m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
 
         item.RegisterAdjustment(ArmazemA, -4m, "Contagem física encontrou menos 4", Hoje, Agora);
 
@@ -208,7 +307,7 @@ public class InventoryItemTests
     public void RegisterAdjustment_BelowZero_Throws()
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 5m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 5m, 100m, null, Hoje, Agora);
 
         Assert.Throws<InvalidOperationException>(() => item.RegisterAdjustment(ArmazemA, -6m, "Contagem", Hoje, Agora));
 
@@ -228,8 +327,8 @@ public class InventoryItemTests
     public void RegisterAdjustment_BelowZeroInThatWarehouseEvenWithStockElsewhere_Throws()
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 10m, null, Hoje, Agora);
-        item.RegisterReceipt(ArmazemB, 2m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemB, 2m, 100m, null, Hoje, Agora);
 
         Assert.Throws<InvalidOperationException>(
             () => item.RegisterAdjustment(ArmazemB, -3m, "Contagem", Hoje, Agora));
@@ -241,7 +340,7 @@ public class InventoryItemTests
     public void Transfer_MovesQuantityBetweenWarehouses()
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 10m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
 
         var (saida, entrada) = item.Transfer(ArmazemA, ArmazemB, 4m, "Reorganização", Hoje, Agora);
 
@@ -261,7 +360,7 @@ public class InventoryItemTests
     public void Transfer_DoesNotChangeGlobalQuantityOnHand()
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 10m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
 
         item.Transfer(ArmazemA, ArmazemB, 4m, null, Hoje, Agora);
 
@@ -269,10 +368,24 @@ public class InventoryItemTests
     }
 
     [Fact]
+    public void Transfer_DoesNotChangeAverageCostOrTotalValue()
+    {
+        var item = Registado();
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
+
+        var (saida, entrada) = item.Transfer(ArmazemA, ArmazemB, 4m, null, Hoje, Agora);
+
+        Assert.Equal(100m, item.AverageCost);
+        Assert.Equal(1000m, item.TotalValue);
+        Assert.Equal(100m, saida.UnitCost);
+        Assert.Equal(100m, entrada.UnitCost);
+    }
+
+    [Fact]
     public void Transfer_IsAtomic_ProducesExactlyTwoMovements()
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 10m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
 
         item.Transfer(ArmazemA, ArmazemB, 4m, null, Hoje, Agora);
 
@@ -283,7 +396,7 @@ public class InventoryItemTests
     public void Transfer_ExceedingSourceQuantity_Throws()
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 5m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 5m, 100m, null, Hoje, Agora);
 
         Assert.Throws<InvalidOperationException>(() => item.Transfer(ArmazemA, ArmazemB, 6m, null, Hoje, Agora));
 
@@ -295,7 +408,7 @@ public class InventoryItemTests
     public void Transfer_SameWarehouseOnBothSides_Throws()
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 10m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
 
         Assert.Throws<ArgumentException>(() => item.Transfer(ArmazemA, ArmazemA, 4m, null, Hoje, Agora));
     }
@@ -306,7 +419,7 @@ public class InventoryItemTests
     public void Transfer_NonPositiveQuantity_Throws(decimal quantity)
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 10m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
 
         Assert.Throws<ArgumentException>(() => item.Transfer(ArmazemA, ArmazemB, quantity, null, Hoje, Agora));
     }
@@ -315,7 +428,7 @@ public class InventoryItemTests
     public void Transfer_OnInactiveItem_Throws()
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 10m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
         item.Deactivate();
 
         Assert.Throws<InvalidOperationException>(() => item.Transfer(ArmazemA, ArmazemB, 4m, null, Hoje, Agora));
@@ -325,7 +438,7 @@ public class InventoryItemTests
     public void Transfer_WithoutSourceWarehouse_Throws()
     {
         var item = Registado();
-        item.RegisterReceipt(ArmazemA, 10m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 10m, 100m, null, Hoje, Agora);
 
         Assert.Throws<ArgumentException>(() => item.Transfer(Guid.Empty, ArmazemB, 4m, null, Hoje, Agora));
     }
@@ -337,10 +450,10 @@ public class InventoryItemTests
     {
         var item = Registado();
 
-        item.RegisterReceipt(ArmazemA, 20m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 20m, 100m, null, Hoje, Agora);
         item.RegisterIssue(ArmazemA, 5m, null, Hoje, Agora);
         item.RegisterAdjustment(ArmazemA, -2m, "Contagem", Hoje, Agora);
-        item.RegisterReceipt(ArmazemA, 3m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 3m, 100m, null, Hoje, Agora);
 
         Assert.Equal(item.Movements.Sum(m => m.Quantity), item.QuantityOnHand);
         Assert.Equal(16m, item.QuantityOnHand);
@@ -351,8 +464,8 @@ public class InventoryItemTests
     {
         var item = Registado();
 
-        item.RegisterReceipt(ArmazemA, 20m, null, Hoje, Agora);
-        item.RegisterReceipt(ArmazemB, 5m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemA, 20m, 100m, null, Hoje, Agora);
+        item.RegisterReceipt(ArmazemB, 5m, 100m, null, Hoje, Agora);
         item.RegisterIssue(ArmazemA, 3m, null, Hoje, Agora);
 
         Assert.Equal(17m, item.QuantityOnHandAt(ArmazemA));

@@ -19,11 +19,13 @@ public sealed record InventoryItemView(
     string Name,
     string Unit,
     decimal QuantityOnHand,
+    decimal AverageCost,
+    decimal TotalValue,
     string Status,
     IReadOnlyList<WarehouseQuantityView> QuantitiesByWarehouse,
     IReadOnlyList<StockMovementView> Movements);
 
-public sealed record WarehouseQuantityView(Guid WarehouseId, decimal QuantityOnHand);
+public sealed record WarehouseQuantityView(Guid WarehouseId, decimal QuantityOnHand, decimal Value);
 
 public sealed record StockMovementView(
     Guid MovementId,
@@ -31,6 +33,8 @@ public sealed record StockMovementView(
     Guid WarehouseId,
     Guid? RelatedWarehouseId,
     decimal Quantity,
+    decimal UnitCost,
+    decimal Value,
     string? Reason,
     DateOnly OccurredOn,
     DateTimeOffset RecordedAt);
@@ -43,13 +47,16 @@ internal static class InventoryItemViews
         item.Name,
         item.Unit,
         item.QuantityOnHand,
+        item.AverageCost,
+        item.TotalValue,
         item.Status.ToString(),
         [.. item.Movements
             .GroupBy(m => m.WarehouseId)
-            .Select(g => new WarehouseQuantityView(g.Key, g.Sum(m => m.Quantity)))],
+            .Select(g => new WarehouseQuantityView(g.Key, g.Sum(m => m.Quantity), g.Sum(m => m.Quantity) * item.AverageCost))],
         [.. item.Movements.Select(m =>
             new StockMovementView(
-                m.Id, m.Type.ToString(), m.WarehouseId, m.RelatedWarehouseId, m.Quantity, m.Reason, m.OccurredOn, m.RecordedAt))]);
+                m.Id, m.Type.ToString(), m.WarehouseId, m.RelatedWarehouseId, m.Quantity, m.UnitCost, m.Value,
+                m.Reason, m.OccurredOn, m.RecordedAt))]);
 }
 
 public sealed class ListInventoryItems(IInventoryItemStore store)

@@ -9,7 +9,7 @@ namespace Rivo.Inventory.Domain;
 /// <see cref="RegisterAdjustment"/>, <see cref="Transfer"/>), e é a soma dos
 /// movimentos que define <see cref="QuantityOnHand"/> e
 /// <see cref="QuantityOnHandAt"/> — nunca o inverso, e nunca editável
-/// directamente. Contagem e valorização de stock continuam por fazer.
+/// directamente.
 /// </para>
 ///
 /// <para>
@@ -20,6 +20,17 @@ namespace Rivo.Inventory.Domain;
 /// conveniência de leitura; <see cref="QuantityOnHandAt"/> dá a quantidade
 /// por armazém. <see cref="Warehouse"/> é um agregado raiz próprio, referenciado
 /// só por identificador — nunca uma posse deste agregado.
+/// </para>
+///
+/// <para>
+/// <strong>2026-08-31 — custo médio ponderado.</strong> Decisão de negócio
+/// do utilizador (sem fonte fiscal verificada para decidir por conta
+/// própria, mesma disciplina de IRT/INSS): <see cref="AverageCost"/> é
+/// recalculado **só na Recepção** — o único movimento que traz informação
+/// de custo nova (uma compra). Saída, Ajuste e Transferência consomem ao
+/// custo médio corrente, sem o alterar — o valor "encontrado" ou
+/// "deslocado" não é uma compra nova. É por item, não por armazém: o
+/// mesmo item vale o mesmo, esteja onde estiver.
 /// </para>
 /// </summary>
 public sealed class InventoryItem
@@ -62,6 +73,15 @@ public sealed class InventoryItem
     /// </summary>
     public decimal QuantityOnHand { get; private set; }
 
+    /// <summary>
+    /// Custo médio ponderado por unidade, por item — nunca por armazém.
+    /// Recalculado só na Recepção; ver a nota de valorização acima.
+    /// </summary>
+    public decimal AverageCost { get; private set; }
+
+    /// <summary>O valor do que está em mão — <see cref="QuantityOnHand"/> vezes <see cref="AverageCost"/>.</summary>
+    public decimal TotalValue => QuantityOnHand * AverageCost;
+
     public InventoryItemStatus Status { get; private set; }
 
     public IReadOnlyList<StockMovement> Movements => _movements;
@@ -72,6 +92,9 @@ public sealed class InventoryItem
     /// <summary>Quantidade em mão num armazém concreto — soma assinada dos movimentos desse armazém.</summary>
     public decimal QuantityOnHandAt(Guid warehouseId) =>
         _movements.Where(m => m.WarehouseId == warehouseId).Sum(m => m.Quantity);
+
+    /// <summary>O valor em mão num armazém concreto — <see cref="QuantityOnHandAt"/> vezes <see cref="AverageCost"/> (que é do item, não do armazém).</summary>
+    public decimal ValueAt(Guid warehouseId) => QuantityOnHandAt(warehouseId) * AverageCost;
 
     public static InventoryItem Register(string sku, string name, string unit)
     {
@@ -105,9 +128,13 @@ public sealed class InventoryItem
         Status = InventoryItemStatus.Active;
     }
 
-    /// <summary>Entrada de mercadoria num armazém. Aumenta <see cref="QuantityOnHand"/> e a quantidade desse armazém.</summary>
+    /// <summary>
+    /// Entrada de mercadoria num armazém. Aumenta <see cref="QuantityOnHand"/>
+    /// e a quantidade desse armazém, e recalcula <see cref="AverageCost"/> —
+    /// é o único dos quatro movimentos que traz custo de compra novo.
+    /// </summary>
     public StockMovement RegisterReceipt(
-        Guid warehouseId, decimal quantity, string? reason, DateOnly occurredOn, DateTimeOffset recordedAt)
+        Guid warehouseId, decimal quantity, decimal unitCost, string? reason, DateOnly occurredOn, DateTimeOffset recordedAt)
     {
         EnsureActive("registar uma recepção");
         EnsureWarehouse(warehouseId);
@@ -117,7 +144,18 @@ public sealed class InventoryItem
             throw new ArgumentException("A quantidade recebida tem de ser positiva.", nameof(quantity));
         }
 
-        return AddMovement(StockMovementType.Receipt, warehouseId, quantity, reason, occurredOn, recordedAt);
+        if (unitCost < 0)
+        {
+            throw new ArgumentException("O custo unitário não pode ser negativo.", nameof(unitCost));
+        }
+
+        var valorAntes = QuantityOnHand * AverageCost;
+
+        var movimento = AddMovement(StockMovementType.Receipt, warehouseId, quantity, unitCost, reason, occurredOn, recordedAt);
+
+        AverageCost = QuantityOnHand > 0 ? (valorAntes + quantity * unitCost) / QuantityOnHand : 0m;
+
+        return movimento;
     }
 
     /// <summary>
@@ -149,7 +187,7 @@ public sealed class InventoryItem
                 $"Não há quantidade suficiente em mão nesse armazém: {disponivel} disponível, {quantity} pedido.");
         }
 
-        return AddMovement(StockMovementType.Issue, warehouseId, -quantity, reason, occurredOn, recordedAt);
+        return AddMovement(StockMovementType.Issue, warehouseId, -quantity, AverageCost, reason, occurredOn, recordedAt);
     }
 
     /// <summary>
@@ -181,7 +219,7 @@ public sealed class InventoryItem
                 $"Este ajuste puxaria a quantidade em mão desse armazém para negativo: {disponivel} corrigido por {quantityDelta}.");
         }
 
-        return AddMovement(StockMovementType.Adjustment, warehouseId, quantityDelta, reason.Trim(), occurredOn, recordedAt);
+        return AddMovement(StockMovementType.Adjustment, warehouseId, quantityDelta, AverageCost, reason.Trim(), occurredOn, recordedAt);
     }
 
     /// <summary>
@@ -225,9 +263,9 @@ public sealed class InventoryItem
         }
 
         var saida = AddMovement(
-            StockMovementType.TransferOut, fromWarehouseId, -quantity, reason, occurredOn, recordedAt, toWarehouseId);
+            StockMovementType.TransferOut, fromWarehouseId, -quantity, AverageCost, reason, occurredOn, recordedAt, toWarehouseId);
         var entrada = AddMovement(
-            StockMovementType.TransferIn, toWarehouseId, quantity, reason, occurredOn, recordedAt, fromWarehouseId);
+            StockMovementType.TransferIn, toWarehouseId, quantity, AverageCost, reason, occurredOn, recordedAt, fromWarehouseId);
 
         return (saida, entrada);
     }
@@ -236,13 +274,14 @@ public sealed class InventoryItem
         StockMovementType type,
         Guid warehouseId,
         decimal signedQuantity,
+        decimal unitCost,
         string? reason,
         DateOnly occurredOn,
         DateTimeOffset recordedAt,
         Guid? relatedWarehouseId = null)
     {
         var movimento = new StockMovement(
-            Guid.CreateVersion7(), Id, type, warehouseId, signedQuantity, reason, occurredOn, recordedAt, relatedWarehouseId);
+            Guid.CreateVersion7(), Id, type, warehouseId, signedQuantity, unitCost, reason, occurredOn, recordedAt, relatedWarehouseId);
 
         _movements.Add(movimento);
         QuantityOnHand += signedQuantity;

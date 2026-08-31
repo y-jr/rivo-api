@@ -72,6 +72,9 @@ public static class InventoryModuleEndpoints
         group.MapPost("/counts/{countId:guid}/cancellation", CancelCountAsync)
             .RequireAuthorization(InventoryPermissions.ItemsWrite);
 
+        group.MapGet("/valuation", GetValuationAsync)
+            .RequireAuthorization(InventoryPermissions.ItemsRead);
+
         return endpoints;
     }
 
@@ -132,12 +135,12 @@ public static class InventoryModuleEndpoints
 
     private static async Task<IResult> RegisterReceiptAsync(
         Guid itemId,
-        RegisterMovementRequest request,
+        RegisterReceiptRequest request,
         RegisterReceipt registerReceipt,
         HttpContext http,
         CancellationToken cancellationToken) =>
         MovementResult(await registerReceipt.ExecuteAsync(
-            itemId, request.WarehouseId, request.Quantity, request.Reason, request.OccurredOn,
+            itemId, request.WarehouseId, request.Quantity, request.UnitCost, request.Reason, request.OccurredOn,
             BuildAuditContext(http), cancellationToken),
             itemId, "recepcao");
 
@@ -184,6 +187,7 @@ public static class InventoryModuleEndpoints
                     inMovementId = result.InMovementId,
                     quantityAtSource = result.QuantityAtSource,
                     quantityAtDestination = result.QuantityAtDestination,
+                    averageCost = result.AverageCost,
                 }),
             TransferOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
             TransferOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
@@ -346,6 +350,21 @@ public static class InventoryModuleEndpoints
         };
     }
 
+    private static async Task<IResult> GetValuationAsync(
+        DateOnly from,
+        DateOnly to,
+        GetStockValuationByPeriod getValuation,
+        CancellationToken cancellationToken)
+    {
+        var result = await getValuation.ExecuteAsync(from, to, cancellationToken);
+
+        return result.Outcome switch
+        {
+            StockValuationOutcome.Computed => Results.Ok(result.Entries),
+            _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["janela"] = [result.Error!] }),
+        };
+    }
+
     private static IResult MovementResult(RegisterMovementResult result, Guid itemId, string campo) =>
         result.Outcome switch
         {
@@ -356,6 +375,7 @@ public static class InventoryModuleEndpoints
                     movementId = result.MovementId,
                     quantityOnHand = result.QuantityOnHand,
                     quantityAtWarehouse = result.QuantityAtWarehouse,
+                    averageCost = result.AverageCost,
                 }),
             RegisterMovementOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
             RegisterMovementOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
@@ -377,6 +397,8 @@ public static class InventoryModuleEndpoints
 public sealed record RegisterItemRequest(string Sku, string Name, string Unit);
 
 public sealed record SetItemStatusRequest(bool Active);
+
+public sealed record RegisterReceiptRequest(Guid WarehouseId, decimal Quantity, decimal UnitCost, string? Reason, DateOnly OccurredOn);
 
 public sealed record RegisterMovementRequest(Guid WarehouseId, decimal Quantity, string? Reason, DateOnly OccurredOn);
 
