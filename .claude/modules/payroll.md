@@ -102,10 +102,13 @@ ninguém as "corrija".
 - A folha só é executável após decisão "Aprovado" registada em `approval`
   (BR-1, BR-5).
 - Concorrência optimista na folha e nos seus itens (BR-17).
-- Retenção legal dos recibos — prazo conhecido por `payroll`, storage em
-  `documents` (BR-15). **Prazo ainda não fixado** — a ligação existe desde
-  2026-08-30, a retenção em si continua por decidir (ver "Perguntas em
-  aberto").
+- **Retenção legal dos recibos: 10 anos** — storage em `documents` (BR-15).
+  **Confirmado pelo utilizador a 2026-08-31, não fonte fiscal/laboral
+  primária** (ver "Perguntas em aberto"). **Só documentação, sem imposição
+  em código**: BR-14 já bloqueia eliminação física em todo o sistema —
+  nenhum módulo publica rota `DELETE` — por isso qualquer prazo de retenção
+  já está estruturalmente satisfeito sem mecanismo novo. Um campo explícito
+  ("retido até") ficaria por construir sem consumidor, e seria especulativo.
 - **Recibo só se anexa a um item de uma folha Aprovada** — inferência do
   domínio, não requisito confirmado em `docs/`: um recibo é prova do que foi
   autorizado, e os valores de um item podem mudar enquanto a folha está em
@@ -124,8 +127,11 @@ ninguém as "corrija".
   mesmo dia**: Alimentação e Transporte isentos até 30.000 Kz/mês cada,
   excesso tributado; Férias e Natal sem isenção. Mesma reserva de fonte das
   demais entradas — não é fiscalista nem texto legal primário.
-- Prazo de retenção legal do recibo (BR-15) — a ligação a `documents` existe,
-  o prazo em si não está fixado em lado nenhum.
+- ~~Prazo de retenção legal do recibo (BR-15)~~ — **confirmado pelo
+  utilizador a 2026-08-31: 10 anos.** Mesma reserva de fonte das demais
+  entradas — não é texto legal primário. Sem mecanismo de eliminação em
+  lado nenhum do sistema (BR-14), o prazo fica registado para o dia em que
+  houver arquivo/exportação a precisar dele.
 - "Só depois de Aprovada" (regra acima) é inferência desta sessão, não
   confirmada com o utilizador nem registada em `docs/`. Revisível se houver
   caso de uso real que precise de anexar antes (ex.: rascunho de recibo para

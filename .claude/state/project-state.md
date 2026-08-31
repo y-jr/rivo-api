@@ -306,7 +306,9 @@ dizer): FK real para `payroll.payroll_item(id)`, e por SQL entre schemas
 numa migração própria (`AddCrossSchemaDocumentForeignKey`, mesmo nome e
 desenho da versão de `hr`), para `documents.document(id)`. `documents`
 guarda o ficheiro e o hash; `payroll` guarda a categoria e sabe o que ela
-significa (BR-15, retenção legal — o prazo em si continua por fixar).
+significa (BR-15, retenção legal — **10 anos, confirmado pelo utilizador a
+2026-08-31**; só documentado, sem mecanismo novo — BR-14 já bloqueia
+eliminação física em todo o sistema, ver "Fechado" abaixo).
 
 **Upload e anexar continuam passos separados**, mesma disciplina de `hr`:
 upload exige `documents.write`, anexar exige `payroll.runs.write` porque
@@ -362,6 +364,20 @@ recusas de validação (subsídio negativo, soma acima do bruto), todas 400.
 **A trave de produção não muda**: o mecanismo está pronto e testado, a
 fonte dos valores continua o utilizador, não fiscalista nem texto legal
 primário.
+
+**Corrida completa (`verify-all.ps1`) confirmada a 2026-08-31, já com
+subsídios: 407/410** — as 3 falhas continuam a ser o mesmo K20, nas mesmas
+três suites de sempre (`verify-ledger`, `verify-payroll`,
+`verify-procurement`); zero regressão nova.
+
+**Fechado a 2026-08-31 (`payroll`: prazo de retenção do recibo, BR-15):**
+o utilizador confirmou directamente — **10 anos**, mesma reserva de fonte
+das entradas fiscais (não é texto legal primário). Registado só como
+documentação (`modules/payroll.md`, `pending-decisions.md`): BR-14 já
+bloqueia eliminação física em todo o sistema — nenhum módulo publica rota
+`DELETE` — por isso o prazo já está estruturalmente satisfeito sem
+mecanismo novo. Um campo explícito de "retido até" ficaria sem consumidor
+e seria especulativo.
 
 **Fechado a 2026-08-30 (`fleet`: Plano de Manutenção):** `Vehicle` ganhou um
 terceiro filho no agregado, `MaintenancePlan` — calendário preventivo,

@@ -259,8 +259,14 @@ re-litigação:
       registado em `docs/`**. Revisível se aparecer caso de uso real que
       precise de anexar antes (ex.: rascunho de recibo para conferência).
       Ver `modules/payroll.md`.
-- [ ] Prazo de retenção legal do recibo (BR-15, `payroll`) — a ligação a
-      `documents` existe desde 2026-08-30; o prazo em si não está fixado.
+- [x] ~~Prazo de retenção legal do recibo (BR-15, `payroll`)~~ —
+      **confirmado pelo utilizador a 2026-08-31: 10 anos.** Mesma reserva de
+      fonte das demais entradas fiscais — não é texto legal primário.
+      **Só documentado, sem código novo**: BR-14 já bloqueia eliminação
+      física em todo o sistema (nenhum módulo publica rota `DELETE`), por
+      isso o prazo já está estruturalmente satisfeito; um campo explícito
+      de "retido até" ficaria sem consumidor e seria especulativo. Ver
+      `modules/payroll.md`.
 
 ## Segurança
 

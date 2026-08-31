@@ -1246,6 +1246,14 @@ ponta (subsídios dentro do limiar — isenção total; acima do limiar —
 excesso tributado, Férias/Natal sem isenção) mais subsídio negativo e soma
 acima do bruto, ambos 400.
 
+_2026-08-31, mesmo dia — **prazo de retenção do recibo (BR-15): 10 anos.**_
+Última lacuna do Recibo (2026-08-30) fechada. Confirmado directamente pelo
+utilizador, mesma reserva de fonte das entradas fiscais. **Só documentação,
+sem código novo**: BR-14 já bloqueia eliminação física em todo o sistema —
+nenhum módulo publica rota `DELETE` — por isso o prazo já está
+estruturalmente satisfeito; um campo explícito de "retido até" ficaria sem
+consumidor e seria especulativo.
+
 ## projects
 
 `Project` (nome, datas, estado Active/Closed) nasceu esqueleto a 2026-08-29 —
