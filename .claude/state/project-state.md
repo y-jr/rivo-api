@@ -95,11 +95,11 @@ superfície inteira é legível por quem estiver a ouvir.
 
 | Área | Estado |
 |---|---|
-| Código | 14 módulos, 70 projectos em `src/`, 364 ficheiros `.cs` |
-| Superfície HTTP | 213 endpoints em 14 grupos de rota, mais `/health` |
-| ADRs | 40, aceites |
-| Testes | **967** em 19 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). A 2026-08-30, `Rivo.Projects.Domain.Tests` cresceu de 29 (Marco e Tarefa) para 39 (+ Orçamento), `Rivo.Fleet.Domain.Tests` de 25 para 42 (+ Plano de Manutenção), nasceu `Rivo.Inventory.Domain.Tests` com 21 (Movimento), `Rivo.Fiscal.Domain.Tests` cresceu de 18 para 39 (+ `IncomeTaxSchedule`) e nasceu `Rivo.Payroll.Domain.Tests` com 16 (`ApplyCalculation` e o ciclo da folha), depois 22 (+ `PayrollItemDocument`, o Recibo). A 2026-08-31, `Rivo.Fiscal.Domain.Tests` cresceu de 39 para 50 (+ `SubsidyExemptionSchedule`), `Rivo.Payroll.Domain.Tests` de 22 para 30 (+ `PayrollItemAllowanceTests`, os subsídios), `Rivo.Projects.Domain.Tests` de 39 para 55 (+ `ProjectResourceAllocationTests`, a Alocação de Recursos), `Rivo.Inventory.Domain.Tests` de 21 para 43 (+ `WarehouseTests` e o retrofit de `WarehouseId`/`Transfer` em `InventoryItemTests`), depois 64 (+ `InventoryCountTests`, a Contagem), depois 73 (+ nove casos de `AverageCost`, a Valorização), e `Rivo.Fleet.Domain.Tests` de 42 para 63 (+ Viagem/Despesa no agregado Viatura, + `VehicleDocumentTests`) |
-| Verificação end-to-end | **17 suites** PowerShell, **473 casos** — a 2026-08-30, `verify-projects` cresceu de 14 para 33 (+ Orçamento), `verify-fleet` de 15 para 38 (+ Plano de Manutenção), `verify-inventory` de 13 para 25 (Movimento), `verify-fiscal` de 12 para 20 (+ motor de IRT/INSS) e `verify-payroll` de 5 para 17 (cálculo real), depois 22 (+ Recibo, mesmo dia). A 2026-08-31, `verify-fiscal` cresceu de 20 para 23 (+ limiares de subsídio), `verify-payroll` de 22 para 26 (+ dois cenários de subsídio ponta a ponta), `verify-projects` de 33 para 43 (+ Alocação de Recursos, confirmado 43/43), `verify-inventory` de 25 para 41 (+ Armazém e Transferência, confirmado 41/41), depois de 41 para 60 (+ Contagem, confirmado 60/60), depois de 60 para 66 (+ Valorização, confirmado 66/66 na segunda corrida), e `verify-fleet` de 38 para 50 (+ Registo de Viagem, Despesa de Frota e Seguros, confirmado 50/50). **Corrida completa (`verify-all.ps1`) confirmada a 2026-08-31 (antes de Registo de Viagem/Despesa/Seguros): 452/455** — as 3 falhas são todas o mesmo K20 (limpeza de política, sem causa de código), em `verify-ledger`, `verify-payroll` e `verify-procurement`; zero regressão nova. A primeira ronda de `verify-fleet` (26 casos) apanhou dois defeitos reais (400 em vez de 409); a primeira ronda do motor de IRT/INSS apanhou um terceiro (`TaxKind` sem entrada no `switch` de tradução, 500 em vez de determinar); a primeira ronda dos subsídios apanhou um quarto, só visível ao subir a stack — migração de EF esquecida (`PendingModelChangesWarning` fatal no arranque). O Recibo, a Alocação de Recursos e o Armazém/Transferência, sozinhos, não apanharam nenhum defeito de aplicação — só erros na própria suite (contagem de eventos auditados na Alocação; `itemId` aleatório em vez do item real num caso da Contagem, que mascarava 404 por 400). Registo de Viagem/Despesa/Seguros apanhou um defeito real, só visível nos testes de arquitectura: `VehicleDocument` sem a isenção documentada do contador de concorrência (K14/ADR-019) — corrigida antes de subir a stack. Valorização apanhou um quinto defeito real, na resposta da API de Transferência (`averageCost` em falta) — corrigido, confirmado na segunda corrida |
+| Código | 14 módulos + 1 camada de composição (`Rivo.Settings`, ADR-041), 73 projectos em `src/`, 368 ficheiros `.cs` |
+| Superfície HTTP | 214 endpoints em 15 grupos de rota, mais `/health` |
+| ADRs | 41, aceites |
+| Testes | **971** em 20 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). A 2026-08-30, `Rivo.Projects.Domain.Tests` cresceu de 29 (Marco e Tarefa) para 39 (+ Orçamento), `Rivo.Fleet.Domain.Tests` de 25 para 42 (+ Plano de Manutenção), nasceu `Rivo.Inventory.Domain.Tests` com 21 (Movimento), `Rivo.Fiscal.Domain.Tests` cresceu de 18 para 39 (+ `IncomeTaxSchedule`) e nasceu `Rivo.Payroll.Domain.Tests` com 16 (`ApplyCalculation` e o ciclo da folha), depois 22 (+ `PayrollItemDocument`, o Recibo). A 2026-08-31, `Rivo.Fiscal.Domain.Tests` cresceu de 39 para 50 (+ `SubsidyExemptionSchedule`), `Rivo.Payroll.Domain.Tests` de 22 para 30 (+ `PayrollItemAllowanceTests`, os subsídios), `Rivo.Projects.Domain.Tests` de 39 para 55 (+ `ProjectResourceAllocationTests`, a Alocação de Recursos), `Rivo.Inventory.Domain.Tests` de 21 para 43 (+ `WarehouseTests` e o retrofit de `WarehouseId`/`Transfer` em `InventoryItemTests`), depois 64 (+ `InventoryCountTests`, a Contagem), depois 73 (+ nove casos de `AverageCost`, a Valorização), e `Rivo.Fleet.Domain.Tests` de 42 para 63 (+ Viagem/Despesa no agregado Viatura, + `VehicleDocumentTests`). Nasceu `Rivo.Settings.Application.Tests` com 4 (ADR-041, Fase 8) |
+| Verificação end-to-end | **18 suites** PowerShell, **480 casos** — a 2026-08-30, `verify-projects` cresceu de 14 para 33 (+ Orçamento), `verify-fleet` de 15 para 38 (+ Plano de Manutenção), `verify-inventory` de 13 para 25 (Movimento), `verify-fiscal` de 12 para 20 (+ motor de IRT/INSS) e `verify-payroll` de 5 para 17 (cálculo real), depois 22 (+ Recibo, mesmo dia). A 2026-08-31, `verify-fiscal` cresceu de 20 para 23 (+ limiares de subsídio), `verify-payroll` de 22 para 26 (+ dois cenários de subsídio ponta a ponta), `verify-projects` de 33 para 43 (+ Alocação de Recursos, confirmado 43/43), `verify-inventory` de 25 para 41 (+ Armazém e Transferência, confirmado 41/41), depois de 41 para 60 (+ Contagem, confirmado 60/60), depois de 60 para 66 (+ Valorização, confirmado 66/66 na segunda corrida), e `verify-fleet` de 38 para 50 (+ Registo de Viagem, Despesa de Frota e Seguros, confirmado 50/50). Nasceu `verify-settings` com 7 casos (ADR-041, Fase 8), confirmado 7/7 na primeira corrida. **Corrida completa (`verify-all.ps1`) confirmada a 2026-08-31, já com Fase 8: 477/480** — as 3 falhas continuam a ser o mesmo K20 (limpeza de política, sem causa de código), nas mesmas três suites de sempre (`verify-ledger`, `verify-payroll`, `verify-procurement`); zero regressão nova, `verify-settings` incluído sem falha. A primeira ronda de `verify-fleet` (26 casos) apanhou dois defeitos reais (400 em vez de 409); a primeira ronda do motor de IRT/INSS apanhou um terceiro (`TaxKind` sem entrada no `switch` de tradução, 500 em vez de determinar); a primeira ronda dos subsídios apanhou um quarto, só visível ao subir a stack — migração de EF esquecida (`PendingModelChangesWarning` fatal no arranque). O Recibo, a Alocação de Recursos e o Armazém/Transferência, sozinhos, não apanharam nenhum defeito de aplicação — só erros na própria suite (contagem de eventos auditados na Alocação; `itemId` aleatório em vez do item real num caso da Contagem, que mascarava 404 por 400). Registo de Viagem/Despesa/Seguros apanhou um defeito real, só visível nos testes de arquitectura: `VehicleDocument` sem a isenção documentada do contador de concorrência (K14/ADR-019) — corrigida antes de subir a stack. Valorização apanhou um quinto defeito real, na resposta da API de Transferência (`averageCost` em falta) — corrigido, confirmado na segunda corrida |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
@@ -231,6 +231,11 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
    Fase 7 de `inventory` por inteiro, e com ela a Fase 7 inteira sem nenhuma
    pergunta de negócio por resolver. Ver o "Seguimento" em cada
    `modules/*.md`.
+9. **A Fase 8 arrancou no mesmo dia, 2026-08-31** — Configurações &
+   Administração, a primeira das cinco camadas de composição. Sem forma de
+   código nenhuma antes disto; ADR-041 fixou o padrão (`Application` + `Api`,
+   sem Domain nem Infrastructure, em `src/Composition/`) e `Rivo.Settings` é
+   a primeira aplicação concreta. Ver "Fechado" abaixo.
 
 **Fechado a 2026-08-30 (payroll: os dois pontos de IRT/INSS que bloqueavam
 produção):** o utilizador confirmou, depois de reafirmar mais cedo no mesmo
@@ -546,6 +551,55 @@ apanhou um defeito real: a resposta da API de Transferência esquecia
 `averageCost` (só o helper de Recepção/Saída/Ajuste o tinha), corrigido no
 mesmo dia. Fecha a Fase 7 de `inventory` por inteiro, sem nenhuma pergunta
 de negócio por resolver. Detalhe em [modules/inventory.md](../modules/inventory.md).
+
+**Fase 8 iniciada a 2026-08-31 — Configurações & Administração
+(`Rivo.Settings`), primeira camada de composição a ganhar código:**
+`domain/domain-map.md` §Read models e `docs/rivo-arquitetura-global-v1.md`
+§1.4 já resolviam em prosa que Dashboard, Portais, Configurações e
+Analytics não são bounded contexts — faltava a forma concreta.
+
+**ADR-041 fixa o padrão**, para as outras quatro áreas seguirem sem reabrir
+o desenho: `Application` + `Api`, sem Domain nem Infrastructure, sem base
+de dados própria; vive em `src/Composition/<Nome>/`, não `src/Modules/`;
+depende de outros módulos só pelos seus contratos, exactamente a mesma
+regra de sempre; regista-se no host como qualquer módulo
+(`AddXModule`/`MapXModule`).
+
+`Rivo.Settings` compõe dois contratos num único `GET /settings/overview`:
+
+- **`IAccessProfileCatalogue`** de `identity` — primeiro consumidor externo
+  de `identity`, desde sempre. `Rivo.Identity.Contracts` nasceu para isto —
+  até este dia, `identity` era o único módulo implementado sem assembly de
+  `Contracts` (ADR-017: "criado quando o módulo tem consumidor"). O
+  catálogo de permissões (`Permissions`) mudou-se para lá como
+  `IdentityPermissions`, mesmo lugar de `HrPermissions` e todos os outros —
+  refactor mecânico em seis ficheiros, sem alterar comportamento nenhum.
+- **`IApprovalPolicyCatalogue`** de `approval` — segundo contrato de
+  leitura do módulo, devolve um resumo por política (processo,
+  activa/inactiva, nº de passos, se exige verificação orçamental), não os
+  passos nem os aprovadores.
+
+A vista agrupa as regras de aprovação pelo prefixo do `processType` e
+ordena tudo por nome. **Uma política desactivada continua a aparecer, com
+`isActive:false`** — mesma disciplina de "não se elimina, desactiva-se"
+(BR-14), aplicada agora a uma vista de leitura. **Admin-only sem permissão
+nova**: as duas permissões que a vista soma já só pertenciam a `Admin`.
+
+`Rivo.Architecture.Tests` ajustado: `ProjectReferenceTests` ganhou uma
+excepção nomeada (`CamadasDeComposicao`) para a asserção que assumia Domain
+em todo o módulo declarado — uma camada de composição não tem, por
+desenho. 21/21, sem regressão.
+
+`Rivo.Settings.Application.Tests` (novo, 4 casos, fakes escritos à mão).
+`scripts/verify-settings.ps1` (novo, 7 casos) **confirmou 7/7 contra a
+stack local, sem nenhuma falha na primeira corrida**. Detalhe em
+[decisions/adr-041](../decisions/adr-041-camada-de-composicao-padrao.md).
+
+**Fica por fazer, cada uma com decisão própria em aberto:** Dashboard
+Executivo (precisa de contratos de leitura que `finance`/`commercial` ainda
+não publicam), Portal do Colaborador ("o próprio a ver-se a si próprio"),
+Portal do Cliente (superfície externa, autenticação de cliente separada) e
+Analytics & IA.
 
 **Fechado a 2026-08-31 (`fleet`: Registo de Viagem, Despesa de Frota,
 Seguros):** os três últimos itens de engenharia da Fase 7, todos sem

@@ -1815,3 +1815,57 @@ tinha), corrigido no mesmo dia.
 Fecha a Fase 7 de `inventory` por inteiro — nenhuma pergunta de negócio
 continua em aberto no módulo.
 
+## settings (camada de composição — Fase 8, não módulo)
+
+**⚠ Não é um dos catorze módulos.** É a primeira camada de composição
+prevista em `domain/domain-map.md` §Read models a ganhar código —
+Configurações & Administração, do documento de produto. Sem Domain, sem
+Infrastructure, sem base de dados própria; só `Application` e `Api`, em
+`src/Composition/Settings/`. Padrão fixado por ADR-041, para as outras
+quatro áreas (Dashboard Executivo, Portal do Colaborador, Portal do
+Cliente, Analytics & IA) seguirem sem reabrir o desenho.
+
+**2026-08-31 — `GET /settings/overview`.** `GetAdministrationOverview`
+(caso de uso único) compõe dois contratos publicados:
+
+- **`IAccessProfileCatalogue`** de `identity` — os sete Perfis de Acesso e
+  as permissões de cada um. Primeiro consumidor de `identity` desde sempre
+  (ADR-017: "criado quando o módulo tem consumidor") — até este dia,
+  `identity` era o único módulo implementado sem assembly de `Contracts`.
+  O catálogo de permissões (`Permissions`, em
+  `Rivo.Identity.Application.Authorization`) mudou-se para
+  `Rivo.Identity.Contracts` como `IdentityPermissions`, mesmo lugar de
+  `HrPermissions`, `CommercialPermissions` e todos os outros — refactor
+  mecânico em seis ficheiros, sem alterar nenhum comportamento.
+- **`IApprovalPolicyCatalogue`** de `approval` — segundo contrato de
+  leitura do módulo, ao lado de `IApprovalGateway` (submissão/estado).
+  Devolve um resumo por política (processo, activa/inactiva, nº de passos,
+  se exige verificação orçamental) — não os passos nem os aprovadores, que
+  é mais do que uma vista de configuração precisa de mostrar.
+
+A vista agrupa as regras de aprovação pelo prefixo do `processType` (ex.:
+`"hr.leave_request"` → módulo `"hr"`) e ordena tudo por nome — perfis e
+grupos de módulo. **Uma política desactivada continua a aparecer, com
+`isActive:false`** — esconder política desactivada esconderia o próprio
+histórico de configuração, não só a política (BR-14, mesma disciplina de
+"não se elimina, desactiva-se", aplicada agora também a uma vista de
+leitura).
+
+**Admin-only, sem permissão nova.** O endpoint exige as duas permissões que
+já usa (`identity.roles.read` e `approval.policies.read`) em vez de
+inventar uma própria — e as duas já só pertencem a `Admin` no catálogo
+existente, o que faz a restrição nascer certa sem precisar de o dizer em
+código à parte.
+
+**`Rivo.Settings.Application.Tests` (novo, 4 casos)** — fakes escritos à
+mão (ADR-022), sem stack Docker: ordenação de perfis, agrupamento por
+módulo, política inactiva continua na vista, sem políticas devolve lista
+vazia. `scripts/verify-settings.ps1` (novo, 7 casos) **confirmou 7/7 contra
+a stack local, sem nenhuma falha na primeira corrida** — vista com os sete
+perfis, ordenação, regra nova agrupada e visível depois de desactivada, 401
+sem autenticação, 403 para um perfil sem as duas permissões (`HR`, que só
+tem uma das duas), sobrevivência ao reinício da stack.
+
+Detalhe da decisão arquitectural em
+[decisions/adr-041](../decisions/adr-041-camada-de-composicao-padrao.md).
+

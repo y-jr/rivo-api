@@ -78,6 +78,12 @@ precisamente para fechar essa escalada.
   referência à origem).
 - Consultar estado de um pedido.
 - Notificar decisão ao módulo de origem.
+- **`IApprovalPolicyCatalogue`** (desde 2026-08-31) — leitura agregada das
+  políticas configuradas (processo, activa/inactiva, nº de passos, se exige
+  verificação orçamental), separada de propósito da submissão/estado
+  acima. Primeiro consumidor: `Rivo.Settings` (Configurações &
+  Administração, ADR-041). Não expõe passos nem aprovadores — só o que uma
+  vista de configuração precisa de mostrar.
 
 ## Eventos
 

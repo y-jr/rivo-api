@@ -95,6 +95,15 @@ justificação e, se não for trivial, de ADR.
 | `inventory` | procurement, finance, documents, audit, notifications | por implementar |
 | `documents` | audit | implementado |
 | `notifications` | — (fundacional) | implementado |
+| `Settings` ⚠ | identity, approval | camada de composição (ADR-041), não módulo — ver nota abaixo |
+
+⚠ **`Settings` não é um módulo.** É a primeira camada de composição
+(ADR-041, Fase 8) — sem Domain, sem Infrastructure, sem base de dados
+própria. Fica na tabela porque `Modules_ReferenceOnlyDeclaredDirections`
+verifica-a da mesma forma que qualquer módulo (um consumidor de contratos é
+um consumidor de contratos, tenha ele próprio Domain ou não) — não porque
+seja o décimo quinto bounded context. Vive em `src/Composition/Settings/`,
+não em `src/Modules/`.
 
 Todas as dependências acima são sobre o assembly de **contratos** do módulo
 alvo, nunca sobre a sua implementação.

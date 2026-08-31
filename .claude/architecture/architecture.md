@@ -75,6 +75,11 @@ estratégica e [modules/](../modules/) para o detalhe.
 Cliente, Configurações & Administração e Analytics & IA são read models e
 canais de apresentação, sem ownership de dados. Ver `domain-map.md`.
 
+**2026-08-31 — a primeira ganhou código.** Configurações & Administração é
+`Rivo.Settings`, em `src/Composition/Settings/` (não `src/Modules/`) — só
+`Application` e `Api`, sem Domain nem Infrastructure. Padrão fixado por
+ADR-041, para as outras quatro seguirem sem reabrir o desenho.
+
 ## Dados
 
 - Uma base de dados SQL Server, **um schema lógico por domínio**, ownership

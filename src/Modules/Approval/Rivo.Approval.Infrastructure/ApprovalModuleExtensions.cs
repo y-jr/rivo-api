@@ -32,6 +32,10 @@ public static class ApprovalModuleExtensions
         // de `approval` além de Rivo.Approval.Contracts (ADR-034).
         services.AddScoped<IApprovalGateway, ApprovalGateway>();
 
+        // Segundo contrato publicado — leitura agregada para composição
+        // administrativa (ADR-041), primeiro consumidor `Rivo.Settings`.
+        services.AddScoped<IApprovalPolicyCatalogue, ApprovalPolicyCatalogue>();
+
         services.AddScoped<ListApprovalPolicies>();
         services.AddScoped<CreateApprovalPolicy>();
         services.AddScoped<DeactivateApprovalPolicy>();

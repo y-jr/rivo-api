@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using Rivo.Identity.Application.Authorization;
+using Rivo.Identity.Contracts;
 using Rivo.Identity.Infrastructure.Persistence;
 
 namespace Rivo.Identity.Infrastructure.Identity;
@@ -61,13 +62,13 @@ public sealed class AccessProfileSeeder(
         var existing = await roles.GetClaimsAsync(role);
 
         var alreadyGranted = existing
-            .Where(claim => claim.Type == Permissions.ClaimType)
+            .Where(claim => claim.Type == IdentityPermissions.ClaimType)
             .Select(claim => claim.Value)
             .ToHashSet(StringComparer.Ordinal);
 
         foreach (var permission in permissions.Where(permission => !alreadyGranted.Contains(permission)))
         {
-            await roles.AddClaimAsync(role, new Claim(Permissions.ClaimType, permission));
+            await roles.AddClaimAsync(role, new Claim(IdentityPermissions.ClaimType, permission));
             logger.LogInformation("Permissão {Permission} atribuída ao perfil {Profile}", permission, role.Name);
         }
     }

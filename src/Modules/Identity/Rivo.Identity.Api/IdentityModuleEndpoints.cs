@@ -8,6 +8,7 @@ using Rivo.Identity.Api.Contracts;
 using Rivo.Identity.Application.Abstractions;
 using Rivo.Identity.Application.Authorization;
 using Rivo.Identity.Application.UseCases;
+using Rivo.Identity.Contracts;
 
 namespace Rivo.Identity.Api;
 
@@ -30,13 +31,13 @@ public static class IdentityModuleEndpoints
         // Autorização declarada aqui, no endpoint. Os handlers não verificam
         // permissões: se o pedido chega ao handler, já está autorizado.
         group.MapGet("/users", ListUsersAsync)
-            .RequireAuthorization(Permissions.UsersRead);
+            .RequireAuthorization(IdentityPermissions.UsersRead);
 
         group.MapGet("/roles", ListRoles)
-            .RequireAuthorization(Permissions.RolesRead);
+            .RequireAuthorization(IdentityPermissions.RolesRead);
 
         group.MapPost("/users/{userId:guid}/roles", AssignRoleAsync)
-            .RequireAuthorization(Permissions.RolesAssign);
+            .RequireAuthorization(IdentityPermissions.RolesAssign);
 
 
         // --- Conta própria. Só exigem sessão válida: o recurso é quem chama.
@@ -50,13 +51,13 @@ public static class IdentityModuleEndpoints
         // --- Contas de terceiros. Exigem permissão.
 
         group.MapPost("/users/{userId:guid}/password-reset", ResetPasswordAsync)
-            .RequireAuthorization(Permissions.UsersWrite);
+            .RequireAuthorization(IdentityPermissions.UsersWrite);
 
         group.MapPost("/users/{userId:guid}/status", SetStatusAsync)
-            .RequireAuthorization(Permissions.UsersWrite);
+            .RequireAuthorization(IdentityPermissions.UsersWrite);
 
         group.MapPost("/users/{userId:guid}/roles/{profile}/removal", RemoveRoleAsync)
-            .RequireAuthorization(Permissions.RolesAssign);
+            .RequireAuthorization(IdentityPermissions.RolesAssign);
 
         return endpoints;
     }
@@ -242,7 +243,7 @@ public static class IdentityModuleEndpoints
         // Devolver as permissões permite ao cliente esconder o que o utilizador
         // não pode fazer. É conveniência de interface — a decisão que conta é a
         // do servidor, não a do cliente.
-        var permissions = principal.FindAll(Permissions.ClaimType).Select(claim => claim.Value).ToArray();
+        var permissions = principal.FindAll(IdentityPermissions.ClaimType).Select(claim => claim.Value).ToArray();
 
         return Results.Ok(new CurrentUserResponse(id, email, roles, permissions));
     }

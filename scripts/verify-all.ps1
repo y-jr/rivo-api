@@ -50,6 +50,13 @@ $suites = @(
     # antes de `payroll` nesta lista, por isso nao precisou de se mover.
     "verify-payroll",
     "verify-approval",
+
+    # Camada de composicao (ADR-041), nao modulo -- so precisa de `identity`
+    # e `approval` de pe, o que e sempre verdade a esta altura. Cria a sua
+    # propria politica isolada (processType unico por corrida), por isso
+    # nao depende de estado deixado por nenhuma suite anterior.
+    "verify-settings",
+
     "verify-procurement"
 )
 

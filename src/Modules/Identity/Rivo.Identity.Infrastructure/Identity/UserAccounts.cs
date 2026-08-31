@@ -2,7 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Rivo.Identity.Application.Abstractions;
-using Rivo.Identity.Application.Authorization;
+using Rivo.Identity.Contracts;
 using Rivo.Identity.Infrastructure.Persistence;
 
 namespace Rivo.Identity.Infrastructure.Identity;
@@ -329,7 +329,7 @@ public sealed class UserAccounts(
 
             var claims = await roles.GetClaimsAsync(role);
 
-            foreach (var claim in claims.Where(c => c.Type == Permissions.ClaimType))
+            foreach (var claim in claims.Where(c => c.Type == IdentityPermissions.ClaimType))
             {
                 permissions.Add(claim.Value);
             }

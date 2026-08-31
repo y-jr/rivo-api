@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Camada de composição (ADR-041), não módulo: sem Domain, sem
+    Infrastructure, sem base de dados própria. Depende só dos contratos
+    publicados de quem compõe — mesma regra de dependência entre módulos
+    (ADR-017, dependency-rules.md), sem excepção por ser composição.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Modules\Identity\Rivo.Identity.Contracts\Rivo.Identity.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\Modules\Approval\Rivo.Approval.Contracts\Rivo.Approval.Contracts.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

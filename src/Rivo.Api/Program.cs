@@ -37,6 +37,7 @@ using Rivo.Inventory.Api;
 using Rivo.Inventory.Infrastructure;
 using Rivo.Fleet.Api;
 using Rivo.Fleet.Infrastructure;
+using Rivo.Settings.Api;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -79,6 +80,12 @@ builder.Services.AddProjectsModule(builder.Configuration);
 builder.Services.AddInventoryModule(builder.Configuration);
 builder.Services.AddFleetModule(builder.Configuration);
 builder.Services.AddIdentityModule(builder.Configuration);
+
+// Camada de composição, não módulo (ADR-041) — sem base de dados, sem
+// migração. Depois de `identity` e `approval`: compõe os contratos dos
+// dois, e as policies de autorização que usa (`identity.roles.read`,
+// `approval.policies.read`) nascem do `AddAuthorization` de cada um deles.
+builder.Services.AddSettingsModule();
 
 // Apresenta `hr` a `approval`, sem que nenhum dos dois conheça o outro.
 //
@@ -301,6 +308,7 @@ app.MapProjectsModule();
 app.MapInventoryModule();
 app.MapFleetModule();
 app.MapNotificationsModule();
+app.MapSettingsModule();
 
 // Verifica que a aplicação está viva e que alcança a base de dados.
 app.MapGet("/health", async (RivoIdentityDbContext db, CancellationToken ct) =>

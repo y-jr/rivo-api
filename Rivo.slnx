@@ -62,6 +62,7 @@
   <Folder Name="/src/Modules/Identity/">
     <Project Path="src/Modules/Identity/Rivo.Identity.Api/Rivo.Identity.Api.csproj" />
     <Project Path="src/Modules/Identity/Rivo.Identity.Application/Rivo.Identity.Application.csproj" />
+    <Project Path="src/Modules/Identity/Rivo.Identity.Contracts/Rivo.Identity.Contracts.csproj" />
     <Project Path="src/Modules/Identity/Rivo.Identity.Domain/Rivo.Identity.Domain.csproj" />
     <Project Path="src/Modules/Identity/Rivo.Identity.Infrastructure/Rivo.Identity.Infrastructure.csproj" />
   </Folder>
@@ -99,6 +100,11 @@
     <Project Path="src/Modules/Fleet/Rivo.Fleet.Contracts/Rivo.Fleet.Contracts.csproj" />
     <Project Path="src/Modules/Fleet/Rivo.Fleet.Domain/Rivo.Fleet.Domain.csproj" />
     <Project Path="src/Modules/Fleet/Rivo.Fleet.Infrastructure/Rivo.Fleet.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Composition/" />
+  <Folder Name="/src/Composition/Settings/">
+    <Project Path="src/Composition/Settings/Rivo.Settings.Api/Rivo.Settings.Api.csproj" />
+    <Project Path="src/Composition/Settings/Rivo.Settings.Application/Rivo.Settings.Application.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rivo.Api.Tests/Rivo.Api.Tests.csproj" />
@@ -149,5 +155,8 @@
   </Folder>
   <Folder Name="/tests/Payroll/">
     <Project Path="tests/Modules/Payroll/Rivo.Payroll.Domain.Tests/Rivo.Payroll.Domain.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Settings/">
+    <Project Path="tests/Composition/Settings/Rivo.Settings.Application.Tests/Rivo.Settings.Application.Tests.csproj" />
   </Folder>
 </Solution>

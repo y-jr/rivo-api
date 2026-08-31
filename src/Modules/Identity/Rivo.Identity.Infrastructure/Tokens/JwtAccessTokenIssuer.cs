@@ -4,7 +4,7 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Rivo.Identity.Application.Abstractions;
-using ApplicationPermissions = Rivo.Identity.Application.Authorization.Permissions;
+using ApplicationPermissions = Rivo.Identity.Contracts.IdentityPermissions;
 
 namespace Rivo.Identity.Infrastructure.Tokens;
 

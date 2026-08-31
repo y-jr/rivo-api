@@ -36,7 +36,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
 | 6 | `payroll` | Motor de IRT/INSS ganhou regra de negócio real em 2026-08-30 — trave de **produção** continua por parecer fiscal, ver a nota da fase |
 | 7 | `projects`, `inventory`, `fleet` | **Fechada por completo a 2026-08-31.** Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). A 2026-08-31, `projects` ganhou Alocação de Recursos (Colaborador e Viatura, via `hr`/`fleet`), `inventory` ganhou Armazém, Transferência (retrofit do Movimento, transferência atómica) e Contagem (gera Ajuste no fecho, tudo numa transacção), e `fleet` ganhou Registo de Viagem, Despesa de Frota (sem abrir/fechar, ao contrário de Manutenção/Atribuição) e Seguros (`VehicleDocument`, ligação autónoma a `documents`) |
-| 8 | Camadas de composição e portais | Por iniciar |
+| 8 | Camadas de composição e portais | **Iniciada 2026-08-31** — Configurações & Administração feita (ADR-041); as outras quatro por fazer |
 
 **Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
 arranca na Fase 3. Ver no fim.
@@ -479,6 +479,26 @@ models e canais de apresentação. O Portal do Cliente muda o perfil de risco:
 
 **Critério de saída:** nenhuma camada de composição possui tabelas; todas lêem
 por contrato publicado.
+
+> **Iniciada a 2026-08-31 — Configurações & Administração, primeira das
+> cinco.** Sem forma de código nenhuma antes disto: ADR-041 fixou o padrão
+> — `Application` + `Api`, sem Domain nem Infrastructure, em
+> `src/Composition/<Nome>/` (não `src/Modules/`), a depender de outros
+> módulos só pelos seus contratos, exactamente a mesma regra de sempre.
+> `Rivo.Settings` compõe `identity` (perfis de acesso, primeiro consumidor
+> de `Rivo.Identity.Contracts`, que nasceu para isto) e `approval`
+> (políticas, segundo contrato de leitura do módulo) num único
+> `GET /settings/overview`. Admin-only sem permissão nova — as duas
+> permissões que a vista soma já só pertenciam a `Admin`.
+> `scripts/verify-settings.ps1` (7 casos) confirmou 7/7 na primeira
+> corrida.
+>
+> **Fica por fazer, cada uma com a sua própria decisão em aberto:**
+> Dashboard Executivo (precisa de contratos de leitura que `finance`/
+> `commercial` ainda não publicam), Portal do Colaborador (precisa de "o
+> próprio a ver-se a si próprio"), Portal do Cliente (superfície externa,
+> autenticação de cliente separada) e Analytics & IA. Ver
+> `domain/domain-map.md` §Read models e ADR-041 §Consequences.
 
 ---
 

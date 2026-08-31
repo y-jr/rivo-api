@@ -145,7 +145,23 @@ public class ProjectReferenceTests
         // `approval → finance` é uma só, e `Modules_HaveNoDependencyCycles`
         // continua a valer — é ele que garante que assim fica.
         ["Approval"] = ["Hr", "Audit", "Finance"],
+
+        // `Settings` não é módulo — é camada de composição (ADR-041), sem
+        // Domain nem Infrastructure própria. A regra de dependência não muda
+        // por isso: só pelos contratos de quem compõe. Primeira aplicação de
+        // Configurações & Administração (domain-map.md §Read models):
+        // perfis de acesso de `identity`, políticas de `approval`.
+        ["Settings"] = ["Identity", "Approval"],
     };
+
+    /// <summary>
+    /// Módulos declarados acima que são camadas de composição (ADR-041): sem
+    /// Domain, por desenho — não têm agregado, não têm base de dados própria.
+    /// <see cref="ProjectDiscovery_FindsEveryModuleProject"/> verifica-os pela
+    /// camada que realmente têm, `Api`, em vez de assumir `Domain` como todos
+    /// os outros.
+    /// </summary>
+    private static readonly HashSet<string> CamadasDeComposicao = new(StringComparer.Ordinal) { "Settings" };
 
     [Fact]
     public void Module_ReferencesAnotherModuleOnlyThroughItsContracts()
@@ -282,9 +298,15 @@ public class ProjectReferenceTests
         Assert.Contains(Projects, p => p.Name == RivoAssemblies.Host);
 
         // Cada módulo implementado tem, no mínimo, Domain, Application e Api.
+        // Uma camada de composição (ADR-041) não tem Domain por desenho — só
+        // se verifica que tem, pelo menos, Api.
         foreach (var module in DependenciasDeclaradas.Keys)
         {
-            Assert.Contains(Projects, p => p.Module == module && p.Layer == RivoAssemblies.DomainLayer);
+            var camadaMinima = CamadasDeComposicao.Contains(module)
+                ? RivoAssemblies.ApiLayer
+                : RivoAssemblies.DomainLayer;
+
+            Assert.Contains(Projects, p => p.Module == module && p.Layer == camadaMinima);
         }
     }
 

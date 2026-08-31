@@ -53,6 +53,14 @@ Todos os módulos.
 
 - Identidade do utilizador autenticado (actor corrente).
 - Verificação de permissão por perfil.
+- **`IAccessProfileCatalogue`** (`Rivo.Identity.Contracts`, desde
+  2026-08-31) — os sete Perfis de Acesso e as permissões de cada um.
+  Primeiro consumidor: `Rivo.Settings` (Configurações & Administração,
+  ADR-041). O catálogo de permissões (`IdentityPermissions`) mudou-se para
+  este assembly no mesmo dia — mesmo lugar de `HrPermissions`,
+  `CommercialPermissions` e todos os outros; até aqui vivia em
+  `Rivo.Identity.Application.Authorization` só porque `identity` nunca tinha
+  tido consumidor externo.
 
 ## Não pode
 
@@ -105,14 +113,18 @@ endereço.
 Verificado em `scripts/verify-bootstrap.ps1` (9 casos) e
 `scripts/verify-authorization.ps1` (8 casos).
 
-### Sem `Contracts`, deliberadamente
+### `Contracts` desde 2026-08-31
 
-`identity` é o único módulo implementado sem assembly de contratos. O ADR-017
-manda criá-lo **quando houver consumidor**, e ainda não há: os outros módulos
-lêem o actor do token, não de `identity`. Criá-lo agora seria construir
-superfície pública para ninguém.
+Até 2026-08-31, `identity` era o único módulo implementado sem assembly de
+contratos — o ADR-017 manda criá-lo **quando houver consumidor**, e não
+havia: os outros módulos lêem o actor do token, não de `identity`.
+`Rivo.Settings` (ADR-041, Configurações & Administração) é o primeiro —
+`Rivo.Identity.Contracts` nasceu para isso, com `IAccessProfileCatalogue` e
+o catálogo de permissões (`IdentityPermissions`, mudado de
+`Rivo.Identity.Application.Authorization` para aqui).
 
-O sentido inverso já acontece: `identity` consome `Audit.Contracts`,
+O sentido inverso já acontecia antes, e continua: `identity` consome
+`Audit.Contracts`,
 `Hr.Contracts` e `Documents.Contracts` para compor o catálogo de permissões —
 cada módulo declara **que permissões existem**, `identity` decide **quem as
 tem**.

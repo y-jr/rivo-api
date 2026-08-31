@@ -222,6 +222,32 @@ public static class ApprovalProcessTypes
         [PositionAssignment, LeaveRequest, PaymentRequest, PurchaseRequisition, PayrollRun];
 }
 
+/// <summary>
+/// Leitura agregada das políticas configuradas, por processo — separada de
+/// <see cref="IApprovalGateway"/> de propósito: aquele serve quem produz um
+/// processo (submeter, saber o estado); isto serve quem compõe uma vista
+/// administrativa sobre a governança (Configurações & Administração,
+/// ADR-041). Não expõe passos nem aprovadores — a mesma disciplina de
+/// contrato estreito que <c>IBudgetAvailability</c> já segue em `finance`:
+/// só o que uma vista de configuração precisa de mostrar, não a `Application`
+/// inteira.
+/// </summary>
+public interface IApprovalPolicyCatalogue
+{
+    Task<IReadOnlyList<ApprovalPolicySummary>> ListAsync(CancellationToken cancellationToken);
+}
+
+/// <param name="StepCount">
+/// Quantos passos a política tem, não quais — quem lê isto quer saber "há
+/// alçada configurada para este processo", não os aprovadores concretos.
+/// </param>
+public sealed record ApprovalPolicySummary(
+    Guid PolicyId,
+    string ProcessType,
+    bool IsActive,
+    int StepCount,
+    bool RequiresBudgetCheck);
+
 /// <summary>Catálogo de permissões de `approval`, declarado pelo próprio módulo.</summary>
 public static class ApprovalPermissions
 {

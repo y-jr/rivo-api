@@ -49,13 +49,13 @@ seguintes são camadas de leitura/composição ou canais de apresentação. Não
 possuem entidades próprias, não têm base de dados própria, e **não devem
 gerar módulos**.
 
-| Item do documento de produto | O que é realmente |
-|---|---|
-| Dashboard Executivo | Read model agregado sobre Financeiro, Comercial e Analytics |
-| Portal do Colaborador | Canal self-service que compõe RH, Financeiro, Approval, Documentos, Notificações |
-| Portal do Cliente | Canal self-service que compõe Comercial, Financeiro/AR, Documentos |
-| Configurações & Administração | UI de gestão de Identity & Access e de políticas de aprovação |
-| Analytics & IA | Misto: exportações/importações = infraestrutura; previsões/insights = read model |
+| Item do documento de produto | O que é realmente | Estado |
+|---|---|---|
+| Dashboard Executivo | Read model agregado sobre Financeiro, Comercial e Analytics | Por fazer — precisa de contratos de leitura que `finance`/`commercial` ainda não publicam |
+| Portal do Colaborador | Canal self-service que compõe RH, Financeiro, Approval, Documentos, Notificações | Por fazer — precisa de "o próprio a ver-se a si próprio" |
+| Portal do Cliente | Canal self-service que compõe Comercial, Financeiro/AR, Documentos | Por fazer — superfície externa, precisa de autenticação de cliente própria |
+| Configurações & Administração | UI de gestão de Identity & Access e de políticas de aprovação | **Implementado 2026-08-31** — `Rivo.Settings`, ADR-041 |
+| Analytics & IA | Misto: exportações/importações = infraestrutura; previsões/insights = read model | Por fazer |
 
 Tratá-los como domínios geraria duplicação de dados por audiência —
 exactamente o padrão que o protótipo já exibia (`notifications` vs

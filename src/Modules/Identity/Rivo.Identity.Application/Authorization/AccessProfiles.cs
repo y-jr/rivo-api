@@ -10,6 +10,7 @@ using Rivo.Payroll.Contracts;
 using Rivo.Projects.Contracts;
 using Rivo.Inventory.Contracts;
 using Rivo.Fleet.Contracts;
+using Rivo.Identity.Contracts;
 
 namespace Rivo.Identity.Application.Authorization;
 
@@ -48,7 +49,7 @@ public static class AccessProfiles
         new Dictionary<string, IReadOnlyList<string>>
         {
             [Admin] = [
-                .. Permissions.All,
+                .. IdentityPermissions.All,
                 .. AuditPermissions.All,
                 .. HrPermissions.All,
                 .. DocumentPermissions.All,

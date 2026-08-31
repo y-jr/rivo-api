@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Rivo.Identity.Domain\Rivo.Identity.Domain.csproj" />
+    <ProjectReference Include="..\Rivo.Identity.Contracts\Rivo.Identity.Contracts.csproj" />
     <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
     <ProjectReference Include="..\..\Hr\Rivo.Hr.Contracts\Rivo.Hr.Contracts.csproj" />
     <ProjectReference Include="..\..\Approval\Rivo.Approval.Contracts\Rivo.Approval.Contracts.csproj" />

@@ -9,6 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 using Rivo.Identity.Application.Abstractions;
 using Rivo.Identity.Application.Authorization;
 using Rivo.Identity.Application.UseCases;
+using Rivo.Identity.Contracts;
 using Rivo.Identity.Infrastructure.Identity;
 using Rivo.Identity.Infrastructure.Persistence;
 using Rivo.Identity.Infrastructure.Sessions;
@@ -111,6 +112,11 @@ public static class IdentityModuleExtensions
         services.AddScoped<RevokeOwnSession>();
         services.AddSingleton<ListAccessProfiles>();
 
+        // O contrato publicado (ADR-017) — primeiro consumidor é `Rivo.Settings`
+        // (ADR-041). Singleton pela mesma razão de `ListAccessProfiles`: lê um
+        // catálogo estático em código, sem estado nem ligação a nada.
+        services.AddSingleton<IAccessProfileCatalogue, AccessProfileCatalogue>();
+
         services.AddScoped<AccessProfileSeeder>();
 
         services
@@ -189,11 +195,11 @@ public static class IdentityModuleExtensions
         // há verificações de autorização espalhadas pelos handlers.
         services.AddAuthorization(options =>
         {
-            foreach (var permission in Permissions.All)
+            foreach (var permission in IdentityPermissions.All)
             {
                 options.AddPolicy(permission, policy => policy
                     .RequireAuthenticatedUser()
-                    .RequireClaim(Permissions.ClaimType, permission));
+                    .RequireClaim(IdentityPermissions.ClaimType, permission));
             }
         });
     }
