@@ -55,7 +55,7 @@ jobs:
           # antigo.
           script: |
 
-            git config --global --add safe.directory /opt/projects/***
+            git config --global --add safe.directory /opt/projects/rivo
             set -e
             cd /opt/projects/rivo
 
