@@ -169,6 +169,30 @@ re-litigação:
       Enquanto não existirem, os documentos emitem-se e **não lançam** — o que
       é o comportamento correcto, e não uma avaria.
 
+- [ ] **`ChartOfAccountsVersion`/`AccountingRule` chegaram ao código (commit
+      `50000fa`, fora do fluxo desta sessão) sem nenhum caminho que os ligue a
+      `LedgerAccount`.**
+
+      Achado a 2026-09-02 ao diagnosticar um deploy de produção partido por
+      falta de migração (`FinanceDbContext` com `PendingModelChangesWarning`).
+      `POST /finance/ledger/accounts` (`OpenLedgerAccount`) nunca recebe nem
+      atribui uma versão do plano; `LedgerAccount.AssignToVersion` é `internal`
+      e não é chamado de lado nenhum; `BootstrapChartOfAccounts.Load()` é
+      código morto (não semeado por `SeedFinanceModuleAsync` nem por outro
+      arranque). Todas as contas — já abertas ou por abrir — ficam com
+      `ChartOfAccountsVersionId = Guid.Empty`.
+
+      A migração `ContabilidadeDeGestao` (gerada nesta sessão, para desbloquear
+      o deploy) semeia uma versão-placeholder com id `Guid.Empty` só para a FK
+      `NOT NULL` não rejeitar essas contas — **não é a atribuição real de
+      versão**, é o mínimo para o schema não rebentar com o código como está.
+
+      Falta decidir (negócio, não engenharia): quando o PGC real acima existir,
+      como é que uma conta passa a apontar para a versão certa — no momento em
+      que se abre, ou por migração em lote quando uma versão nova entra em
+      vigor? Isto é anterior a essa decisão: hoje não há *nenhum* caminho,
+      nem para o placeholder nem para uma versão real.
+
 - [x] ~~Numeração e conteúdo obrigatório de factura, estrutura de dados
       fiscal~~ — **resolvido** pelo XSD do SAF-T AO v1.01_01
       (`github.com/assoft-portugal/SAF-T-AO`). Ver
