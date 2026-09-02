@@ -150,6 +150,101 @@ public class LedgerTests
         Assert.Equal("Combustíveis e lubrificantes", conta.Name);
     }
 
+    [Fact]
+    public void BootstrapDoPlanoDeContas_CarregaEstruturaBaseEValidaArvore()
+    {
+        var contas = BootstrapChartOfAccounts.Load().ToList();
+
+        Assert.NotEmpty(contas);
+        Assert.Contains(contas, c => c.Code == "1" && c.Category == AccountCategory.GR);
+        Assert.Contains(contas, c => c.Code == "10" && c.Category == AccountCategory.GA);
+        Assert.Contains(contas, c => c.Code == "1010" && c.Category == AccountCategory.GM);
+        Assert.Contains(contas, c => c.Code == "4" && c.Category == AccountCategory.GR);
+        Assert.Contains(contas, c => c.Code == "41" && c.Category == AccountCategory.GA);
+        Assert.Contains(contas, c => c.Code == "4110" && c.Category == AccountCategory.GM);
+
+        var todasAtivas = contas.Where(c => c.IsActive).ToList();
+        Assert.NotEmpty(todasAtivas);
+        Assert.True(contas.All(c => !string.IsNullOrWhiteSpace(c.Name)));
+        Assert.True(contas.All(c => c.Code.Length <= 30));
+    }
+
+    [Fact]
+    public void BootstrapDoPlanoDeContas_UsaArvoreCorretaSemContasDeMovimentoAgregadoras()
+    {
+        var contas = BootstrapChartOfAccounts.Load();
+        var contaMovimento = contas.Single(c => c.Code == "1010");
+        var contaAgregadora = contas.Single(c => c.Code == "10");
+
+        Assert.True(contaMovimento.AcceptsPostings);
+        Assert.False(contaAgregadora.AcceptsPostings);
+        Assert.Equal("1", contaAgregadora.ParentCode);
+        Assert.Equal("10", contaMovimento.ParentCode);
+    }
+
+    [Fact]
+    public void VersaoDoPlano_DeveSerVersionadaEValidada()
+    {
+        var versao = ChartOfAccountsVersion.Create(
+            "ANGOLA",
+            "PGC",
+            "2026-01",
+            "Decreto n.º 82/01",
+            DateOnly.FromDateTime(DateTime.Today),
+            null);
+
+        Assert.Equal("ANGOLA", versao.Jurisdiction);
+        Assert.Equal("PGC", versao.Name);
+        Assert.Equal("2026-01", versao.Version);
+        Assert.True(versao.IsActive);
+    }
+
+    [Fact]
+    public void BootstrapDoPlano_DeveGerarVersaoAtivaComContasCarregadas()
+    {
+        var versao = ChartOfAccountsVersion.BootstrapDevelopment();
+
+        Assert.Equal("ANGOLA", versao.Jurisdiction);
+        Assert.Equal("BOOTSTRAP-DEV", versao.Version);
+        Assert.True(versao.IsActive);
+        Assert.NotEmpty(versao.Accounts);
+        Assert.All(versao.Accounts, conta => Assert.Equal(versao.Id, conta.ChartOfAccountsVersionId));
+        Assert.Contains(versao.Accounts, c => c.Code == "1" && c.Category == AccountCategory.GR);
+        Assert.Contains(versao.Accounts, c => c.Code == "1010" && c.Category == AccountCategory.GM);
+    }
+
+    [Fact]
+    public void RegraContabilistica_ExigeEquilibrioEReferenciaLegal()
+    {
+        var erro = Assert.Throws<ArgumentException>(() =>
+            AccountingRule.Create(
+                "PURCHASE-GOODS",
+                "Compra de mercadorias",
+                "Legal",
+                "Decreto n.º 82/01",
+                DateOnly.FromDateTime(DateTime.Today),
+                null,
+                [
+                    new AccountingRuleLine("1010", EntrySide.Debit, PostingAmount.Net, "Mercadoria"),
+                    new AccountingRuleLine("2110", EntrySide.Credit, PostingAmount.Gross, "Fornecedor"),
+                ]));
+
+        Assert.Contains("equilibra", erro.Message, StringComparison.OrdinalIgnoreCase);
+
+        Assert.Throws<ArgumentException>(() =>
+            AccountingRule.Create(
+                "",
+                "Compra de mercadorias",
+                "Legal",
+                "Decreto n.º 82/01",
+                DateOnly.FromDateTime(DateTime.Today),
+                null,
+                [
+                    new AccountingRuleLine("1010", EntrySide.Debit, PostingAmount.Net, "Mercadoria"),
+                    new AccountingRuleLine("2110", EntrySide.Credit, PostingAmount.Net, "Fornecedor"),
+                ]));
+    }
+
     // ---- diários ----
 
     [Fact]

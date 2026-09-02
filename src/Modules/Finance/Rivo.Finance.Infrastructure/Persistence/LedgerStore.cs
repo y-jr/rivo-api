@@ -216,6 +216,99 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
     public async Task AddPostingRuleAsync(PostingRule rule, CancellationToken cancellationToken) =>
         await context.PostingRules.AddAsync(rule, cancellationToken);
 
+    public async Task<ChartOfAccountsVersion?> FindChartVersionAsync(
+        Guid chartId,
+        CancellationToken cancellationToken) =>
+        await context.ChartOfAccountsVersions
+            .AsNoTracking()
+            .Include(v => v.Accounts)
+            .FirstOrDefaultAsync(v => v.Id == chartId, cancellationToken);
+
+    public async Task<ChartOfAccountsVersion?> FindChartVersionByKeyAsync(
+        string jurisdiction,
+        string name,
+        string version,
+        CancellationToken cancellationToken) =>
+        await context.ChartOfAccountsVersions
+            .AsNoTracking()
+            .Include(v => v.Accounts)
+            .FirstOrDefaultAsync(v =>
+                v.Jurisdiction == jurisdiction &&
+                v.Name == name &&
+                v.Version == version,
+                cancellationToken);
+
+    public async Task<IReadOnlyList<ChartOfAccountsVersion>> ListChartVersionsAsync(
+        bool includeInactive,
+        CancellationToken cancellationToken)
+    {
+        var query = context.ChartOfAccountsVersions
+            .AsNoTracking()
+            .Include(v => v.Accounts)
+            .AsQueryable();
+
+        if (!includeInactive)
+        {
+            query = query.Where(v => v.IsActive);
+        }
+
+        return await query
+            .OrderBy(v => v.Jurisdiction)
+            .ThenBy(v => v.Name)
+            .ThenBy(v => v.EffectiveFrom)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task AddChartVersionAsync(
+        ChartOfAccountsVersion chartVersion,
+        CancellationToken cancellationToken) =>
+        await context.ChartOfAccountsVersions.AddAsync(chartVersion, cancellationToken);
+
+    public async Task<ChartOfAccountsVersion?> FindActiveChartVersionForDateAsync(
+        DateOnly date,
+        CancellationToken cancellationToken) =>
+        await context.ChartOfAccountsVersions
+            .AsNoTracking()
+            .Include(v => v.Accounts)
+            .Where(v => v.IsActive &&
+                        v.EffectiveFrom <= date &&
+                        (v.EffectiveTo == null || v.EffectiveTo >= date))
+            .OrderByDescending(v => v.EffectiveFrom)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<AccountingRule?> FindAccountingRuleAsync(
+        Guid ruleId,
+        CancellationToken cancellationToken) =>
+        await context.AccountingRules
+            .AsNoTracking()
+            .Include(r => r.Lines)
+            .FirstOrDefaultAsync(r => r.Id == ruleId, cancellationToken);
+
+    public async Task<IReadOnlyList<AccountingRule>> ListAccountingRulesAsync(
+        bool includeInactive,
+        CancellationToken cancellationToken)
+    {
+        var query = context.AccountingRules
+            .AsNoTracking()
+            .Include(r => r.Lines)
+            .AsQueryable();
+
+        if (!includeInactive)
+        {
+            query = query.Where(r => r.IsActive);
+        }
+
+        return await query
+            .OrderBy(r => r.EffectiveFrom)
+            .ThenBy(r => r.Code)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task AddAccountingRuleAsync(
+        AccountingRule rule,
+        CancellationToken cancellationToken) =>
+        await context.AccountingRules.AddAsync(rule, cancellationToken);
+
     public async Task<IReadOnlyList<AccountMovement>> AccountMovementsAsync(
         int fiscalYear,
         int? uptoPeriod,

@@ -355,6 +355,12 @@ public static class FinanceAuditActions
 
     public const string ForecastSubmitted = "finance.cost_forecast.submitted";
 
+    // ---- Plano de contas e regras ----
+
+    public const string ChartOfAccountsVersionCreated = "finance.chart_of_accounts_version.created";
+    public const string AccountingRuleCreated = "finance.accounting_rule.created";
+    public const string AccountingRuleDeactivated = "finance.accounting_rule.deactivated";
+
     // ---- Postagem automática ----
 
     public const string PostingRuleDefined = "finance.posting_rule.defined";
@@ -378,4 +384,6 @@ public static class FinanceAuditEntityTypes
     public const string Budget = "finance.budget";
     public const string CostForecast = "finance.cost_forecast";
     public const string PostingRule = "finance.posting_rule";
+    public const string ChartOfAccountsVersion = "finance.chart_of_accounts_version";
+    public const string AccountingRule = "finance.accounting_rule";
 }

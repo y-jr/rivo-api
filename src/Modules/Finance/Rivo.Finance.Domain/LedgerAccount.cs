@@ -55,6 +55,8 @@ public sealed class LedgerAccount
 
     public Guid Id { get; private set; }
 
+    public Guid ChartOfAccountsVersionId { get; private set; }
+
     /// <summary><c>AccountID</c> no SAF-T. Único no plano.</summary>
     public string Code { get; private set; }
 
@@ -208,6 +210,9 @@ public sealed class LedgerAccount
     public void Deactivate() => IsActive = false;
 
     public void Reactivate() => IsActive = true;
+
+    internal void AssignToVersion(Guid chartOfAccountsVersionId) =>
+        ChartOfAccountsVersionId = chartOfAccountsVersionId;
 }
 
 /// <summary>

@@ -461,4 +461,251 @@ public class LedgerTests
         Assert.Equal(DeactivateAccountOutcome.Done, outcome);
         Assert.False(custo.IsActive);
     }
+
+    // ---- Versões do plano de contas ----
+
+    [Fact]
+    public async Task CriarVersaoDoPlano_Passa()
+    {
+        var store = new FakeLedgerStore();
+
+        var resultado = await new CreateChartOfAccountsVersion(store, new FakeAuditTrail()).ExecuteAsync(
+            "ANGOLA",
+            "PGC",
+            "2024",
+            "Plano Geral de Contas vigente",
+            new DateOnly(2024, 1, 1),
+            null,
+            Contexto,
+            CancellationToken.None);
+
+        Assert.Equal(CreateChartOfAccountsVersionOutcome.Created, resultado.Outcome);
+        Assert.NotNull(resultado.ChartVersionId);
+    }
+
+    [Fact]
+    public async Task VersaoRepetida_ERecusada()
+    {
+        var store = new FakeLedgerStore();
+        var versao = ChartOfAccountsVersion.BootstrapDevelopment();
+        store.With(versao);
+
+        var resultado = await new CreateChartOfAccountsVersion(store, new FakeAuditTrail()).ExecuteAsync(
+            versao.Jurisdiction,
+            versao.Name,
+            versao.Version,
+            versao.Source,
+            versao.EffectiveFrom,
+            versao.EffectiveTo,
+            Contexto,
+            CancellationToken.None);
+
+        Assert.Equal(CreateChartOfAccountsVersionOutcome.Duplicate, resultado.Outcome);
+    }
+
+    [Fact]
+    public async Task ListarVersoesDoPlano_RetornaOsMetadados()
+    {
+        var store = new FakeLedgerStore();
+        var v1 = ChartOfAccountsVersion.Create(
+            "ANGOLA", "PGC", "2024", "Oficial 2024",
+            new DateOnly(2024, 1, 1), new DateOnly(2024, 12, 31));
+        var v2 = ChartOfAccountsVersion.BootstrapDevelopment();
+        store.With(v1).With(v2);
+
+        var resultado = await new ListChartOfAccountsVersions(store).ExecuteAsync(
+            false, CancellationToken.None);
+
+        Assert.Equal(2, resultado.Count);
+        Assert.Single(resultado, v => v.ChartVersionId == v1.Id);
+        Assert.Single(resultado, v => v.ChartVersionId == v2.Id);
+    }
+
+    // ---- Regras contabilísticas ----
+
+    [Fact]
+    public async Task CriarRegraContabilistica_Passa()
+    {
+        var (store, custo, fornecedor, _) = Livros();
+        var versao = ChartOfAccountsVersion.BootstrapDevelopment();
+        store.With(versao);
+
+        var resultado = await new CreateAccountingRule(store, new FakeAuditTrail()).ExecuteAsync(
+            "FIN-01",
+            "Factura de Fornecedor",
+            "BusinessEvent",
+            "Regra padrão para facturas de fornecedor",
+            new DateOnly(2026, 1, 1),
+            null,
+            [
+                new AccountingRuleLineInput("6111", EntrySide.Debit, PostingAmount.Gross, "Custo Total"),
+                new AccountingRuleLineInput("2211", EntrySide.Credit, PostingAmount.Gross, "Dívida Total"),
+            ],
+            Contexto,
+            CancellationToken.None);
+
+        Assert.Equal(CreateAccountingRuleOutcome.Created, resultado.Outcome);
+        Assert.NotNull(resultado.RuleId);
+    }
+
+    [Fact]
+    public async Task RegraComContaInexistente_ERecusada()
+    {
+        var store = new FakeLedgerStore();
+        var versao = ChartOfAccountsVersion.BootstrapDevelopment();
+        store.With(versao);
+
+        var resultado = await new CreateAccountingRule(store, new FakeAuditTrail()).ExecuteAsync(
+            "BAD-01",
+            "Regra Inválida",
+            "BusinessEvent",
+            "Testa validação de conta",
+            new DateOnly(2026, 1, 1),
+            null,
+            [
+                new AccountingRuleLineInput("9999", EntrySide.Debit, PostingAmount.Gross, "Conta fantasma"),
+                new AccountingRuleLineInput("2211", EntrySide.Credit, PostingAmount.Gross, "Crédito"),
+            ],
+            Contexto,
+            CancellationToken.None);
+
+        Assert.Equal(CreateAccountingRuleOutcome.AccountNotFound, resultado.Outcome);
+        Assert.Contains("não existe", resultado.Error);
+    }
+
+    [Fact]
+    public async Task ListarRegrasContabilisticas_RetornaAsLinhas()
+    {
+        var store = new FakeLedgerStore();
+        var versao = ChartOfAccountsVersion.BootstrapDevelopment();
+        store.With(versao);
+
+        var regra = AccountingRule.Create(
+            "FIN-01",
+            "Factura de Fornecedor",
+            "BusinessEvent",
+            "Padrão para facturas",
+            new DateOnly(2026, 1, 1),
+            null,
+            [
+                new AccountingRuleLine("1010", EntrySide.Debit, PostingAmount.Gross, "Mercadoria Total"),
+                new AccountingRuleLine("2110", EntrySide.Credit, PostingAmount.Gross, "Fornecedor Total"),
+            ]);
+
+        await store.AddAccountingRuleAsync(regra, CancellationToken.None);
+
+        var resultado = await new ListAccountingRules(store).ExecuteAsync(
+            false, CancellationToken.None);
+
+        Assert.Single(resultado);
+        var view = resultado.First();
+        Assert.Equal("FIN-01", view.Code);
+        Assert.Equal(2, view.Lines.Count);
+    }
+
+    // ---- Integração com PlanoDeContas ----
+
+    [Fact]
+    public async Task PostDocument_ComPlanoCorrecto_Passa()
+    {
+        var (store, custo, fornecedor, _) = Livros();
+        
+        // Criar versão do plano que contém as contas
+        var versao = ChartOfAccountsVersion.Create(
+            "ANGOLA", "PGC", "2026", "Oficial",
+            new DateOnly(2026, 1, 1), null);
+        versao.AddAccounts([custo, fornecedor]);
+        store.With(versao);
+
+        // Regra de postagem que usa essas contas
+        var regra = PostingRule.Create(
+            "VND", "Vendas", "SAF-T",
+            new PostingRuleLineInput("6111", EntrySide.Debit, PostingAmount.Net, "Custo"),
+            new PostingRuleLineInput("2211", EntrySide.Credit, PostingAmount.Net, "Fornecedor"));
+        store.With(regra);
+
+        var posting = new DocumentPosting(
+            PostingEvent.SalesInvoice,
+            "FT S001/1",
+            "FT-S001-1",
+            "Factura de Teste",
+            Hoje,
+            Net: 100_000m,
+            Tax: 20_000m,
+            Gross: 120_000m,
+            SourceId: Guid.CreateVersion7().ToString(),
+            At: Agora);
+
+        var resultado = await new PostDocument(store).PostAsync(posting, CancellationToken.None);
+
+        Assert.Equal(DocumentPostingOutcome.Posted, resultado.Outcome);
+    }
+
+    [Fact]
+    public async Task PostDocument_ComPlanoQueNaoTemConta_Falha()
+    {
+        var (store, custo, fornecedor, _) = Livros();
+        
+        // Versão do plano que não contém a conta 2211
+        var versao = ChartOfAccountsVersion.Create(
+            "ANGOLA", "PGC", "2026", "Oficial",
+            new DateOnly(2026, 1, 1), null);
+        versao.AddAccounts([custo]); // Só adicionamos custo, não fornecedor
+        store.With(versao);
+
+        // Regra que usa custo e fornecedor
+        var regra = PostingRule.Create(
+            "VND", "Vendas", "SAF-T",
+            new PostingRuleLineInput("6111", EntrySide.Debit, PostingAmount.Net, "Custo"),
+            new PostingRuleLineInput("2211", EntrySide.Credit, PostingAmount.Net, "Fornecedor"));
+        store.With(regra);
+
+        var posting = new DocumentPosting(
+            PostingEvent.SalesInvoice,
+            "FT S001/1",
+            "FT-S001-1",
+            "Factura de Teste",
+            Hoje,
+            Net: 100_000m,
+            Tax: 20_000m,
+            Gross: 120_000m,
+            SourceId: Guid.CreateVersion7().ToString(),
+            At: Agora);
+
+        var resultado = await new PostDocument(store).PostAsync(posting, CancellationToken.None);
+
+        Assert.Equal(DocumentPostingOutcome.Failed, resultado.Outcome);
+        Assert.Contains("não existe no plano", resultado.Error);
+    }
+
+    [Fact]
+    public async Task PostDocument_SemPlano_Passa()
+    {
+        var (store, custo, fornecedor, _) = Livros();
+        
+        // Sem versão do plano definida — backwards compatible
+
+        // Regra que usa essas contas
+        var regra = PostingRule.Create(
+            "VND", "Vendas", "SAF-T",
+            new PostingRuleLineInput("6111", EntrySide.Debit, PostingAmount.Net, "Custo"),
+            new PostingRuleLineInput("2211", EntrySide.Credit, PostingAmount.Net, "Fornecedor"));
+        store.With(regra);
+
+        var posting = new DocumentPosting(
+            PostingEvent.SalesInvoice,
+            "FT S001/1",
+            "FT-S001-1",
+            "Factura de Teste",
+            Hoje,
+            Net: 100_000m,
+            Tax: 20_000m,
+            Gross: 120_000m,
+            SourceId: Guid.CreateVersion7().ToString(),
+            At: Agora);
+
+        var resultado = await new PostDocument(store).PostAsync(posting, CancellationToken.None);
+
+        Assert.Equal(DocumentPostingOutcome.Posted, resultado.Outcome);
+    }
 }

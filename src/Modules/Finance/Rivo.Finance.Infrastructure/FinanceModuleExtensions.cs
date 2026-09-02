@@ -95,6 +95,11 @@ public static class FinanceModuleExtensions
         services.AddScoped<DefinePostingRule>();
         services.AddScoped<ListPostingRules>();
         services.AddScoped<DeactivatePostingRule>();
+        services.AddScoped<CreateChartOfAccountsVersion>();
+        services.AddScoped<ListChartOfAccountsVersions>();
+        services.AddScoped<CreateAccountingRule>();
+        services.AddScoped<ListAccountingRules>();
+        services.AddScoped<DeactivateAccountingRule>();
 
         // Planeamento.
         services.AddScoped<IPlanningStore, PlanningStore>();

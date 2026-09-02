@@ -89,6 +89,23 @@ public static class LedgerEndpoints
         group.MapPost("/ledger/posting-rules/{ruleId:guid}/deactivation", DeactivatePostingRuleAsync)
             .RequireAuthorization(FinancePermissions.LedgerClose);
 
+        // ---- Versões do plano de contas ----
+        group.MapGet("/ledger/chart-versions", ListChartVersionsAsync)
+            .RequireAuthorization(FinancePermissions.LedgerRead);
+
+        group.MapPost("/ledger/chart-versions", CreateChartVersionAsync)
+            .RequireAuthorization(FinancePermissions.LedgerClose);
+
+        // ---- Regras contabilísticas ----
+        group.MapGet("/ledger/accounting-rules", ListAccountingRulesAsync)
+            .RequireAuthorization(FinancePermissions.LedgerRead);
+
+        group.MapPost("/ledger/accounting-rules", CreateAccountingRuleAsync)
+            .RequireAuthorization(FinancePermissions.LedgerClose);
+
+        group.MapPost("/ledger/accounting-rules/{ruleId:guid}/deactivation", DeactivateAccountingRuleAsync)
+            .RequireAuthorization(FinancePermissions.LedgerClose);
+
         // ---- Planeamento ----
         group.MapGet("/planning/cost-centres", ListCostCentresAsync)
             .RequireAuthorization(FinancePermissions.PlanningRead);
@@ -511,6 +528,124 @@ public static class LedgerEndpoints
             : Results.NotFound(new { erro = "Regra de postagem não encontrada." });
     }
 
+    // ---- Versões do plano de contas ----
+
+    private static async Task<IResult> ListChartVersionsAsync(
+        ListChartOfAccountsVersions list,
+        bool? includeInactive,
+        CancellationToken cancellationToken) =>
+        Results.Ok(await list.ExecuteAsync(includeInactive ?? false, cancellationToken));
+
+    private static async Task<IResult> CreateChartVersionAsync(
+        CreateChartVersionRequest request,
+        CreateChartOfAccountsVersion create,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await create.ExecuteAsync(
+            request.Jurisdiction,
+            request.Name,
+            request.Version,
+            request.Source,
+            request.EffectiveFrom,
+            request.EffectiveTo,
+            BuildAuditContext(http),
+            cancellationToken);
+
+        return result.Outcome switch
+        {
+            CreateChartOfAccountsVersionOutcome.Created => Results.Created(
+                $"/finance/ledger/chart-versions?jurisdiction={Uri.EscapeDataString(request.Jurisdiction)}&name={Uri.EscapeDataString(request.Name)}&version={Uri.EscapeDataString(request.Version)}",
+                new { chartVersionId = result.ChartVersionId }),
+
+            CreateChartOfAccountsVersionOutcome.Duplicate =>
+                Results.Conflict(new { erro = result.Error }),
+
+            _ => Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["versao"] = [result.Error!],
+            }),
+        };
+    }
+
+    // ---- Regras contabilísticas ----
+
+    private static async Task<IResult> ListAccountingRulesAsync(
+        ListAccountingRules list,
+        bool? includeInactive,
+        CancellationToken cancellationToken) =>
+        Results.Ok(await list.ExecuteAsync(includeInactive ?? false, cancellationToken));
+
+    private static async Task<IResult> CreateAccountingRuleAsync(
+        CreateAccountingRuleRequest request,
+        CreateAccountingRule create,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var linhas = new List<AccountingRuleLineInput>();
+
+        foreach (var linha in request.Lines ?? [])
+        {
+            if (!Enum.TryParse<EntrySide>(linha.Side, ignoreCase: true, out var lado))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["lines"] = ["O lado de cada linha é `Debit` ou `Credit`."],
+                });
+            }
+
+            if (!Enum.TryParse<PostingAmount>(linha.Amount, ignoreCase: true, out var parcela))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["lines"] = ["A parcela de cada linha é `Net`, `Tax` ou `Gross`."],
+                });
+            }
+
+            linhas.Add(new AccountingRuleLineInput(
+                linha.AccountCode, lado, parcela, linha.Description));
+        }
+
+        var result = await create.ExecuteAsync(
+            request.Code,
+            request.Name,
+            request.SourceType,
+            request.Source,
+            request.EffectiveFrom,
+            request.EffectiveTo,
+            linhas,
+            BuildAuditContext(http),
+            cancellationToken);
+
+        return result.Outcome switch
+        {
+            CreateAccountingRuleOutcome.Created => Results.Created(
+                $"/finance/ledger/accounting-rules?code={Uri.EscapeDataString(request.Code)}",
+                new { ruleId = result.RuleId }),
+
+            CreateAccountingRuleOutcome.AccountNotFound =>
+                Results.NotFound(new { erro = result.Error }),
+
+            _ => Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["regra"] = [result.Error!],
+            }),
+        };
+    }
+
+    private static async Task<IResult> DeactivateAccountingRuleAsync(
+        Guid ruleId,
+        DeactivateAccountingRule deactivate,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var feito = await deactivate.ExecuteAsync(ruleId, BuildAuditContext(http), cancellationToken);
+
+        return feito
+            ? Results.NoContent()
+            : Results.NotFound(new { erro = "Regra contabilística não encontrada." });
+    }
+
     // ---- Planeamento ----
 
     private static async Task<IResult> ListCostCentresAsync(
@@ -786,6 +921,29 @@ public sealed record PostingRuleRequest(
 /// De que parcela do documento a linha se serve: `Net`, `Tax` ou `Gross`.
 /// </param>
 public sealed record PostingRuleLineRequest(
+    string AccountCode,
+    string Side,
+    string Amount,
+    string Description);
+
+public sealed record CreateChartVersionRequest(
+    string Jurisdiction,
+    string Name,
+    string Version,
+    string Source,
+    DateOnly EffectiveFrom,
+    DateOnly? EffectiveTo);
+
+public sealed record CreateAccountingRuleRequest(
+    string Code,
+    string Name,
+    string SourceType,
+    string Source,
+    DateOnly EffectiveFrom,
+    DateOnly? EffectiveTo,
+    IReadOnlyList<CreateAccountingRuleLineRequest>? Lines);
+
+public sealed record CreateAccountingRuleLineRequest(
     string AccountCode,
     string Side,
     string Amount,

@@ -24,6 +24,8 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
 
     public DbSet<PaymentRequest> PaymentRequests => Set<PaymentRequest>();
 
+    public DbSet<ChartOfAccountsVersion> ChartOfAccountsVersions => Set<ChartOfAccountsVersion>();
+
     public DbSet<LedgerAccount> LedgerAccounts => Set<LedgerAccount>();
 
     public DbSet<Journal> Journals => Set<Journal>();
@@ -33,6 +35,8 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
     public DbSet<AccountingPeriod> AccountingPeriods => Set<AccountingPeriod>();
 
     public DbSet<PostingRule> PostingRules => Set<PostingRule>();
+
+    public DbSet<AccountingRule> AccountingRules => Set<AccountingRule>();
 
     public DbSet<CostCentre> CostCentres => Set<CostCentre>();
 
@@ -400,6 +404,23 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
 
         // ---------- Contabilidade ----------
 
+        builder.Entity<ChartOfAccountsVersion>(version =>
+        {
+            version.ToTable("chart_of_accounts_version");
+            version.HasKey(v => v.Id);
+            version.Property(v => v.Version).HasMaxLength(30).IsRequired();
+            version.Property(v => v.Jurisdiction).HasMaxLength(30).IsRequired();
+            version.Property(v => v.Name).HasMaxLength(60).IsRequired();
+            version.Property(v => v.Source).HasMaxLength(300).IsRequired();
+            version.Property(v => v.IsActive);
+
+            version.HasIndex(v => new { v.Jurisdiction, v.Name, v.Version }).IsUnique();
+
+            version.Navigation(v => v.Accounts)
+                .HasField("_accounts")
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+
         builder.Entity<LedgerAccount>(account =>
         {
             account.ToTable("ledger_account");
@@ -411,6 +432,7 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
             account.Property(a => a.Name).HasMaxLength(200).IsRequired();
             account.Property(a => a.ParentCode).HasMaxLength(30);
             account.Property(a => a.Category).HasConversion<string>().HasMaxLength(2);
+            account.Property(a => a.ChartOfAccountsVersionId).IsRequired();
 
             // `AcceptsPostings`, `IsFirstDegree` e `IsAnalytic` são leituras da
             // categoria, não colunas.
@@ -422,6 +444,11 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
             // e o ficheiro SAF-T inválido. É a segunda linha de defesa — a
             // primeira é a verificação no caso de uso.
             account.HasIndex(a => a.Code).IsUnique();
+
+            account.HasOne<ChartOfAccountsVersion>()
+                .WithMany(v => v.Accounts)
+                .HasForeignKey(a => a.ChartOfAccountsVersionId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             account.HasOne<LedgerAccount>()
                 .WithMany()
@@ -545,6 +572,29 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
 
                 line.HasIndex(l => new { l.PostingRuleId, l.LineNumber }).IsUnique();
             });
+        });
+
+        builder.Entity<AccountingRule>(rule =>
+        {
+            rule.ToTable("accounting_rule");
+            rule.HasKey(r => r.Id);
+
+            rule.Property(r => r.Code).HasMaxLength(30).IsRequired();
+            rule.Property(r => r.Name).HasMaxLength(200).IsRequired();
+            rule.Property(r => r.SourceType).HasMaxLength(40).IsRequired();
+            rule.Property(r => r.Source).HasMaxLength(200).IsRequired();
+            rule.Property(r => r.IsActive);
+            rule.Property(r => r.EffectiveFrom);
+            rule.Property(r => r.EffectiveTo);
+
+            rule.HasIndex(r => new { r.Code, r.EffectiveFrom }).IsUnique();
+
+            // As linhas são um value object embutido, serializadas em JSON.
+            rule.Property(r => r.Lines)
+                .HasConversion(
+                    v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                    v => System.Text.Json.JsonSerializer.Deserialize<List<AccountingRuleLine>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new())
+                .HasColumnName("lines");
         });
 
         // ---------- Planeamento ----------

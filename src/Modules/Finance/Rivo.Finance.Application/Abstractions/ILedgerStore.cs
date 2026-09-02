@@ -130,6 +130,44 @@ public interface ILedgerStore
 
     Task AddPostingRuleAsync(PostingRule rule, CancellationToken cancellationToken);
 
+    Task<ChartOfAccountsVersion?> FindChartVersionAsync(
+        Guid chartId,
+        CancellationToken cancellationToken);
+
+    Task<ChartOfAccountsVersion?> FindChartVersionByKeyAsync(
+        string jurisdiction,
+        string name,
+        string version,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<ChartOfAccountsVersion>> ListChartVersionsAsync(
+        bool includeInactive,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Encontra a versão ativa do plano de contas que está efetiva na data fornecida.
+    /// Retorna a versão mais recente (por EffectiveFrom) que cobre a data.
+    /// </summary>
+    Task<ChartOfAccountsVersion?> FindActiveChartVersionForDateAsync(
+        DateOnly date,
+        CancellationToken cancellationToken);
+
+    Task AddChartVersionAsync(
+        ChartOfAccountsVersion chartVersion,
+        CancellationToken cancellationToken);
+
+    Task<AccountingRule?> FindAccountingRuleAsync(
+        Guid ruleId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<AccountingRule>> ListAccountingRulesAsync(
+        bool includeInactive,
+        CancellationToken cancellationToken);
+
+    Task AddAccountingRuleAsync(
+        AccountingRule rule,
+        CancellationToken cancellationToken);
+
     /// <summary>
     /// Movimento por conta num ano, contando só lançamentos **não anulados**.
     ///

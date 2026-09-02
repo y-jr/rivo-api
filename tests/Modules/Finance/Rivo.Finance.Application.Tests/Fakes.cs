@@ -776,6 +776,74 @@ internal sealed class FakeLedgerStore : ILedgerStore
         return Task.CompletedTask;
     }
 
+    private readonly Dictionary<Guid, ChartOfAccountsVersion> _chartVersions = [];
+    private readonly Dictionary<Guid, AccountingRule> _accountingRules = [];
+
+    public FakeLedgerStore With(ChartOfAccountsVersion chartVersion)
+    {
+        _chartVersions[chartVersion.Id] = chartVersion;
+        return this;
+    }
+
+    public Task<ChartOfAccountsVersion?> FindChartVersionAsync(
+        Guid chartId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(_chartVersions.GetValueOrDefault(chartId));
+
+    public Task<ChartOfAccountsVersion?> FindChartVersionByKeyAsync(
+        string jurisdiction,
+        string name,
+        string version,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(_chartVersions.Values.FirstOrDefault(v =>
+            v.Jurisdiction == jurisdiction &&
+            v.Name == name &&
+            v.Version == version));
+
+    public Task<IReadOnlyList<ChartOfAccountsVersion>> ListChartVersionsAsync(
+        bool includeInactive,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<ChartOfAccountsVersion>>(
+            [.. _chartVersions.Values.Where(v => includeInactive || v.IsActive)]);
+
+    public Task AddChartVersionAsync(
+        ChartOfAccountsVersion chartVersion,
+        CancellationToken cancellationToken)
+    {
+        _chartVersions[chartVersion.Id] = chartVersion;
+        return Task.CompletedTask;
+    }
+
+    public Task<ChartOfAccountsVersion?> FindActiveChartVersionForDateAsync(
+        DateOnly date,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<ChartOfAccountsVersion?>(
+            _chartVersions.Values
+                .Where(v => v.IsActive &&
+                           v.EffectiveFrom <= date &&
+                           (v.EffectiveTo == null || v.EffectiveTo >= date))
+                .OrderByDescending(v => v.EffectiveFrom)
+                .FirstOrDefault());
+
+    public Task<AccountingRule?> FindAccountingRuleAsync(
+        Guid ruleId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(_accountingRules.GetValueOrDefault(ruleId));
+
+    public Task<IReadOnlyList<AccountingRule>> ListAccountingRulesAsync(
+        bool includeInactive,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AccountingRule>>(
+            [.. _accountingRules.Values.Where(r => includeInactive || r.IsActive)]);
+
+    public Task AddAccountingRuleAsync(
+        AccountingRule rule,
+        CancellationToken cancellationToken)
+    {
+        _accountingRules[rule.Id] = rule;
+        return Task.CompletedTask;
+    }
+
     /// <summary>
     /// A mesma conta que a implementação real: lançamentos **não anulados**, do
     /// ano, até ao período pedido.

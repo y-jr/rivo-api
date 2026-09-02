@@ -77,6 +77,24 @@ public sealed class PostDocument(ILedgerStore store)
                 AccountingPeriod.Open(posting.Date.Year, periodo), cancellationToken);
         }
 
+        // Validar contra a versão ativa do plano de contas, se houver.
+        var plano = await store.FindActiveChartVersionForDateAsync(posting.Date, cancellationToken);
+
+        if (plano is not null)
+        {
+            var contasNoPlano = plano.Accounts.ToDictionary(a => a.Code, StringComparer.Ordinal);
+
+            foreach (var linha in regra.Lines)
+            {
+                if (!contasNoPlano.ContainsKey(linha.AccountCode))
+                {
+                    return DocumentPostingResult.Failed(
+                        $"A regra de postagem de {posting.Event} usa a conta '{linha.AccountCode}', " +
+                        $"que não existe no plano de contas '{plano.Name}' (v{plano.Version}).");
+                }
+            }
+        }
+
         var codigos = regra.Lines
             .Select(l => l.AccountCode)
             .Distinct(StringComparer.Ordinal)
