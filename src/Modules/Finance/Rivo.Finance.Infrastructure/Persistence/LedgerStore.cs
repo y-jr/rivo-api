@@ -235,7 +235,7 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
             .FirstOrDefaultAsync(v =>
                 v.Jurisdiction == jurisdiction &&
                 v.Name == name &&
-                v.Version == version,
+                v.Revision == version,
                 cancellationToken);
 
     public async Task<IReadOnlyList<ChartOfAccountsVersion>> ListChartVersionsAsync(

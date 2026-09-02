@@ -798,7 +798,7 @@ internal sealed class FakeLedgerStore : ILedgerStore
         Task.FromResult(_chartVersions.Values.FirstOrDefault(v =>
             v.Jurisdiction == jurisdiction &&
             v.Name == name &&
-            v.Version == version));
+            v.Revision == version));
 
     public Task<IReadOnlyList<ChartOfAccountsVersion>> ListChartVersionsAsync(
         bool includeInactive,

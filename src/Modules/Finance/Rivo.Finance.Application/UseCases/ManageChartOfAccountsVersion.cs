@@ -58,7 +58,7 @@ public sealed class CreateChartOfAccountsVersion(ILedgerStore store, IAuditTrail
                 FinanceAuditEntityTypes.ChartOfAccountsVersion,
                 versao.Id.ToString(),
                 context,
-                NewValue: $$"""{"jurisdiction":"{{versao.Jurisdiction}}","name":"{{versao.Name}}","version":"{{versao.Version}}","source":"{{versao.Source}}","effectiveFrom":"{{versao.EffectiveFrom:yyyy-MM-dd}}"}"""),
+                NewValue: $$"""{"jurisdiction":"{{versao.Jurisdiction}}","name":"{{versao.Name}}","version":"{{versao.Revision}}","source":"{{versao.Source}}","effectiveFrom":"{{versao.EffectiveFrom:yyyy-MM-dd}}"}"""),
             cancellationToken);
 
         return CreateChartOfAccountsVersionResult.Success(versao.Id);
@@ -102,7 +102,7 @@ public sealed class ListChartOfAccountsVersions(ILedgerStore store)
             v.Id,
             v.Jurisdiction,
             v.Name,
-            v.Version,
+            v.Revision,
             v.Source,
             v.EffectiveFrom,
             v.EffectiveTo,
