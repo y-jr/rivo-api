@@ -321,6 +321,38 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
     public async Task AddReceiptAsync(Receipt receipt, CancellationToken cancellationToken) =>
         await context.Receipts.AddAsync(receipt, cancellationToken);
 
+    public async Task<PaymentClaim?> FindPaymentClaimAsync(Guid claimId, CancellationToken cancellationToken) =>
+        await context.PaymentClaims
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == claimId, cancellationToken);
+
+    public async Task<PaymentClaim?> FindPaymentClaimForUpdateAsync(Guid claimId, CancellationToken cancellationToken) =>
+        await context.PaymentClaims
+            .FirstOrDefaultAsync(c => c.Id == claimId, cancellationToken);
+
+    public async Task<IReadOnlyList<PaymentClaim>> ListPaymentClaimsAsync(
+        Guid? customerId,
+        PaymentClaimStatus? status,
+        CancellationToken cancellationToken)
+    {
+        var query = context.PaymentClaims.AsNoTracking().AsQueryable();
+
+        if (customerId is { } cliente)
+        {
+            query = query.Where(c => c.CustomerId == cliente);
+        }
+
+        if (status is { } estado)
+        {
+            query = query.Where(c => c.Status == estado);
+        }
+
+        return await query.OrderByDescending(c => c.SubmittedAt).ToListAsync(cancellationToken);
+    }
+
+    public async Task AddPaymentClaimAsync(PaymentClaim claim, CancellationToken cancellationToken) =>
+        await context.PaymentClaims.AddAsync(claim, cancellationToken);
+
     public Task SaveChangesAsync(CancellationToken cancellationToken) =>
         context.SaveChangesAsync(cancellationToken);
 }

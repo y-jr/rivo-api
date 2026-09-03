@@ -88,14 +88,15 @@ where r.name = 'HR' and c.claim_value = 'hr.positions.write'
 "@
     if ($hrHasCatalogue -ne "0") { throw "HR tem hr.positions.write, contra ADR-015" }
 
-    # A lista de perfis vazios encolheu quatro vezes, e cada saida foi um
+    # A lista de perfis vazios encolheu cinco vezes, e cada saida foi um
     # modulo a nascer: `Manager` e `Finance` em 2026-08-23 (ADR-034), quando
     # decidir sobre pedidos passou a existir; `Sales` em 2026-08-24 (ADR-036),
     # com clientes e emissao de facturas; `AssetManager` em 2026-08-27, com a
     # recepcao de mercadoria; `ProjectManager` em 2026-08-29, com o esqueleto
-    # de `projects`. **Nenhum dos sete perfis continua vazio.** Um oitavo,
-    # `Cliente`, nasceu vazio a 2026-09-03 (ADR-043) — espera pelo Portal do
-    # Cliente, mesma situacao em que os outros ja estiveram.
+    # de `projects`. Um oitavo, `Cliente`, nasceu vazio a 2026-09-03
+    # (ADR-043) e saiu no mesmo dia, com o comprovativo de pagamento
+    # (ADR-044) — a primeira permissao real de um perfil externo.
+    # **Nenhum dos oito perfis continua vazio.**
     #
     # A saida do `AssetManager` nao e adivinhacao: a recepcao e a porta de
     # entrada do stock, e `modules/procurement.md` diz que `procurement` publica

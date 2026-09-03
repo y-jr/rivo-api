@@ -76,6 +76,20 @@ public static class FinanceModuleEndpoints
         group.MapPost("/receipts/{receiptId:guid}/cancellation", CancelReceiptAsync)
             .RequireAuthorization(FinancePermissions.InvoicesCancel);
 
+        // Pedidos de confirmação de pagamento (ADR-044) — a submissão em si
+        // não tem endpoint aqui: passa sempre pelo Portal do Cliente, que
+        // resolve "o próprio cliente" antes de chegar a `finance`.
+        group.MapGet("/payment-claims", ListPaymentClaimsAsync)
+            .RequireAuthorization(FinancePermissions.ReceiptsRead);
+
+        // Confirmar dispara o recibo (RegisterReceipt) — mesma permissão de
+        // registar um, porque é o que isto faz de facto.
+        group.MapPost("/payment-claims/{claimId:guid}/confirmation", ConfirmPaymentClaimAsync)
+            .RequireAuthorization(FinancePermissions.ReceiptsWrite);
+
+        group.MapPost("/payment-claims/{claimId:guid}/rejection", RejectPaymentClaimAsync)
+            .RequireAuthorization(FinancePermissions.ReceiptsWrite);
+
         return endpoints;
     }
 
@@ -273,6 +287,61 @@ public static class FinanceModuleEndpoints
             CancelInvoiceOutcome.Rejected =>
                 Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
             _ => Results.Problem("Resultado inesperado ao estornar o recibo."),
+        };
+    }
+
+    private static async Task<IResult> ListPaymentClaimsAsync(
+        ListPaymentClaims listClaims,
+        Guid? customerId,
+        PaymentClaimStatus? status,
+        CancellationToken cancellationToken) =>
+        Results.Ok(await listClaims.ExecuteAsync(customerId, status, cancellationToken));
+
+    private static async Task<IResult> ConfirmPaymentClaimAsync(
+        Guid claimId,
+        ConfirmPaymentClaim confirm,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var contexto = BuildAuditContext(http);
+        var result = await confirm.ExecuteAsync(claimId, contexto.ActorId ?? Guid.Empty, contexto, cancellationToken);
+
+        return result.Outcome switch
+        {
+            ReviewPaymentClaimOutcome.Confirmed => Results.Ok(new { receiptId = result.ReceiptId }),
+
+            ReviewPaymentClaimOutcome.NotFound =>
+                Results.NotFound(new { erro = "Pedido não encontrado." }),
+
+            ReviewPaymentClaimOutcome.Rejected or ReviewPaymentClaimOutcome.ReceiptFailed =>
+                Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
+
+            _ => Results.Problem("Resultado inesperado ao confirmar o pedido."),
+        };
+    }
+
+    private static async Task<IResult> RejectPaymentClaimAsync(
+        Guid claimId,
+        CancelInvoiceRequest request,
+        RejectPaymentClaim reject,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var contexto = BuildAuditContext(http);
+        var result = await reject.ExecuteAsync(
+            claimId, request.Reason, contexto.ActorId ?? Guid.Empty, contexto, cancellationToken);
+
+        return result.Outcome switch
+        {
+            ReviewPaymentClaimOutcome.RejectedOk => Results.NoContent(),
+
+            ReviewPaymentClaimOutcome.NotFound =>
+                Results.NotFound(new { erro = "Pedido não encontrado." }),
+
+            ReviewPaymentClaimOutcome.Rejected =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["reason"] = [result.Error!] }),
+
+            _ => Results.Problem("Resultado inesperado ao rejeitar o pedido."),
         };
     }
 

@@ -66,6 +66,22 @@ $scheduleId = (Invoke-RestMethod "$base/fiscal/tax-rates" -Method Post -Body $b 
 $b = @{ percentage = 14; effectiveFrom = "2000-01-01"; legalInstrument = "Suite customer-portal" } | ConvertTo-Json
 Invoke-RestMethod "$base/fiscal/tax-rates/$scheduleId/versions" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
 
+# Upload de comprovativo (ADR-044), mesmo mecanismo de verify-fleet.ps1 -- ver
+# ali o porque da portabilidade Windows/Linux (curl.exe vs curl).
+$temp = [System.IO.Path]::GetTempPath()
+$curl = if (Get-Command curl.exe -ErrorAction SilentlyContinue) { "curl.exe" } else { "curl" }
+$tempFile = Join-Path $temp "rivo-comprovativo-$stamp.txt"
+Set-Content -Path $tempFile -Value "Comprovativo de transferencia bancaria de teste - $stamp" -NoNewline -Encoding UTF8
+
+function Invoke-Upload {
+    param([string]$FilePath, [string]$Category, [string]$Token)
+
+    return (& $curl -s -X POST "$base/documents" `
+        -H "Authorization: Bearer $Token" `
+        -F "file=@$FilePath" `
+        -F "category=$Category" 2>$null)
+}
+
 Write-Host "`n=== Camada de composicao customer-portal ===`n"
 
 Test-Case "1. Sem autenticacao -> 401" {
@@ -175,7 +191,111 @@ Test-Case "9. Outro utilizador sem cliente ligado -> 403, nunca ve o cliente de 
     "HTTP 403 -- so ve o proprio, e o proprio nao existe para esta conta"
 }
 
-Test-Case "10. Vista e extracto sobrevivem ao reinicio da stack" {
+# A ligacao da conta (caso 3) so poe Customer.UserId -- nao atribui perfil
+# nenhum, mesma distincao que ADR-043 faz ("so depois disso o perfil Cliente
+# e atribuido"). Sem isto, o upload do comprovativo (documents.write) falhava
+# com 403 antes de chegar a nenhuma regra de ADR-044.
+$b = @{ profile = "Cliente" } | ConvertTo-Json
+Invoke-RestMethod "$base/identity/users/$($script:ownUserId)/roles" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+Test-Case "10. Cliente submete comprovativo de pagamento -- fica Pending" {
+    $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
+    $upload = Invoke-Upload $tempFile "comprovativo-pagamento" $ownHeaders.Authorization.Split(" ")[1] | ConvertFrom-Json
+    $script:documentoId = $upload.documentId
+
+    # Caso 6 deixou a factura original com 48040 em aberto (114000 - 15960 -
+    # 50000). E o valor que se vai confirmar no caso seguinte.
+    $b = @{
+        salesInvoiceId = $script:factura.invoiceId; amount = 48040; paidOn = "2026-08-20"
+        documentId = $script:documentoId
+    } | ConvertTo-Json
+    $script:pedidoId = (Invoke-RestMethod "$base/customer-portal/me/payment-claims" -Method Post -Body $b -ContentType "application/json" -Headers $ownHeaders).claimId
+
+    $meus = Invoke-RestMethod "$base/customer-portal/me/payment-claims" -Headers $ownHeaders
+    if ($meus.Count -ne 1) { throw "esperado 1 pedido, obtidos $($meus.Count)" }
+    if ($meus[0].status -ne "Pending") { throw "estado errado: $($meus[0].status)" }
+    "pedido $($script:pedidoId) submetido, Pending, 48040"
+}
+
+Test-Case "11. Finance confirma o pedido -- gera o recibo e o extracto fecha a zero" {
+    $pendentes = Invoke-RestMethod "$base/finance/payment-claims?customerId=$($script:customerId)&status=Pending" -Headers $financeHeaders
+    if (-not ($pendentes | Where-Object { $_.id -eq $script:pedidoId })) { throw "pedido nao aparece na fila do finance" }
+
+    $confirmacao = Invoke-RestMethod "$base/finance/payment-claims/$($script:pedidoId)/confirmation" -Method Post -Headers $financeHeaders
+    if (-not $confirmacao.receiptId) { throw "confirmacao sem receiptId" }
+
+    $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
+    $meus = Invoke-RestMethod "$base/customer-portal/me/payment-claims" -Headers $ownHeaders
+    if (($meus | Where-Object { $_.id -eq $script:pedidoId }).status -ne "Confirmed") { throw "pedido nao ficou Confirmed" }
+
+    $extracto = Invoke-RestMethod "$base/customer-portal/me/statement?from=$de&to=$ate" -Headers $ownHeaders
+    if ($extracto.closingBalance -ne 0) { throw "fecho devia ser 0 apos confirmar o resto, veio $($extracto.closingBalance)" }
+    "recibo $($confirmacao.receiptId), pedido Confirmed, fecho=0"
+}
+
+Test-Case "12. Pedido acima do em aberto -- 409, sem gateway nenhum a esconder o erro" {
+    $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
+    $upload = Invoke-Upload $tempFile "comprovativo-pagamento" $ownHeaders.Authorization.Split(" ")[1] | ConvertFrom-Json
+
+    # A factura original ja nao deve nada (caso 11) -- qualquer valor excede.
+    $b = @{
+        salesInvoiceId = $script:factura.invoiceId; amount = 1000; paidOn = "2026-08-21"
+        documentId = $upload.documentId
+    } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/customer-portal/me/payment-claims" -Method Post -Body $b -ContentType "application/json" -Headers $ownHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    "HTTP 409 -- factura ja liquidada"
+}
+
+Test-Case "13. Finance rejeita um pedido -- fica Rejected com motivo, sem apagar nada (BR-14)" {
+    $b = @{
+        customerId = $script:customerId; issuedOn = "2026-08-22"; taxPointDate = "2026-08-22"
+        lines = @(@{ description = "Segundo servico"; quantity = 1; unitPrice = 100000; taxCode = $codigoTaxa })
+    } | ConvertTo-Json
+    $script:factura2 = Invoke-RestMethod "$base/finance/sales-invoices" -Method Post -Body $b -ContentType "application/json" -Headers $salesHeaders
+
+    $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
+    $upload = Invoke-Upload $tempFile "comprovativo-pagamento" $ownHeaders.Authorization.Split(" ")[1] | ConvertFrom-Json
+    $b = @{
+        salesInvoiceId = $script:factura2.invoiceId; amount = 114000; paidOn = "2026-08-23"
+        documentId = $upload.documentId
+    } | ConvertTo-Json
+    $script:pedidoRejeitadoId = (Invoke-RestMethod "$base/customer-portal/me/payment-claims" -Method Post -Body $b -ContentType "application/json" -Headers $ownHeaders).claimId
+
+    $b = @{ reason = "Comprovativo ilegivel." } | ConvertTo-Json
+    Invoke-RestMethod "$base/finance/payment-claims/$($script:pedidoRejeitadoId)/rejection" -Method Post -Body $b -ContentType "application/json" -Headers $financeHeaders | Out-Null
+
+    $meus = Invoke-RestMethod "$base/customer-portal/me/payment-claims" -Headers $ownHeaders
+    $rejeitado = $meus | Where-Object { $_.id -eq $script:pedidoRejeitadoId }
+    if ($rejeitado.status -ne "Rejected") { throw "estado errado: $($rejeitado.status)" }
+    if ($rejeitado.rejectionReason -ne "Comprovativo ilegivel.") { throw "motivo perdido: $($rejeitado.rejectionReason)" }
+    "pedido $($script:pedidoRejeitadoId) Rejected, factura2 continua em aberto (114000)"
+}
+
+Test-Case "14. Comprovativo de factura de outro cliente -- 404, nao revela a outrem" {
+    $e2 = "cliente2-cp-$stamp@rivo-teste.local"
+    $b = @{ name = "Segundo Cliente CP $stamp"; taxId = "58$stamp"; addressDetail = "Rua Z"; city = "Luanda"; country = "AO" } | ConvertTo-Json
+    $cliente2Id = (Invoke-RestMethod "$base/commercial/customers" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders).customerId
+    $b = @{ email = $e2; password = $pass } | ConvertTo-Json
+    $user2Id = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
+    $b = @{ userId = $user2Id } | ConvertTo-Json
+    Invoke-RestMethod "$base/commercial/customers/$cliente2Id/account" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
+    $b = @{ profile = "Cliente" } | ConvertTo-Json
+    Invoke-RestMethod "$base/identity/users/$user2Id/roles" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    $h2 = @{ Authorization = "Bearer " + (Get-Token $e2 $pass) }
+    $upload = Invoke-Upload $tempFile "comprovativo-pagamento" $h2.Authorization.Split(" ")[1] | ConvertFrom-Json
+
+    $b = @{
+        salesInvoiceId = $script:factura2.invoiceId; amount = 114000; paidOn = "2026-08-23"
+        documentId = $upload.documentId
+    } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/customer-portal/me/payment-claims" -Method Post -Body $b -ContentType "application/json" -Headers $h2 }
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+    "HTTP 404 -- factura2 nao e do segundo cliente"
+}
+
+Test-Case "15. Vista, extracto e pedidos sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)
     do {
@@ -187,12 +307,19 @@ Test-Case "10. Vista e extracto sobrevivem ao reinicio da stack" {
     $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
     $vista = Invoke-RestMethod "$base/customer-portal/me?from=$de&to=$ate" -Headers $ownHeaders
     if ($vista.customerId -ne $script:customerId) { throw "vinculo nao sobreviveu ao reinicio" }
-    if ($vista.invoices.Count -ne 1) { throw "factura perdida apos restart" }
+    if ($vista.invoices.Count -ne 2) { throw "facturas perdidas apos restart: $($vista.invoices.Count)" }
 
+    # factura original liquidada (caso 11) + factura2 rejeitada e por isso
+    # ainda em aberto (caso 13) -- fecho = 0 + 114000.
     $extracto = Invoke-RestMethod "$base/customer-portal/me/statement?from=$de&to=$ate" -Headers $ownHeaders
-    if ($extracto.closingBalance -ne 48040) { throw "fecho do extracto perdido apos restart: $($extracto.closingBalance)" }
+    if ($extracto.closingBalance -ne 114000) { throw "fecho do extracto perdido apos restart: $($extracto.closingBalance)" }
 
-    "customerId=$($script:customerId), factura e extracto (fecho=48040) intactos apos restart"
+    $meus = Invoke-RestMethod "$base/customer-portal/me/payment-claims" -Headers $ownHeaders
+    if ($meus.Count -ne 2) { throw "pedidos de confirmacao perdidos apos restart: $($meus.Count)" }
+    if (-not ($meus | Where-Object { $_.status -eq "Confirmed" })) { throw "pedido confirmado perdido" }
+    if (-not ($meus | Where-Object { $_.status -eq "Rejected" })) { throw "pedido rejeitado perdido" }
+
+    "customerId=$($script:customerId), 2 facturas, fecho=114000, 2 pedidos (Confirmed+Rejected) intactos apos restart"
 }
 
 Write-Host ""

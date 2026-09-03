@@ -291,6 +291,14 @@ public static class FinanceAuditActions
     /// </summary>
     public const string ReceiptCancelled = "finance.receipt.cancelled";
 
+    /// <summary>O cliente submeteu comprovativo (ADR-044). Ainda não é dinheiro reconhecido.</summary>
+    public const string PaymentClaimSubmitted = "finance.payment_claim.submitted";
+
+    /// <summary>Confirmado — gerou o <see cref="ReceiptRegistered"/> correspondente.</summary>
+    public const string PaymentClaimConfirmed = "finance.payment_claim.confirmed";
+
+    public const string PaymentClaimRejected = "finance.payment_claim.rejected";
+
     public const string AccountOpened = "finance.bank_account.opened";
     public const string AccountDeposited = "finance.bank_account.deposited";
 
@@ -373,6 +381,7 @@ public static class FinanceAuditEntityTypes
     public const string DocumentSeries = "finance.document_series";
     public const string CreditNote = "finance.credit_note";
     public const string Receipt = "finance.receipt";
+    public const string PaymentClaim = "finance.payment_claim";
     public const string BankAccount = "finance.bank_account";
     public const string PurchaseInvoice = "finance.purchase_invoice";
     public const string PaymentRequest = "finance.payment_request";

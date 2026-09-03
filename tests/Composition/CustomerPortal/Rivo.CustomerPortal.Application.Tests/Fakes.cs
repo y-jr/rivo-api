@@ -86,3 +86,44 @@ internal sealed class FakeReceivablesOverview : IReceivablesOverview
         Guid customerId, DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
         Task.FromResult(_statements.GetValueOrDefault(customerId, new CustomerStatementView(0m, [], 0m)));
 }
+
+internal sealed class FakeCustomerPayments : ICustomerPayments
+{
+    private readonly Dictionary<Guid, List<PaymentClaimView>> _claims = [];
+
+    private SubmitPaymentClaimResult _nextResult = SubmitPaymentClaimResult.Submitted(Guid.CreateVersion7());
+
+    /// <summary>O que <see cref="SubmitClaimAsync"/> devolve na próxima chamada — o teste decide o desfecho de `finance`.</summary>
+    public FakeCustomerPayments WillReturn(SubmitPaymentClaimResult result)
+    {
+        _nextResult = result;
+        return this;
+    }
+
+    /// <summary>Regista o último pedido recebido, para o teste confirmar que o `customerId` resolvido chegou.</summary>
+    public Guid? LastCustomerId { get; private set; }
+
+    public FakeCustomerPayments WithClaim(Guid customerId, PaymentClaimView claim)
+    {
+        if (!_claims.TryGetValue(customerId, out var lista))
+        {
+            lista = [];
+            _claims[customerId] = lista;
+        }
+
+        lista.Add(claim);
+        return this;
+    }
+
+    public Task<SubmitPaymentClaimResult> SubmitClaimAsync(
+        Guid customerId, Guid salesInvoiceId, decimal amount, DateOnly paidOn, Guid documentId,
+        Guid submittedByUserId, string? notes, CancellationToken cancellationToken)
+    {
+        LastCustomerId = customerId;
+        return Task.FromResult(_nextResult);
+    }
+
+    public Task<IReadOnlyList<PaymentClaimView>> ListMyClaimsAsync(
+        Guid customerId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<PaymentClaimView>>(_claims.GetValueOrDefault(customerId, []));
+}

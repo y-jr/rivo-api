@@ -16,6 +16,8 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
 
     public DbSet<Receipt> Receipts => Set<Receipt>();
 
+    public DbSet<PaymentClaim> PaymentClaims => Set<PaymentClaim>();
+
     public DbSet<BankAccount> Accounts => Set<BankAccount>();
 
     public DbSet<BankMovement> Movements => Set<BankMovement>();
@@ -273,6 +275,27 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
             // A consulta do saldo: quanto foi recebido por factura.
             line.HasIndex(l => l.SalesInvoiceId);
             line.HasIndex(l => new { l.ReceiptId, l.LineNumber }).IsUnique();
+        });
+
+        builder.Entity<PaymentClaim>(claim =>
+        {
+            claim.ToTable("payment_claim");
+            claim.HasKey(c => c.Id);
+            claim.Property(c => c.Version).IsConcurrencyToken();
+
+            claim.Property(c => c.Amount).HasPrecision(18, 2);
+            claim.Property(c => c.Status).HasConversion<string>().HasMaxLength(20);
+            claim.Property(c => c.Notes).HasMaxLength(500);
+            claim.Property(c => c.RejectionReason).HasMaxLength(500);
+
+            // Sem chave estrangeira para `documents.document`: schemas de
+            // módulos distintos, referência por identificador (ADR-010).
+            claim.HasIndex(c => c.DocumentId);
+
+            claim.HasIndex(c => c.SalesInvoiceId);
+
+            // A fila do Finance: pendentes primeiro, por cliente.
+            claim.HasIndex(c => new { c.CustomerId, c.Status });
         });
 
         builder.Entity<BankAccount>(account =>

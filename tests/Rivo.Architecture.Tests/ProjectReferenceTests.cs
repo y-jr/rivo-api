@@ -67,7 +67,7 @@ public class ProjectReferenceTests
         // `hr`, `approval` — não precisam de referência directa: quem executa
         // um pagamento e quem o aprova chegam por identificador simples e por
         // `IPaymentApproval` invertido, sem resolver atributos do outro lado.
-        ["Finance"] = ["Audit", "Fiscal", "Commercial", "Procurement"],
+        ["Finance"] = ["Audit", "Fiscal", "Commercial", "Procurement", "Documents"],
 
         // `procurement` é dono do Fornecedor e da Requisição Interna. Duas
         // direcções, e nenhuma delas é `approval`:

@@ -135,6 +135,18 @@ public interface ISalesInvoiceStore
 
     Task AddReceiptAsync(Receipt receipt, CancellationToken cancellationToken);
 
+    Task<PaymentClaim?> FindPaymentClaimAsync(Guid claimId, CancellationToken cancellationToken);
+
+    /// <summary>Rastreada: quem a procura assim vai confirmar ou rejeitar.</summary>
+    Task<PaymentClaim?> FindPaymentClaimForUpdateAsync(Guid claimId, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<PaymentClaim>> ListPaymentClaimsAsync(
+        Guid? customerId,
+        PaymentClaimStatus? status,
+        CancellationToken cancellationToken);
+
+    Task AddPaymentClaimAsync(PaymentClaim claim, CancellationToken cancellationToken);
+
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }
 
