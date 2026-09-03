@@ -59,6 +59,9 @@ public sealed class AccountingRule
 
     public IReadOnlyList<AccountingRuleLine> Lines => _lines;
 
+    /// <summary>Concorrência optimista (ADR-025, BR-17).</summary>
+    public int Version { get; private set; }
+
     public static AccountingRule Create(
         string code,
         string name,

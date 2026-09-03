@@ -89,12 +89,12 @@ Test-Case "2. Autenticado sem perfil adequado -> 403" {
 
 Test-Case "3. Autenticado com perfil adequado -> 200" {
     $roles = Invoke-RestMethod "$base/identity/roles" -Headers $adminHeaders
-    if ($roles.Count -ne 7) { throw "esperados 7 perfis, obtidos $($roles.Count)" }
-    "7 perfis devolvidos"
+    if ($roles.Count -ne 8) { throw "esperados 8 perfis, obtidos $($roles.Count)" }
+    "8 perfis devolvidos"
 }
 
 Test-Case "4. Seed nao cria perfis fora do catalogo" {
-    $expected = @("Admin", "AssetManager", "Finance", "HR", "Manager", "ProjectManager", "Sales")
+    $expected = @("Admin", "AssetManager", "Cliente", "Finance", "HR", "Manager", "ProjectManager", "Sales")
     $actual = (Invoke-RivoSql "select name from [identity].app_role order by name") -split "`n" | Where-Object { $_ }
     $diff = Compare-Object $expected $actual
     # `-join` e nao `Join-String`: este ultimo so existe a partir do PowerShell
@@ -102,7 +102,7 @@ Test-Case "4. Seed nao cria perfis fora do catalogo" {
     # havia algo a reportar, escondendo a divergencia atras de um erro de
     # cmdlet inexistente.
     if ($diff) { throw "divergencia: " + (($diff | ForEach-Object { $_.InputObject }) -join ",") }
-    "exactamente os 7 esperados"
+    "exactamente os 8 esperados"
 }
 
 Test-Case "5. Seed repetido nao duplica" {
@@ -116,13 +116,13 @@ Test-Case "5. Seed repetido nao duplica" {
     if (-not $up) { throw "API nao voltou a responder" }
 
     $roleCount = (Invoke-RivoSql "select count(*) from [identity].app_role")
-    if ($roleCount -ne "7") { throw "perfis duplicados: $roleCount" }
+    if ($roleCount -ne "8") { throw "perfis duplicados: $roleCount" }
 
     # Duplicacao verificada directamente. O total de permissoes cresce a cada
     # modulo novo, por isso nao serve de asercao.
     $dupClaims = (Invoke-RivoSql "select count(*) from (select role_id, claim_type, claim_value from [identity].app_role_claim group by role_id, claim_type, claim_value having count(*)>1) d")
     if ($dupClaims -ne "0") { throw "$dupClaims permissoes duplicadas" }
-    "7 perfis, sem permissoes duplicadas apos segunda execucao"
+    "8 perfis, sem permissoes duplicadas apos segunda execucao"
 }
 
 Test-Case "6. Permissoes sobrevivem ao reinicio da stack" {
@@ -137,7 +137,7 @@ Test-Case "6. Permissoes sobrevivem ao reinicio da stack" {
     # O token anterior morreu com a sessao? Nao: a sessao esta em base de dados
     # e o volume persiste, por isso continua valida.
     $roles = Invoke-RestMethod "$base/identity/roles" -Headers $adminHeaders
-    if ($roles.Count -ne 7) { throw "esperados 7 perfis, obtidos $($roles.Count)" }
+    if ($roles.Count -ne 8) { throw "esperados 8 perfis, obtidos $($roles.Count)" }
     "autorizacao intacta apos restart"
 }
 

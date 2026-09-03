@@ -38,6 +38,11 @@ public sealed class CommercialDbContext(DbContextOptions<CommercialDbContext> op
 
             customer.HasIndex(c => c.Name);
 
+            // Único quando preenchido — o SQL Server trata cada NULL como
+            // distinto, por isso vários clientes sem conta ligada continuam
+            // a caber. Mesmo desenho de Employee.UserId (ADR-042).
+            customer.HasIndex(c => c.UserId).IsUnique();
+
             // Morada como propriedade owned: colunas na mesma tabela, e não
             // uma linha à parte. É objecto de valor — não tem identidade nem
             // ciclo de vida próprio.

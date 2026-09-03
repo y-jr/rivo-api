@@ -493,7 +493,7 @@ public class LedgerTests
         var resultado = await new CreateChartOfAccountsVersion(store, new FakeAuditTrail()).ExecuteAsync(
             versao.Jurisdiction,
             versao.Name,
-            versao.Version,
+            versao.Revision,
             versao.Source,
             versao.EffectiveFrom,
             versao.EffectiveTo,
@@ -618,14 +618,16 @@ public class LedgerTests
         store.With(versao);
 
         // Regra de postagem que usa essas contas
-        var regra = PostingRule.Create(
-            "VND", "Vendas", "SAF-T",
-            new PostingRuleLineInput("6111", EntrySide.Debit, PostingAmount.Net, "Custo"),
-            new PostingRuleLineInput("2211", EntrySide.Credit, PostingAmount.Net, "Fornecedor"));
+        var regra = PostingRule.Define(
+            PostingEvent.SalesInvoiceIssued, "DIV", "Vendas",
+            [
+                new NewPostingRuleLine("6111", EntrySide.Debit, PostingAmount.Net, "Custo"),
+                new NewPostingRuleLine("2211", EntrySide.Credit, PostingAmount.Net, "Fornecedor"),
+            ]);
         store.With(regra);
 
         var posting = new DocumentPosting(
-            PostingEvent.SalesInvoice,
+            PostingEvent.SalesInvoiceIssued,
             "FT S001/1",
             "FT-S001-1",
             "Factura de Teste",
@@ -654,14 +656,16 @@ public class LedgerTests
         store.With(versao);
 
         // Regra que usa custo e fornecedor
-        var regra = PostingRule.Create(
-            "VND", "Vendas", "SAF-T",
-            new PostingRuleLineInput("6111", EntrySide.Debit, PostingAmount.Net, "Custo"),
-            new PostingRuleLineInput("2211", EntrySide.Credit, PostingAmount.Net, "Fornecedor"));
+        var regra = PostingRule.Define(
+            PostingEvent.SalesInvoiceIssued, "DIV", "Vendas",
+            [
+                new NewPostingRuleLine("6111", EntrySide.Debit, PostingAmount.Net, "Custo"),
+                new NewPostingRuleLine("2211", EntrySide.Credit, PostingAmount.Net, "Fornecedor"),
+            ]);
         store.With(regra);
 
         var posting = new DocumentPosting(
-            PostingEvent.SalesInvoice,
+            PostingEvent.SalesInvoiceIssued,
             "FT S001/1",
             "FT-S001-1",
             "Factura de Teste",
@@ -686,14 +690,16 @@ public class LedgerTests
         // Sem versão do plano definida — backwards compatible
 
         // Regra que usa essas contas
-        var regra = PostingRule.Create(
-            "VND", "Vendas", "SAF-T",
-            new PostingRuleLineInput("6111", EntrySide.Debit, PostingAmount.Net, "Custo"),
-            new PostingRuleLineInput("2211", EntrySide.Credit, PostingAmount.Net, "Fornecedor"));
+        var regra = PostingRule.Define(
+            PostingEvent.SalesInvoiceIssued, "DIV", "Vendas",
+            [
+                new NewPostingRuleLine("6111", EntrySide.Debit, PostingAmount.Net, "Custo"),
+                new NewPostingRuleLine("2211", EntrySide.Credit, PostingAmount.Net, "Fornecedor"),
+            ]);
         store.With(regra);
 
         var posting = new DocumentPosting(
-            PostingEvent.SalesInvoice,
+            PostingEvent.SalesInvoiceIssued,
             "FT S001/1",
             "FT-S001-1",
             "Factura de Teste",

@@ -195,7 +195,7 @@ public class LedgerTests
 
         Assert.Equal("ANGOLA", versao.Jurisdiction);
         Assert.Equal("PGC", versao.Name);
-        Assert.Equal("2026-01", versao.Version);
+        Assert.Equal("2026-01", versao.Revision);
         Assert.True(versao.IsActive);
     }
 
@@ -205,7 +205,7 @@ public class LedgerTests
         var versao = ChartOfAccountsVersion.BootstrapDevelopment();
 
         Assert.Equal("ANGOLA", versao.Jurisdiction);
-        Assert.Equal("BOOTSTRAP-DEV", versao.Version);
+        Assert.Equal("BOOTSTRAP-DEV", versao.Revision);
         Assert.True(versao.IsActive);
         Assert.NotEmpty(versao.Accounts);
         Assert.All(versao.Accounts, conta => Assert.Equal(versao.Id, conta.ChartOfAccountsVersionId));

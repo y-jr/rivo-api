@@ -20,6 +20,11 @@ public sealed class CustomerStore(CommercialDbContext context) : ICustomerStore
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.TaxId == taxId, cancellationToken);
 
+    public async Task<Customer?> FindByUserIdAsync(Guid userId, CancellationToken cancellationToken) =>
+        await context.Customers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.UserId == userId, cancellationToken);
+
     public async Task<IReadOnlyList<Customer>> ListAsync(
         bool includeInactive,
         CancellationToken cancellationToken)

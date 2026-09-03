@@ -90,7 +90,7 @@ public sealed class PostDocument(ILedgerStore store)
                 {
                     return DocumentPostingResult.Failed(
                         $"A regra de postagem de {posting.Event} usa a conta '{linha.AccountCode}', " +
-                        $"que não existe no plano de contas '{plano.Name}' (v{plano.Version}).");
+                        $"que não existe no plano de contas '{plano.Name}' (v{plano.Revision}).");
                 }
             }
         }

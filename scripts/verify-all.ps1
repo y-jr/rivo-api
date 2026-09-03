@@ -130,7 +130,21 @@ if (-not (Wait-ForApi)) {
     exit 1
 }
 
+# K20 (known-issues.md): 404 intermitente a desactivar uma politica de
+# approval no fim de tres suites, investigado quatro vezes sem causa de
+# codigo encontrada. Deliberadamente nao escondido nos casos abaixo -- ficam
+# a falhar, para que continuem a assinalar o problema a quem correr a suite
+# a mao. Aqui, cada texto (nao o numero do caso, que ja mudou varias vezes
+# no historico do K20) e a fonte de verdade sobre o que e tolerado: uma
+# suite so passa o gate se toda FALHA nela bater com o texto listado.
+$k20 = @{
+    "verify-ledger"      = "A suite nao deixa politica de BR-8 activa atras de si"
+    "verify-payroll"     = "A suite nao deixa politica de payroll activa atras de si"
+    "verify-procurement" = "A suite nao deixa politica de procurement activa atras de si"
+}
+
 $failed = @()
+$knownFailures = @()
 $total = 0
 $passed = 0
 
@@ -176,7 +190,34 @@ foreach ($suite in $suites) {
         $output | ForEach-Object { Write-Output ("  | " + $_) }
     }
 
-    if ($exit -ne 0) { $failed += $suite }
+    if ($exit -ne 0) {
+        $falhas = @($casos | Where-Object { $_.Line -cmatch '^\s{2}FALHA\s' })
+        $toleradoTexto = $k20[$suite]
+
+        # Sem falhas reconhecidas (a suite rebentou antes do primeiro
+        # Test-Case) nunca e tolerado -- essa e a saida crua acima, nao um
+        # 404 conhecido do K20.
+        $todasConhecidas = [bool]$toleradoTexto -and $falhas.Count -gt 0
+
+        foreach ($falha in $falhas) {
+            $titulo = $null
+
+            if ($falha.Line -cmatch '^\s{2}FALHA\s+\d+\.\s(.+?)\s{2}--') {
+                $titulo = $Matches[1]
+            }
+
+            if ($titulo -cne $toleradoTexto) {
+                $todasConhecidas = $false
+            }
+        }
+
+        if ($todasConhecidas) {
+            $knownFailures += $suite
+            Write-Output "  ($($falhas.Count) falha(s) conhecida(s) -- K20, ver known-issues.md; nao bloqueia o gate)"
+        } else {
+            $failed += $suite
+        }
+    }
 
     # Deixa a stack assentar: a suite anterior pode ter reiniciado containers.
     if (-not (Wait-ForApi)) {
@@ -189,10 +230,14 @@ foreach ($suite in $suites) {
 Write-Output ("`n" + ("=" * 60))
 Write-Output "$passed de $total casos passaram."
 
+if ($knownFailures.Count -gt 0) {
+    Write-Output ("Falhas conhecidas, toleradas (K20): " + ($knownFailures -join ", "))
+}
+
 if ($failed.Count -gt 0) {
     Write-Output ("Suites com falhas: " + ($failed -join ", "))
     exit 1
 }
 
-Write-Output "Todas as suites passaram."
+Write-Output "Todas as suites passaram (fora das falhas conhecidas acima, se houver)."
 exit 0

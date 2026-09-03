@@ -25,7 +25,7 @@ public sealed class ChartOfAccountsVersion
         Id = Guid.CreateVersion7();
         Jurisdiction = jurisdiction;
         Name = name;
-        Version = version;
+        Revision = version;
         Source = source;
         EffectiveFrom = effectiveFrom;
         EffectiveTo = effectiveTo;
@@ -36,7 +36,7 @@ public sealed class ChartOfAccountsVersion
     {
         Jurisdiction = string.Empty;
         Name = string.Empty;
-        Version = string.Empty;
+        Revision = string.Empty;
         Source = string.Empty;
     }
 
@@ -46,7 +46,13 @@ public sealed class ChartOfAccountsVersion
 
     public string Name { get; private set; }
 
-    public string Version { get; private set; }
+    /// <summary>
+    /// Identificador da versão do plano dentro de (jurisdição, nome) — ex.
+    /// "2026". Chama-se <c>Revision</c> e não <c>Version</c> porque `Version`
+    /// é o nome reservado ao contador de concorrência optimista (ADR-002,
+    /// ADR-025) em todo o domínio — ver <see cref="Rivo.Architecture.Tests.ConcurrencyTokenTests"/>.
+    /// </summary>
+    public string Revision { get; private set; }
 
     public string Source { get; private set; }
 
@@ -57,6 +63,9 @@ public sealed class ChartOfAccountsVersion
     public bool IsActive { get; private set; }
 
     public IReadOnlyList<LedgerAccount> Accounts => _accounts;
+
+    /// <summary>Concorrência optimista (ADR-025, BR-17).</summary>
+    public int Version { get; private set; }
 
     public static ChartOfAccountsVersion Create(
         string jurisdiction,

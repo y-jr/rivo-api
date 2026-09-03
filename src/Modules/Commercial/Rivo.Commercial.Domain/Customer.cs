@@ -65,6 +65,20 @@ public sealed class Customer
     public string? Phone { get; private set; }
 
     /// <summary>
+    /// Conta em `identity`, se existir. Guardado como identificador, sem
+    /// chave estrangeira entre schemas de módulos distintos (ADR-010) — mesmo
+    /// desenho de <c>Employee.UserId</c> (ADR-042).
+    ///
+    /// <para>
+    /// <strong>Nunca se liga sozinho.</strong> O Cliente regista-se em
+    /// `identity` como qualquer conta, mas fica sem perfil até Sales/Admin o
+    /// ligar aqui a um registo já existente (ADR-043) — o NIF por si só não
+    /// prova posse da empresa.
+    /// </para>
+    /// </summary>
+    public Guid? UserId { get; private set; }
+
+    /// <summary>
     /// Concorrência optimista (ADR-025).
     ///
     /// <para>
@@ -136,6 +150,8 @@ public sealed class Customer
         Email = string.IsNullOrWhiteSpace(email) ? null : email.Trim();
         Phone = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim();
     }
+
+    public void LinkToUser(Guid? userId) => UserId = userId;
 
     /// <summary>
     /// Desactiva o cliente.

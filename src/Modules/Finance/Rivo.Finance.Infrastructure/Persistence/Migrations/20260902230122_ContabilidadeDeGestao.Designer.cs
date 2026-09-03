@@ -12,7 +12,7 @@ using Rivo.Finance.Infrastructure.Persistence;
 namespace Rivo.Finance.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(FinanceDbContext))]
-    [Migration("20260902204214_ContabilidadeDeGestao")]
+    [Migration("20260902230122_ContabilidadeDeGestao")]
     partial class ContabilidadeDeGestao
     {
         /// <inheritdoc />
@@ -124,6 +124,11 @@ namespace Rivo.Finance.Infrastructure.Persistence.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)")
                         .HasColumnName("source_type");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int")
+                        .HasColumnName("version");
 
                     b.HasKey("Id")
                         .HasName("pk_accounting_rule");
@@ -331,24 +336,29 @@ namespace Rivo.Finance.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(60)")
                         .HasColumnName("name");
 
+                    b.Property<string>("Revision")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasColumnName("revision");
+
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)")
                         .HasColumnName("source");
 
-                    b.Property<string>("Version")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int")
                         .HasColumnName("version");
 
                     b.HasKey("Id")
                         .HasName("pk_chart_of_accounts_version");
 
-                    b.HasIndex("Jurisdiction", "Name", "Version")
+                    b.HasIndex("Jurisdiction", "Name", "Revision")
                         .IsUnique()
-                        .HasDatabaseName("ix_chart_of_accounts_version_jurisdiction_name_version");
+                        .HasDatabaseName("ix_chart_of_accounts_version_jurisdiction_name_revision");
 
                     b.ToTable("chart_of_accounts_version", "finance");
                 });

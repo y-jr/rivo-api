@@ -24,7 +24,8 @@ namespace Rivo.Finance.Infrastructure.Persistence.Migrations
                     effective_from = table.Column<DateOnly>(type: "date", nullable: false),
                     effective_to = table.Column<DateOnly>(type: "date", nullable: true),
                     is_active = table.Column<bool>(type: "bit", nullable: false),
-                    lines = table.Column<string>(type: "nvarchar(max)", nullable: false)
+                    lines = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    version = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -39,11 +40,12 @@ namespace Rivo.Finance.Infrastructure.Persistence.Migrations
                     id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     jurisdiction = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
                     name = table.Column<string>(type: "nvarchar(60)", maxLength: 60, nullable: false),
-                    version = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
+                    revision = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
                     source = table.Column<string>(type: "nvarchar(300)", maxLength: 300, nullable: false),
                     effective_from = table.Column<DateOnly>(type: "date", nullable: false),
                     effective_to = table.Column<DateOnly>(type: "date", nullable: true),
-                    is_active = table.Column<bool>(type: "bit", nullable: false)
+                    is_active = table.Column<bool>(type: "bit", nullable: false),
+                    version = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -61,7 +63,7 @@ namespace Rivo.Finance.Infrastructure.Persistence.Migrations
             migrationBuilder.InsertData(
                 schema: "finance",
                 table: "chart_of_accounts_version",
-                columns: new[] { "id", "jurisdiction", "name", "version", "source", "effective_from", "effective_to", "is_active" },
+                columns: new[] { "id", "jurisdiction", "name", "revision", "source", "effective_from", "effective_to", "is_active", "version" },
                 values: new object[]
                 {
                     new Guid("00000000-0000-0000-0000-000000000000"),
@@ -72,6 +74,7 @@ namespace Rivo.Finance.Infrastructure.Persistence.Migrations
                     new DateOnly(2026, 1, 1),
                     null,
                     true,
+                    0,
                 });
 
             migrationBuilder.AddColumn<Guid>(
@@ -96,10 +99,10 @@ namespace Rivo.Finance.Infrastructure.Persistence.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "ix_chart_of_accounts_version_jurisdiction_name_version",
+                name: "ix_chart_of_accounts_version_jurisdiction_name_revision",
                 schema: "finance",
                 table: "chart_of_accounts_version",
-                columns: new[] { "jurisdiction", "name", "version" },
+                columns: new[] { "jurisdiction", "name", "revision" },
                 unique: true);
 
             migrationBuilder.AddForeignKey(

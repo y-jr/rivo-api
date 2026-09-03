@@ -408,13 +408,14 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
         {
             version.ToTable("chart_of_accounts_version");
             version.HasKey(v => v.Id);
-            version.Property(v => v.Version).HasMaxLength(30).IsRequired();
+            version.Property(v => v.Version).IsConcurrencyToken();
+            version.Property(v => v.Revision).HasMaxLength(30).IsRequired().HasColumnName("revision");
             version.Property(v => v.Jurisdiction).HasMaxLength(30).IsRequired();
             version.Property(v => v.Name).HasMaxLength(60).IsRequired();
             version.Property(v => v.Source).HasMaxLength(300).IsRequired();
             version.Property(v => v.IsActive);
 
-            version.HasIndex(v => new { v.Jurisdiction, v.Name, v.Version }).IsUnique();
+            version.HasIndex(v => new { v.Jurisdiction, v.Name, v.Revision }).IsUnique();
 
             version.Navigation(v => v.Accounts)
                 .HasField("_accounts")
@@ -578,6 +579,7 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
         {
             rule.ToTable("accounting_rule");
             rule.HasKey(r => r.Id);
+            rule.Property(r => r.Version).IsConcurrencyToken();
 
             rule.Property(r => r.Code).HasMaxLength(30).IsRequired();
             rule.Property(r => r.Name).HasMaxLength(200).IsRequired();
