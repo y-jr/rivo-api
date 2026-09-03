@@ -163,4 +163,15 @@ public class CustomerTests
     {
         Assert.Throws<ArgumentException>(() => Registado().Rename(" "));
     }
+
+    [Fact]
+    public void LinkToUser_LigaUmaContaDepois()
+    {
+        var cliente = Registado();
+        var userId = Guid.CreateVersion7();
+
+        cliente.LinkToUser(userId);
+
+        Assert.Equal(userId, cliente.UserId);
+    }
 }

@@ -32,6 +32,12 @@ public static class CommercialModuleEndpoints
         group.MapPost("/customers/{customerId:guid}/status", SetStatusAsync)
             .RequireAuthorization(CommercialPermissions.CustomersWrite);
 
+        // Liga uma conta de identity já registada a este cliente (ADR-043).
+        // Mesma permissão de escrever no cliente — não há audiência própria
+        // que a distinga de quem já gere clientes.
+        group.MapPost("/customers/{customerId:guid}/account", LinkAccountAsync)
+            .RequireAuthorization(CommercialPermissions.CustomersWrite);
+
         return endpoints;
     }
 
@@ -144,6 +150,32 @@ public static class CommercialModuleEndpoints
             : Results.NotFound(new { erro = "Cliente não encontrado." });
     }
 
+    private static async Task<IResult> LinkAccountAsync(
+        Guid customerId,
+        LinkCustomerAccountRequest request,
+        LinkCustomerAccount linkAccount,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await linkAccount.ExecuteAsync(
+            customerId, request.UserId, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            LinkCustomerAccountOutcome.Linked => Results.NoContent(),
+
+            LinkCustomerAccountOutcome.NotFound =>
+                Results.NotFound(new { erro = result.Error }),
+
+            // 409: a conta existe e o pedido está bem formado, colide com o
+            // que já está ligado — mesma razão de UserAlreadyLinked em hr.
+            LinkCustomerAccountOutcome.UserAlreadyLinked =>
+                Results.Conflict(new { erro = result.Error }),
+
+            _ => Results.Problem("Resultado inesperado ao ligar a conta."),
+        };
+    }
+
     private static AuditContext BuildAuditContext(HttpContext http)
     {
         var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
@@ -175,3 +207,5 @@ public sealed record UpdateCustomerRequest(
     string? Phone);
 
 public sealed record SetStatusRequest(bool Active);
+
+public sealed record LinkCustomerAccountRequest(Guid UserId);

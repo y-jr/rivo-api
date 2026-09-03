@@ -25,6 +25,13 @@ public interface ICustomerStore
     /// </summary>
     Task<Customer?> FindByTaxIdAsync(string taxId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Procura pela conta de `identity` ligada. Existe para a verificação de
+    /// unicidade em <c>LinkCustomerAccount</c> (ADR-043) — mesma razão de
+    /// <c>IHrStore.FindEmployeeByUserIdAsync</c>.
+    /// </summary>
+    Task<Customer?> FindByUserIdAsync(Guid userId, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<Customer>> ListAsync(bool includeInactive, CancellationToken cancellationToken);
 
     Task AddAsync(Customer customer, CancellationToken cancellationToken);

@@ -183,7 +183,51 @@ Test-Case "11. NIF e unico na base de dados" {
     "indice unico e a segunda linha; a verificacao no caso de uso e a primeira"
 }
 
-Test-Case "12. Dados sobrevivem ao reinicio da stack" {
+Test-Case "12. Ligar uma conta a um cliente (ADR-043)" {
+    $contaEmail = "cliente-conta-$stamp@rivo-teste.local"
+    $regBody = @{ email = $contaEmail; password = $pass } | ConvertTo-Json
+    $reg = Invoke-RestMethod "$base/identity/register" -Method Post -Body $regBody -ContentType "application/json"
+    $script:contaUserId = $reg.userId
+
+    $ligarBody = @{ userId = $script:contaUserId } | ConvertTo-Json
+    Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/account" -Method Post -Body $ligarBody -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    $ligado = Invoke-Sql "select count(*) from commercial.customer where id='$($script:customerId)' and user_id='$($script:contaUserId)'"
+    if ($ligado -ne "1") { throw "user_id nao ficou gravado no cliente" }
+    "conta ligada ao cliente $nif"
+}
+
+Test-Case "13. Ligar cliente inexistente devolve 404" {
+    $ligarBody = @{ userId = [Guid]::NewGuid().ToString() } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/commercial/customers/$([Guid]::NewGuid())/account" -Method Post -Body $ligarBody -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+    "cliente inexistente -- 404"
+}
+
+Test-Case "14. Ligar uma conta ja ligada a outro cliente e recusado" {
+    $body2 = @{ name = "Segundo Cliente"; taxId = "55$stamp"; addressDetail = "Rua Y"; city = "Luanda"; country = "AO" } | ConvertTo-Json
+    $r2 = Invoke-RestMethod "$base/commercial/customers" -Method Post -Body $body2 -ContentType "application/json" -Headers $adminHeaders
+
+    $ligarBody = @{ userId = $script:contaUserId } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/commercial/customers/$($r2.customerId)/account" -Method Post -Body $ligarBody -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    "409 -- a conta ja tem um cliente, nao se liga a um segundo"
+}
+
+Test-Case "15. UserId e unico na base de dados (commercial.customer)" {
+    $dup = Invoke-Sql "select count(*) from (select user_id from commercial.customer where user_id is not null group by user_id having count(*)>1) d"
+    if ($dup -ne "0") { throw "$dup contas ligadas a mais de um cliente" }
+    "indice unico e a segunda linha; a verificacao no caso de uso e a primeira"
+}
+
+Test-Case "16. Ligar conta exige a mesma permissao de escrever no cliente" {
+    $ligarBody = @{ userId = [Guid]::NewGuid().ToString() } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/account" -Method Post -Body $ligarBody -ContentType "application/json" -Headers $semPerfilHeaders }
+    if ($code -ne 403) { throw "esperado 403, obtido $code" }
+    "403 sem commercial.customers.write"
+}
+
+Test-Case "17. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
@@ -191,7 +235,11 @@ Test-Case "12. Dados sobrevivem ao reinicio da stack" {
 
     $c = Invoke-RestMethod "$base/commercial/customers/$($script:customerId)" -Headers $adminHeaders
     if ($c.taxId -ne $nif) { throw "cliente perdido ou alterado" }
-    "cliente $nif intacto apos restart"
+
+    $ligado = Invoke-Sql "select count(*) from commercial.customer where id='$($script:customerId)' and user_id='$($script:contaUserId)'"
+    if ($ligado -ne "1") { throw "ligacao da conta perdida apos restart" }
+
+    "cliente $nif e a ligacao da conta intactos apos restart"
 }
 
 Write-Host ""

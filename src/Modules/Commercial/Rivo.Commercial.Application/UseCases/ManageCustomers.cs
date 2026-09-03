@@ -221,6 +221,78 @@ public sealed class SetCustomerStatus(ICustomerStore store, IAuditTrail audit)
     }
 }
 
+/// <summary>
+/// Liga uma conta de `identity` a um Cliente já existente (ADR-043 — Portal
+/// do Cliente, identidade externa).
+///
+/// <para>
+/// <strong>Nunca por auto-declaração.</strong> O NIF é informação pública —
+/// quem o sabe não prova que representa a empresa. Só Sales/Admin, que já
+/// conhece o cliente por outra via, confirma a ligação. Mesmo desenho de
+/// <c>HireEmployee</c> (ADR-042), com os papéis invertidos: aqui o registo de
+/// negócio já existe, e é a conta que chega depois.
+/// </para>
+/// </summary>
+public sealed class LinkCustomerAccount(ICustomerStore store, IAuditTrail audit)
+{
+    public async Task<LinkCustomerAccountResult> ExecuteAsync(
+        Guid customerId,
+        Guid userId,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        var cliente = await store.FindForUpdateAsync(customerId, cancellationToken);
+
+        if (cliente is null)
+        {
+            return LinkCustomerAccountResult.NotFound();
+        }
+
+        if (await store.FindByUserIdAsync(userId, cancellationToken) is not null)
+        {
+            return LinkCustomerAccountResult.UserAlreadyLinked();
+        }
+
+        cliente.LinkToUser(userId);
+
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                CommercialAuditActions.CustomerAccountLinked,
+                CommercialAuditEntityTypes.Customer,
+                cliente.Id.ToString(),
+                context),
+            cancellationToken);
+
+        return LinkCustomerAccountResult.Success();
+    }
+}
+
+public enum LinkCustomerAccountOutcome
+{
+    Linked,
+    NotFound,
+
+    /// <summary>
+    /// A conta indicada já está ligada a outro cliente — conflito com o
+    /// estado, não pedido malformado (mesma razão de
+    /// <c>HireEmployeeOutcome.UserAlreadyLinked</c>).
+    /// </summary>
+    UserAlreadyLinked,
+}
+
+public sealed record LinkCustomerAccountResult(LinkCustomerAccountOutcome Outcome, string? Error)
+{
+    public static LinkCustomerAccountResult Success() => new(LinkCustomerAccountOutcome.Linked, null);
+
+    public static LinkCustomerAccountResult NotFound() =>
+        new(LinkCustomerAccountOutcome.NotFound, "Cliente não encontrado.");
+
+    public static LinkCustomerAccountResult UserAlreadyLinked() =>
+        new(LinkCustomerAccountOutcome.UserAlreadyLinked, "Esta conta já está associada a outro cliente.");
+}
+
 /// <summary>Acções de `commercial` na trilha de auditoria.</summary>
 public static class CommercialAuditActions
 {
@@ -228,6 +300,7 @@ public static class CommercialAuditActions
     public const string CustomerUpdated = "commercial.customer.updated";
     public const string CustomerDeactivated = "commercial.customer.deactivated";
     public const string CustomerReactivated = "commercial.customer.reactivated";
+    public const string CustomerAccountLinked = "commercial.customer.account_linked";
 }
 
 public static class CommercialAuditEntityTypes

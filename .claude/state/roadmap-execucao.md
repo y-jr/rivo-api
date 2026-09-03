@@ -36,7 +36,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
 | 6 | `payroll` | Motor de IRT/INSS ganhou regra de negócio real em 2026-08-30 — trave de **produção** continua por parecer fiscal, ver a nota da fase |
 | 7 | `projects`, `inventory`, `fleet` | **Fechada por completo a 2026-08-31.** Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). A 2026-08-31, `projects` ganhou Alocação de Recursos (Colaborador e Viatura, via `hr`/`fleet`), `inventory` ganhou Armazém, Transferência (retrofit do Movimento, transferência atómica) e Contagem (gera Ajuste no fecho, tudo numa transacção), e `fleet` ganhou Registo de Viagem, Despesa de Frota (sem abrir/fechar, ao contrário de Manutenção/Atribuição) e Seguros (`VehicleDocument`, ligação autónoma a `documents`) |
-| 8 | Camadas de composição e portais | **2026-08-31** — Configurações & Administração (ADR-041), Portal do Colaborador (ADR-042) e Dashboard Executivo feitos; Portal do Cliente (bloqueado por decisão de identidade externa) e Analytics & IA por fazer |
+| 8 | Camadas de composição e portais | **2026-09-03** — Configurações & Administração (ADR-041), Portal do Colaborador (ADR-042) e Dashboard Executivo feitos; decisão de identidade externa fechada (ADR-043) e a ligação de conta construída — falta o Portal do Cliente em si; Analytics & IA por fazer |
 
 **Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
 arranca na Fase 3. Ver no fim.
@@ -577,6 +577,41 @@ por contrato publicado.
 > **Fica por fazer da Fase 8:** Portal do Cliente (bloqueado pela decisão
 > de identidade externa) e Analytics & IA (adiado até os módulos
 > produtores terem contratos estáveis).
+>
+> **2026-09-03 — decisão de identidade externa fechada (ADR-043), e a
+> ligação construída.** Duas perguntas, respondidas directamente pelo
+> utilizador: como o Cliente se autentica (conta própria em `identity`,
+> oitavo Perfil de Acesso — `Cliente`, vazio até o Portal existir, mesmo
+> estado em que `AssetManager`/`ProjectManager` estiveram) e como fica
+> ligado ao `commercial.Customer` certo (Sales/Admin liga manualmente,
+> nunca por auto-declaração do NIF — mesmo desenho do ADR-042, papéis
+> invertidos). `Customer.UserId` (único quando preenchido, mesmo desenho
+> de `Employee.UserId`), `LinkCustomerAccount` e
+> `POST /commercial/customers/{id}/account` construídos.
+> `verify-commercial.ps1` cresceu de 12 para 17 casos, confirmado 17/17;
+> `verify-authorization`/`verify-bootstrap`/`verify-settings` actualizados
+> de 7 para 8 perfis, sem regressão. **Só a ligação está feita — o Portal
+> do Cliente em si (dashboard financeiro, facturas, extracto,
+> `docs/rivo-suite-descricao-modulos.md` §12) é o próximo item, sem código
+> ainda.**
+>
+> **Antes disto, 2026-09-02/03 — incidente de produção fora do fluxo desta
+> sessão, resolvido, e `main` ganhou protecção.** Sete commits
+> (`lts`…`lts6`, `Abrir swagger`) chegaram a `main` sem PR (não havia
+> protecção nenhuma) e sem CI a correr contra eles — causaram um deploy
+> partido (migração em falta de `AccountingRule`/`ChartOfAccountsVersion`,
+> adicionadas sem migração) e reabriram o K8 por outra via (porta 5080
+> publicada em produção). Corrigidos; `main` passou a exigir PR e os dois
+> checks de CI, `enforce_admins` incluído. A primeira corrida real de CI
+> contra este código apanhou mais dois defeitos genuínos que nunca tinham
+> compilado nem corrido: `LedgerTests.cs` chamava uma API de domínio
+> inventada, e `ChartOfAccountsVersion.Version` colidia de nome com o
+> contador de concorrência reservado (renomeado para `Revision`).
+> `verify-all.ps1` passou a tolerar o K20 conhecido explicitamente (por
+> texto do caso, não pelo número), em vez de bloquear o gate inteiro por
+> um defeito de quatro investigações sem causa de código. `develop`
+> nasceu como branch de trabalho — ver `known-issues.md` K20 e os PRs do
+> repositório para o detalhe completo.
 
 ---
 

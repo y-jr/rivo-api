@@ -16,7 +16,8 @@ using Rivo.Dashboard.Contracts;
 namespace Rivo.Identity.Application.Authorization;
 
 /// <summary>
-/// Os sete Perfis de Acesso previstos no documento de produto.
+/// Os sete Perfis de Acesso previstos no documento de produto, mais
+/// `Cliente` (ADR-043).
 ///
 /// Perfil de Acesso responde a "o que este utilizador pode ver/fazer no
 /// sistema". <strong>Não confundir com Cargo</strong>, que é posição
@@ -25,6 +26,15 @@ namespace Rivo.Identity.Application.Authorization;
 ///
 /// O protótipo tinha apenas quatro papéis em código contra sete no documento
 /// de produto. Herdamos os sete, que são a definição do negócio.
+///
+/// <para>
+/// <strong>`Cliente` é o oitavo, e não está no documento de produto.</strong>
+/// `docs/rivo-suite-descricao-modulos.md` §Perfis de Acesso fixa "7 perfis
+/// predefinidos" — mas também descreve o Portal do Cliente (módulo 12), para
+/// uma audiência externa que nenhum dos sete cobre. Decisão explícita do
+/// utilizador (ADR-043, 2026-09-03): conta própria em `identity`, perfil
+/// novo. Estende o documento-fonte; não o reescreve.
+/// </para>
 /// </summary>
 public static class AccessProfiles
 {
@@ -35,6 +45,13 @@ public static class AccessProfiles
     public const string Sales = "Sales";
     public const string AssetManager = "AssetManager";
     public const string ProjectManager = "ProjectManager";
+
+    /// <summary>
+    /// Audiência externa do Portal do Cliente (ADR-043). Vazio até o Portal
+    /// existir — mesmo estado em que `AssetManager`/`ProjectManager`
+    /// esperaram pelos seus módulos.
+    /// </summary>
+    public const string Customer = "Cliente";
 
     /// <summary>
     /// Perfil e permissões que lhe são atribuídas no seed.
@@ -185,6 +202,11 @@ public static class AccessProfiles
             // `modules/projects.md`) é literalmente o módulo que este perfil
             // nomeia.
             [ProjectManager] = [.. ProjectsPermissions.All],
+
+            // Vazio até o Portal do Cliente existir (ADR-043) — mesma razão
+            // que `AssetManager`/`ProjectManager` tiveram, antes de
+            // `inventory`/`fleet`/`projects` ganharem código.
+            [Customer] = [],
         };
 }
 
