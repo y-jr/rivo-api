@@ -4,6 +4,10 @@
     <ProjectReference Include="..\Rivo.Commercial.Domain\Rivo.Commercial.Domain.csproj" />
     <ProjectReference Include="..\Rivo.Commercial.Contracts\Rivo.Commercial.Contracts.csproj" />
     <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
+
+    <!-- IEmployeeDirectory: valida o vendedor responsável antes de o
+         atribuir (ADR-045). -->
+    <ProjectReference Include="..\..\Hr\Rivo.Hr.Contracts\Rivo.Hr.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

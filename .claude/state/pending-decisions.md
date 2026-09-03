@@ -160,16 +160,17 @@ re-litigação:
       corte de âmbito — são infra-estrutura que ainda não existe, e cada
       uma exige uma decisão de negócio antes de haver código:
 
-      1. **Mensagens directas com a equipa comercial.** Síncronas (chat) ou
-         assíncronas — quem em `Sales` recebe e como se distribui, se
-         precisa de módulo próprio ou se cabe em `notifications`
-         estendido.
+      1. ~~Mensagens directas com a equipa comercial.~~ **Resolvido a
+         2026-09-04 (ADR-045):** assíncronas; `Customer.AssignedToEmployeeId`
+         (vendedor responsável, só decide quem é notificado — não é controlo
+         de acesso); módulo novo `messaging`, uma conversa aberta por
+         cliente. Ver ADR-045.
       2. **Tickets de suporte.** Categorias, SLA, quem resolve (perfil
          `Sales` existente, ou um novo) — mesma pergunta de fundo de
          `approval`: se algum dia tiver alçada, seguiria o motor já feito.
 
-      Não inventar nenhuma das duas sem resposta a isto — ver ADR-043,
-      ADR-044 e `state/roadmap-execucao.md` Fase 8.
+      Não inventar a que resta sem resposta a isto — ver ADR-043, ADR-044,
+      ADR-045 e `state/roadmap-execucao.md` Fase 8.
 
 - [ ] **O plano de contas (PGC angolano), e as regras de postagem que o usam.**
       ⚠ **É o que hoje impede a contabilidade de servir para alguma coisa.**

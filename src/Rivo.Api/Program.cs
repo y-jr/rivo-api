@@ -41,6 +41,8 @@ using Rivo.Settings.Api;
 using Rivo.EmployeePortal.Api;
 using Rivo.Dashboard.Api;
 using Rivo.CustomerPortal.Api;
+using Rivo.Messaging.Api;
+using Rivo.Messaging.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -77,6 +79,11 @@ builder.Services.AddCommercialModule(builder.Configuration);
 builder.Services.AddProcurementModule(builder.Configuration);
 builder.Services.AddFinanceModule(builder.Configuration);
 builder.Services.AddHrModule(builder.Configuration);
+
+// Depende dos contratos de `commercial` (vendedor responsável) e `hr` (o
+// `UserId` desse vendedor), os dois já registados acima (ADR-045).
+builder.Services.AddMessagingModule(builder.Configuration);
+
 builder.Services.AddApprovalModule(builder.Configuration);
 builder.Services.AddPayrollModule(builder.Configuration);
 builder.Services.AddProjectsModule(builder.Configuration);
@@ -227,6 +234,7 @@ if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
             await app.Services.MigrateProcurementModuleAsync();
             await app.Services.MigrateFinanceModuleAsync();
             await app.Services.MigrateHrModuleAsync();
+            await app.Services.MigrateMessagingModuleAsync();
             await app.Services.MigrateApprovalModuleAsync();
             await app.Services.MigratePayrollModuleAsync();
             await app.Services.MigrateProjectsModuleAsync();
@@ -317,6 +325,7 @@ app.MapFinanceModule();
 app.MapPayables();
 app.MapLedger();
 app.MapHrModule();
+app.MapMessagingModule();
 app.MapApprovalModule();
 app.MapPayrollModule();
 app.MapProjectsModule();

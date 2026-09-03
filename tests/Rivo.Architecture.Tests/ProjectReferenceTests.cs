@@ -54,7 +54,10 @@ public class ProjectReferenceTests
         // documento fiscal. As dependências que `modules/commercial.md` lista
         // — `hr`, `fiscal`, `approval`, `documents`, `finance` — pertencem ao
         // funil comercial e à facturação, que não estão feitos.
-        ["Commercial"] = ["Audit"],
+        // `Hr` — 2026-09-03 (ADR-045): atribuir o vendedor responsável exige
+        // validar o Colaborador pelo contrato de `hr`, nunca por leitura de
+        // tabela (ADR-010).
+        ["Commercial"] = ["Audit", "Hr"],
         // `finance`/AR é o encontro dos três: `commercial` dá o cliente,
         // `fiscal` dá a taxa à data do facto gerador, e `finance` possui o
         // documento (ADR-036). Nenhum lê as tabelas do outro.
@@ -127,7 +130,7 @@ public class ProjectReferenceTests
         // mesma razão a partir de 2026-08-31: uma camada de composição
         // também declara o seu catálogo de permissões, e `identity` é
         // consumidor dele da mesma forma que é de qualquer módulo.
-        ["Identity"] = ["Audit", "Hr", "Documents", "Notifications", "Approval", "Fiscal", "Commercial", "Finance", "Procurement", "Payroll", "Projects", "Inventory", "Fleet", "Dashboard"],
+        ["Identity"] = ["Audit", "Hr", "Documents", "Notifications", "Approval", "Fiscal", "Commercial", "Finance", "Procurement", "Payroll", "Projects", "Inventory", "Fleet", "Dashboard", "Messaging"],
 
         // `approval` resolve aprovadores por Cargo, que é de `hr` (ADR-034).
         //
@@ -172,7 +175,15 @@ public class ProjectReferenceTests
         // pelas variantes por cliente dos mesmos números do Dashboard.
         // Mesma razão de `EmployeePortal`: não depende de `Identity`, a
         // conta autenticada chega já resolvida do `HttpContext`.
-        ["CustomerPortal"] = ["Commercial", "Finance"],
+        // `Messaging` — 2026-09-03 (ADR-045): terceiro contrato de escrita
+        // que o Portal do Cliente consome, mesmo padrão de `ICustomerPayments`.
+        ["CustomerPortal"] = ["Commercial", "Finance", "Messaging"],
+
+        // Novo módulo (ADR-045). `Commercial` resolve o vendedor responsável
+        // atribuído ao cliente; `Hr` resolve o `UserId` desse vendedor para o
+        // notificar; `Notifications` enfileira o aviso. Nenhuma dependência a
+        // `Approval` — sem SLA, sem alçada, é fila simples.
+        ["Messaging"] = ["Audit", "Commercial", "Hr", "Notifications"],
     };
 
     /// <summary>

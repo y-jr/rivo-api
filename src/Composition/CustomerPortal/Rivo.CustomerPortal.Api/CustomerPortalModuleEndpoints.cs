@@ -20,6 +20,8 @@ public static class CustomerPortalModuleEndpoints
         services.AddScoped<GetMyStatement>();
         services.AddScoped<SubmitPaymentProof>();
         services.AddScoped<ListMyPaymentClaims>();
+        services.AddScoped<SendMessage>();
+        services.AddScoped<ListMyMessages>();
 
         return services;
     }
@@ -42,6 +44,12 @@ public static class CustomerPortalModuleEndpoints
         group.MapPost("/me/payment-claims", SubmitPaymentProofAsync).RequireAuthorization();
 
         group.MapGet("/me/payment-claims", ListMyPaymentClaimsAsync).RequireAuthorization();
+
+        // Mensagens à equipa comercial (ADR-045) — mesma disciplina de "o
+        // próprio": nunca aceita `customerId`, resolve-o do token.
+        group.MapPost("/me/messages", SendMessageAsync).RequireAuthorization();
+
+        group.MapGet("/me/messages", ListMyMessagesAsync).RequireAuthorization();
 
         return endpoints;
     }
@@ -188,7 +196,71 @@ public static class CustomerPortalModuleEndpoints
             _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
         };
     }
+
+    private static async Task<IResult> SendMessageAsync(
+        HttpContext http,
+        SendMessage send,
+        SendMessageRequest request,
+        CancellationToken cancellationToken)
+    {
+        var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+            ?? http.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!Guid.TryParse(actor, out var userId))
+        {
+            return Results.Problem(
+                "Sessão sem identificador de utilizador.", statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var result = await send.ExecuteAsync(userId, request.Body, cancellationToken);
+
+        return result.Outcome switch
+        {
+            SendMessageOutcome.Sent => Results.Created(
+                "/customer-portal/me/messages",
+                new { conversationId = result.ConversationId, messageId = result.MessageId }),
+
+            SendMessageOutcome.NotLinked => Results.Problem(
+                "Esta conta não está associada a nenhum cliente.",
+                statusCode: StatusCodes.Status403Forbidden),
+
+            SendMessageOutcome.Rejected =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["body"] = [result.Error!] }),
+
+            _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
+        };
+    }
+
+    private static async Task<IResult> ListMyMessagesAsync(
+        HttpContext http,
+        ListMyMessages listMessages,
+        CancellationToken cancellationToken)
+    {
+        var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+            ?? http.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!Guid.TryParse(actor, out var userId))
+        {
+            return Results.Problem(
+                "Sessão sem identificador de utilizador.", statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var result = await listMessages.ExecuteAsync(userId, cancellationToken);
+
+        return result.Outcome switch
+        {
+            ListMyMessagesOutcome.Found => Results.Ok(result.Conversations),
+
+            ListMyMessagesOutcome.NotLinked => Results.Problem(
+                "Esta conta não está associada a nenhum cliente.",
+                statusCode: StatusCodes.Status403Forbidden),
+
+            _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
+        };
+    }
 }
+
+public sealed record SendMessageRequest(string Body);
 
 /// <param name="PaidOn">A data que o cliente diz ter pago — a que o recibo, quando confirmado, herda.</param>
 /// <param name="DocumentId">O comprovativo, já carregado por <c>POST /documents</c> (permissão <c>documents.write</c>).</param>

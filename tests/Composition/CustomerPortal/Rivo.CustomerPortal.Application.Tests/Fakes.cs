@@ -1,5 +1,6 @@
 using Rivo.Commercial.Contracts;
 using Rivo.Finance.Contracts;
+using Rivo.Messaging.Contracts;
 
 namespace Rivo.CustomerPortal.Application.Tests;
 
@@ -126,4 +127,47 @@ internal sealed class FakeCustomerPayments : ICustomerPayments
     public Task<IReadOnlyList<PaymentClaimView>> ListMyClaimsAsync(
         Guid customerId, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<PaymentClaimView>>(_claims.GetValueOrDefault(customerId, []));
+}
+
+internal sealed class FakeCustomerMessaging : ICustomerMessaging
+{
+    private readonly Dictionary<Guid, List<ConversationView>> _conversations = [];
+
+    // Qualificado por inteiro: `Rivo.CustomerPortal.Application.SendMessageResult`
+    // (o tipo do caso de uso da composição) tem o mesmo nome e ganharia à
+    // procura por `using` — é o tipo do contrato de `messaging` que esta
+    // classe implementa.
+    private Messaging.Contracts.SendMessageResult _nextResult =
+        Messaging.Contracts.SendMessageResult.Sent(Guid.CreateVersion7(), Guid.CreateVersion7());
+
+    public Guid? LastCustomerId { get; private set; }
+
+    public FakeCustomerMessaging WillReturn(Messaging.Contracts.SendMessageResult result)
+    {
+        _nextResult = result;
+        return this;
+    }
+
+    public FakeCustomerMessaging WithConversation(Guid customerId, ConversationView conversation)
+    {
+        if (!_conversations.TryGetValue(customerId, out var lista))
+        {
+            lista = [];
+            _conversations[customerId] = lista;
+        }
+
+        lista.Add(conversation);
+        return this;
+    }
+
+    public Task<Messaging.Contracts.SendMessageResult> SendMessageAsync(
+        Guid customerId, Guid senderUserId, string body, CancellationToken cancellationToken)
+    {
+        LastCustomerId = customerId;
+        return Task.FromResult(_nextResult);
+    }
+
+    public Task<IReadOnlyList<ConversationView>> ListMyConversationsAsync(
+        Guid customerId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<ConversationView>>(_conversations.GetValueOrDefault(customerId, []));
 }

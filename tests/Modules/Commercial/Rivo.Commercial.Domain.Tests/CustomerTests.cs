@@ -174,4 +174,26 @@ public class CustomerTests
 
         Assert.Equal(userId, cliente.UserId);
     }
+
+    [Fact]
+    public void AssignOwner_AtribuiOVendedorResponsavel()
+    {
+        var cliente = Registado();
+        var employeeId = Guid.CreateVersion7();
+
+        cliente.AssignOwner(employeeId);
+
+        Assert.Equal(employeeId, cliente.AssignedToEmployeeId);
+    }
+
+    [Fact]
+    public void AssignOwner_ComNulo_RemoveAAtribuicao()
+    {
+        var cliente = Registado();
+        cliente.AssignOwner(Guid.CreateVersion7());
+
+        cliente.AssignOwner(null);
+
+        Assert.Null(cliente.AssignedToEmployeeId);
+    }
 }

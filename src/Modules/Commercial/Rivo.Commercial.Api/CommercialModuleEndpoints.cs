@@ -38,6 +38,12 @@ public static class CommercialModuleEndpoints
         group.MapPost("/customers/{customerId:guid}/account", LinkAccountAsync)
             .RequireAuthorization(CommercialPermissions.CustomersWrite);
 
+        // O vendedor responsável (ADR-045) — mesma permissão, mesma razão
+        // que a ligação de conta: não há audiência própria que a distinga
+        // de quem já gere clientes.
+        group.MapPost("/customers/{customerId:guid}/owner", AssignOwnerAsync)
+            .RequireAuthorization(CommercialPermissions.CustomersWrite);
+
         return endpoints;
     }
 
@@ -176,6 +182,30 @@ public static class CommercialModuleEndpoints
         };
     }
 
+    private static async Task<IResult> AssignOwnerAsync(
+        Guid customerId,
+        AssignCustomerOwnerRequest request,
+        AssignCustomerOwner assignOwner,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await assignOwner.ExecuteAsync(
+            customerId, request.EmployeeId, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            AssignCustomerOwnerOutcome.Assigned => Results.NoContent(),
+
+            AssignCustomerOwnerOutcome.NotFound =>
+                Results.NotFound(new { erro = result.Error }),
+
+            AssignCustomerOwnerOutcome.EmployeeNotFound =>
+                Results.NotFound(new { erro = result.Error }),
+
+            _ => Results.Problem("Resultado inesperado ao atribuir o vendedor responsável."),
+        };
+    }
+
     private static AuditContext BuildAuditContext(HttpContext http)
     {
         var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
@@ -209,3 +239,6 @@ public sealed record UpdateCustomerRequest(
 public sealed record SetStatusRequest(bool Active);
 
 public sealed record LinkCustomerAccountRequest(Guid UserId);
+
+/// <param name="EmployeeId">Nulo remove a atribuição — o cliente fica sem vendedor responsável.</param>
+public sealed record AssignCustomerOwnerRequest(Guid? EmployeeId);

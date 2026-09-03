@@ -31,6 +31,8 @@ function Get-StatusCode {
     }
 }
 
+function Invoke-Sql { param([string]$q) return (Invoke-RivoSql $q) }
+
 $dotenv = Get-RivoCredentials
 $pass = "Rivo!Password2026"
 $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
@@ -295,7 +297,89 @@ Test-Case "14. Comprovativo de factura de outro cliente -- 404, nao revela a out
     "HTTP 404 -- factura2 nao e do segundo cliente"
 }
 
-Test-Case "15. Vista, extracto e pedidos sobrevivem ao reinicio da stack" {
+Test-Case "15. Cliente sem vendedor responsavel envia mensagem -- abre conversa Open" {
+    $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
+    $r = Invoke-RestMethod "$base/customer-portal/me/messages" -Method Post -Body (@{ body = "Preciso de ajuda com a factura." } | ConvertTo-Json) -ContentType "application/json" -Headers $ownHeaders
+    $script:conversationId = $r.conversationId
+    if (-not $script:conversationId) { throw "sem conversationId na resposta" }
+
+    $minhas = Invoke-RestMethod "$base/customer-portal/me/messages" -Headers $ownHeaders
+    if ($minhas.Count -ne 1) { throw "esperada 1 conversa, obtidas $($minhas.Count)" }
+    if ($minhas[0].status -ne "Open") { throw "estado errado: $($minhas[0].status)" }
+    if ($minhas[0].messages.Count -ne 1 -or $minhas[0].messages[0].sender -ne "Customer") { throw "mensagem inicial errada" }
+    "conversa $($script:conversationId) aberta, Open, 1 mensagem do cliente"
+}
+
+Test-Case "16. Atribuir vendedor responsavel; a proxima mensagem notifica-o (ADR-045)" {
+    $vendedorEmail = "cportal-vendedor-$stamp@rivo.ao"
+    $b = @{ email = $vendedorEmail; password = $pass } | ConvertTo-Json
+    $script:vendedorUserId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
+    $b = @{ profile = "Sales" } | ConvertTo-Json
+    Invoke-RestMethod "$base/identity/users/$($script:vendedorUserId)/roles" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    $emp = Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+        -Body (@{ fullName = "Vendedor CP $stamp"; userId = $script:vendedorUserId } | ConvertTo-Json)
+    $script:vendedorEmployeeId = $emp.employeeId
+
+    $b = @{ employeeId = $script:vendedorEmployeeId } | ConvertTo-Json
+    Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/owner" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
+    Invoke-RestMethod "$base/customer-portal/me/messages" -Method Post -Body (@{ body = "Alguem pode responder?" } | ConvertTo-Json) -ContentType "application/json" -Headers $ownHeaders | Out-Null
+
+    $aviso = Invoke-Sql "select count(*) from notifications.notification where recipient_user_id='$($script:vendedorUserId)' and type='messaging.conversation.message_received'"
+    if ($aviso -ne "1") { throw "vendedor nao foi notificado (contagem=$aviso)" }
+
+    $minhas = Invoke-RestMethod "$base/customer-portal/me/messages" -Headers $ownHeaders
+    if ($minhas.Count -ne 1 -or $minhas[0].messages.Count -ne 2) { throw "segunda mensagem nao entrou na mesma conversa" }
+    "vendedor $($script:vendedorEmployeeId) atribuido, notificado 1 vez, mesma conversa"
+}
+
+Test-Case "17. Outro Sales (nao o vendedor atribuido) responde -- caixa partilhada, nao controlo de acesso" {
+    $fila = Invoke-RestMethod "$base/messaging/conversations?status=Open" -Headers $salesHeaders
+    $entrada = $fila | Where-Object { $_.conversationId -eq $script:conversationId }
+    if (-not $entrada) { throw "conversa nao aparece na fila de outro Sales" }
+    if ($entrada.assignedToEmployeeId -ne $script:vendedorEmployeeId) { throw "assignedToEmployeeId nao bate: $($entrada.assignedToEmployeeId)" }
+
+    Invoke-RestMethod "$base/messaging/conversations/$($script:conversationId)/messages" -Method Post -Body (@{ body = "Já estou a tratar disso." } | ConvertTo-Json) -ContentType "application/json" -Headers $salesHeaders | Out-Null
+
+    $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
+    $minhas = Invoke-RestMethod "$base/customer-portal/me/messages" -Headers $ownHeaders
+    $ultima = $minhas[0].messages[-1]
+    if ($ultima.sender -ne "Employee") { throw "resposta nao apareceu como Employee" }
+    "Sales sem atribuicao respondeu -- ADR-045: atribuicao so decide quem e notificado"
+}
+
+Test-Case "18. Responder com corpo vazio -- 400" {
+    $code = Get-StatusCode { Invoke-RestMethod "$base/messaging/conversations/$($script:conversationId)/messages" -Method Post -Body (@{ body = "   " } | ConvertTo-Json) -ContentType "application/json" -Headers $salesHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "HTTP 400 -- corpo vazio"
+}
+
+Test-Case "19. Fechar a conversa; responder depois de fechada -- 409" {
+    Invoke-RestMethod "$base/messaging/conversations/$($script:conversationId)/closure" -Method Post -Headers $salesHeaders | Out-Null
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/messaging/conversations/$($script:conversationId)/messages" -Method Post -Body (@{ body = "Ainda aqui?" } | ConvertTo-Json) -ContentType "application/json" -Headers $salesHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    "HTTP 409 -- conversa fechada nao aceita resposta"
+}
+
+Test-Case "20. Nova mensagem do cliente depois de fechada -- abre outra conversa, nao reabre a anterior" {
+    $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
+    $r = Invoke-RestMethod "$base/customer-portal/me/messages" -Method Post -Body (@{ body = "Preciso de outra coisa agora." } | ConvertTo-Json) -ContentType "application/json" -Headers $ownHeaders
+    if ($r.conversationId -eq $script:conversationId) { throw "reaproveitou a conversa fechada em vez de abrir outra" }
+    $script:segundaConversationId = $r.conversationId
+
+    $minhas = Invoke-RestMethod "$base/customer-portal/me/messages" -Headers $ownHeaders
+    if ($minhas.Count -ne 2) { throw "esperadas 2 conversas, obtidas $($minhas.Count)" }
+    $fechada = $minhas | Where-Object { $_.conversationId -eq $script:conversationId }
+    $aberta = $minhas | Where-Object { $_.conversationId -eq $script:segundaConversationId }
+    if ($fechada.status -ne "Closed") { throw "primeira conversa devia continuar Closed" }
+    if ($aberta.status -ne "Open") { throw "segunda conversa devia ser Open" }
+    "2 conversas: $($script:conversationId) Closed, $($script:segundaConversationId) Open"
+}
+
+Test-Case "21. Vista, extracto, pedidos e mensagens sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)
     do {
@@ -319,7 +403,12 @@ Test-Case "15. Vista, extracto e pedidos sobrevivem ao reinicio da stack" {
     if (-not ($meus | Where-Object { $_.status -eq "Confirmed" })) { throw "pedido confirmado perdido" }
     if (-not ($meus | Where-Object { $_.status -eq "Rejected" })) { throw "pedido rejeitado perdido" }
 
-    "customerId=$($script:customerId), 2 facturas, fecho=114000, 2 pedidos (Confirmed+Rejected) intactos apos restart"
+    $mensagens = Invoke-RestMethod "$base/customer-portal/me/messages" -Headers $ownHeaders
+    if ($mensagens.Count -ne 2) { throw "conversas perdidas apos restart: $($mensagens.Count)" }
+    $fechadaApos = $mensagens | Where-Object { $_.conversationId -eq $script:conversationId }
+    if ($fechadaApos.status -ne "Closed" -or $fechadaApos.messages.Count -ne 3) { throw "primeira conversa alterada apos restart" }
+
+    "customerId=$($script:customerId), 2 facturas, fecho=114000, 2 pedidos e 2 conversas intactos apos restart"
 }
 
 Write-Host ""

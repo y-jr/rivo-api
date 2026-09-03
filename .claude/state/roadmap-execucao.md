@@ -36,7 +36,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
 | 6 | `payroll` | Motor de IRT/INSS ganhou regra de negócio real em 2026-08-30 — trave de **produção** continua por parecer fiscal, ver a nota da fase |
 | 7 | `projects`, `inventory`, `fleet` | **Fechada por completo a 2026-08-31.** Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). A 2026-08-31, `projects` ganhou Alocação de Recursos (Colaborador e Viatura, via `hr`/`fleet`), `inventory` ganhou Armazém, Transferência (retrofit do Movimento, transferência atómica) e Contagem (gera Ajuste no fecho, tudo numa transacção), e `fleet` ganhou Registo de Viagem, Despesa de Frota (sem abrir/fechar, ao contrário de Manutenção/Atribuição) e Seguros (`VehicleDocument`, ligação autónoma a `documents`) |
-| 8 | Camadas de composição e portais | **2026-09-03** — Configurações & Administração (ADR-041), Portal do Colaborador (ADR-042), Dashboard Executivo e Portal do Cliente (ADR-043, resumo financeiro + facturas + extracto + comprovativo de pagamento, ADR-044) feitos; mensagens/tickets registados como decisão em aberto, não corte de âmbito; falta só Analytics & IA |
+| 8 | Camadas de composição e portais | **2026-09-04** — Configurações & Administração (ADR-041), Portal do Colaborador (ADR-042), Dashboard Executivo e Portal do Cliente (ADR-043, resumo financeiro + facturas + extracto + comprovativo de pagamento ADR-044 + mensagens ADR-045) feitos; tickets de suporte registado como decisão em aberto, não corte de âmbito; falta só Analytics & IA |
 
 **Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
 arranca na Fase 3. Ver no fim.
@@ -686,6 +686,53 @@ por contrato publicado.
 > reinício. Confirmado 15/15 na primeira corrida. `pending-decisions.md`
 > §Fornecedores e integrações fecha "Gateway de pagamento"; §Domínio e
 > negócio fica só com mensagens e tickets de suporte por decidir.
+>
+> **2026-09-04 — mensagens directas com a equipa comercial fecham (ADR-045),
+> módulo novo.** Mesmo enquadramento de ADR-044: três perguntas sem resposta
+> em `docs/rivo-suite-descricao-modulos.md` §12 ("mensagens directas com a
+> equipa comercial", sem mais nada), respondidas directamente pelo
+> utilizador — assíncronas; vendedor responsável por cliente (não a caixa
+> partilhada sem dono, recomendada mas não escolhida); módulo novo
+> (`messaging`), não extensão de `notifications` (que é fire-and-forget de
+> um só sentido, sem thread nem resposta).
+>
+> `commercial.Customer` ganha `AssignedToEmployeeId` (`Guid?`, referência a
+> `hr.Employee` por identificador) e `POST /commercial/customers/{id}/owner`
+> — mesma permissão de `LinkCustomerAccount`. **A atribuição controla só uma
+> coisa: para quem vai a notificação de mensagem nova** — não é controlo de
+> acesso, qualquer utilizador com `messaging.conversations.write` continua a
+> ver e a responder a qualquer conversa, atribuída ou não. Verificado ao
+> vivo: um segundo Sales, sem ser o vendedor atribuído, respondeu sem
+> problema (caso 17 de `verify-customer-portal`).
+>
+> `Rivo.Messaging` — quinto módulo com as cinco camadas, não camada de
+> composição: `Conversation`/`Message`, uma conversa **aberta por cliente**,
+> não por assunto (categorização por assunto é o que "tickets de suporte",
+> a última capacidade adiada, já promete separadamente). Fechar é do Sales;
+> a próxima mensagem do cliente abre outra, nunca reabre a fechada.
+> `ICustomerMessaging` é o terceiro contrato de escrita que `CustomerPortal`
+> consome, mesmo padrão de `ICustomerPayments` (ADR-044) e, mais fundo, de
+> `IApprovalGateway.SubmitAsync`. `notifications` entra só para avisar o
+> vendedor responsável — sem aviso ao cliente quando Sales responde, mesma
+> nota já registada em ADR-043/ADR-044 (trabalho separado, não bloqueante).
+>
+> `GET/POST /customer-portal/me/messages` (Portal do Cliente) e
+> `GET /messaging/conversations` + `POST .../messages` + `POST .../closure`
+> (fila do Sales, `messaging.conversations.read`/`.write`, atribuídas ao
+> perfil `Sales`). Perfil `Admin` também ganhou as duas — falha própria
+> encontrada e corrigida no mesmo dia: toda a rotina de novo módulo dá as
+> permissões a `Admin` (lista explícita, não calculada), e `Sales` tinha
+> ficado sozinho na primeira versão. `verify-bootstrap` apanhou-a sozinho —
+> Admin devia ter 69 permissões (67 + 2), tinha 67.
+>
+> `scripts/verify-customer-portal.ps1` cresceu de 15 para 21 casos: mensagem
+> sem vendedor (sem aviso a ninguém), atribuir vendedor e confirmar 1 aviso,
+> outro Sales responder (prova da não-restrição), corpo vazio (400), fechar
+> e responder a fechada (409), nova mensagem depois de fechada (abre outra,
+> não reabre), e sobrevivência ao reinício. `scripts/verify-commercial.ps1`
+> cresceu de 16 para 21 (atribuir, cliente inexistente, colaborador
+> inexistente, remover atribuição, permissão). Confirmado 21/21 nas duas,
+> sem regressão em `verify-authorization`/`verify-bootstrap`.
 >
 > **Antes disto, 2026-09-02/03 — incidente de produção fora do fluxo desta
 > sessão, resolvido, e `main` ganhou protecção.** Sete commits

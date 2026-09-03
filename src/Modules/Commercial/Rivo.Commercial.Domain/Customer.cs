@@ -79,6 +79,20 @@ public sealed class Customer
     public Guid? UserId { get; private set; }
 
     /// <summary>
+    /// O vendedor responsável, como Colaborador de `hr` — referência por
+    /// identificador, sem chave estrangeira entre schemas de módulos
+    /// distintos (ADR-010).
+    ///
+    /// <para>
+    /// <strong>Controla só uma coisa: para quem vai a notificação de uma
+    /// mensagem nova</strong> (ADR-045). Não é controlo de acesso — qualquer
+    /// utilizador com permissão de escrever em conversas continua a poder
+    /// ver e responder a qualquer uma, atribuída ou não.
+    /// </para>
+    /// </summary>
+    public Guid? AssignedToEmployeeId { get; private set; }
+
+    /// <summary>
     /// Concorrência optimista (ADR-025).
     ///
     /// <para>
@@ -152,6 +166,11 @@ public sealed class Customer
     }
 
     public void LinkToUser(Guid? userId) => UserId = userId;
+
+    /// <summary>
+    /// Atribui (ou remove, com <c>null</c>) o vendedor responsável (ADR-045).
+    /// </summary>
+    public void AssignOwner(Guid? employeeId) => AssignedToEmployeeId = employeeId;
 
     /// <summary>
     /// Desactiva o cliente.

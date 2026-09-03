@@ -147,6 +147,10 @@ public class ConcurrencyTokenTests
             "Mutável (MarkDecided), mas só de dentro de ApprovalRequest, que tem o contador. " +
             "Duas decisões simultâneas colidem na raiz do agregado antes de chegarem aqui — " +
             "um contador próprio protegeria contra uma corrida que não existe.",
+
+        ["Message"] =
+            "Imutável desde que escrita — uma mensagem não se edita, escreve-se outra. " +
+            "A raiz (Conversation) tem o contador, e é lá que fechar e responder colidem.",
     };
 
     /// <summary>

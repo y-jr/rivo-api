@@ -33,7 +33,8 @@ public sealed class CustomerDirectory(ICustomerStore store) : ICustomerDirectory
             new Contracts.BillingAddress(
                 customer.BillingAddress.Detail,
                 customer.BillingAddress.City,
-                customer.BillingAddress.Country));
+                customer.BillingAddress.Country),
+            customer.AssignedToEmployeeId);
 
     /// <summary>
     /// Traduz o estado do domínio para o publicado. Os dois enumerados existem

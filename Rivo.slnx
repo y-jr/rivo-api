@@ -101,6 +101,13 @@
     <Project Path="src/Modules/Fleet/Rivo.Fleet.Domain/Rivo.Fleet.Domain.csproj" />
     <Project Path="src/Modules/Fleet/Rivo.Fleet.Infrastructure/Rivo.Fleet.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Messaging/">
+    <Project Path="src/Modules/Messaging/Rivo.Messaging.Api/Rivo.Messaging.Api.csproj" />
+    <Project Path="src/Modules/Messaging/Rivo.Messaging.Application/Rivo.Messaging.Application.csproj" />
+    <Project Path="src/Modules/Messaging/Rivo.Messaging.Contracts/Rivo.Messaging.Contracts.csproj" />
+    <Project Path="src/Modules/Messaging/Rivo.Messaging.Domain/Rivo.Messaging.Domain.csproj" />
+    <Project Path="src/Modules/Messaging/Rivo.Messaging.Infrastructure/Rivo.Messaging.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/src/Composition/" />
   <Folder Name="/src/Composition/Settings/">
     <Project Path="src/Composition/Settings/Rivo.Settings.Api/Rivo.Settings.Api.csproj" />
@@ -138,6 +145,10 @@
   </Folder>
   <Folder Name="/tests/Fleet/">
     <Project Path="tests/Modules/Fleet/Rivo.Fleet.Domain.Tests/Rivo.Fleet.Domain.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Messaging/">
+    <Project Path="tests/Modules/Messaging/Rivo.Messaging.Domain.Tests/Rivo.Messaging.Domain.Tests.csproj" />
+    <Project Path="tests/Modules/Messaging/Rivo.Messaging.Application.Tests/Rivo.Messaging.Application.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/Inventory/">
     <Project Path="tests/Modules/Inventory/Rivo.Inventory.Domain.Tests/Rivo.Inventory.Domain.Tests.csproj" />

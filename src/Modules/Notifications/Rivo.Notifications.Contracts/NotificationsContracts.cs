@@ -53,4 +53,7 @@ public sealed record NotificationRequest(
 public static class NotificationTypes
 {
     public const string AccessProfileAssigned = "identity.access_profile_assigned";
+
+    /// <summary>O cliente escreveu — avisa o vendedor responsável (ADR-045).</summary>
+    public const string MessagingNewMessage = "messaging.conversation.message_received";
 }
