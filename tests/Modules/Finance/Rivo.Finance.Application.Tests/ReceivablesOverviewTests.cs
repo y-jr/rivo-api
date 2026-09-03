@@ -175,4 +175,60 @@ public class ReceivablesOverviewTests
         Assert.Single(topo);
         Assert.Equal(ClienteA, topo[0].CustomerId);
     }
+
+    [Fact]
+    public async Task GetCustomerNetRevenueAsync_IsolaDoClienteCerto_NuncaSomaOutro()
+    {
+        var store = new FakeSalesInvoiceStore()
+            .With(Factura(new DateOnly(2026, 8, 10), 100_000m, ClienteA))
+            .With(Factura(new DateOnly(2026, 8, 12), 999_999m, ClienteB));
+
+        var overview = new ReceivablesOverview(store, new FakeCustomerDirectory());
+
+        var receita = await overview.GetCustomerNetRevenueAsync(ClienteA, Inicio, Fim, "AOA", CancellationToken.None);
+
+        Assert.Equal(100_000m, receita);
+    }
+
+    [Fact]
+    public async Task GetCustomerNetRevenueAsync_NotaDeCreditoDoClienteReduz()
+    {
+        var factura = Factura(new DateOnly(2026, 8, 10), 100_000m, ClienteA);
+        var nota = Nota(factura, new DateOnly(2026, 8, 15), 20_000m);
+
+        var store = new FakeSalesInvoiceStore().With(factura).With(nota);
+        var overview = new ReceivablesOverview(store, new FakeCustomerDirectory());
+
+        var receita = await overview.GetCustomerNetRevenueAsync(ClienteA, Inicio, Fim, "AOA", CancellationToken.None);
+
+        Assert.Equal(80_000m, receita);
+    }
+
+    [Fact]
+    public async Task GetCustomerOutstandingAsync_IsolaDoClienteCerto_NuncaSomaOutro()
+    {
+        var store = new FakeSalesInvoiceStore()
+            .With(Factura(new DateOnly(2026, 8, 10), 100_000m, ClienteA))
+            .With(Factura(new DateOnly(2026, 8, 10), 999_999m, ClienteB));
+
+        var overview = new ReceivablesOverview(store, new FakeCustomerDirectory());
+
+        var emAberto = await overview.GetCustomerOutstandingAsync(ClienteA, "AOA", CancellationToken.None);
+
+        Assert.Equal(100_000m, emAberto);
+    }
+
+    [Fact]
+    public async Task ListCustomerInvoicesAsync_SoDevolveAsDoProprioCliente()
+    {
+        var store = new FakeSalesInvoiceStore()
+            .With(Factura(new DateOnly(2026, 8, 10), 100_000m, ClienteA))
+            .With(Factura(new DateOnly(2026, 8, 11), 200_000m, ClienteB));
+
+        var overview = new ReceivablesOverview(store, new FakeCustomerDirectory());
+
+        var facturas = await overview.ListCustomerInvoicesAsync(ClienteA, CancellationToken.None);
+
+        Assert.Single(facturas);
+    }
 }

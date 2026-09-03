@@ -23,6 +23,15 @@ public interface ICustomerDirectory
     /// </para>
     /// </summary>
     Task<CustomerReference?> FindAsync(Guid customerId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// O cliente ligado a esta conta de `identity`, se existir. Resolve "o
+    /// próprio" para o Portal do Cliente (ADR-043) — mesmo sentido de leitura
+    /// de <c>IEmployeeDirectory.FindByUserIdAsync</c> (ADR-042). Nunca
+    /// devolve mais de um cliente por conta: `Customer.UserId` é único
+    /// quando preenchido.
+    /// </summary>
+    Task<CustomerReference?> FindByUserIdAsync(Guid userId, CancellationToken cancellationToken);
 }
 
 /// <param name="TaxId">NIF. É o que identifica o cliente perante a AGT.</param>

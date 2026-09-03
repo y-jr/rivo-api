@@ -148,9 +148,36 @@ public interface IReceivablesOverview
     /// </summary>
     Task<IReadOnlyList<CustomerRevenueView>> GetTopCustomersAsync(
         DateOnly from, DateOnly to, string currency, int count, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A mesma conta de <see cref="GetNetRevenueAsync"/>, restrita a um
+    /// cliente. Primeiro consumidor: o Portal do Cliente (ADR-043).
+    /// </summary>
+    Task<decimal> GetCustomerNetRevenueAsync(
+        Guid customerId, DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken);
+
+    /// <summary>A mesma conta de <see cref="GetOutstandingReceivablesAsync"/>, restrita a um cliente.</summary>
+    Task<decimal> GetCustomerOutstandingAsync(
+        Guid customerId, string currency, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// As facturas de venda de um cliente — o que o Portal do Cliente mostra
+    /// como "as minhas facturas". Sem filtro de período: é o histórico
+    /// completo do cliente, não um recorte.
+    /// </summary>
+    Task<IReadOnlyList<CustomerInvoiceView>> ListCustomerInvoicesAsync(
+        Guid customerId, CancellationToken cancellationToken);
 }
 
 public sealed record CustomerRevenueView(Guid CustomerId, string CustomerName, decimal NetRevenue);
+
+public sealed record CustomerInvoiceView(
+    Guid InvoiceId,
+    string Number,
+    DateOnly IssuedOn,
+    string Status,
+    string Currency,
+    decimal GrossTotal);
 
 /// <summary>
 /// Leitura agregada de AP (Contas a Pagar) — despesa facturada e saldo em

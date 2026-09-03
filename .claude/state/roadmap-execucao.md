@@ -36,7 +36,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
 | 6 | `payroll` | Motor de IRT/INSS ganhou regra de negócio real em 2026-08-30 — trave de **produção** continua por parecer fiscal, ver a nota da fase |
 | 7 | `projects`, `inventory`, `fleet` | **Fechada por completo a 2026-08-31.** Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). A 2026-08-31, `projects` ganhou Alocação de Recursos (Colaborador e Viatura, via `hr`/`fleet`), `inventory` ganhou Armazém, Transferência (retrofit do Movimento, transferência atómica) e Contagem (gera Ajuste no fecho, tudo numa transacção), e `fleet` ganhou Registo de Viagem, Despesa de Frota (sem abrir/fechar, ao contrário de Manutenção/Atribuição) e Seguros (`VehicleDocument`, ligação autónoma a `documents`) |
-| 8 | Camadas de composição e portais | **2026-09-03** — Configurações & Administração (ADR-041), Portal do Colaborador (ADR-042) e Dashboard Executivo feitos; decisão de identidade externa fechada (ADR-043) e a ligação de conta construída — falta o Portal do Cliente em si; Analytics & IA por fazer |
+| 8 | Camadas de composição e portais | **2026-09-03** — Configurações & Administração (ADR-041), Portal do Colaborador (ADR-042), Dashboard Executivo e Portal do Cliente (ADR-043, resumo financeiro + facturas) feitos; falta só Analytics & IA |
 
 **Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
 arranca na Fase 3. Ver no fim.
@@ -590,10 +590,33 @@ por contrato publicado.
 > `POST /commercial/customers/{id}/account` construídos.
 > `verify-commercial.ps1` cresceu de 12 para 17 casos, confirmado 17/17;
 > `verify-authorization`/`verify-bootstrap`/`verify-settings` actualizados
-> de 7 para 8 perfis, sem regressão. **Só a ligação está feita — o Portal
-> do Cliente em si (dashboard financeiro, facturas, extracto,
-> `docs/rivo-suite-descricao-modulos.md` §12) é o próximo item, sem código
-> ainda.**
+> de 7 para 8 perfis, sem regressão.
+>
+> **Mesmo dia — Portal do Cliente construído, primeiro corte.** O
+> utilizador confirmou o âmbito directamente: das sete coisas que
+> `docs/rivo-suite-descricao-modulos.md` §12 descreve, três (pagamentos
+> online, mensagens, tickets de suporte) precisam de infra-estrutura que
+> não existe — não são corte de âmbito, são módulos inteiros por fazer.
+> Ficam para quando essa infra-estrutura existir. As outras três
+> (dashboard financeiro, facturas, extracto) reduziram-se a duas: resumo
+> financeiro (receita líquida e saldo em aberto, mesmas contas do
+> Dashboard Executivo, agora por cliente) e a lista das próprias facturas
+> — o extracto de conta corrente (movimento a movimento) ficou fora deste
+> corte.
+>
+> `IReceivablesOverview` ganhou as variantes por cliente
+> (`GetCustomerNetRevenueAsync`, `GetCustomerOutstandingAsync`,
+> `ListCustomerInvoicesAsync`) e `ICustomerDirectory` ganhou
+> `FindByUserIdAsync` — mesmo sentido de leitura de
+> `IEmployeeDirectory.FindByUserIdAsync` (ADR-042), agora do lado de
+> `commercial`. `Rivo.CustomerPortal` (quarta camada de composição) compõe
+> os dois num único `GET /customer-portal/me`, sem permissão própria —
+> "próprio" continua a ser regra de contexto, nunca autorização, mesma
+> disciplina do Portal do Colaborador. `Rivo.CustomerPortal.Application.Tests`
+> (novo, 4 casos) e `scripts/verify-customer-portal.ps1` (novo, 9 casos)
+> confirmaram tudo na primeira corrida — um cliente novo nasce com receita e
+> saldo a zero por construção (é um registo novo, sem histórico), por isso
+> a suite não precisou da moeda isolada que o Dashboard usa.
 >
 > **Antes disto, 2026-09-02/03 — incidente de produção fora do fluxo desta
 > sessão, resolvido, e `main` ganhou protecção.** Sete commits

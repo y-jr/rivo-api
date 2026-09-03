@@ -67,6 +67,14 @@ public interface ISalesInvoiceStore
     Task<decimal> SumOutstandingAsync(string currency, CancellationToken cancellationToken);
 
     /// <summary>
+    /// A mesma conta de <see cref="SumOutstandingAsync"/>, restrita a um
+    /// cliente. Primeiro consumidor: o Portal do Cliente (ADR-043) — "o que
+    /// devo eu, cliente X" nunca pode somar a dívida de outro.
+    /// </summary>
+    Task<decimal> SumOutstandingForCustomerAsync(
+        Guid customerId, string currency, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Soma do valor líquido das facturas de venda emitidas no período,
     /// nesta moeda, não anuladas.
     /// </summary>
@@ -79,6 +87,14 @@ public interface ISalesInvoiceStore
     /// </summary>
     Task<decimal> SumNetCreditedAsync(
         DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken);
+
+    /// <summary>A mesma conta de <see cref="SumNetInvoicedAsync"/>, restrita a um cliente.</summary>
+    Task<decimal> SumNetInvoicedForCustomerAsync(
+        Guid customerId, DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken);
+
+    /// <summary>A mesma conta de <see cref="SumNetCreditedAsync"/>, restrita a um cliente.</summary>
+    Task<decimal> SumNetCreditedForCustomerAsync(
+        Guid customerId, DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken);
 
     /// <summary>
     /// Os clientes (com <c>CustomerId</c> real — consumidor final fica de

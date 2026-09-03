@@ -17,6 +17,13 @@ public sealed class CustomerDirectory(ICustomerStore store) : ICustomerDirectory
         return cliente is null ? null : ToReference(cliente);
     }
 
+    public async Task<CustomerReference?> FindByUserIdAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var cliente = await store.FindByUserIdAsync(userId, cancellationToken);
+
+        return cliente is null ? null : ToReference(cliente);
+    }
+
     internal static CustomerReference ToReference(Customer customer) =>
         new(
             customer.Id,

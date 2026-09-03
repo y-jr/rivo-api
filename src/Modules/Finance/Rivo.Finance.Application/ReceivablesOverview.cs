@@ -47,4 +47,31 @@ public sealed class ReceivablesOverview(ISalesInvoiceStore invoices, ICustomerDi
 
         return vista;
     }
+
+    public async Task<decimal> GetCustomerNetRevenueAsync(
+        Guid customerId, DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken)
+    {
+        var facturado = await invoices.SumNetInvoicedForCustomerAsync(customerId, from, to, currency, cancellationToken);
+        var creditado = await invoices.SumNetCreditedForCustomerAsync(customerId, from, to, currency, cancellationToken);
+
+        return facturado - creditado;
+    }
+
+    public Task<decimal> GetCustomerOutstandingAsync(
+        Guid customerId, string currency, CancellationToken cancellationToken) =>
+        invoices.SumOutstandingForCustomerAsync(customerId, currency, cancellationToken);
+
+    public async Task<IReadOnlyList<CustomerInvoiceView>> ListCustomerInvoicesAsync(
+        Guid customerId, CancellationToken cancellationToken)
+    {
+        var facturas = await invoices.ListAsync(customerId, from: null, to: null, cancellationToken);
+
+        return [.. facturas.Select(factura => new CustomerInvoiceView(
+            factura.Id,
+            factura.Number.Formatted,
+            factura.IssuedOn,
+            factura.Status.ToString(),
+            factura.Currency,
+            factura.GrossTotal))];
+    }
 }
