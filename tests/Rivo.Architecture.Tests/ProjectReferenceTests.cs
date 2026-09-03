@@ -166,6 +166,13 @@ public class ProjectReferenceTests
         // Terceira camada de composição — o Dashboard Executivo, primeiro
         // consumidor de `IReceivablesOverview`/`IPayablesOverview`.
         ["Dashboard"] = ["Finance"],
+
+        // Quarta camada de composição (ADR-043, Portal do Cliente) — resolve
+        // "o próprio" pelo contrato de `commercial`, depois lê `finance`
+        // pelas variantes por cliente dos mesmos números do Dashboard.
+        // Mesma razão de `EmployeePortal`: não depende de `Identity`, a
+        // conta autenticada chega já resolvida do `HttpContext`.
+        ["CustomerPortal"] = ["Commercial", "Finance"],
     };
 
     /// <summary>
@@ -176,7 +183,7 @@ public class ProjectReferenceTests
     /// os outros.
     /// </summary>
     private static readonly HashSet<string> CamadasDeComposicao =
-        new(StringComparer.Ordinal) { "Settings", "EmployeePortal", "Dashboard" };
+        new(StringComparer.Ordinal) { "Settings", "EmployeePortal", "Dashboard", "CustomerPortal" };
 
     [Fact]
     public void Module_ReferencesAnotherModuleOnlyThroughItsContracts()

@@ -69,6 +69,11 @@ $suites = @(
     # verify-finance/verify-payables.
     "verify-dashboard",
 
+    # Quarta camada de composicao -- cada corrida regista o seu proprio
+    # cliente novo (por identificador, nao por moeda), por isso a receita e
+    # o em-aberto saem exactos sem precisar de moeda isolada.
+    "verify-customer-portal",
+
     "verify-procurement"
 )
 

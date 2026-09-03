@@ -21,6 +21,7 @@ public class ReceivablesOverviewTests
 
     private static readonly DocumentSeries SerieFt = DocumentSeries.Open(DocumentType.FT, "S001");
     private static readonly DocumentSeries SerieNc = DocumentSeries.Open(DocumentType.NC, "S001");
+    private static readonly DocumentSeries SerieRg = DocumentSeries.Open(DocumentType.RG, "S001");
 
     private static InvoicedParty Retrato(string nome = "Kianda Lda") =>
         new(nome, "5417000000", "Rua Rainha Ginga 12", "Luanda", "AO");
@@ -42,6 +43,11 @@ public class ReceivablesOverviewTests
         CreditNote.Issue(
             SerieNc.Allocate(), factura, emitidaEm, "Devolução parcial",
             [new NewInvoiceLine("Devolução", 1, liquido, "NOR", 0m)]);
+
+    private static Receipt Recibo(DateOnly recebidoEm, decimal valor, Guid clienteId, SalesInvoice factura) =>
+        Receipt.Register(
+            SerieRg.Allocate(), recebidoEm, clienteId, Retrato(), "AOA", PaymentMethod.MB,
+            [new NewSettlement(factura.Id, factura.Number.Formatted, valor)]);
 
     [Fact]
     public async Task GetNetRevenueAsync_SomaAsFacturasDoPeriodo_ExcluiForaDele()
@@ -174,5 +180,121 @@ public class ReceivablesOverviewTests
 
         Assert.Single(topo);
         Assert.Equal(ClienteA, topo[0].CustomerId);
+    }
+
+    [Fact]
+    public async Task GetCustomerNetRevenueAsync_IsolaDoClienteCerto_NuncaSomaOutro()
+    {
+        var store = new FakeSalesInvoiceStore()
+            .With(Factura(new DateOnly(2026, 8, 10), 100_000m, ClienteA))
+            .With(Factura(new DateOnly(2026, 8, 12), 999_999m, ClienteB));
+
+        var overview = new ReceivablesOverview(store, new FakeCustomerDirectory());
+
+        var receita = await overview.GetCustomerNetRevenueAsync(ClienteA, Inicio, Fim, "AOA", CancellationToken.None);
+
+        Assert.Equal(100_000m, receita);
+    }
+
+    [Fact]
+    public async Task GetCustomerNetRevenueAsync_NotaDeCreditoDoClienteReduz()
+    {
+        var factura = Factura(new DateOnly(2026, 8, 10), 100_000m, ClienteA);
+        var nota = Nota(factura, new DateOnly(2026, 8, 15), 20_000m);
+
+        var store = new FakeSalesInvoiceStore().With(factura).With(nota);
+        var overview = new ReceivablesOverview(store, new FakeCustomerDirectory());
+
+        var receita = await overview.GetCustomerNetRevenueAsync(ClienteA, Inicio, Fim, "AOA", CancellationToken.None);
+
+        Assert.Equal(80_000m, receita);
+    }
+
+    [Fact]
+    public async Task GetCustomerOutstandingAsync_IsolaDoClienteCerto_NuncaSomaOutro()
+    {
+        var store = new FakeSalesInvoiceStore()
+            .With(Factura(new DateOnly(2026, 8, 10), 100_000m, ClienteA))
+            .With(Factura(new DateOnly(2026, 8, 10), 999_999m, ClienteB));
+
+        var overview = new ReceivablesOverview(store, new FakeCustomerDirectory());
+
+        var emAberto = await overview.GetCustomerOutstandingAsync(ClienteA, "AOA", CancellationToken.None);
+
+        Assert.Equal(100_000m, emAberto);
+    }
+
+    [Fact]
+    public async Task ListCustomerInvoicesAsync_SoDevolveAsDoProprioCliente()
+    {
+        var store = new FakeSalesInvoiceStore()
+            .With(Factura(new DateOnly(2026, 8, 10), 100_000m, ClienteA))
+            .With(Factura(new DateOnly(2026, 8, 11), 200_000m, ClienteB));
+
+        var overview = new ReceivablesOverview(store, new FakeCustomerDirectory());
+
+        var facturas = await overview.ListCustomerInvoicesAsync(ClienteA, CancellationToken.None);
+
+        Assert.Single(facturas);
+    }
+
+    [Fact]
+    public async Task GetCustomerStatementAsync_SaldoDeAberturaEAsFacturasAnterioresAoPeriodo()
+    {
+        var store = new FakeSalesInvoiceStore()
+            .With(Factura(new DateOnly(2026, 7, 1), 100_000m, ClienteA));
+
+        var overview = new ReceivablesOverview(store, new FakeCustomerDirectory());
+
+        var extracto = await overview.GetCustomerStatementAsync(ClienteA, Inicio, Fim, "AOA", CancellationToken.None);
+
+        Assert.Equal(100_000m, extracto.OpeningBalance);
+        Assert.Empty(extracto.Lines);
+        Assert.Equal(100_000m, extracto.ClosingBalance);
+    }
+
+    [Fact]
+    public async Task GetCustomerStatementAsync_MovimentosDoPeriodoComSaldoCorrido()
+    {
+        var factura1 = Factura(new DateOnly(2026, 8, 5), 100_000m, ClienteA);
+        var nota = Nota(factura1, new DateOnly(2026, 8, 10), 20_000m);
+        var recibo = Recibo(new DateOnly(2026, 8, 15), 50_000m, ClienteA, factura1);
+
+        var store = new FakeSalesInvoiceStore().With(factura1).With(nota).With(recibo);
+        var overview = new ReceivablesOverview(store, new FakeCustomerDirectory());
+
+        var extracto = await overview.GetCustomerStatementAsync(ClienteA, Inicio, Fim, "AOA", CancellationToken.None);
+
+        Assert.Equal(0m, extracto.OpeningBalance);
+        Assert.Equal(3, extracto.Lines.Count);
+
+        Assert.Equal("Factura", extracto.Lines[0].DocumentType);
+        Assert.Equal("Debit", extracto.Lines[0].Direction);
+        Assert.Equal(100_000m, extracto.Lines[0].BalanceAfter);
+
+        Assert.Equal("NotaCredito", extracto.Lines[1].DocumentType);
+        Assert.Equal("Credit", extracto.Lines[1].Direction);
+        Assert.Equal(80_000m, extracto.Lines[1].BalanceAfter);
+
+        Assert.Equal("Recibo", extracto.Lines[2].DocumentType);
+        Assert.Equal("Credit", extracto.Lines[2].Direction);
+        Assert.Equal(30_000m, extracto.Lines[2].BalanceAfter);
+
+        Assert.Equal(30_000m, extracto.ClosingBalance);
+    }
+
+    [Fact]
+    public async Task GetCustomerStatementAsync_IsolaDoClienteCerto_NuncaMisturaOutro()
+    {
+        var store = new FakeSalesInvoiceStore()
+            .With(Factura(new DateOnly(2026, 8, 5), 100_000m, ClienteA))
+            .With(Factura(new DateOnly(2026, 8, 6), 999_999m, ClienteB));
+
+        var overview = new ReceivablesOverview(store, new FakeCustomerDirectory());
+
+        var extracto = await overview.GetCustomerStatementAsync(ClienteA, Inicio, Fim, "AOA", CancellationToken.None);
+
+        Assert.Single(extracto.Lines);
+        Assert.Equal(100_000m, extracto.ClosingBalance);
     }
 }

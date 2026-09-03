@@ -88,7 +88,10 @@ internal sealed class FakeSalesInvoiceStore : ISalesInvoiceStore
 
     public Task<IReadOnlyList<SalesInvoice>> ListAsync(
         Guid? customerId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<SalesInvoice>>([.. _invoices.Values]);
+        Task.FromResult<IReadOnlyList<SalesInvoice>>([.. _invoices.Values
+            .Where(i => customerId is null || i.CustomerId == customerId)
+            .Where(i => from is null || i.IssuedOn >= from)
+            .Where(i => to is null || i.IssuedOn <= to)]);
 
     public Task AddAsync(SalesInvoice invoice, CancellationToken cancellationToken)
     {
@@ -156,6 +159,45 @@ internal sealed class FakeSalesInvoiceStore : ISalesInvoiceStore
                 && n.IssuedOn <= to)
             .Sum(n => n.NetTotal));
 
+    public Task<decimal> SumOutstandingForCustomerAsync(
+        Guid customerId, string currency, CancellationToken cancellationToken)
+    {
+        var facturado = _invoices.Values
+            .Where(i => i.Status is not InvoiceStatus.Cancelled && i.Currency == currency && i.CustomerId == customerId)
+            .Sum(i => i.GrossTotal);
+
+        var creditado = _creditNotes
+            .Where(n => n.Status is not InvoiceStatus.Cancelled && n.Currency == currency && n.CustomerId == customerId)
+            .Sum(n => n.GrossTotal);
+
+        var recebido = _receipts
+            .Where(r => r.Status is not InvoiceStatus.Cancelled && r.Currency == currency && r.CustomerId == customerId)
+            .SelectMany(r => r.Lines)
+            .Sum(s => s.Amount);
+
+        return Task.FromResult(facturado - creditado - recebido);
+    }
+
+    public Task<decimal> SumNetInvoicedForCustomerAsync(
+        Guid customerId, DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
+        Task.FromResult(_invoices.Values
+            .Where(i => i.Status is not InvoiceStatus.Cancelled
+                && i.Currency == currency
+                && i.CustomerId == customerId
+                && i.IssuedOn >= from
+                && i.IssuedOn <= to)
+            .Sum(i => i.NetTotal));
+
+    public Task<decimal> SumNetCreditedForCustomerAsync(
+        Guid customerId, DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
+        Task.FromResult(_creditNotes
+            .Where(n => n.Status is not InvoiceStatus.Cancelled
+                && n.Currency == currency
+                && n.CustomerId == customerId
+                && n.IssuedOn >= from
+                && n.IssuedOn <= to)
+            .Sum(n => n.NetTotal));
+
     public Task<IReadOnlyList<CustomerInvoicedTotal>> TopCustomersByInvoicedAsync(
         DateOnly from, DateOnly to, string currency, int count, CancellationToken cancellationToken)
     {
@@ -190,6 +232,13 @@ internal sealed class FakeSalesInvoiceStore : ISalesInvoiceStore
         return Task.CompletedTask;
     }
 
+    public Task<IReadOnlyList<CreditNote>> ListCreditNotesForCustomerAsync(
+        Guid customerId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<CreditNote>>([.. _creditNotes
+            .Where(n => n.CustomerId == customerId)
+            .Where(n => from is null || n.IssuedOn >= from)
+            .Where(n => to is null || n.IssuedOn <= to)]);
+
     public Task<Receipt?> FindReceiptAsync(Guid receiptId, CancellationToken cancellationToken) =>
         Task.FromResult(_receipts.FirstOrDefault(r => r.Id == receiptId));
 
@@ -198,7 +247,10 @@ internal sealed class FakeSalesInvoiceStore : ISalesInvoiceStore
 
     public Task<IReadOnlyList<Receipt>> ListReceiptsAsync(
         Guid? customerId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<Receipt>>([.. _receipts]);
+        Task.FromResult<IReadOnlyList<Receipt>>([.. _receipts
+            .Where(r => customerId is null || r.CustomerId == customerId)
+            .Where(r => from is null || r.ReceivedOn >= from)
+            .Where(r => to is null || r.ReceivedOn <= to)]);
 
     public Task AddReceiptAsync(Receipt receipt, CancellationToken cancellationToken)
     {
@@ -500,6 +552,9 @@ internal sealed class FakeCustomerDirectory : ICustomerDirectory
 
     public Task<CustomerReference?> FindAsync(Guid customerId, CancellationToken cancellationToken) =>
         Task.FromResult(_customers.GetValueOrDefault(customerId));
+
+    public Task<CustomerReference?> FindByUserIdAsync(Guid userId, CancellationToken cancellationToken) =>
+        Task.FromResult<CustomerReference?>(null);
 }
 
 internal sealed class FakeSupplierDirectory(SupplierReference? supplier = null) : ISupplierDirectory

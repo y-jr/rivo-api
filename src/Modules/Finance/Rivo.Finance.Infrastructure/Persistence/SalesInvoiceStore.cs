@@ -164,6 +164,50 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
                 && n.IssuedOn <= to)
             .SumAsync(n => (decimal?)n.NetTotal, cancellationToken) ?? 0m;
 
+    public async Task<decimal> SumOutstandingForCustomerAsync(
+        Guid customerId, string currency, CancellationToken cancellationToken)
+    {
+        var facturado = await context.Invoices
+            .AsNoTracking()
+            .Where(i => i.Status == InvoiceStatus.Normal && i.Currency == currency && i.CustomerId == customerId)
+            .SumAsync(i => (decimal?)i.GrossTotal, cancellationToken) ?? 0m;
+
+        var creditado = await context.CreditNotes
+            .AsNoTracking()
+            .Where(n => n.Status == InvoiceStatus.Normal && n.Currency == currency && n.CustomerId == customerId)
+            .SumAsync(n => (decimal?)n.GrossTotal, cancellationToken) ?? 0m;
+
+        var recebido = await context.Receipts
+            .AsNoTracking()
+            .Where(r => r.Status == InvoiceStatus.Normal && r.Currency == currency && r.CustomerId == customerId)
+            .SelectMany(r => r.Lines)
+            .SumAsync(l => (decimal?)l.Amount, cancellationToken) ?? 0m;
+
+        return facturado - creditado - recebido;
+    }
+
+    public async Task<decimal> SumNetInvoicedForCustomerAsync(
+        Guid customerId, DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
+        await context.Invoices
+            .AsNoTracking()
+            .Where(i => i.Status == InvoiceStatus.Normal
+                && i.Currency == currency
+                && i.CustomerId == customerId
+                && i.IssuedOn >= from
+                && i.IssuedOn <= to)
+            .SumAsync(i => (decimal?)i.NetTotal, cancellationToken) ?? 0m;
+
+    public async Task<decimal> SumNetCreditedForCustomerAsync(
+        Guid customerId, DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
+        await context.CreditNotes
+            .AsNoTracking()
+            .Where(n => n.Status == InvoiceStatus.Normal
+                && n.Currency == currency
+                && n.CustomerId == customerId
+                && n.IssuedOn >= from
+                && n.IssuedOn <= to)
+            .SumAsync(n => (decimal?)n.NetTotal, cancellationToken) ?? 0m;
+
     public async Task<IReadOnlyList<CustomerInvoicedTotal>> TopCustomersByInvoicedAsync(
         DateOnly from, DateOnly to, string currency, int count, CancellationToken cancellationToken)
     {
@@ -211,6 +255,27 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
         }
 
         return await query.OrderByDescending(n => n.IssuedOn).ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<CreditNote>> ListCreditNotesForCustomerAsync(
+        Guid customerId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken)
+    {
+        var query = context.CreditNotes
+            .AsNoTracking()
+            .Where(n => n.CustomerId == customerId)
+            .AsQueryable();
+
+        if (from is { } inicio)
+        {
+            query = query.Where(n => n.IssuedOn >= inicio);
+        }
+
+        if (to is { } fim)
+        {
+            query = query.Where(n => n.IssuedOn <= fim);
+        }
+
+        return await query.OrderBy(n => n.IssuedOn).ToListAsync(cancellationToken);
     }
 
     public async Task AddCreditNoteAsync(CreditNote note, CancellationToken cancellationToken) =>

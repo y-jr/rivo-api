@@ -147,6 +147,29 @@ re-litigação:
 
 ## Domínio e negócio
 
+- [ ] **Portal do Cliente — as três capacidades que faltam
+      (`docs/rivo-suite-descricao-modulos.md` §12).** Registado a
+      2026-09-03, depois de o resumo financeiro, as facturas e o extracto
+      de conta corrente terem fechado. Nenhuma das três é corte de âmbito
+      — são infra-estrutura que ainda não existe, e cada uma exige uma
+      decisão de negócio antes de haver código:
+
+      1. **Pagamentos online.** Que gateway (Multicaixa Express é o
+         predominante em Angola, mas é decisão do negócio, não inferência
+         técnica) — quem detém o dinheiro até à reconciliação, como o
+         pagamento liga ao `Receipt` que já existe em `finance`, que
+         obrigações de compliance/PCI o gateway escolhido traz.
+      2. **Mensagens directas com a equipa comercial.** Síncronas (chat) ou
+         assíncronas — quem em `Sales` recebe e como se distribui, se
+         precisa de módulo próprio ou se cabe em `notifications`
+         estendido.
+      3. **Tickets de suporte.** Categorias, SLA, quem resolve (perfil
+         `Sales` existente, ou um novo) — mesma pergunta de fundo de
+         `approval`: se algum dia tiver alçada, seguiria o motor já feito.
+
+      Não inventar nenhuma das três sem resposta a isto — ver ADR-043 e
+      `state/roadmap-execucao.md` Fase 8.
+
 - [ ] **O plano de contas (PGC angolano), e as regras de postagem que o usam.**
       ⚠ **É o que hoje impede a contabilidade de servir para alguma coisa.**
 
