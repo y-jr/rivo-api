@@ -12,6 +12,7 @@ using Rivo.Inventory.Contracts;
 using Rivo.Fleet.Contracts;
 using Rivo.Identity.Contracts;
 using Rivo.Dashboard.Contracts;
+using Rivo.Messaging.Contracts;
 
 namespace Rivo.Identity.Application.Authorization;
 
@@ -80,7 +81,8 @@ public static class AccessProfiles
                 .. ProjectsPermissions.All,
                 .. InventoryPermissions.All,
                 .. FleetPermissions.All,
-                .. DashboardPermissions.All],
+                .. DashboardPermissions.All,
+                .. MessagingPermissions.All],
 
             // `Manager` decide sobre pedidos de aprovação — incluindo pedidos de
             // pagamento — e regista facturas de compra e pede que sejam pagas.
@@ -174,7 +176,10 @@ public static class AccessProfiles
             [Sales] = [
                 CommercialPermissions.CustomersRead,
                 CommercialPermissions.CustomersWrite,
-                .. FinancePermissions.ForBilling],
+                .. FinancePermissions.ForBilling,
+                // Mensagens à equipa comercial (ADR-045) — Sales é a
+                // audiência que o próprio nome do módulo nomeia.
+                .. MessagingPermissions.All],
 
             // `AssetManager` deixa de estar vazio, e a razão não é adivinhação:
             // **a recepção de mercadoria é a porta de entrada do stock**, e

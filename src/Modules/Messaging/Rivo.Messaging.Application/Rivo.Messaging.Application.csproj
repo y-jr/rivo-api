@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rivo.Messaging.Domain\Rivo.Messaging.Domain.csproj" />
+    <ProjectReference Include="..\Rivo.Messaging.Contracts\Rivo.Messaging.Contracts.csproj" />
+    <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
+
+    <!-- ICustomerDirectory: resolve o cliente e o vendedor responsável
+         atribuído a ele (ADR-045). -->
+    <ProjectReference Include="..\..\Commercial\Rivo.Commercial.Contracts\Rivo.Commercial.Contracts.csproj" />
+
+    <!-- IEmployeeDirectory: resolve o UserId do vendedor responsável, para
+         o notificar. -->
+    <ProjectReference Include="..\..\Hr\Rivo.Hr.Contracts\Rivo.Hr.Contracts.csproj" />
+
+    <!-- INotifier: enfileira o aviso de mensagem nova. -->
+    <ProjectReference Include="..\..\Notifications\Rivo.Notifications.Contracts\Rivo.Notifications.Contracts.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

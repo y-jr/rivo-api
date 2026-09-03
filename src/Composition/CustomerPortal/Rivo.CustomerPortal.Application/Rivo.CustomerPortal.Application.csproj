@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\Modules\Commercial\Rivo.Commercial.Contracts\Rivo.Commercial.Contracts.csproj" />
     <ProjectReference Include="..\..\..\Modules\Finance\Rivo.Finance.Contracts\Rivo.Finance.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\Modules\Messaging\Rivo.Messaging.Contracts\Rivo.Messaging.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

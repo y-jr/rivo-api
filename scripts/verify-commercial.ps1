@@ -227,7 +227,53 @@ Test-Case "16. Ligar conta exige a mesma permissao de escrever no cliente" {
     "403 sem commercial.customers.write"
 }
 
-Test-Case "17. Dados sobrevivem ao reinicio da stack" {
+Test-Case "17. Atribuir vendedor responsavel a um cliente (ADR-045)" {
+    $vendedor = Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+        -Body (@{ fullName = "Vendedor CO $stamp" } | ConvertTo-Json)
+    $script:vendedorId = $vendedor.employeeId
+
+    $body = @{ employeeId = $script:vendedorId } | ConvertTo-Json
+    Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/owner" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    $atribuido = Invoke-Sql "select count(*) from commercial.customer where id='$($script:customerId)' and assigned_to_employee_id='$($script:vendedorId)'"
+    if ($atribuido -ne "1") { throw "assigned_to_employee_id nao ficou gravado" }
+    "vendedor $($script:vendedorId) atribuido ao cliente $nif"
+}
+
+Test-Case "18. Atribuir a cliente inexistente devolve 404" {
+    $body = @{ employeeId = $script:vendedorId } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/commercial/customers/$([Guid]::NewGuid())/owner" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+    "cliente inexistente -- 404"
+}
+
+Test-Case "19. Atribuir colaborador inexistente devolve 404, sem gravar nada" {
+    $body = @{ employeeId = [Guid]::NewGuid().ToString() } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/owner" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+
+    $atribuido = Invoke-Sql "select count(*) from commercial.customer where id='$($script:customerId)' and assigned_to_employee_id='$($script:vendedorId)'"
+    if ($atribuido -ne "1") { throw "atribuicao valida anterior foi apagada por um pedido invalido" }
+    "colaborador inexistente -- 404, atribuicao anterior intacta"
+}
+
+Test-Case "20. Atribuir null remove a atribuicao; exige a mesma permissao de escrever no cliente" {
+    $codeSemPerfil = Get-StatusCode { Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/owner" -Method Post -Body (@{ employeeId = $script:vendedorId } | ConvertTo-Json) -ContentType "application/json" -Headers $semPerfilHeaders }
+    if ($codeSemPerfil -ne 403) { throw "esperado 403 sem commercial.customers.write, obtido $codeSemPerfil" }
+
+    $body = @{ employeeId = $null } | ConvertTo-Json
+    Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/owner" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    $atribuido = Invoke-Sql "select count(*) from commercial.customer where id='$($script:customerId)' and assigned_to_employee_id is null"
+    if ($atribuido -ne "1") { throw "atribuicao nao foi removida" }
+
+    # Repoe para o caso 21 verificar a sobrevivencia ao reinicio.
+    Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/owner" -Method Post -Body (@{ employeeId = $script:vendedorId } | ConvertTo-Json) -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    "403 sem permissao; null remove a atribuicao"
+}
+
+Test-Case "21. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
@@ -239,7 +285,10 @@ Test-Case "17. Dados sobrevivem ao reinicio da stack" {
     $ligado = Invoke-Sql "select count(*) from commercial.customer where id='$($script:customerId)' and user_id='$($script:contaUserId)'"
     if ($ligado -ne "1") { throw "ligacao da conta perdida apos restart" }
 
-    "cliente $nif e a ligacao da conta intactos apos restart"
+    $atribuido = Invoke-Sql "select count(*) from commercial.customer where id='$($script:customerId)' and assigned_to_employee_id='$($script:vendedorId)'"
+    if ($atribuido -ne "1") { throw "vendedor responsavel perdido apos restart" }
+
+    "cliente $nif, ligacao da conta e vendedor responsavel intactos apos restart"
 }
 
 Write-Host ""

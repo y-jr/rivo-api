@@ -35,12 +35,18 @@ public interface ICustomerDirectory
 }
 
 /// <param name="TaxId">NIF. É o que identifica o cliente perante a AGT.</param>
+/// <param name="AssignedToEmployeeId">
+/// O vendedor responsável, como Colaborador de `hr` — resolvido pelo
+/// contrato de `hr`, nunca copiado. Nulo quando ninguém foi atribuído
+/// (ADR-045).
+/// </param>
 public sealed record CustomerReference(
     Guid CustomerId,
     string Name,
     string TaxId,
     CustomerStatus Status,
-    BillingAddress BillingAddress);
+    BillingAddress BillingAddress,
+    Guid? AssignedToEmployeeId = null);
 
 /// <param name="Country">ISO 3166-1 alpha-2. `AO` para Angola.</param>
 public sealed record BillingAddress(string Detail, string City, string Country);

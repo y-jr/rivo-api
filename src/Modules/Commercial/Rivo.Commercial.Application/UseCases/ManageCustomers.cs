@@ -2,6 +2,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Commercial.Application.Abstractions;
 using Rivo.Commercial.Contracts;
 using Rivo.Commercial.Domain;
+using Rivo.Hr.Contracts;
 
 namespace Rivo.Commercial.Application.UseCases;
 
@@ -293,6 +294,72 @@ public sealed record LinkCustomerAccountResult(LinkCustomerAccountOutcome Outcom
         new(LinkCustomerAccountOutcome.UserAlreadyLinked, "Esta conta já está associada a outro cliente.");
 }
 
+/// <summary>
+/// Atribui o vendedor responsável por um cliente (ADR-045) — para quem vai a
+/// notificação de uma mensagem nova, nada mais. Não é controlo de acesso:
+/// qualquer utilizador com permissão de escrever em conversas continua a ver
+/// e a responder a qualquer uma.
+/// </summary>
+public sealed class AssignCustomerOwner(ICustomerStore store, IEmployeeDirectory employees, IAuditTrail audit)
+{
+    public async Task<AssignCustomerOwnerResult> ExecuteAsync(
+        Guid customerId,
+        Guid? employeeId,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        var cliente = await store.FindForUpdateAsync(customerId, cancellationToken);
+
+        if (cliente is null)
+        {
+            return AssignCustomerOwnerResult.NotFound();
+        }
+
+        if (employeeId is { } id)
+        {
+            var colaborador = await employees.FindAsync(id, DateTimeOffset.UtcNow, cancellationToken);
+
+            if (colaborador is null || colaborador.Status is not EmployeeStatus.Active)
+            {
+                return AssignCustomerOwnerResult.EmployeeNotFound();
+            }
+        }
+
+        cliente.AssignOwner(employeeId);
+
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                CommercialAuditActions.CustomerOwnerAssigned,
+                CommercialAuditEntityTypes.Customer,
+                cliente.Id.ToString(),
+                context,
+                NewValue: $$"""{"assignedToEmployeeId":{{(employeeId is { } eid ? $"\"{eid}\"" : "null")}}}"""),
+            cancellationToken);
+
+        return AssignCustomerOwnerResult.Success();
+    }
+}
+
+public enum AssignCustomerOwnerOutcome
+{
+    Assigned,
+    NotFound,
+    EmployeeNotFound,
+}
+
+public sealed record AssignCustomerOwnerResult(AssignCustomerOwnerOutcome Outcome, string? Error)
+{
+    public static AssignCustomerOwnerResult Success() => new(AssignCustomerOwnerOutcome.Assigned, null);
+
+    public static AssignCustomerOwnerResult NotFound() =>
+        new(AssignCustomerOwnerOutcome.NotFound, "Cliente não encontrado.");
+
+    public static AssignCustomerOwnerResult EmployeeNotFound() =>
+        new(AssignCustomerOwnerOutcome.EmployeeNotFound, "Colaborador não encontrado, ou inactivo.");
+}
+
 /// <summary>Acções de `commercial` na trilha de auditoria.</summary>
 public static class CommercialAuditActions
 {
@@ -301,6 +368,7 @@ public static class CommercialAuditActions
     public const string CustomerDeactivated = "commercial.customer.deactivated";
     public const string CustomerReactivated = "commercial.customer.reactivated";
     public const string CustomerAccountLinked = "commercial.customer.account_linked";
+    public const string CustomerOwnerAssigned = "commercial.customer.owner_assigned";
 }
 
 public static class CommercialAuditEntityTypes

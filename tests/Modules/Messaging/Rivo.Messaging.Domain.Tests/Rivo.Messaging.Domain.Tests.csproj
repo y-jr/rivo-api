@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Messaging\Rivo.Messaging.Domain\Rivo.Messaging.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

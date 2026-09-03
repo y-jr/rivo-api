@@ -29,6 +29,10 @@ namespace Rivo.Commercial.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("AssignedToEmployeeId")
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("assigned_to_employee_id");
+
                     b.Property<string>("Email")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)")
@@ -68,6 +72,10 @@ namespace Rivo.Commercial.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_customer");
+
+                    b.HasIndex("AssignedToEmployeeId")
+                        .HasDatabaseName("ix_customer_assigned_to_employee_id")
+                        .HasFilter("[assigned_to_employee_id] IS NOT NULL");
 
                     b.HasIndex("Name")
                         .HasDatabaseName("ix_customer_name");
