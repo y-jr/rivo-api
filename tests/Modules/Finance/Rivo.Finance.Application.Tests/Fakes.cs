@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Rivo.Audit.Contracts;
 using Rivo.Commercial.Contracts;
+using Rivo.Documents.Contracts;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
 using Rivo.Fiscal.Contracts;
@@ -54,6 +55,12 @@ internal sealed class FakeSalesInvoiceStore : ISalesInvoiceStore
     public FakeSalesInvoiceStore With(Receipt receipt)
     {
         _receipts.Add(receipt);
+        return this;
+    }
+
+    public FakeSalesInvoiceStore With(PaymentClaim claim)
+    {
+        _paymentClaims[claim.Id] = claim;
         return this;
     }
 
@@ -255,6 +262,26 @@ internal sealed class FakeSalesInvoiceStore : ISalesInvoiceStore
     public Task AddReceiptAsync(Receipt receipt, CancellationToken cancellationToken)
     {
         _receipts.Add(receipt);
+        return Task.CompletedTask;
+    }
+
+    private readonly Dictionary<Guid, PaymentClaim> _paymentClaims = [];
+
+    public Task<PaymentClaim?> FindPaymentClaimAsync(Guid claimId, CancellationToken cancellationToken) =>
+        Task.FromResult(_paymentClaims.GetValueOrDefault(claimId));
+
+    public Task<PaymentClaim?> FindPaymentClaimForUpdateAsync(Guid claimId, CancellationToken cancellationToken) =>
+        Task.FromResult(_paymentClaims.GetValueOrDefault(claimId));
+
+    public Task<IReadOnlyList<PaymentClaim>> ListPaymentClaimsAsync(
+        Guid? customerId, PaymentClaimStatus? status, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<PaymentClaim>>([.. _paymentClaims.Values
+            .Where(c => customerId is null || c.CustomerId == customerId)
+            .Where(c => status is null || c.Status == status)]);
+
+    public Task AddPaymentClaimAsync(PaymentClaim claim, CancellationToken cancellationToken)
+    {
+        _paymentClaims[claim.Id] = claim;
         return Task.CompletedTask;
     }
 
@@ -604,6 +631,30 @@ internal sealed class FakeAuditTrail : IAuditTrail
         Records.Add(record);
         return Task.CompletedTask;
     }
+}
+
+internal sealed class FakeDocumentCatalogue : IDocumentCatalogue
+{
+    private readonly HashSet<Guid> _known = [];
+
+    public FakeDocumentCatalogue With(Guid documentId)
+    {
+        _known.Add(documentId);
+        return this;
+    }
+
+    public Task<DocumentDescriptor?> FindAsync(Guid documentId, CancellationToken cancellationToken) =>
+        Task.FromResult(_known.Contains(documentId)
+            ? new DocumentDescriptor(documentId, "comprovativo.pdf", "application/pdf", 1024,
+                "comprovativo-pagamento", "hash", null, DateTimeOffset.UtcNow)
+            : null);
+
+    public Task<IReadOnlyList<DocumentDescriptor>> FindManyAsync(
+        IReadOnlyCollection<Guid> documentIds, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<DocumentDescriptor>>(
+            [.. documentIds.Where(_known.Contains).Select(id =>
+                new DocumentDescriptor(id, "comprovativo.pdf", "application/pdf", 1024,
+                    "comprovativo-pagamento", "hash", null, DateTimeOffset.UtcNow))]);
 }
 
 internal sealed class FakePaymentApproval : IPaymentApproval

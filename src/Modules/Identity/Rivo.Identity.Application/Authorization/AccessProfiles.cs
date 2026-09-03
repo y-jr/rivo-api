@@ -203,10 +203,12 @@ public static class AccessProfiles
             // nomeia.
             [ProjectManager] = [.. ProjectsPermissions.All],
 
-            // Vazio até o Portal do Cliente existir (ADR-043) — mesma razão
-            // que `AssetManager`/`ProjectManager` tiveram, antes de
-            // `inventory`/`fleet`/`projects` ganharem código.
-            [Customer] = [],
+            // Deixa de estar vazio com o comprovativo de pagamento
+            // (ADR-044): o cliente carrega o ficheiro directamente em
+            // `POST /documents`, mesma permissão que qualquer módulo já usa
+            // para anexar ficheiros a um registo seu — não é pensada para
+            // clientes especificamente.
+            [Customer] = [DocumentPermissions.Write],
         };
 }
 

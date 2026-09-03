@@ -17,6 +17,10 @@
     <!-- ISupplierDirectory: é por aqui que a factura de compra liga ao
          Fornecedor, em vez de o guardar só como retrato em texto. -->
     <ProjectReference Include="..\..\Procurement\Rivo.Procurement.Contracts\Rivo.Procurement.Contracts.csproj" />
+
+    <!-- IDocumentCatalogue: o comprovativo de um PaymentClaim é um documento
+         anexado, mesmo desenho de `fleet`/`hr` (ADR-009, ADR-044). -->
+    <ProjectReference Include="..\..\Documents\Rivo.Documents.Contracts\Rivo.Documents.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

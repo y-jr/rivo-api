@@ -36,7 +36,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
 | 6 | `payroll` | Motor de IRT/INSS ganhou regra de negócio real em 2026-08-30 — trave de **produção** continua por parecer fiscal, ver a nota da fase |
 | 7 | `projects`, `inventory`, `fleet` | **Fechada por completo a 2026-08-31.** Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). A 2026-08-31, `projects` ganhou Alocação de Recursos (Colaborador e Viatura, via `hr`/`fleet`), `inventory` ganhou Armazém, Transferência (retrofit do Movimento, transferência atómica) e Contagem (gera Ajuste no fecho, tudo numa transacção), e `fleet` ganhou Registo de Viagem, Despesa de Frota (sem abrir/fechar, ao contrário de Manutenção/Atribuição) e Seguros (`VehicleDocument`, ligação autónoma a `documents`) |
-| 8 | Camadas de composição e portais | **2026-09-03** — Configurações & Administração (ADR-041), Portal do Colaborador (ADR-042), Dashboard Executivo e Portal do Cliente (ADR-043, resumo financeiro + facturas + extracto) feitos; pagamentos/mensagens/tickets registados como decisão em aberto, não corte de âmbito; falta só Analytics & IA |
+| 8 | Camadas de composição e portais | **2026-09-03** — Configurações & Administração (ADR-041), Portal do Colaborador (ADR-042), Dashboard Executivo e Portal do Cliente (ADR-043, resumo financeiro + facturas + extracto + comprovativo de pagamento, ADR-044) feitos; mensagens/tickets registados como decisão em aberto, não corte de âmbito; falta só Analytics & IA |
 
 **Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
 arranca na Fase 3. Ver no fim.
@@ -646,6 +646,46 @@ por contrato publicado.
 > cresceu de 9 para 10 casos, confirmado 10/10 na primeira corrida depois de
 > um erro de aritmética meu no próprio teste (a nota de crédito tem IVA de
 > 14%, o saldo esperado estava sem o imposto).
+>
+> **Mesmo dia, terceira ronda — pagamentos online fecham sem gateway
+> (ADR-044).** A pergunta directa ao utilizador ("que gateway integrar
+> primeiro?") foi respondida com uma correcção ao enquadramento: não há
+> gateway viável para os montantes em causa (Multicaixa Express e
+> referência têm tectos de retalho, não de B2B). O fluxo real é
+> transferência bancária directa, com o cliente a submeter o comprovativo e
+> `finance` a confirmar manualmente — a mesma coisa que já acontecia sem
+> nenhum código novo, só que agora com um pedido explícito no meio em vez
+> de um recibo criado às cegas.
+>
+> Agregado novo em `finance`, `PaymentClaim` (`Pending`/`Confirmed`/
+> `Rejected`), que **não duplica nenhuma regra do `Receipt`** — confirmar é
+> só o gatilho de `RegisterReceipt` tal como já estava, reutilizado sem
+> alteração. O comprovativo é um documento de `documents`, ligado pelo
+> mesmo padrão que `fleet`/`hr`/`payroll` já usavam
+> (`AttachDocumentToVehicle` e equivalentes): o perfil `Cliente`, vazio
+> desde o ADR-043, ganha a primeira permissão real — `documents.write`,
+> a mesma que qualquer módulo já usa para anexar ficheiros, não uma
+> pensada para clientes especificamente.
+>
+> `Rivo.Finance.Contracts` ganhou `ICustomerPayments` — primeiro contrato
+> de **escrita** que `CustomerPortal` consome (os anteriores eram todos
+> leitura), mesmo padrão que `IApprovalGateway.SubmitAsync` já estabeleceu:
+> a composição resolve "o próprio cliente" e delega tudo o resto,
+> `finance` valida tudo sozinho (factura existe, é deste cliente, não
+> excede o em aberto) sem repetir nada que a composição já teria de
+> repetir. `GET/POST /customer-portal/me/payment-claims` (Portal do
+> Cliente) e `GET /finance/payment-claims` +
+> `POST .../confirmation|rejection` (fila do Finance, mesma permissão de
+> registar um recibo — `finance.receipts.write`, porque é o que confirmar
+> faz de facto).
+>
+> `scripts/verify-customer-portal.ps1` cresceu de 10 para 15 casos: submeter
+> comprovativo, confirmar (recibo criado, extracto fecha), exceder o em
+> aberto (409), rejeitar com motivo (BR-14, não apaga), isolamento entre
+> clientes (404, não revela a terceiros), e os pedidos a sobreviverem ao
+> reinício. Confirmado 15/15 na primeira corrida. `pending-decisions.md`
+> §Fornecedores e integrações fecha "Gateway de pagamento"; §Domínio e
+> negócio fica só com mensagens e tickets de suporte por decidir.
 >
 > **Antes disto, 2026-09-02/03 — incidente de produção fora do fluxo desta
 > sessão, resolvido, e `main` ganhou protecção.** Sete commits

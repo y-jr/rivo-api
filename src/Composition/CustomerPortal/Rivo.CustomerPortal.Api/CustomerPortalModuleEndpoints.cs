@@ -18,6 +18,8 @@ public static class CustomerPortalModuleEndpoints
     {
         services.AddScoped<GetMyOverview>();
         services.AddScoped<GetMyStatement>();
+        services.AddScoped<SubmitPaymentProof>();
+        services.AddScoped<ListMyPaymentClaims>();
 
         return services;
     }
@@ -34,6 +36,12 @@ public static class CustomerPortalModuleEndpoints
         group.MapGet("/me", GetMyOverviewAsync).RequireAuthorization();
 
         group.MapGet("/me/statement", GetMyStatementAsync).RequireAuthorization();
+
+        // Comprovativo de pagamento (ADR-044) — mesma disciplina de "o
+        // próprio": nunca aceita `customerId`, resolve-o do token.
+        group.MapPost("/me/payment-claims", SubmitPaymentProofAsync).RequireAuthorization();
+
+        group.MapGet("/me/payment-claims", ListMyPaymentClaimsAsync).RequireAuthorization();
 
         return endpoints;
     }
@@ -108,4 +116,85 @@ public static class CustomerPortalModuleEndpoints
             _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
         };
     }
+
+    private static async Task<IResult> SubmitPaymentProofAsync(
+        HttpContext http,
+        SubmitPaymentProof submit,
+        SubmitPaymentProofRequest request,
+        CancellationToken cancellationToken)
+    {
+        var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+            ?? http.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!Guid.TryParse(actor, out var userId))
+        {
+            return Results.Problem(
+                "Sessão sem identificador de utilizador.", statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var result = await submit.ExecuteAsync(
+            userId, request.SalesInvoiceId, request.Amount, request.PaidOn, request.DocumentId,
+            request.Notes, cancellationToken);
+
+        return result.Outcome switch
+        {
+            SubmitPaymentProofOutcome.Submitted => Results.Created(
+                $"/customer-portal/me/payment-claims", new { claimId = result.ClaimId }),
+
+            SubmitPaymentProofOutcome.NotLinked => Results.Problem(
+                "Esta conta não está associada a nenhum cliente.",
+                statusCode: StatusCodes.Status403Forbidden),
+
+            SubmitPaymentProofOutcome.InvoiceNotFound =>
+                Results.NotFound(new { erro = result.Error }),
+
+            SubmitPaymentProofOutcome.DocumentNotFound =>
+                Results.NotFound(new { erro = result.Error }),
+
+            SubmitPaymentProofOutcome.ExceedsOutstanding =>
+                Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
+
+            SubmitPaymentProofOutcome.Rejected =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["pedido"] = [result.Error!] }),
+
+            _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
+        };
+    }
+
+    private static async Task<IResult> ListMyPaymentClaimsAsync(
+        HttpContext http,
+        ListMyPaymentClaims listClaims,
+        CancellationToken cancellationToken)
+    {
+        var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+            ?? http.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!Guid.TryParse(actor, out var userId))
+        {
+            return Results.Problem(
+                "Sessão sem identificador de utilizador.", statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var result = await listClaims.ExecuteAsync(userId, cancellationToken);
+
+        return result.Outcome switch
+        {
+            ListMyPaymentClaimsOutcome.Found => Results.Ok(result.Claims),
+
+            ListMyPaymentClaimsOutcome.NotLinked => Results.Problem(
+                "Esta conta não está associada a nenhum cliente.",
+                statusCode: StatusCodes.Status403Forbidden),
+
+            _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
+        };
+    }
 }
+
+/// <param name="PaidOn">A data que o cliente diz ter pago — a que o recibo, quando confirmado, herda.</param>
+/// <param name="DocumentId">O comprovativo, já carregado por <c>POST /documents</c> (permissão <c>documents.write</c>).</param>
+public sealed record SubmitPaymentProofRequest(
+    Guid SalesInvoiceId,
+    decimal Amount,
+    DateOnly PaidOn,
+    Guid DocumentId,
+    string? Notes);

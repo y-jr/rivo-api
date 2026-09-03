@@ -56,6 +56,16 @@ public static class FinanceModuleExtensions
         // primeiro consumidor previsto, o Dashboard Executivo.
         services.AddScoped<IReceivablesOverview, ReceivablesOverview>();
 
+        // Pedidos de confirmação de pagamento (ADR-044).
+        services.AddScoped<SubmitPaymentClaim>();
+        services.AddScoped<ConfirmPaymentClaim>();
+        services.AddScoped<RejectPaymentClaim>();
+        services.AddScoped<ListPaymentClaims>();
+
+        // O contrato publicado de submissão para composição (ADR-044) —
+        // único consumidor previsto, o Portal do Cliente.
+        services.AddScoped<ICustomerPayments, CustomerPayments>();
+
         // Contas a Pagar e Tesouraria.
         services.AddScoped<IPayablesStore, PayablesStore>();
         services.AddScoped<OpenBankAccount>();

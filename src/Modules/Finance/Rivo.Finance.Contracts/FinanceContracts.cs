@@ -214,6 +214,77 @@ public sealed record CustomerInvoiceView(
     decimal GrossTotal);
 
 /// <summary>
+/// Submissão de pagamento pelo próprio cliente — pedido de confirmação com
+/// comprovativo bancário anexado, sem gateway (ADR-044). Primeiro consumidor
+/// de escrita do Portal do Cliente, mesmo padrão que
+/// <c>IApprovalGateway.SubmitAsync</c> já estabeleceu para "um módulo
+/// submete algo a outro, que decide sozinho o que fazer com isso" — a
+/// composição não pré-valida nada que `finance` já tenha de validar de
+/// qualquer forma.
+/// </summary>
+public interface ICustomerPayments
+{
+    /// <param name="customerId">Resolvido pela composição a partir de `CurrentUser` — nunca vem do pedido do cliente.</param>
+    /// <param name="documentId">O comprovativo, já carregado em `documents` (ADR-009).</param>
+    /// <param name="submittedByUserId">A conta que submeteu, para o rasto de auditoria.</param>
+    Task<SubmitPaymentClaimResult> SubmitClaimAsync(
+        Guid customerId,
+        Guid salesInvoiceId,
+        decimal amount,
+        DateOnly paidOn,
+        Guid documentId,
+        Guid submittedByUserId,
+        string? notes,
+        CancellationToken cancellationToken);
+
+    /// <summary>Os pedidos do próprio cliente — "os meus comprovativos", com o estado de cada um.</summary>
+    Task<IReadOnlyList<PaymentClaimView>> ListMyClaimsAsync(Guid customerId, CancellationToken cancellationToken);
+}
+
+public sealed record SubmitPaymentClaimResult(SubmitPaymentClaimOutcome Outcome, Guid? ClaimId, string? Error)
+{
+    public static SubmitPaymentClaimResult Submitted(Guid claimId) =>
+        new(SubmitPaymentClaimOutcome.Submitted, claimId, null);
+
+    public static SubmitPaymentClaimResult InvoiceNotFound() =>
+        new(SubmitPaymentClaimOutcome.InvoiceNotFound, null, "Factura não encontrada.");
+
+    public static SubmitPaymentClaimResult DocumentNotFound() =>
+        new(SubmitPaymentClaimOutcome.DocumentNotFound, null, "Comprovativo não encontrado.");
+
+    public static SubmitPaymentClaimResult ExceedsOutstanding(string error) =>
+        new(SubmitPaymentClaimOutcome.ExceedsOutstanding, null, error);
+
+    public static SubmitPaymentClaimResult Rejected(string error) =>
+        new(SubmitPaymentClaimOutcome.Rejected, null, error);
+}
+
+public enum SubmitPaymentClaimOutcome
+{
+    Submitted,
+
+    /// <summary>A factura não existe, ou não é deste cliente — a mesma resposta para os dois (404, não se revela a segunda).</summary>
+    InvoiceNotFound,
+
+    DocumentNotFound,
+
+    /// <summary>Pede confirmação de mais do que está em aberto — 409.</summary>
+    ExceedsOutstanding,
+
+    /// <summary>Pedido malformado — 400.</summary>
+    Rejected,
+}
+
+public sealed record PaymentClaimView(
+    Guid Id,
+    Guid SalesInvoiceId,
+    decimal Amount,
+    DateOnly PaidOn,
+    string Status,
+    string? RejectionReason,
+    DateTimeOffset SubmittedAt);
+
+/// <summary>
 /// Leitura agregada de AP (Contas a Pagar) — despesa facturada e saldo em
 /// aberto. Separada de <see cref="IReceivablesOverview"/> pela mesma razão
 /// que <c>IPayablesStore</c> é separada de <c>ISalesInvoiceStore</c>
