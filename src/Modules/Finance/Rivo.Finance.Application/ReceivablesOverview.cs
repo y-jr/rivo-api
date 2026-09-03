@@ -1,6 +1,7 @@
 using Rivo.Commercial.Contracts;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Contracts;
+using Rivo.Finance.Domain;
 
 namespace Rivo.Finance.Application;
 
@@ -73,5 +74,56 @@ public sealed class ReceivablesOverview(ISalesInvoiceStore invoices, ICustomerDi
             factura.Status.ToString(),
             factura.Currency,
             factura.GrossTotal))];
+    }
+
+    public async Task<CustomerStatementView> GetCustomerStatementAsync(
+        Guid customerId, DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken)
+    {
+        // Tudo até `to`, sem limite inferior: o que cai antes de `from`
+        // financia a abertura, o resto vira movimento do período. Duas
+        // idas à base a mais por chamada seria o preço de as separar já
+        // filtradas — sem consumidor a queixar-se da diferença, fica assim.
+        var facturas = (await invoices.ListAsync(customerId, from: null, to, cancellationToken))
+            .Where(i => i.Status == InvoiceStatus.Normal && i.Currency == currency)
+            .ToList();
+
+        var notas = (await invoices.ListCreditNotesForCustomerAsync(customerId, from: null, to, cancellationToken))
+            .Where(n => n.Status == InvoiceStatus.Normal && n.Currency == currency)
+            .ToList();
+
+        var recibos = (await invoices.ListReceiptsAsync(customerId, from: null, to, cancellationToken))
+            .Where(r => r.Status == InvoiceStatus.Normal && r.Currency == currency)
+            .ToList();
+
+        var abertura =
+            facturas.Where(i => i.IssuedOn < from).Sum(i => i.GrossTotal)
+            - notas.Where(n => n.IssuedOn < from).Sum(n => n.GrossTotal)
+            - recibos.Where(r => r.ReceivedOn < from).Sum(r => r.Lines.Sum(l => l.Amount));
+
+        var brutos = new List<(DateOnly Data, string Tipo, string Numero, string Sentido, decimal Valor)>();
+
+        brutos.AddRange(facturas
+            .Where(i => i.IssuedOn >= from)
+            .Select(i => (i.IssuedOn, "Factura", i.Number.Formatted, "Debit", i.GrossTotal)));
+
+        brutos.AddRange(notas
+            .Where(n => n.IssuedOn >= from)
+            .Select(n => (n.IssuedOn, "NotaCredito", n.Number.Formatted, "Credit", n.GrossTotal)));
+
+        brutos.AddRange(recibos
+            .Where(r => r.ReceivedOn >= from)
+            .Select(r => (r.ReceivedOn, "Recibo", r.Number.Formatted, "Credit", r.Lines.Sum(l => l.Amount))));
+
+        var saldo = abertura;
+        var linhas = new List<CustomerStatementLine>(brutos.Count);
+
+        foreach (var movimento in brutos.OrderBy(m => m.Data))
+        {
+            saldo += movimento.Sentido == "Debit" ? movimento.Valor : -movimento.Valor;
+            linhas.Add(new CustomerStatementLine(
+                movimento.Data, movimento.Tipo, movimento.Numero, movimento.Sentido, movimento.Valor, saldo));
+        }
+
+        return new CustomerStatementView(abertura, linhas, saldo);
     }
 }

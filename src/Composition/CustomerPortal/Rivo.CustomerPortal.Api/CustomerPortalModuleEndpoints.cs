@@ -17,6 +17,7 @@ public static class CustomerPortalModuleEndpoints
     public static IServiceCollection AddCustomerPortalModule(this IServiceCollection services)
     {
         services.AddScoped<GetMyOverview>();
+        services.AddScoped<GetMyStatement>();
 
         return services;
     }
@@ -31,6 +32,8 @@ public static class CustomerPortalModuleEndpoints
         // aceita `customerId`: devolve sempre e só o cliente do próprio
         // chamador.
         group.MapGet("/me", GetMyOverviewAsync).RequireAuthorization();
+
+        group.MapGet("/me/statement", GetMyStatementAsync).RequireAuthorization();
 
         return endpoints;
     }
@@ -66,6 +69,40 @@ public static class CustomerPortalModuleEndpoints
                 statusCode: StatusCodes.Status403Forbidden),
 
             MyOverviewOutcome.Rejected => Results.ValidationProblem(
+                new Dictionary<string, string[]> { ["janela"] = [result.Error!] }),
+
+            _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
+        };
+    }
+
+    private static async Task<IResult> GetMyStatementAsync(
+        HttpContext http,
+        GetMyStatement getMyStatement,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken,
+        string currency = "AOA")
+    {
+        var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+            ?? http.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!Guid.TryParse(actor, out var userId))
+        {
+            return Results.Problem(
+                "Sessão sem identificador de utilizador.", statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var result = await getMyStatement.ExecuteAsync(userId, from, to, currency, cancellationToken);
+
+        return result.Outcome switch
+        {
+            MyStatementOutcome.Found => Results.Ok(result.Statement),
+
+            MyStatementOutcome.NotLinked => Results.Problem(
+                "Esta conta não está associada a nenhum cliente.",
+                statusCode: StatusCodes.Status403Forbidden),
+
+            MyStatementOutcome.Rejected => Results.ValidationProblem(
                 new Dictionary<string, string[]> { ["janela"] = [result.Error!] }),
 
             _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),

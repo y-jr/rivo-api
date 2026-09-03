@@ -113,6 +113,14 @@ public interface ISalesInvoiceStore
         Guid? salesInvoiceId,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// As notas de crédito de um cliente — não pela factura que corrigem,
+    /// que é o que <see cref="ListCreditNotesAsync"/> já resolve. Primeiro
+    /// consumidor: o extracto de conta corrente do Portal do Cliente.
+    /// </summary>
+    Task<IReadOnlyList<CreditNote>> ListCreditNotesForCustomerAsync(
+        Guid customerId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken);
+
     Task AddCreditNoteAsync(CreditNote note, CancellationToken cancellationToken);
 
     Task<Receipt?> FindReceiptAsync(Guid receiptId, CancellationToken cancellationToken);

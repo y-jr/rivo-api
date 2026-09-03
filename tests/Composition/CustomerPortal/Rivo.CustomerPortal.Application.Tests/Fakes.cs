@@ -25,6 +25,7 @@ internal sealed class FakeReceivablesOverview : IReceivablesOverview
     private readonly Dictionary<Guid, decimal> _netRevenue = [];
     private readonly Dictionary<Guid, decimal> _outstanding = [];
     private readonly Dictionary<Guid, List<CustomerInvoiceView>> _invoices = [];
+    private readonly Dictionary<Guid, CustomerStatementView> _statements = [];
 
     /// <summary>Regista o que <see cref="GetCustomerNetRevenueAsync"/> devolve para este cliente.</summary>
     public FakeReceivablesOverview WithNetRevenue(Guid customerId, decimal value)
@@ -74,4 +75,14 @@ internal sealed class FakeReceivablesOverview : IReceivablesOverview
         Guid customerId, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<CustomerInvoiceView>>(
             _invoices.GetValueOrDefault(customerId, []));
+
+    public FakeReceivablesOverview WithStatement(Guid customerId, CustomerStatementView statement)
+    {
+        _statements[customerId] = statement;
+        return this;
+    }
+
+    public Task<CustomerStatementView> GetCustomerStatementAsync(
+        Guid customerId, DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
+        Task.FromResult(_statements.GetValueOrDefault(customerId, new CustomerStatementView(0m, [], 0m)));
 }

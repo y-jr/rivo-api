@@ -37,6 +37,10 @@ internal sealed class FakeReceivablesOverview : IReceivablesOverview
     public Task<IReadOnlyList<CustomerInvoiceView>> ListCustomerInvoicesAsync(
         Guid customerId, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<CustomerInvoiceView>>([]);
+
+    public Task<CustomerStatementView> GetCustomerStatementAsync(
+        Guid customerId, DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
+        Task.FromResult(new CustomerStatementView(0m, [], 0m));
 }
 
 internal sealed class FakePayablesOverview : IPayablesOverview

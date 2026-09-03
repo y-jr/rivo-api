@@ -167,7 +167,41 @@ public interface IReceivablesOverview
     /// </summary>
     Task<IReadOnlyList<CustomerInvoiceView>> ListCustomerInvoicesAsync(
         Guid customerId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Extracto de conta corrente de um cliente: saldo de abertura (o que
+    /// já se devia, calculado à mesma conta de
+    /// <see cref="GetCustomerOutstandingAsync"/>, só que cortada antes de
+    /// <paramref name="from"/>), os movimentos do período — facturas a
+    /// débito, notas de crédito e recibos a crédito — e o saldo de fecho.
+    ///
+    /// <para>
+    /// <strong>Não é a mesma coisa que reconstruir um saldo a uma data
+    /// passada arbitrária</strong> (fronteira que
+    /// <see cref="GetOutstandingReceivablesAsync"/> já traça): a abertura
+    /// aqui é uma soma directa sobre documentos com data anterior, não uma
+    /// cadeia de estado calculado a percorrer — o mesmo tipo de conta que
+    /// já se faz para "o que está em aberto agora", só com o corte de data
+    /// deslocado.
+    /// </para>
+    /// </summary>
+    Task<CustomerStatementView> GetCustomerStatementAsync(
+        Guid customerId, DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken);
 }
+
+public sealed record CustomerStatementView(
+    decimal OpeningBalance,
+    IReadOnlyList<CustomerStatementLine> Lines,
+    decimal ClosingBalance);
+
+/// <param name="Direction"><c>"Debit"</c> (factura) ou <c>"Credit"</c> (nota de crédito, recibo).</param>
+public sealed record CustomerStatementLine(
+    DateOnly Date,
+    string DocumentType,
+    string DocumentNumber,
+    string Direction,
+    decimal Amount,
+    decimal BalanceAfter);
 
 public sealed record CustomerRevenueView(Guid CustomerId, string CustomerName, decimal NetRevenue);
 

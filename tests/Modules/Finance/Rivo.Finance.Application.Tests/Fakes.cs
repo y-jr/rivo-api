@@ -232,6 +232,13 @@ internal sealed class FakeSalesInvoiceStore : ISalesInvoiceStore
         return Task.CompletedTask;
     }
 
+    public Task<IReadOnlyList<CreditNote>> ListCreditNotesForCustomerAsync(
+        Guid customerId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<CreditNote>>([.. _creditNotes
+            .Where(n => n.CustomerId == customerId)
+            .Where(n => from is null || n.IssuedOn >= from)
+            .Where(n => to is null || n.IssuedOn <= to)]);
+
     public Task<Receipt?> FindReceiptAsync(Guid receiptId, CancellationToken cancellationToken) =>
         Task.FromResult(_receipts.FirstOrDefault(r => r.Id == receiptId));
 
@@ -240,7 +247,10 @@ internal sealed class FakeSalesInvoiceStore : ISalesInvoiceStore
 
     public Task<IReadOnlyList<Receipt>> ListReceiptsAsync(
         Guid? customerId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<Receipt>>([.. _receipts]);
+        Task.FromResult<IReadOnlyList<Receipt>>([.. _receipts
+            .Where(r => customerId is null || r.CustomerId == customerId)
+            .Where(r => from is null || r.ReceivedOn >= from)
+            .Where(r => to is null || r.ReceivedOn <= to)]);
 
     public Task AddReceiptAsync(Receipt receipt, CancellationToken cancellationToken)
     {

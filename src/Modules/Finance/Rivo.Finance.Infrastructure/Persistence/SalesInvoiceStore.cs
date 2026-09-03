@@ -257,6 +257,27 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
         return await query.OrderByDescending(n => n.IssuedOn).ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<CreditNote>> ListCreditNotesForCustomerAsync(
+        Guid customerId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken)
+    {
+        var query = context.CreditNotes
+            .AsNoTracking()
+            .Where(n => n.CustomerId == customerId)
+            .AsQueryable();
+
+        if (from is { } inicio)
+        {
+            query = query.Where(n => n.IssuedOn >= inicio);
+        }
+
+        if (to is { } fim)
+        {
+            query = query.Where(n => n.IssuedOn <= fim);
+        }
+
+        return await query.OrderBy(n => n.IssuedOn).ToListAsync(cancellationToken);
+    }
+
     public async Task AddCreditNoteAsync(CreditNote note, CancellationToken cancellationToken) =>
         await context.CreditNotes.AddAsync(note, cancellationToken);
 

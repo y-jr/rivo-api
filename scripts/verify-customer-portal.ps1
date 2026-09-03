@@ -52,6 +52,13 @@ $b = @{ profile = "Sales" } | ConvertTo-Json
 Invoke-RestMethod "$base/identity/users/$salesUserId/roles" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
 $salesHeaders = @{ Authorization = "Bearer " + (Get-Token $salesEmail $pass) }
 
+$financeEmail = "cportal-fin-$stamp@rivo.ao"
+$b = @{ email = $financeEmail; password = $pass } | ConvertTo-Json
+$financeUserId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
+$b = @{ profile = "Finance" } | ConvertTo-Json
+Invoke-RestMethod "$base/identity/users/$financeUserId/roles" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
+$financeHeaders = @{ Authorization = "Bearer " + (Get-Token $financeEmail $pass) }
+
 # Taxa fiscal aberta, efectiva desde sempre — a factura da suite precisa dela.
 $codigoTaxa = "P" + ("$stamp".Substring("$stamp".Length - 6))
 $b = @{ code = $codigoTaxa; description = "IVA - suite customer-portal" } | ConvertTo-Json
@@ -107,7 +114,7 @@ Test-Case "5. Facturar ao cliente faz a receita e o em-aberto subirem, e a factu
         customerId = $script:customerId; issuedOn = "2026-08-15"; taxPointDate = "2026-08-15"
         lines = @(@{ description = "Servico"; quantity = 1; unitPrice = 100000; taxCode = $codigoTaxa })
     } | ConvertTo-Json
-    $factura = Invoke-RestMethod "$base/finance/sales-invoices" -Method Post -Body $b -ContentType "application/json" -Headers $salesHeaders
+    $script:factura = Invoke-RestMethod "$base/finance/sales-invoices" -Method Post -Body $b -ContentType "application/json" -Headers $salesHeaders
 
     $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
     $vista = Invoke-RestMethod "$base/customer-portal/me?from=$de&to=$ate" -Headers $ownHeaders
@@ -115,25 +122,49 @@ Test-Case "5. Facturar ao cliente faz a receita e o em-aberto subirem, e a factu
     if (($vista.netRevenue - $script:base0.netRevenue) -ne 100000) { throw "receita devia subir 100000, subiu $($vista.netRevenue - $script:base0.netRevenue)" }
     if (($vista.outstanding - $script:base0.outstanding) -ne 114000) { throw "em-aberto devia subir 114000 (bruto), subiu $($vista.outstanding - $script:base0.outstanding)" }
     if ($vista.invoices.Count -ne 1) { throw "esperada 1 factura, obtidas $($vista.invoices.Count)" }
-    if ($vista.invoices[0].number -ne $factura.number) { throw "numero da factura nao bate: $($vista.invoices[0].number)" }
-    "receita +100000, em-aberto +114000, factura $($factura.number) na lista"
+    if ($vista.invoices[0].number -ne $script:factura.number) { throw "numero da factura nao bate: $($vista.invoices[0].number)" }
+    "receita +100000, em-aberto +114000, factura $($script:factura.number) na lista"
 }
 
-Test-Case "6. Janela invertida e recusada com 400" {
+Test-Case "6. Extracto de conta corrente: factura, nota de credito e recibo, com saldo corrido" {
+    $b = @{
+        salesInvoiceId = $script:factura.invoiceId; reason = "Desconto acordado"
+        lines = @(@{ description = "Desconto"; quantity = 1; unitPrice = 14000; taxCode = $codigoTaxa })
+    } | ConvertTo-Json
+    Invoke-RestMethod "$base/finance/credit-notes" -Method Post -Body $b -ContentType "application/json" -Headers $financeHeaders | Out-Null
+
+    $b = @{ method = "MB"; settlements = @(@{ salesInvoiceId = $script:factura.invoiceId; amount = 50000 }) } | ConvertTo-Json
+    Invoke-RestMethod "$base/finance/receipts" -Method Post -Body $b -ContentType "application/json" -Headers $financeHeaders | Out-Null
+
+    $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
+    $extracto = Invoke-RestMethod "$base/customer-portal/me/statement?from=$de&to=$ate" -Headers $ownHeaders
+
+    if ($extracto.openingBalance -ne 0) { throw "abertura devia ser 0, veio $($extracto.openingBalance)" }
+    if ($extracto.lines.Count -ne 3) { throw "esperadas 3 linhas (factura, nota, recibo), obtidas $($extracto.lines.Count)" }
+    if ($extracto.lines[0].documentType -ne "Factura" -or $extracto.lines[0].balanceAfter -ne 114000) { throw "linha 1 errada: $($extracto.lines[0] | ConvertTo-Json -Compress)" }
+    if ($extracto.lines[1].documentType -ne "NotaCredito" -or $extracto.lines[1].balanceAfter -ne 98040) { throw "linha 2 errada: $($extracto.lines[1] | ConvertTo-Json -Compress)" }
+    if ($extracto.lines[2].documentType -ne "Recibo" -or $extracto.lines[2].balanceAfter -ne 48040) { throw "linha 3 errada: $($extracto.lines[2] | ConvertTo-Json -Compress)" }
+    if ($extracto.closingBalance -ne 48040) { throw "fecho devia ser 48040, veio $($extracto.closingBalance)" }
+    "abertura=0, 3 movimentos, fecho=48040"
+}
+
+Test-Case "7. Janela invertida e recusada com 400" {
     $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
     $code = Get-StatusCode { Invoke-RestMethod "$base/customer-portal/me?from=$ate&to=$de" -Headers $ownHeaders }
     if ($code -ne 400) { throw "esperado 400, obtido $code" }
-    "HTTP 400 -- data inicial depois da final"
+    $code2 = Get-StatusCode { Invoke-RestMethod "$base/customer-portal/me/statement?from=$ate&to=$de" -Headers $ownHeaders }
+    if ($code2 -ne 400) { throw "esperado 400 no extracto, obtido $code2" }
+    "HTTP 400 -- data inicial depois da final, nas duas rotas"
 }
 
-Test-Case "7. Moeda tem omissao AOA" {
+Test-Case "8. Moeda tem omissao AOA" {
     $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
     $vista = Invoke-RestMethod "$base/customer-portal/me?from=$de&to=$ate" -Headers $ownHeaders
     if ($vista.currency -ne "AOA") { throw "moeda por omissao devia ser AOA, veio '$($vista.currency)'" }
     "moeda='AOA' por omissao"
 }
 
-Test-Case "8. Outro utilizador sem cliente ligado -> 403, nunca ve o cliente de outro" {
+Test-Case "9. Outro utilizador sem cliente ligado -> 403, nunca ve o cliente de outro" {
     $e2 = "semvinculo-c-$stamp@rivo.ao"
     $b = @{ email = $e2; password = $pass } | ConvertTo-Json
     Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json" | Out-Null
@@ -144,7 +175,7 @@ Test-Case "8. Outro utilizador sem cliente ligado -> 403, nunca ve o cliente de 
     "HTTP 403 -- so ve o proprio, e o proprio nao existe para esta conta"
 }
 
-Test-Case "9. Vista sobrevive ao reinicio da stack" {
+Test-Case "10. Vista e extracto sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)
     do {
@@ -157,7 +188,11 @@ Test-Case "9. Vista sobrevive ao reinicio da stack" {
     $vista = Invoke-RestMethod "$base/customer-portal/me?from=$de&to=$ate" -Headers $ownHeaders
     if ($vista.customerId -ne $script:customerId) { throw "vinculo nao sobreviveu ao reinicio" }
     if ($vista.invoices.Count -ne 1) { throw "factura perdida apos restart" }
-    "customerId=$($script:customerId) e factura intactos apos restart"
+
+    $extracto = Invoke-RestMethod "$base/customer-portal/me/statement?from=$de&to=$ate" -Headers $ownHeaders
+    if ($extracto.closingBalance -ne 48040) { throw "fecho do extracto perdido apos restart: $($extracto.closingBalance)" }
+
+    "customerId=$($script:customerId), factura e extracto (fecho=48040) intactos apos restart"
 }
 
 Write-Host ""
