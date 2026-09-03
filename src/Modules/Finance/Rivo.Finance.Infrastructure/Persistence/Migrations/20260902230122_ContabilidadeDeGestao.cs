@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -9,48 +9,56 @@ namespace Rivo.Finance.Infrastructure.Persistence.Migrations
     public partial class ContabilidadeDeGestao : Migration
     {
         /// <inheritdoc />
+        /// <remarks>
+        /// Idempotente por construção — cada passo verifica se o objecto já
+        /// existe antes de o criar. Não é o desenho normal de uma migração
+        /// EF Core (que assume o histórico como única fonte de verdade), mas
+        /// a produção chegou a este ponto com <c>finance.accounting_rule</c>
+        /// já criada fisicamente sem o registo correspondente em
+        /// <c>__ef_migrations_history</c> — origem não confirmada (nenhum dos
+        /// dois lados desta conversa tem acesso à VPS para investigar), e sem
+        /// isso não há como corrigir o histórico directamente. Tornar a
+        /// migração segura contra qualquer estado prévio dos objectos que ela
+        /// cria resolve sem precisar desse acesso.
+        /// </remarks>
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.CreateTable(
-                name: "accounting_rule",
-                schema: "finance",
-                columns: table => new
-                {
-                    id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    code = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
-                    name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    source_type = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false),
-                    source = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    effective_from = table.Column<DateOnly>(type: "date", nullable: false),
-                    effective_to = table.Column<DateOnly>(type: "date", nullable: true),
-                    is_active = table.Column<bool>(type: "bit", nullable: false),
-                    lines = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    version = table.Column<int>(type: "int", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("pk_accounting_rule", x => x.id);
-                });
+            migrationBuilder.Sql("""
+                IF OBJECT_ID(N'[finance].[accounting_rule]') IS NULL
+                BEGIN
+                    CREATE TABLE [finance].[accounting_rule] (
+                        [id] uniqueidentifier NOT NULL,
+                        [code] nvarchar(30) NOT NULL,
+                        [name] nvarchar(200) NOT NULL,
+                        [source_type] nvarchar(40) NOT NULL,
+                        [source] nvarchar(200) NOT NULL,
+                        [effective_from] date NOT NULL,
+                        [effective_to] date NULL,
+                        [is_active] bit NOT NULL,
+                        [lines] nvarchar(max) NOT NULL,
+                        [version] int NOT NULL,
+                        CONSTRAINT [pk_accounting_rule] PRIMARY KEY ([id])
+                    );
+                END
+                """);
 
-            migrationBuilder.CreateTable(
-                name: "chart_of_accounts_version",
-                schema: "finance",
-                columns: table => new
-                {
-                    id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    jurisdiction = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
-                    name = table.Column<string>(type: "nvarchar(60)", maxLength: 60, nullable: false),
-                    revision = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
-                    source = table.Column<string>(type: "nvarchar(300)", maxLength: 300, nullable: false),
-                    effective_from = table.Column<DateOnly>(type: "date", nullable: false),
-                    effective_to = table.Column<DateOnly>(type: "date", nullable: true),
-                    is_active = table.Column<bool>(type: "bit", nullable: false),
-                    version = table.Column<int>(type: "int", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("pk_chart_of_accounts_version", x => x.id);
-                });
+            migrationBuilder.Sql("""
+                IF OBJECT_ID(N'[finance].[chart_of_accounts_version]') IS NULL
+                BEGIN
+                    CREATE TABLE [finance].[chart_of_accounts_version] (
+                        [id] uniqueidentifier NOT NULL,
+                        [jurisdiction] nvarchar(30) NOT NULL,
+                        [name] nvarchar(60) NOT NULL,
+                        [revision] nvarchar(30) NOT NULL,
+                        [source] nvarchar(300) NOT NULL,
+                        [effective_from] date NOT NULL,
+                        [effective_to] date NULL,
+                        [is_active] bit NOT NULL,
+                        [version] int NOT NULL,
+                        CONSTRAINT [pk_chart_of_accounts_version] PRIMARY KEY ([id])
+                    );
+                END
+                """);
 
             // Versão-placeholder com o Guid vazio. `LedgerAccount.Open` ainda não
             // recebe nem atribui uma versão real (nada em `finance` liga contas a
@@ -60,87 +68,80 @@ namespace Rivo.Finance.Infrastructure.Persistence.Migrations
             // existente e todo o `POST /finance/ledger/accounts` seguinte.
             // Ver .claude/state/pending-decisions.md — a atribuição real de
             // versão a conta não está desenhada.
-            migrationBuilder.InsertData(
-                schema: "finance",
-                table: "chart_of_accounts_version",
-                columns: new[] { "id", "jurisdiction", "name", "revision", "source", "effective_from", "effective_to", "is_active", "version" },
-                values: new object[]
-                {
-                    new Guid("00000000-0000-0000-0000-000000000000"),
-                    "AO",
-                    "Sem versão atribuída",
-                    "0",
-                    "Placeholder de migração — contas existentes sem versão real do plano de contas.",
-                    new DateOnly(2026, 1, 1),
-                    null,
-                    true,
-                    0,
-                });
+            migrationBuilder.Sql("""
+                IF NOT EXISTS (SELECT 1 FROM [finance].[chart_of_accounts_version] WHERE [id] = '00000000-0000-0000-0000-000000000000')
+                BEGIN
+                    INSERT INTO [finance].[chart_of_accounts_version]
+                        ([id], [jurisdiction], [name], [revision], [source], [effective_from], [effective_to], [is_active], [version])
+                    VALUES
+                        ('00000000-0000-0000-0000-000000000000', N'AO', N'Sem versão atribuída', N'0',
+                         N'Placeholder de migração — contas existentes sem versão real do plano de contas.',
+                         '2026-01-01', NULL, 1, 0);
+                END
+                """);
 
-            migrationBuilder.AddColumn<Guid>(
-                name: "chart_of_accounts_version_id",
-                schema: "finance",
-                table: "ledger_account",
-                type: "uniqueidentifier",
-                nullable: false,
-                defaultValue: new Guid("00000000-0000-0000-0000-000000000000"));
+            migrationBuilder.Sql("""
+                IF COL_LENGTH('finance.ledger_account', 'chart_of_accounts_version_id') IS NULL
+                BEGIN
+                    ALTER TABLE [finance].[ledger_account]
+                        ADD [chart_of_accounts_version_id] uniqueidentifier NOT NULL
+                        CONSTRAINT [df_ledger_account_chart_of_accounts_version_id] DEFAULT '00000000-0000-0000-0000-000000000000';
+                    ALTER TABLE [finance].[ledger_account]
+                        DROP CONSTRAINT [df_ledger_account_chart_of_accounts_version_id];
+                END
+                """);
 
-            migrationBuilder.CreateIndex(
-                name: "ix_ledger_account_chart_of_accounts_version_id",
-                schema: "finance",
-                table: "ledger_account",
-                column: "chart_of_accounts_version_id");
+            migrationBuilder.Sql("""
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_ledger_account_chart_of_accounts_version_id' AND object_id = OBJECT_ID('finance.ledger_account'))
+                BEGIN
+                    CREATE INDEX [ix_ledger_account_chart_of_accounts_version_id] ON [finance].[ledger_account] ([chart_of_accounts_version_id]);
+                END
+                """);
 
-            migrationBuilder.CreateIndex(
-                name: "ix_accounting_rule_code_effective_from",
-                schema: "finance",
-                table: "accounting_rule",
-                columns: new[] { "code", "effective_from" },
-                unique: true);
+            migrationBuilder.Sql("""
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_accounting_rule_code_effective_from' AND object_id = OBJECT_ID('finance.accounting_rule'))
+                BEGIN
+                    CREATE UNIQUE INDEX [ix_accounting_rule_code_effective_from] ON [finance].[accounting_rule] ([code], [effective_from]);
+                END
+                """);
 
-            migrationBuilder.CreateIndex(
-                name: "ix_chart_of_accounts_version_jurisdiction_name_revision",
-                schema: "finance",
-                table: "chart_of_accounts_version",
-                columns: new[] { "jurisdiction", "name", "revision" },
-                unique: true);
+            migrationBuilder.Sql("""
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_chart_of_accounts_version_jurisdiction_name_revision' AND object_id = OBJECT_ID('finance.chart_of_accounts_version'))
+                BEGIN
+                    CREATE UNIQUE INDEX [ix_chart_of_accounts_version_jurisdiction_name_revision] ON [finance].[chart_of_accounts_version] ([jurisdiction], [name], [revision]);
+                END
+                """);
 
-            migrationBuilder.AddForeignKey(
-                name: "fk_ledger_account_chart_of_accounts_version_chart_of_accounts_version_id",
-                schema: "finance",
-                table: "ledger_account",
-                column: "chart_of_accounts_version_id",
-                principalSchema: "finance",
-                principalTable: "chart_of_accounts_version",
-                principalColumn: "id",
-                onDelete: ReferentialAction.Restrict);
+            migrationBuilder.Sql("""
+                IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_ledger_account_chart_of_accounts_version_chart_of_accounts_version_id')
+                BEGIN
+                    ALTER TABLE [finance].[ledger_account] ADD CONSTRAINT [fk_ledger_account_chart_of_accounts_version_chart_of_accounts_version_id]
+                        FOREIGN KEY ([chart_of_accounts_version_id]) REFERENCES [finance].[chart_of_accounts_version] ([id]);
+                END
+                """);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropForeignKey(
-                name: "fk_ledger_account_chart_of_accounts_version_chart_of_accounts_version_id",
-                schema: "finance",
-                table: "ledger_account");
+            migrationBuilder.Sql("""
+                IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_ledger_account_chart_of_accounts_version_chart_of_accounts_version_id')
+                    ALTER TABLE [finance].[ledger_account] DROP CONSTRAINT [fk_ledger_account_chart_of_accounts_version_chart_of_accounts_version_id];
+                """);
 
-            migrationBuilder.DropTable(
-                name: "accounting_rule",
-                schema: "finance");
+            migrationBuilder.Sql("IF OBJECT_ID(N'[finance].[accounting_rule]') IS NOT NULL DROP TABLE [finance].[accounting_rule];");
 
-            migrationBuilder.DropTable(
-                name: "chart_of_accounts_version",
-                schema: "finance");
+            migrationBuilder.Sql("IF OBJECT_ID(N'[finance].[chart_of_accounts_version]') IS NOT NULL DROP TABLE [finance].[chart_of_accounts_version];");
 
-            migrationBuilder.DropIndex(
-                name: "ix_ledger_account_chart_of_accounts_version_id",
-                schema: "finance",
-                table: "ledger_account");
+            migrationBuilder.Sql("""
+                IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_ledger_account_chart_of_accounts_version_id' AND object_id = OBJECT_ID('finance.ledger_account'))
+                    DROP INDEX [ix_ledger_account_chart_of_accounts_version_id] ON [finance].[ledger_account];
+                """);
 
-            migrationBuilder.DropColumn(
-                name: "chart_of_accounts_version_id",
-                schema: "finance",
-                table: "ledger_account");
+            migrationBuilder.Sql("""
+                IF COL_LENGTH('finance.ledger_account', 'chart_of_accounts_version_id') IS NOT NULL
+                    ALTER TABLE [finance].[ledger_account] DROP COLUMN [chart_of_accounts_version_id];
+                """);
         }
     }
 }
