@@ -74,14 +74,23 @@ $semPerfilHeaders = @{ Authorization = "Bearer " + (Get-Token $semPerfilEmail $p
 
 # --- Cenario: uma folha submetida, so para ter um pedido PendingApproval em
 # approval. O que se verifica daqui para a frente e o pedido, nao a folha.
-$rh = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-    -Body (@{ fullName = "RH Aprovacao $stamp" } | ConvertTo-Json)).employeeId
+#
+# **Desde o ADR-050, decidir e cancelar exigem conta ligada a Colaborador.** O
+# identificador deixou de vir no corpo do pedido: quem decide e quem cancela
+# resolvem-se da conta autenticada. Por isso o requisitante e o aprovador
+# nascem com conta propria, e cada um age com os seus cabecalhos.
+$requisitanteConta = New-RivoColaboradorComConta `
+    -Email "req-ap-$stamp@rivo.ao" -Nome "RH Aprovacao $stamp" `
+    -AdminHeaders $adminHeaders -Perfil "Admin"
+$rh = $requisitanteConta.EmployeeId
+
+$aprovadorConta = New-RivoColaboradorComConta `
+    -Email "apr-ap-$stamp@rivo.ao" -Nome "Aprovador AP $stamp" `
+    -AdminHeaders $adminHeaders -Perfil "Admin"
+$aprovador = $aprovadorConta.EmployeeId
 
 $outroColaborador = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
     -Body (@{ fullName = "Outro Colaborador AP $stamp" } | ConvertTo-Json)).employeeId
-
-$aprovador = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-    -Body (@{ fullName = "Aprovador AP $stamp" } | ConvertTo-Json)).employeeId
 
 $cargo = (Invoke-RestMethod "$base/hr/positions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
     -Body (@{ name = "Aprovador AP $stamp"; hierarchyLevel = 2; grantsApprovalAuthority = $false } | ConvertTo-Json)).positionId
@@ -124,10 +133,10 @@ Test-Case "2. Quem nao submeteu nao cancela (K18)" {
     # $rh submeteu a folha (openedByEmployeeId) -- e quem approval regista como
     # RequestedByEmployeeId. $aprovador esta atribuido ao passo, mas nao e o
     # requisitante: tentar cancelar e a mesma familia de regra que BR-2/BR-4.
-    $body = @{ cancelledByEmployeeId = $aprovador } | ConvertTo-Json
-    $resp = $null
+    # Age com os cabecalhos do aprovador: e a conta dele que o servidor
+    # resolve, e nao um identificador que ele declare (ADR-050).
     $code = try {
-        $resp = Invoke-RestMethod "$base/approval/requests/$requestId/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders
+        Invoke-RestMethod "$base/approval/requests/$requestId/cancellation" -Method Post -Headers $aprovadorConta.Headers
         200
     }
     catch { if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { throw } }
@@ -139,25 +148,22 @@ Test-Case "2. Quem nao submeteu nao cancela (K18)" {
 }
 
 Test-Case "3. Pedido inexistente devolve 404" {
-    $body = @{ cancelledByEmployeeId = $rh } | ConvertTo-Json
-    $code = Get-StatusCode { Invoke-RestMethod "$base/approval/requests/$([guid]::NewGuid())/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    $code = Get-StatusCode { Invoke-RestMethod "$base/approval/requests/$([guid]::NewGuid())/cancellation" -Method Post -Headers $requisitanteConta.Headers }
     if ($code -ne 404) { throw "esperado 404, obtido $code" }
     "404 num pedido que nao existe"
 }
 
 Test-Case "4. Autorizacao: sem token 401, sem perfil 403" {
-    $body = @{ cancelledByEmployeeId = $rh } | ConvertTo-Json
-    $code = Get-StatusCode { Invoke-RestMethod "$base/approval/requests/$requestId/cancellation" -Method Post -Body $body -ContentType "application/json" }
+    $code = Get-StatusCode { Invoke-RestMethod "$base/approval/requests/$requestId/cancellation" -Method Post }
     if ($code -ne 401) { throw "sem token: esperado 401, obtido $code" }
 
-    $code = Get-StatusCode { Invoke-RestMethod "$base/approval/requests/$requestId/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $semPerfilHeaders }
+    $code = Get-StatusCode { Invoke-RestMethod "$base/approval/requests/$requestId/cancellation" -Method Post -Headers $semPerfilHeaders }
     if ($code -ne 403) { throw "sem perfil: esperado 403, obtido $code" }
     "401 e 403 correctos"
 }
 
 Test-Case "5. Quem submeteu cancela" {
-    $body = @{ cancelledByEmployeeId = $rh } | ConvertTo-Json
-    Invoke-RestMethod "$base/approval/requests/$requestId/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+    Invoke-RestMethod "$base/approval/requests/$requestId/cancellation" -Method Post -Headers $requisitanteConta.Headers | Out-Null
 
     $processo = Invoke-RestMethod "$base/approval/requests/$requestId" -Headers $adminHeaders
     if ($processo.status -ne "Cancelled") { throw "estado '$($processo.status)', esperado Cancelled" }
@@ -165,8 +171,7 @@ Test-Case "5. Quem submeteu cancela" {
 }
 
 Test-Case "6. Cancelar outra vez e recusado -- ja esta fechado" {
-    $body = @{ cancelledByEmployeeId = $rh } | ConvertTo-Json
-    $code = Get-StatusCode { Invoke-RestMethod "$base/approval/requests/$requestId/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    $code = Get-StatusCode { Invoke-RestMethod "$base/approval/requests/$requestId/cancellation" -Method Post -Headers $requisitanteConta.Headers }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "409 no segundo cancelamento"
 }

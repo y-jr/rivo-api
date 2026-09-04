@@ -96,8 +96,11 @@ $departamento = (Invoke-RestMethod "$base/hr/departments" -Method Post -ContentT
 $requisitante = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
     -Body (@{ fullName = "Requisitante PR $curto"; departmentId = $departamento } | ConvertTo-Json)).employeeId
 
-$aprovador = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-    -Body (@{ fullName = "Aprovador PR $curto" } | ConvertTo-Json)).employeeId
+# Conta propria: desde o ADR-050 quem decide resolve-se do token, e nao de um
+# identificador declarado no corpo do pedido.
+$aprovadorConta = New-RivoColaboradorComConta -Email "apr-pr-$curto@rivo.ao" `
+    -Nome "Aprovador PR $curto" -AdminHeaders $adminHeaders -Perfil "Admin"
+$aprovador = $aprovadorConta.EmployeeId
 
 # Quem recebe a mercadoria, e nao e quem a pede: sem duas pessoas, a
 # segregacao do 3-way match nao se pode verificar.
@@ -466,8 +469,8 @@ Test-Case "21. Decidida em approval, o efeito e aplicado em procurement" {
     # **`approval` nunca empurra.** `modules/approval.md` proibe expressamente
     # que o motor altere dados de negocio do modulo de origem — o efeito parte
     # daqui, e e por isso que existe uma rota para o pedir.
-    $body = @{ decidedByEmployeeId = $aprovador; action = "Approved"; notes = "Substituicao justificada." } | ConvertTo-Json
-    Invoke-RestMethod "$base/approval/requests/$($script:processoId)/decisions" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+    $body = @{ action = "Approved"; notes = "Substituicao justificada." } | ConvertTo-Json
+    Invoke-RestMethod "$base/approval/requests/$($script:processoId)/decisions" -Method Post -Body $body -ContentType "application/json" -Headers $aprovadorConta.Headers | Out-Null
 
     # Decidido do outro lado, e a requisicao ainda nao sabe.
     $antes = Invoke-Sql "select status from procurement.purchase_requisition where id='$($script:requisicaoId)'"

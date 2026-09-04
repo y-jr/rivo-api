@@ -74,8 +74,11 @@ $financeHeaders = New-PerfilHeaders "Finance" "tesouraria-p-$stamp"
 $requisitante = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
     -Body (@{ fullName = "Requisitante $curto" } | ConvertTo-Json)).employeeId
 
-$aprovador = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-    -Body (@{ fullName = "Aprovador $curto" } | ConvertTo-Json)).employeeId
+# Conta propria: desde o ADR-050 quem decide resolve-se do token, e nao de um
+# identificador declarado no corpo do pedido.
+$aprovadorConta = New-RivoColaboradorComConta -Email "apr-pay-$curto@rivo.ao" `
+    -Nome "Aprovador $curto" -AdminHeaders $adminHeaders -Perfil "Admin"
+$aprovador = $aprovadorConta.EmployeeId
 
 $tesoureiro = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
     -Body (@{ fullName = "Tesoureiro $curto" } | ConvertTo-Json)).employeeId
@@ -253,8 +256,8 @@ Test-Case "10. BR-1: sem decisao aprovada nao se paga" {
 }
 
 Test-Case "11. BR-3: quem aprova nao paga" {
-    $body = @{ decidedByEmployeeId = $aprovador; action = "Approved" } | ConvertTo-Json
-    Invoke-RestMethod "$base/approval/requests/$($script:processoId)/decisions" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+    $body = @{ action = "Approved" } | ConvertTo-Json
+    Invoke-RestMethod "$base/approval/requests/$($script:processoId)/decisions" -Method Post -Body $body -ContentType "application/json" -Headers $aprovadorConta.Headers | Out-Null
 
     $body = @{ bankAccountId = $script:contaId; executedByEmployeeId = $aprovador; method = "TB" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }

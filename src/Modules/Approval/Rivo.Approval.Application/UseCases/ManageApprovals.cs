@@ -2,6 +2,7 @@ using Rivo.Approval.Application.Abstractions;
 using Rivo.Approval.Contracts;
 using Rivo.Approval.Domain;
 using Rivo.Audit.Contracts;
+using Rivo.Hr.Contracts;
 
 namespace Rivo.Approval.Application.UseCases;
 
@@ -286,11 +287,35 @@ public sealed class ListApprovalRequests(IApprovalStore store)
 /// é precisamente o que não pode acontecer.
 /// </para>
 /// </summary>
-public sealed class DecideOnRequest(IApprovalStore store, IAuditTrail audit, TimeProvider clock)
+public sealed class DecideOnRequest(
+    IApprovalStore store,
+    IEmployeeDirectory employees,
+    IAuditTrail audit,
+    TimeProvider clock)
 {
+    /// <summary>
+    /// <paramref name="decidedByUserId"/> é a **conta autenticada**, não o
+    /// colaborador. O colaborador resolve-se aqui, a partir dela.
+    ///
+    /// <para>
+    /// <strong>Foi assim que se fechou a falha de 2026-09-04 (ADR-050).</strong>
+    /// Até essa data o identificador do colaborador chegava no corpo do
+    /// pedido HTTP e ninguém o confrontava com quem chamava — o que tornava
+    /// BR-2 e BR-4 contornáveis por quem tivesse
+    /// <c>approval.requests.decide</c>: bastava declarar o identificador de
+    /// outra pessoa. As regras eram avaliadas contra o colaborador
+    /// **declarado**, não contra o **autor**.
+    /// </para>
+    ///
+    /// <para>
+    /// A resolução vive aqui e não na camada Api de propósito: assim não
+    /// sobra nenhum caminho de código que aceite um decisor arbitrário, nem
+    /// sequer para um consumidor interno futuro.
+    /// </para>
+    /// </summary>
     public async Task<DecisionResult> ExecuteAsync(
         Guid requestId,
-        Guid decidedByEmployeeId,
+        Guid decidedByUserId,
         string action,
         string? notes,
         AuditContext context,
@@ -301,6 +326,21 @@ public sealed class DecideOnRequest(IApprovalStore store, IAuditTrail audit, Tim
             return DecisionResult.Rejected(
                 $"Decisão desconhecida. Esperado: {string.Join(", ", Enum.GetNames<DecisionAction>())}.");
         }
+
+        // Quem decide é um Colaborador, porque é o Cargo que confere
+        // autoridade (ADR-005/ADR-015). Uma conta sem colaborador associado
+        // não pode decidir — e a recusa é 403, não 404: a pessoa existe, o
+        // vínculo é que não.
+        var colaborador = await employees.FindByUserIdAsync(
+            decidedByUserId, clock.GetUtcNow(), cancellationToken);
+
+        if (colaborador is null)
+        {
+            return DecisionResult.SegregationViolation(
+                "Esta conta não está associada a nenhum colaborador, e só um colaborador decide.");
+        }
+
+        var decidedByEmployeeId = colaborador.EmployeeId;
 
         var request = await store.FindRequestAsync(requestId, cancellationToken);
 
@@ -376,14 +416,36 @@ public enum DecisionOutcome
     SegregationViolation,
 }
 
-public sealed class CancelRequest(IApprovalStore store, IAuditTrail audit, TimeProvider clock)
+public sealed class CancelRequest(
+    IApprovalStore store,
+    IEmployeeDirectory employees,
+    IAuditTrail audit,
+    TimeProvider clock)
 {
+    /// <summary>
+    /// <paramref name="cancelledByUserId"/> é a conta autenticada. Mesma
+    /// correcção do <see cref="DecideOnRequest"/> e pela mesma razão
+    /// (ADR-050): o K18 restringe o cancelamento a quem submeteu, e essa
+    /// restrição não vale nada se o identificador do colaborador vier no
+    /// corpo do pedido sem ser confrontado com o autor da chamada.
+    /// </summary>
     public async Task<DecisionResult> ExecuteAsync(
         Guid requestId,
-        Guid cancelledByEmployeeId,
+        Guid cancelledByUserId,
         AuditContext context,
         CancellationToken cancellationToken)
     {
+        var colaborador = await employees.FindByUserIdAsync(
+            cancelledByUserId, clock.GetUtcNow(), cancellationToken);
+
+        if (colaborador is null)
+        {
+            return DecisionResult.SegregationViolation(
+                "Esta conta não está associada a nenhum colaborador, e só quem submeteu cancela.");
+        }
+
+        var cancelledByEmployeeId = colaborador.EmployeeId;
+
         var request = await store.FindRequestAsync(requestId, cancellationToken);
 
         if (request is null)

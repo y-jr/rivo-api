@@ -88,8 +88,11 @@ $colaborador = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType
 $rh = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
     -Body (@{ fullName = "RH PL $stamp" } | ConvertTo-Json)).employeeId
 
-$aprovador = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-    -Body (@{ fullName = "Aprovador PL $stamp" } | ConvertTo-Json)).employeeId
+# Conta propria: desde o ADR-050 quem decide resolve-se do token, e nao de
+# um identificador no corpo do pedido.
+$aprovadorConta = New-RivoColaboradorComConta -Email "apr-pl-$stamp@rivo.ao" `
+    -Nome "Aprovador PL $stamp" -AdminHeaders $adminHeaders -Perfil "Admin"
+$aprovador = $aprovadorConta.EmployeeId
 
 # Cargo sem autoridade de aprovacao (BR-20): o que a confere passaria ele
 # proprio por governanca, e nao e isso que se verifica aqui.
@@ -341,8 +344,8 @@ Test-Case "16. Enquanto ninguem decide, aplicar a decisao mantem PendingApproval
 }
 
 Test-Case "17. Decidida em approval, o efeito e aplicado em payroll" {
-    $body = @{ decidedByEmployeeId = $aprovador; action = "Approved"; notes = "Folha conferida." } | ConvertTo-Json
-    Invoke-RestMethod "$base/approval/requests/$($script:processoId)/decisions" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+    $body = @{ action = "Approved"; notes = "Folha conferida." } | ConvertTo-Json
+    Invoke-RestMethod "$base/approval/requests/$($script:processoId)/decisions" -Method Post -Body $body -ContentType "application/json" -Headers $aprovadorConta.Headers | Out-Null
 
     # Decidido do outro lado, e a folha ainda nao sabe -- approval nunca
     # empurra (modules/approval.md).

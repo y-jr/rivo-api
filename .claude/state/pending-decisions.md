@@ -133,6 +133,13 @@ re-litigação:
       Confirmado pelo utilizador — o fluxo real é transferência bancária
       directa, com o cliente a submeter o comprovativo e `finance` a confirmar
       manualmente. Ver ADR-044.
+- [ ] **Ligar uma conta a um Colaborador já admitido.** Hoje a ligação só se
+      faz na admissão (`POST /hr/employees` aceita `userId`); não há rota para
+      ligar um colaborador que já exista. Passou a importar com o ADR-050:
+      **quem decide uma aprovação tem de ter conta ligada**, e quem já está
+      admitido sem conta não pode ser ligado sem ser readmitido. `commercial`
+      tem o equivalente desde o ADR-043
+      (`POST /commercial/customers/{id}/account`) — falta o de `hr`.
 - [ ] Fonte da taxa de câmbio — candidato: BNA.
 - [ ] Provider de modelos de IA.
 - [x] ~~`fleet` não tem custo de manutenção.~~ **Resolvido a 2026-09-04

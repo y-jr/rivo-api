@@ -357,6 +357,34 @@ lacuna de verificação end-to-end é anterior a esta correcção e continua.
 - **Verificado:** três arranques consecutivos a partir de `docker compose down
   -v`, todos prontos em segundos.
 
+### ~~K21 — Quem decide uma aprovação vinha do corpo do pedido~~ — **RESOLVIDO 2026-09-04**
+
+Fechado no dia em que foi encontrado, pelo **ADR-050**.
+
+`POST /approval/requests/{id}/decisions` aceitava `decidedByEmployeeId` no
+corpo e **nunca o confrontava com o token**. O mesmo em
+`POST .../cancellation`, com `cancelledByEmployeeId`.
+
+**Verificado empiricamente**, não inferido: a conta `Admin` — sem colaborador
+associado — registou uma decisão em nome de um aprovador atribuído ao passo,
+e o pedido passou a `Approved`, HTTP 200.
+
+Consequência: BR-2, BR-4 e o próprio K18 eram verificados contra o
+colaborador **declarado**, não contra o autor da chamada. Quem submetesse um
+pedido e tivesse `approval.requests.decide` aprovava-o a si próprio
+indicando outra pessoa.
+
+**Como foi encontrado:** ao ligar o ecrã de aprovações no frontend, ao
+perguntar de onde deveria vir o `decidedByEmployeeId`. Nenhum teste de
+domínio o podia apanhar — o domínio recebia o identificador já escolhido e
+aplicava-lhe as regras correctamente; o defeito estava em quem escolhia, e
+`approval` não tinha testes de camada Application. Passou a ter
+(`Rivo.Approval.Application.Tests`, 8 casos), e um deles falha se a
+resolução for revertida — confirmado sabotando a correcção de propósito.
+
+**O que a auditoria já fazia bem:** o `actorId` registado era sempre o
+verdadeiro. A detecção funcionava; o que faltava era a prevenção.
+
 ### K20 — Limpar uma política por rota, no fim de uma suite, falha de forma intermitente
 
 - **Módulo:** verificação end-to-end (`scripts/verify-ledger.ps1` caso 45 —

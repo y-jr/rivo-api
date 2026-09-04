@@ -138,12 +138,23 @@ public static class ApprovalModuleEndpoints
         HttpContext http,
         CancellationToken cancellationToken)
     {
+        var contexto = BuildAuditContext(http);
+
+        // Sem identificador de conta no token não há decisor possível. Não é
+        // 401 — o token é válido; é 403, porque falta o vínculo (ADR-050).
+        if (contexto.ActorId is not { } quemDecide)
+        {
+            return Results.Problem(
+                "Sessão sem identificador de utilizador.",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
         var result = await decide.ExecuteAsync(
             requestId,
-            request.DecidedByEmployeeId,
+            quemDecide,
             request.Action,
             request.Notes,
-            BuildAuditContext(http),
+            contexto,
             cancellationToken);
 
         return result.Outcome switch
@@ -166,13 +177,21 @@ public static class ApprovalModuleEndpoints
 
     private static async Task<IResult> CancelAsync(
         Guid requestId,
-        CancelRequestBody request,
         CancelRequest cancel,
         HttpContext http,
         CancellationToken cancellationToken)
     {
+        var contexto = BuildAuditContext(http);
+
+        if (contexto.ActorId is not { } quemCancela)
+        {
+            return Results.Problem(
+                "Sessão sem identificador de utilizador.",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
         var result = await cancel.ExecuteAsync(
-            requestId, request.CancelledByEmployeeId, BuildAuditContext(http), cancellationToken);
+            requestId, quemCancela, contexto, cancellationToken);
 
         return result.Outcome switch
         {
@@ -219,17 +238,20 @@ public sealed record CreatePolicyRequest(
 /// <param name="Mode">AnyApprover (omissão) ou AllApprovers.</param>
 public sealed record PolicyStepRequest(Guid ApproverPositionId, string? Mode, int? SlaHours);
 
-/// <param name="DecidedByEmployeeId">
-/// Quem decide, como Colaborador de `hr`. É contra este identificador que BR-2
-/// e BR-4 são verificadas — e não contra o utilizador autenticado, porque nem
-/// todo o utilizador é colaborador (ADR-004).
-/// </param>
+/// <summary>
+/// <strong>Quem decide não vem daqui.</strong> Resolve-se da conta
+/// autenticada, em <c>DecideOnRequest</c> (ADR-050).
+///
+/// <para>
+/// Até 2026-09-04 este corpo tinha um <c>DecidedByEmployeeId</c>, com a
+/// justificação de que «nem todo o utilizador é colaborador (ADR-004)». O
+/// facto estava certo e a conclusão errada: a resposta a essa verdade é
+/// **resolver o colaborador a partir da conta e recusar quando não há
+/// vínculo**, não deixar quem chama declarar quem é. Enquanto foi assim,
+/// BR-2 e BR-4 eram verificadas contra o colaborador declarado e não contra
+/// o autor — e quem tivesse <c>approval.requests.decide</c> aprovava o seu
+/// próprio pedido indicando outra pessoa.
+/// </para>
+/// </summary>
 /// <param name="Action">Approved, Rejected ou ClarificationRequested.</param>
-public sealed record DecideRequest(Guid DecidedByEmployeeId, string Action, string? Notes);
-
-/// <param name="CancelledByEmployeeId">
-/// Quem pede o cancelamento. Só é aceite se for o mesmo Colaborador que
-/// submeteu o pedido (K18) — indicado à parte, como em <see cref="DecideRequest"/>,
-/// pela mesma razão: nem todo o utilizador é colaborador (ADR-004).
-/// </param>
-public sealed record CancelRequestBody(Guid CancelledByEmployeeId);
+public sealed record DecideRequest(string Action, string? Notes);
