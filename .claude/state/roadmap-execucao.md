@@ -36,7 +36,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
 | 6 | `payroll` | Motor de IRT/INSS ganhou regra de negócio real em 2026-08-30 — trave de **produção** continua por parecer fiscal, ver a nota da fase |
 | 7 | `projects`, `inventory`, `fleet` | **Fechada por completo a 2026-08-31.** Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). A 2026-08-31, `projects` ganhou Alocação de Recursos (Colaborador e Viatura, via `hr`/`fleet`), `inventory` ganhou Armazém, Transferência (retrofit do Movimento, transferência atómica) e Contagem (gera Ajuste no fecho, tudo numa transacção), e `fleet` ganhou Registo de Viagem, Despesa de Frota (sem abrir/fechar, ao contrário de Manutenção/Atribuição) e Seguros (`VehicleDocument`, ligação autónoma a `documents`) |
-| 8 | Camadas de composição e portais | **2026-09-04** — Configurações & Administração (ADR-041), Portal do Colaborador (ADR-042), Dashboard Executivo e Portal do Cliente (ADR-043, resumo financeiro + facturas + extracto + comprovativo de pagamento ADR-044 + mensagens ADR-045) feitos; tickets de suporte registado como decisão em aberto, não corte de âmbito; falta só Analytics & IA |
+| 8 | Camadas de composição e portais | **2026-09-04** — Configurações & Administração (ADR-041), Portal do Colaborador (ADR-042), Dashboard Executivo e Portal do Cliente **completo** (ADR-043: resumo financeiro + facturas + extracto + pagamento ADR-044 + mensagens ADR-045 + tickets ADR-046) feitos; falta só Analytics & IA |
 
 **Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
 arranca na Fase 3. Ver no fim.
@@ -733,6 +733,63 @@ por contrato publicado.
 > cresceu de 16 para 21 (atribuir, cliente inexistente, colaborador
 > inexistente, remover atribuição, permissão). Confirmado 21/21 nas duas,
 > sem regressão em `verify-authorization`/`verify-bootstrap`.
+>
+> **2026-09-04, terceira ronda — tickets de suporte fecham (ADR-046), e o
+> Portal do Cliente fica completo.** Última das três perguntas de
+> `docs/rivo-suite-descricao-modulos.md` §12 sem resposta, também
+> respondida directamente: sem categorias fixas (assunto livre, mesma
+> razão de ADR-036 recusar inventar o plano de contas — um catálogo
+> plausível seria pior do que nenhum); SLA adiado (mesmo estado de
+> `approval` e do `PaymentClaim`); Sales resolve (mesma audiência das
+> mensagens directas); e — a decisão que mais poupou código —
+> **reaproveita `messaging`, não é módulo novo.**
+>
+> `Conversation` ganha `Kind` (`Message`/`Ticket`) e `Subject`
+> (`string?`, obrigatório só em `Ticket`). A única regra que muda entre
+> os dois: mensagens directas continuam com uma aberta por cliente
+> (ADR-045, inalterado); tickets podem ter **várias abertas ao mesmo
+> tempo**, cada uma com o seu assunto — o índice único filtrado
+> (`ux_conversation_open_message_per_customer`) passou a aplicar-se só a
+> `Kind = Message`. `AddMessage`/`Close`/`SendEmployeeReply`/
+> `CloseConversation` são exactamente os mesmos, para os dois tipos — só
+> `SendCustomerMessage` (sempre a mesma conversa) e os dois casos de uso
+> novos, `OpenTicket` (sempre uma conversa nova) e
+> `AddCustomerTicketMessage` (o cliente escolhe a qual dos vários
+> responde — única vez em que uma mensagem directa aceitaria um
+> identificador, e é por isso que é um caso de uso à parte), divergem.
+> `NotifyAssignedOwner`, extraído do `SendCustomerMessage` original para
+> ficar partilhado, avisa o vendedor responsável nos dois casos, com
+> título diferente consoante o tipo.
+>
+> `POST /customer-portal/me/tickets`, `POST .../tickets/{id}/messages`,
+> `GET /customer-portal/me/tickets` (Portal do Cliente);
+> `GET /messaging/conversations?kind=Ticket` (fila de Sales, mesmo
+> endpoint de mensagens directas, com o filtro novo). Mesmas permissões
+> de sempre — nenhuma nova.
+>
+> **Um quase-incidente apanhado antes de chegar a produção:** a migração
+> gerada pelo EF pôs `kind` a `defaultValue: ""` para as linhas já
+> existentes — e como `messaging` já estava em produção desde o ADR-045,
+> isso teria deixado toda a conversa antiga com um valor que a conversão
+> string→enum não reconhece, e a invariante de conversa única sem
+> cobrir nenhuma delas. Corrigido para `"Message"` (o que essas linhas
+> sempre foram, já que `Kind` não existia antes de hoje) e **verificado
+> ao vivo**: aplicada a migração anterior, inserida uma linha à mão no
+> formato antigo, aplicada esta migração por cima, confirmado
+> `kind = 'Message'` na linha — só depois seguiu para o resto dos testes.
+>
+> `scripts/verify-customer-portal.ps1` cresceu de 20 para 26 casos: abrir
+> ticket com aviso ao vendedor (por delta, não por número fixo — outro
+> acerto do próprio teste, a suite já tinha gerado dois avisos antes
+> deste por mensagens directas), dois tickets abertos ao mesmo tempo,
+> responder a um sem afectar o outro, responder a ticket de outro
+> cliente (404), Sales fechar e a resposta a fechado (409), e a
+> sobrevivência ao reinício. Confirmado 26/26, sem regressão em
+> `verify-commercial`/`verify-authorization`/`verify-bootstrap`.
+>
+> Com isto, as três capacidades adiadas do Portal do Cliente (ADR-043
+> §12) estão todas fechadas. O único item de Fase 8 ainda por começar é
+> Analytics & IA, deliberadamente adiado.
 >
 > **Antes disto, 2026-09-02/03 — incidente de produção fora do fluxo desta
 > sessão, resolvido, e `main` ganhou protecção.** Sete commits

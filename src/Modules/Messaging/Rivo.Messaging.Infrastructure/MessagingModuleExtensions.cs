@@ -28,7 +28,10 @@ public static class MessagingModuleExtensions
 
         services.AddScoped<IConversationStore, ConversationStore>();
 
+        services.AddScoped<NotifyAssignedOwner>();
         services.AddScoped<SendCustomerMessage>();
+        services.AddScoped<OpenTicket>();
+        services.AddScoped<AddCustomerTicketMessage>();
         services.AddScoped<ListMyConversations>();
         services.AddScoped<SendEmployeeReply>();
         services.AddScoped<CloseConversation>();

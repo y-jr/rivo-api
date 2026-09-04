@@ -6,11 +6,13 @@ namespace Rivo.Messaging.Infrastructure.Persistence;
 
 public sealed class ConversationStore(MessagingDbContext context) : IConversationStore
 {
-    public async Task<Conversation?> FindOpenByCustomerAsync(Guid customerId, CancellationToken cancellationToken) =>
+    public async Task<Conversation?> FindOpenByCustomerAsync(
+        Guid customerId, ConversationKind kind, CancellationToken cancellationToken) =>
         await context.Conversations
             .Include(c => c.Messages)
             .FirstOrDefaultAsync(
-                c => c.CustomerId == customerId && c.Status == ConversationStatus.Open, cancellationToken);
+                c => c.CustomerId == customerId && c.Kind == kind && c.Status == ConversationStatus.Open,
+                cancellationToken);
 
     public async Task<Conversation?> FindAsync(Guid conversationId, CancellationToken cancellationToken) =>
         await context.Conversations
@@ -24,21 +26,35 @@ public sealed class ConversationStore(MessagingDbContext context) : IConversatio
             .FirstOrDefaultAsync(c => c.Id == conversationId, cancellationToken);
 
     public async Task<IReadOnlyList<Conversation>> ListByCustomerAsync(
-        Guid customerId, CancellationToken cancellationToken) =>
-        await context.Conversations
+        Guid customerId, ConversationKind? kind, CancellationToken cancellationToken)
+    {
+        var query = context.Conversations
             .AsNoTracking()
             .Include(c => c.Messages)
             .Where(c => c.CustomerId == customerId)
-            .ToListAsync(cancellationToken);
+            .AsQueryable();
+
+        if (kind is { } tipo)
+        {
+            query = query.Where(c => c.Kind == tipo);
+        }
+
+        return await query.ToListAsync(cancellationToken);
+    }
 
     public async Task<IReadOnlyList<Conversation>> ListAsync(
-        ConversationStatus? status, CancellationToken cancellationToken)
+        ConversationStatus? status, ConversationKind? kind, CancellationToken cancellationToken)
     {
         var query = context.Conversations.AsNoTracking().Include(c => c.Messages).AsQueryable();
 
         if (status is { } estado)
         {
             query = query.Where(c => c.Status == estado);
+        }
+
+        if (kind is { } tipo)
+        {
+            query = query.Where(c => c.Kind == tipo);
         }
 
         return await query.ToListAsync(cancellationToken);

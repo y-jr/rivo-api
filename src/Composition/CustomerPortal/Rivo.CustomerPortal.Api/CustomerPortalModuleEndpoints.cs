@@ -22,6 +22,9 @@ public static class CustomerPortalModuleEndpoints
         services.AddScoped<ListMyPaymentClaims>();
         services.AddScoped<SendMessage>();
         services.AddScoped<ListMyMessages>();
+        services.AddScoped<OpenTicket>();
+        services.AddScoped<AddTicketMessage>();
+        services.AddScoped<ListMyTickets>();
 
         return services;
     }
@@ -50,6 +53,15 @@ public static class CustomerPortalModuleEndpoints
         group.MapPost("/me/messages", SendMessageAsync).RequireAuthorization();
 
         group.MapGet("/me/messages", ListMyMessagesAsync).RequireAuthorization();
+
+        // Tickets de suporte (ADR-046) — mesma disciplina de "o próprio".
+        // Ao contrário de mensagens directas, o cliente pode ter vários
+        // abertos ao mesmo tempo, por isso responder exige dizer a qual.
+        group.MapPost("/me/tickets", OpenTicketAsync).RequireAuthorization();
+
+        group.MapPost("/me/tickets/{conversationId:guid}/messages", AddTicketMessageAsync).RequireAuthorization();
+
+        group.MapGet("/me/tickets", ListMyTicketsAsync).RequireAuthorization();
 
         return endpoints;
     }
@@ -258,9 +270,111 @@ public static class CustomerPortalModuleEndpoints
             _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
         };
     }
+
+    private static async Task<IResult> OpenTicketAsync(
+        HttpContext http,
+        OpenTicket openTicket,
+        OpenTicketRequest request,
+        CancellationToken cancellationToken)
+    {
+        var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+            ?? http.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!Guid.TryParse(actor, out var userId))
+        {
+            return Results.Problem(
+                "Sessão sem identificador de utilizador.", statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var result = await openTicket.ExecuteAsync(userId, request.Subject, request.Body, cancellationToken);
+
+        return result.Outcome switch
+        {
+            SendMessageOutcome.Sent => Results.Created(
+                "/customer-portal/me/tickets",
+                new { conversationId = result.ConversationId, messageId = result.MessageId }),
+
+            SendMessageOutcome.NotLinked => Results.Problem(
+                "Esta conta não está associada a nenhum cliente.",
+                statusCode: StatusCodes.Status403Forbidden),
+
+            SendMessageOutcome.Rejected =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["ticket"] = [result.Error!] }),
+
+            _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
+        };
+    }
+
+    private static async Task<IResult> AddTicketMessageAsync(
+        Guid conversationId,
+        HttpContext http,
+        AddTicketMessage addTicketMessage,
+        SendMessageRequest request,
+        CancellationToken cancellationToken)
+    {
+        var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+            ?? http.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!Guid.TryParse(actor, out var userId))
+        {
+            return Results.Problem(
+                "Sessão sem identificador de utilizador.", statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var result = await addTicketMessage.ExecuteAsync(userId, conversationId, request.Body, cancellationToken);
+
+        return result.Outcome switch
+        {
+            SendMessageOutcome.Sent => Results.Created(
+                $"/customer-portal/me/tickets/{conversationId}", new { messageId = result.MessageId }),
+
+            SendMessageOutcome.NotLinked => Results.Problem(
+                "Esta conta não está associada a nenhum cliente.",
+                statusCode: StatusCodes.Status403Forbidden),
+
+            SendMessageOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+
+            SendMessageOutcome.Closed => Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
+
+            SendMessageOutcome.Rejected =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["body"] = [result.Error!] }),
+
+            _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
+        };
+    }
+
+    private static async Task<IResult> ListMyTicketsAsync(
+        HttpContext http,
+        ListMyTickets listTickets,
+        CancellationToken cancellationToken)
+    {
+        var actor = http.User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+            ?? http.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!Guid.TryParse(actor, out var userId))
+        {
+            return Results.Problem(
+                "Sessão sem identificador de utilizador.", statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var result = await listTickets.ExecuteAsync(userId, cancellationToken);
+
+        return result.Outcome switch
+        {
+            ListMyMessagesOutcome.Found => Results.Ok(result.Conversations),
+
+            ListMyMessagesOutcome.NotLinked => Results.Problem(
+                "Esta conta não está associada a nenhum cliente.",
+                statusCode: StatusCodes.Status403Forbidden),
+
+            _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
+        };
+    }
 }
 
 public sealed record SendMessageRequest(string Body);
+
+public sealed record OpenTicketRequest(string Subject, string Body);
 
 /// <param name="PaidOn">A data que o cliente diz ter pago — a que o recibo, quando confirmado, herda.</param>
 /// <param name="DocumentId">O comprovativo, já carregado por <c>POST /documents</c> (permissão <c>documents.write</c>).</param>

@@ -31,6 +31,12 @@ public enum SendMessageOutcome
     Sent,
     NotLinked,
     Rejected,
+
+    /// <summary>Só em tickets (ADR-046) — a mensagem directa nunca aceita identificador, logo nunca produz este desfecho.</summary>
+    NotFound,
+
+    /// <summary>Só em tickets (ADR-046) — ticket já fechado.</summary>
+    Closed,
 }
 
 public sealed record SendMessageResult(SendMessageOutcome Outcome, Guid? ConversationId, Guid? MessageId, string? Error)
@@ -41,6 +47,8 @@ public sealed record SendMessageResult(SendMessageOutcome Outcome, Guid? Convers
         inner.Outcome switch
         {
             Rivo.Messaging.Contracts.SendMessageOutcome.Sent => SendMessageOutcome.Sent,
+            Rivo.Messaging.Contracts.SendMessageOutcome.NotFound => SendMessageOutcome.NotFound,
+            Rivo.Messaging.Contracts.SendMessageOutcome.Closed => SendMessageOutcome.Closed,
             _ => SendMessageOutcome.Rejected,
         },
         inner.ConversationId,
