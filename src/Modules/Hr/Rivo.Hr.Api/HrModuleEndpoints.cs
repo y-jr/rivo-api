@@ -24,6 +24,16 @@ public static class HrModuleEndpoints
         group.MapGet("/employees/{employeeId:guid}", GetEmployeeAsync)
             .RequireAuthorization(HrPermissions.EmployeesRead);
 
+        // Liga uma conta de identity a um colaborador já admitido (ADR-051).
+        //
+        // Permissão própria, e não EmployeesWrite: ao contrário do `commercial`
+        // — que usa a permissão de escrita do Cliente para o equivalente
+        // (ADR-043) — aqui o vínculo concede o que o Cargo confere. Desde o
+        // ADR-050 é ele que determina quem decide aprovações, e portanto quem
+        // o cria escolhe, indirectamente, quem aprova.
+        group.MapPost("/employees/{employeeId:guid}/account", LinkEmployeeAccountAsync)
+            .RequireAuthorization(HrPermissions.EmployeesLinkAccount);
+
         group.MapGet("/departments", ListDepartmentsAsync)
             .RequireAuthorization(HrPermissions.DepartmentsRead);
 
@@ -226,6 +236,38 @@ public static class HrModuleEndpoints
                 Results.Created($"/hr/employees/{result.EmployeeId}", new { employeeId = result.EmployeeId }),
             HireEmployeeOutcome.DepartmentNotFound => Results.NotFound(new { erro = result.Error }),
             HireEmployeeOutcome.UserAlreadyLinked => Results.Conflict(new { erro = result.Error }),
+            _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
+        };
+    }
+
+    private static async Task<IResult> LinkEmployeeAccountAsync(
+        Guid employeeId,
+        LinkEmployeeAccountRequest request,
+        LinkEmployeeAccount linkAccount,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await linkAccount.ExecuteAsync(
+            employeeId, request.UserId, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            LinkEmployeeAccountOutcome.Linked => Results.NoContent(),
+
+            LinkEmployeeAccountOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+
+            // 409 nos dois sentidos do conflito: a conta já é de outra pessoa,
+            // ou esta pessoa já tem outra conta. O pedido está bem formado —
+            // colide com o estado.
+            LinkEmployeeAccountOutcome.UserAlreadyLinked or
+            LinkEmployeeAccountOutcome.EmployeeAlreadyLinked =>
+                Results.Conflict(new { erro = result.Error }),
+
+            // 403 e não 409: não é o estado que impede, é **quem está a
+            // pedir**. Mesma distinção que `approval` faz para BR-2 e BR-4.
+            LinkEmployeeAccountOutcome.SelfLinkRefused =>
+                Results.Problem(result.Error, statusCode: StatusCodes.Status403Forbidden),
+
             _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
         };
     }
@@ -861,6 +903,12 @@ public static class HrModuleEndpoints
 
 // DTOs da fronteira HTTP. Entidades de domínio nunca são expostas.
 public sealed record HireEmployeeRequest(string FullName, Guid? DepartmentId, Guid? UserId, DateTimeOffset? HiredOn);
+
+/// <summary>
+/// A conta a ligar. Só o <c>userId</c> — o colaborador vem da rota, e não há
+/// mais nada a decidir: o vínculo é um par, não uma configuração.
+/// </summary>
+public sealed record LinkEmployeeAccountRequest(Guid UserId);
 
 public sealed record CreateDepartmentRequest(string Name, Guid? ManagerId);
 

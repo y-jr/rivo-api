@@ -133,13 +133,31 @@ re-litigação:
       Confirmado pelo utilizador — o fluxo real é transferência bancária
       directa, com o cliente a submeter o comprovativo e `finance` a confirmar
       manualmente. Ver ADR-044.
-- [ ] **Ligar uma conta a um Colaborador já admitido.** Hoje a ligação só se
-      faz na admissão (`POST /hr/employees` aceita `userId`); não há rota para
-      ligar um colaborador que já exista. Passou a importar com o ADR-050:
-      **quem decide uma aprovação tem de ter conta ligada**, e quem já está
-      admitido sem conta não pode ser ligado sem ser readmitido. `commercial`
-      tem o equivalente desde o ADR-043
-      (`POST /commercial/customers/{id}/account`) — falta o de `hr`.
+- [x] ~~**Ligar uma conta a um Colaborador já admitido.**~~ **Resolvido a
+      2026-09-05 (ADR-051).** `POST /hr/employees/{employeeId}/account`, com
+      permissão própria `hr.employees.link_account` **fora do perfil HR** — o
+      vínculo concede o que o Cargo confere, e quem o cria escolhe
+      indirectamente quem aprova. Auto-ligação recusada com 403; religar por
+      cima recusado com 409. Verificado: `gestor@rivo.ao` passou de 403 para
+      200 em `/portal/me`.
+- [ ] **Desligar uma conta de um Colaborador.** Aberto pelo ADR-051: um
+      vínculo errado só se corrige hoje em base de dados. Desligar é tão
+      sensível como ligar, e a pergunta de domínio é o que acontece às
+      decisões de aprovação já tomadas por aquela conta — continuam válidas
+      (foram tomadas por quem detinha o vínculo à data) ou passam a estar em
+      questão? **Depende do utilizador, não da técnica.**
+- [ ] **A admissão continua a aceitar `userId` com `hr.employees.write`.**
+      Assimetria conhecida e deliberada do ADR-051: o perfil HR não pode
+      reatribuir um vínculo, mas pode criar um **na admissão**. Fechar isso
+      partiria o fluxo de admissão e as suites que dele dependem. Decidir se
+      a admissão deve deixar de aceitar `userId`, passando o vínculo a ser
+      sempre um segundo passo.
+- [ ] **`LinkCustomerAccount` sobrepõe vínculos em silêncio.** Observação
+      levantada ao escrever o ADR-051, não corrigida: ao contrário do
+      equivalente em `hr`, ligar uma conta a um Cliente que já tenha outra
+      substitui-a sem recusar nem distinguir na trilha. Requer
+      `commercial.customers.write` e a consequência é menor do que seria em
+      `hr` — mas é a mesma classe de lacuna.
 - [ ] Fonte da taxa de câmbio — candidato: BNA.
 - [ ] Provider de modelos de IA.
 - [x] ~~`fleet` não tem custo de manutenção.~~ **Resolvido a 2026-09-04

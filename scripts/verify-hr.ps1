@@ -332,7 +332,115 @@ Test-Case "19. UserId e unico na base de dados" {
     "indice unico e a segunda linha; a verificacao no caso de uso e a primeira"
 }
 
-Test-Case "20. Dados sobrevivem ao reinicio da stack" {
+# --- Ligacao de conta a colaborador ja admitido (ADR-051) -------------------
+#
+# Ate 2026-09-05 o vinculo so se estabelecia na admissao. Passou a fazer falta
+# com o ADR-050: quem decide uma aprovacao tem de ter conta ligada, e quem ja
+# estava admitido sem conta nao podia ser ligado sem ser readmitido.
+
+Test-Case "20. Perfil HR nao recebe hr.employees.link_account (ADR-051)" {
+    $has = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='HR' and c.claim_value='hr.employees.link_account'"
+    if ($has -ne "0") { throw "HR tem hr.employees.link_account" }
+    $admin = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='Admin' and c.claim_value='hr.employees.link_account'"
+    if ($admin -ne "1") { throw "Admin nao tem hr.employees.link_account" }
+    "RH admite pessoas mas nao decide que conta age por quem"
+}
+
+Test-Case "21. Ligar conta a colaborador ja admitido devolve 204" {
+    # Admitido sem conta -- o caso que antes nao tinha saida.
+    $b = @{ fullName = "Ligado Depois $stamp" } | ConvertTo-Json
+    $script:semContaId = (Invoke-RestMethod "$base/hr/employees" -Method Post -Body $b -ContentType "application/json" -Headers $hrHeaders).employeeId
+
+    $email = "ligado-$stamp@rivo.ao"
+    $b = @{ email = $email; password = $pass } | ConvertTo-Json
+    $script:contaNovaId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
+
+    $r = Invoke-WebRequest "$base/hr/employees/$($script:semContaId)/account" -Method Post `
+        -Body (@{ userId = $script:contaNovaId } | ConvertTo-Json) -ContentType "application/json" `
+        -Headers $adminHeaders -SkipHttpErrorCheck
+    if ($r.StatusCode -ne 204) { throw "esperado 204, obtido $($r.StatusCode)" }
+
+    $ligado = Invoke-Sql "select count(*) from hr.employee where id='$($script:semContaId)' and user_id='$($script:contaNovaId)'"
+    if ($ligado -ne "1") { throw "vinculo nao ficou gravado" }
+    "colaborador admitido sem conta passa a ter uma"
+}
+
+Test-Case "22. Repetir a mesma ligacao e repetivel sem erro" {
+    $r = Invoke-WebRequest "$base/hr/employees/$($script:semContaId)/account" -Method Post `
+        -Body (@{ userId = $script:contaNovaId } | ConvertTo-Json) -ContentType "application/json" `
+        -Headers $adminHeaders -SkipHttpErrorCheck
+    if ($r.StatusCode -ne 204) { throw "esperado 204, obtido $($r.StatusCode)" }
+    "mesmo estado pretendido, sem segundo registo na trilha"
+}
+
+Test-Case "23. Conta ja de outro colaborador da 409" {
+    $b = @{ fullName = "Outro Qualquer $stamp" } | ConvertTo-Json
+    $outroId = (Invoke-RestMethod "$base/hr/employees" -Method Post -Body $b -ContentType "application/json" -Headers $hrHeaders).employeeId
+
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/hr/employees/$outroId/account" -Method Post `
+            -Body (@{ userId = $script:contaNovaId } | ConvertTo-Json) -ContentType "application/json" -Headers $adminHeaders
+    }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    "uma conta serve no maximo um colaborador (ADR-042, ADR-050)"
+}
+
+Test-Case "24. Colaborador que ja tem conta da 409, nao substitui" {
+    $email = "outra-conta-$stamp@rivo.ao"
+    $b = @{ email = $email; password = $pass } | ConvertTo-Json
+    $terceira = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
+
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/hr/employees/$($script:semContaId)/account" -Method Post `
+            -Body (@{ userId = $terceira } | ConvertTo-Json) -ContentType "application/json" -Headers $adminHeaders
+    }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+
+    # O vinculo original tem de continuar intacto -- religar por cima
+    # transferiria a identidade com que se aprova.
+    $intacto = Invoke-Sql "select count(*) from hr.employee where id='$($script:semContaId)' and user_id='$($script:contaNovaId)'"
+    if ($intacto -ne "1") { throw "o vinculo original foi substituido" }
+    "recusa em vez de sobrepor, ao contrario de LinkCustomerAccount"
+}
+
+Test-Case "25. Auto-ligacao recusada com 403" {
+    # O Admin do bootstrap nao e colaborador; tenta ligar a propria conta.
+    $adminUserId = Invoke-Sql "select id from [identity].app_user where email='$($dotenv["BOOTSTRAP_ADMIN_EMAIL"])'"
+    $b = @{ fullName = "Alvo De Auto Ligacao $stamp" } | ConvertTo-Json
+    $alvoId = (Invoke-RestMethod "$base/hr/employees" -Method Post -Body $b -ContentType "application/json" -Headers $hrHeaders).employeeId
+
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/hr/employees/$alvoId/account" -Method Post `
+            -Body (@{ userId = $adminUserId } | ConvertTo-Json) -ContentType "application/json" -Headers $adminHeaders
+    }
+    if ($code -ne 403) { throw "esperado 403, obtido $code" }
+    "403 e nao 409: nao e o estado que impede, e quem pede"
+}
+
+Test-Case "26. Perfil HR nao consegue ligar contas" {
+    $b = @{ fullName = "Fora Do Alcance $stamp" } | ConvertTo-Json
+    $alvoId = (Invoke-RestMethod "$base/hr/employees" -Method Post -Body $b -ContentType "application/json" -Headers $hrHeaders).employeeId
+    $email = "recusado-$stamp@rivo.ao"
+    $b = @{ email = $email; password = $pass } | ConvertTo-Json
+    $conta = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
+
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/hr/employees/$alvoId/account" -Method Post `
+            -Body (@{ userId = $conta } | ConvertTo-Json) -ContentType "application/json" -Headers $hrHeaders
+    }
+    if ($code -ne 403) { throw "esperado 403, obtido $code" }
+    "a permissao esta fora do perfil HR de proposito"
+}
+
+Test-Case "27. A ligacao fica na trilha, com a conta e o autor" {
+    $reg = Invoke-Sql "select count(*) from audit.audit_event where action='hr.employee.account_linked' and entity_id='$($script:semContaId)'"
+    if ($reg -ne "1") { throw "esperado exactamente 1 registo, encontrados $reg" }
+    $comConta = Invoke-Sql "select count(*) from audit.audit_event where action='hr.employee.account_linked' and entity_id='$($script:semContaId)' and new_value like '%$($script:contaNovaId)%' and actor_id is not null"
+    if ($comConta -ne "1") { throw "registo sem a conta ligada ou sem autor" }
+    "quem investiga uma decisao sabe quando a conta passou a agir por aquela pessoa"
+}
+
+Test-Case "28. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)

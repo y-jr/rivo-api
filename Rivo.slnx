@@ -170,6 +170,7 @@
   </Folder>
   <Folder Name="/tests/Hr/">
     <Project Path="tests/Modules/Hr/Rivo.Hr.Domain.Tests/Rivo.Hr.Domain.Tests.csproj" />
+    <Project Path="tests/Modules/Hr/Rivo.Hr.Application.Tests/Rivo.Hr.Application.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/Approval/">
     <Project Path="tests/Modules/Approval/Rivo.Approval.Application.Tests/Rivo.Approval.Application.Tests.csproj" />

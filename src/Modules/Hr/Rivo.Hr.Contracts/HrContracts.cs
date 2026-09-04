@@ -116,6 +116,28 @@ public static class HrPermissions
     public const string PositionsAssign = "hr.positions.assign";
 
     /// <summary>
+    /// Ligar uma conta de `identity` a um Colaborador já admitido (ADR-051).
+    ///
+    /// <para>
+    /// <strong>Apenas Admin</strong>, pela mesma razão que
+    /// <see cref="PositionsWrite"/>: quem cria o vínculo controla,
+    /// indirectamente, quem pode aprovar. Desde o ADR-050 o vínculo é o
+    /// <em>único</em> determinante de quem decide — ligar uma conta a um
+    /// colaborador que tenha Cargo com autoridade é conceder-lhe essa
+    /// autoridade, sem passar pela decisão que o BR-20 exigiria.
+    /// </para>
+    ///
+    /// <para>
+    /// Deliberadamente separada de <see cref="EmployeesWrite"/>, e portanto
+    /// fora de <see cref="ForHumanResources"/>. O `commercial` usa a mesma
+    /// permissão de escrita para ligar a conta de um Cliente (ADR-043) e a
+    /// justificação não transfere: uma conta de Cliente dá acesso ao portal
+    /// do cliente; uma conta de Colaborador dá o que o Cargo confere.
+    /// </para>
+    /// </summary>
+    public const string EmployeesLinkAccount = "hr.employees.link_account";
+
+    /// <summary>
     /// Ler contratos de trabalho, incluindo a remuneração acordada.
     ///
     /// <para>
@@ -181,6 +203,7 @@ public static class HrPermissions
         LifecycleWrite,
         EmployeesRead,
         EmployeesWrite,
+        EmployeesLinkAccount,
         DepartmentsRead,
         DepartmentsWrite,
         PositionsRead,
@@ -192,6 +215,14 @@ public static class HrPermissions
     /// O que o perfil HR recebe. Note-se a ausência de
     /// <see cref="PositionsWrite"/>: RH atribui Cargos, mas não decide quais
     /// existem nem quais conferem autoridade.
+    ///
+    /// <para>
+    /// E a ausência de <see cref="EmployeesLinkAccount"/>, pela mesma razão
+    /// levada um passo à frente (ADR-051): RH admite pessoas, mas não decide
+    /// que conta age em nome de quem. Admitir <em>já</em> aceita um
+    /// <c>userId</c>, e isso mantém-se — o que fica de fora é reatribuir o
+    /// vínculo depois, que é onde estaria a escalada.
+    /// </para>
     /// </summary>
     public static readonly IReadOnlyList<string> ForHumanResources =
     [
