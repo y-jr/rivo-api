@@ -132,6 +132,7 @@ internal sealed class FakeCustomerPayments : ICustomerPayments
 internal sealed class FakeCustomerMessaging : ICustomerMessaging
 {
     private readonly Dictionary<Guid, List<ConversationView>> _conversations = [];
+    private readonly Dictionary<Guid, List<ConversationView>> _tickets = [];
 
     // Qualificado por inteiro: `Rivo.CustomerPortal.Application.SendMessageResult`
     // (o tipo do caso de uso da composição) tem o mesmo nome e ganharia à
@@ -170,4 +171,34 @@ internal sealed class FakeCustomerMessaging : ICustomerMessaging
     public Task<IReadOnlyList<ConversationView>> ListMyConversationsAsync(
         Guid customerId, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<ConversationView>>(_conversations.GetValueOrDefault(customerId, []));
+
+    public FakeCustomerMessaging WithTicket(Guid customerId, ConversationView ticket)
+    {
+        if (!_tickets.TryGetValue(customerId, out var lista))
+        {
+            lista = [];
+            _tickets[customerId] = lista;
+        }
+
+        lista.Add(ticket);
+        return this;
+    }
+
+    public Task<Messaging.Contracts.SendMessageResult> OpenTicketAsync(
+        Guid customerId, Guid senderUserId, string subject, string body, CancellationToken cancellationToken)
+    {
+        LastCustomerId = customerId;
+        return Task.FromResult(_nextResult);
+    }
+
+    public Task<Messaging.Contracts.SendMessageResult> AddTicketMessageAsync(
+        Guid customerId, Guid conversationId, Guid senderUserId, string body, CancellationToken cancellationToken)
+    {
+        LastCustomerId = customerId;
+        return Task.FromResult(_nextResult);
+    }
+
+    public Task<IReadOnlyList<ConversationView>> ListMyTicketsAsync(
+        Guid customerId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<ConversationView>>(_tickets.GetValueOrDefault(customerId, []));
 }

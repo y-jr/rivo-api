@@ -20,9 +20,10 @@ internal sealed class FakeConversationStore : IConversationStore
         return this;
     }
 
-    public Task<Conversation?> FindOpenByCustomerAsync(Guid customerId, CancellationToken cancellationToken) =>
+    public Task<Conversation?> FindOpenByCustomerAsync(
+        Guid customerId, ConversationKind kind, CancellationToken cancellationToken) =>
         Task.FromResult(_conversations.Values
-            .FirstOrDefault(c => c.CustomerId == customerId && c.Status == ConversationStatus.Open));
+            .FirstOrDefault(c => c.CustomerId == customerId && c.Kind == kind && c.Status == ConversationStatus.Open));
 
     public Task<Conversation?> FindAsync(Guid conversationId, CancellationToken cancellationToken) =>
         Task.FromResult(_conversations.GetValueOrDefault(conversationId));
@@ -30,14 +31,16 @@ internal sealed class FakeConversationStore : IConversationStore
     public Task<Conversation?> FindForUpdateAsync(Guid conversationId, CancellationToken cancellationToken) =>
         Task.FromResult(_conversations.GetValueOrDefault(conversationId));
 
-    public Task<IReadOnlyList<Conversation>> ListByCustomerAsync(Guid customerId, CancellationToken cancellationToken) =>
+    public Task<IReadOnlyList<Conversation>> ListByCustomerAsync(
+        Guid customerId, ConversationKind? kind, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<Conversation>>(
-            [.. _conversations.Values.Where(c => c.CustomerId == customerId)]);
+            [.. _conversations.Values.Where(c => c.CustomerId == customerId && (kind is null || c.Kind == kind))]);
 
     public Task<IReadOnlyList<Conversation>> ListAsync(
-        ConversationStatus? status, CancellationToken cancellationToken) =>
+        ConversationStatus? status, ConversationKind? kind, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<Conversation>>(
-            [.. _conversations.Values.Where(c => status is null || c.Status == status)]);
+            [.. _conversations.Values.Where(c =>
+                (status is null || c.Status == status) && (kind is null || c.Kind == kind))]);
 
     public Task AddAsync(Conversation conversation, CancellationToken cancellationToken)
     {

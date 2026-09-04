@@ -165,12 +165,15 @@ re-litigação:
          (vendedor responsável, só decide quem é notificado — não é controlo
          de acesso); módulo novo `messaging`, uma conversa aberta por
          cliente. Ver ADR-045.
-      2. **Tickets de suporte.** Categorias, SLA, quem resolve (perfil
-         `Sales` existente, ou um novo) — mesma pergunta de fundo de
-         `approval`: se algum dia tiver alçada, seguiria o motor já feito.
+      2. ~~Tickets de suporte.~~ **Resolvido a 2026-09-04 (ADR-046):** sem
+         categorias fixas (assunto livre); SLA adiado; Sales resolve;
+         reaproveita `messaging` — `Conversation` ganha `Kind`
+         (Message/Ticket) e `Subject`, várias abertas ao mesmo tempo por
+         cliente (ao contrário de mensagens directas). Ver ADR-046.
 
-      Não inventar a que resta sem resposta a isto — ver ADR-043, ADR-044,
-      ADR-045 e `state/roadmap-execucao.md` Fase 8.
+      **As três capacidades do Portal do Cliente (ADR-043 §12) estão
+      todas fechadas** — ver ADR-044, ADR-045, ADR-046 e
+      `state/roadmap-execucao.md` Fase 8.
 
 - [ ] **O plano de contas (PGC angolano), e as regras de postagem que o usam.**
       ⚠ **É o que hoje impede a contabilidade de servir para alguma coisa.**

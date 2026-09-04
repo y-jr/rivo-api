@@ -38,8 +38,9 @@ public static class MessagingModuleEndpoints
     private static async Task<IResult> ListAsync(
         ListConversations listConversations,
         ConversationStatus? status,
+        ConversationKind? kind,
         CancellationToken cancellationToken) =>
-        Results.Ok(await listConversations.ExecuteAsync(status, cancellationToken));
+        Results.Ok(await listConversations.ExecuteAsync(status, kind, cancellationToken));
 
     private static async Task<IResult> GetAsync(
         Guid conversationId,

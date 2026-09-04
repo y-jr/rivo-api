@@ -1,16 +1,23 @@
 namespace Rivo.Messaging.Domain;
 
 /// <summary>
-/// Uma conversa entre um cliente e a equipa comercial (ADR-045). Assíncrona:
-/// não é chat, é mensagem em fila.
+/// Uma conversa entre um cliente e a equipa comercial. Assíncrona: não é
+/// chat, é mensagem em fila. Serve dois casos, distinguidos por
+/// <see cref="Kind"/> — mesma máquina de estados para os dois (ADR-046):
 ///
 /// <para>
-/// <strong>Uma por cliente, não uma por assunto.</strong> O cliente não
-/// escolhe conversa — escreve, e cai na aberta que já houver, ou abre uma
-/// nova se não houver nenhuma (a camada Application resolve isto, não o
-/// agregado). Categorização por assunto pertence a "tickets de suporte", a
-/// terceira capacidade adiada do Portal do Cliente — inventar aqui uma
-/// segunda forma de agrupar seria antecipar essa decisão.
+/// <strong><see cref="ConversationKind.Message"/> (ADR-045):</strong> sem
+/// assunto, uma aberta por cliente de cada vez. O cliente não escolhe
+/// conversa — escreve, e cai na aberta que já houver, ou abre uma nova se
+/// não houver nenhuma (a camada Application resolve isto, não o agregado).
+/// </para>
+///
+/// <para>
+/// <strong><see cref="ConversationKind.Ticket"/> (ADR-046):</strong> com
+/// <see cref="Subject"/> obrigatório, e **várias abertas ao mesmo tempo por
+/// cliente** — cada uma rastreia um assunto diferente, ao contrário da
+/// conversa única de mensagens directas. Sem categorias fixas: o assunto é
+/// texto livre, escrito pelo cliente ao abrir.
 /// </para>
 /// </summary>
 public sealed class Conversation
@@ -18,12 +25,16 @@ public sealed class Conversation
     /// <summary>Uma mensagem de 4000 caracteres já é uma carta — o limite existe para não deixar a coluna sem tecto.</summary>
     private const int MaxBodyLength = 4000;
 
+    private const int MaxSubjectLength = 200;
+
     private readonly List<Message> _messages = [];
 
-    private Conversation(Guid id, Guid customerId, DateTimeOffset openedAt)
+    private Conversation(Guid id, Guid customerId, ConversationKind kind, string? subject, DateTimeOffset openedAt)
     {
         Id = id;
         CustomerId = customerId;
+        Kind = kind;
+        Subject = subject;
         Status = ConversationStatus.Open;
         OpenedAt = openedAt;
     }
@@ -36,6 +47,11 @@ public sealed class Conversation
     public Guid Id { get; private set; }
 
     public Guid CustomerId { get; private set; }
+
+    public ConversationKind Kind { get; private set; }
+
+    /// <summary>Só em <see cref="ConversationKind.Ticket"/> — nulo em <see cref="ConversationKind.Message"/>.</summary>
+    public string? Subject { get; private set; }
 
     public ConversationStatus Status { get; private set; }
 
@@ -50,8 +66,27 @@ public sealed class Conversation
     /// <summary>Concorrência optimista (ADR-025). O domínio nunca lhe toca.</summary>
     public int Version { get; private set; }
 
-    public static Conversation Open(Guid customerId, DateTimeOffset at) =>
-        new(Guid.CreateVersion7(), customerId, at);
+    public static Conversation OpenMessage(Guid customerId, DateTimeOffset at) =>
+        new(Guid.CreateVersion7(), customerId, ConversationKind.Message, null, at);
+
+    /// <summary>Um ticket sem assunto não se distingue de nenhum outro — é obrigatório, ao contrário de mensagens directas.</summary>
+    public static Conversation OpenTicket(Guid customerId, string subject, DateTimeOffset at)
+    {
+        if (string.IsNullOrWhiteSpace(subject))
+        {
+            throw new ArgumentException("Um ticket precisa de assunto.", nameof(subject));
+        }
+
+        var texto = subject.Trim();
+
+        if (texto.Length > MaxSubjectLength)
+        {
+            throw new ArgumentException(
+                $"O assunto tem no máximo {MaxSubjectLength} caracteres.", nameof(subject));
+        }
+
+        return new(Guid.CreateVersion7(), customerId, ConversationKind.Ticket, texto, at);
+    }
 
     /// <summary>
     /// Acrescenta uma mensagem — de qualquer um dos dois lados.
@@ -109,6 +144,12 @@ public enum ConversationStatus
 {
     Open,
     Closed,
+}
+
+public enum ConversationKind
+{
+    Message,
+    Ticket,
 }
 
 /// <summary>Uma mensagem, imutável desde que escrita.</summary>

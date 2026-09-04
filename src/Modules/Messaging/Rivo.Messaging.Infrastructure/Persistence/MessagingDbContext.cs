@@ -24,21 +24,25 @@ public sealed class MessagingDbContext(DbContextOptions<MessagingDbContext> opti
             conversation.Property(c => c.Version).IsConcurrencyToken();
 
             conversation.Property(c => c.Status).HasConversion<string>().HasMaxLength(10);
+            conversation.Property(c => c.Kind).HasConversion<string>().HasMaxLength(10);
+            conversation.Property(c => c.Subject).HasMaxLength(200);
 
             // Sem chave estrangeira para `commercial.customer`: schemas de
             // módulos distintos, referência por identificador (ADR-010).
             //
-            // A invariante "uma aberta por cliente": um índice filtrado e
+            // A invariante "uma aberta por cliente" — só para mensagens
+            // directas (ADR-046 §4; tickets podem ter várias abertas ao
+            // mesmo tempo, cada uma com o seu assunto). Um índice filtrado e
             // único é a segunda linha de defesa — a primeira é
             // `FindOpenByCustomerAsync` na camada Application, que não
             // basta sozinha contra duas chamadas simultâneas. Serve também
             // a consulta "todas as conversas de um cliente" — o volume por
             // cliente é baixo, e um segundo índice sem filtro só para essa
-            // leitura seria peso morto.
+            // leitura seria peso morto (mesma nota do ADR-045 original).
             conversation.HasIndex(c => c.CustomerId)
                 .IsUnique()
-                .HasDatabaseName("ux_conversation_open_per_customer")
-                .HasFilter("[status] = 'Open'");
+                .HasDatabaseName("ux_conversation_open_message_per_customer")
+                .HasFilter("[status] = 'Open' AND [kind] = 'Message'");
 
             conversation.HasMany(c => c.Messages)
                 .WithOne()

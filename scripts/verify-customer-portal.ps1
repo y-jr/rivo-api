@@ -379,7 +379,97 @@ Test-Case "20. Nova mensagem do cliente depois de fechada -- abre outra conversa
     "2 conversas: $($script:conversationId) Closed, $($script:segundaConversationId) Open"
 }
 
-Test-Case "21. Vista, extracto, pedidos e mensagens sobrevivem ao reinicio da stack" {
+Test-Case "21. Cliente abre um ticket de suporte -- fica Open, com assunto, e notifica o vendedor" {
+    $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
+
+    # Baseline em vez de numero fixo: os casos 16 e 20 ja geraram avisos ao
+    # mesmo vendedor por mensagens directas -- o que este caso verifica e
+    # que abrir um ticket soma mais um, mesma NotifyAssignedOwner (ADR-046).
+    $antes = [int](Invoke-Sql "select count(*) from notifications.notification where recipient_user_id='$($script:vendedorUserId)' and type='messaging.conversation.message_received'")
+
+    $b = @{ subject = "Problema com login"; body = "Nao consigo entrar no portal." } | ConvertTo-Json
+    $r = Invoke-RestMethod "$base/customer-portal/me/tickets" -Method Post -Body $b -ContentType "application/json" -Headers $ownHeaders
+    $script:primeiroTicketId = $r.conversationId
+    if (-not $script:primeiroTicketId) { throw "sem conversationId na resposta" }
+
+    $meusTickets = Invoke-RestMethod "$base/customer-portal/me/tickets" -Headers $ownHeaders
+    if ($meusTickets.Count -ne 1) { throw "esperado 1 ticket, obtidos $($meusTickets.Count)" }
+    if ($meusTickets[0].kind -ne "Ticket" -or $meusTickets[0].subject -ne "Problema com login") { throw "ticket com forma errada: $($meusTickets[0] | ConvertTo-Json -Compress)" }
+    if ($meusTickets[0].status -ne "Open") { throw "estado errado: $($meusTickets[0].status)" }
+
+    $depois = [int](Invoke-Sql "select count(*) from notifications.notification where recipient_user_id='$($script:vendedorUserId)' and type='messaging.conversation.message_received'")
+    if (($depois - $antes) -ne 1) { throw "esperado +1 aviso ao vendedor, subiu $($depois - $antes)" }
+
+    "ticket $($script:primeiroTicketId) aberto, Open, assunto certo, vendedor notificado (+1)"
+}
+
+Test-Case "22. Segundo ticket fica aberto ao mesmo tempo que o primeiro (ao contrario de mensagens directas)" {
+    $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
+    $b = @{ subject = "Duvida sobre factura"; body = "Porque e que a factura tem este valor?" } | ConvertTo-Json
+    $r = Invoke-RestMethod "$base/customer-portal/me/tickets" -Method Post -Body $b -ContentType "application/json" -Headers $ownHeaders
+    $script:segundoTicketId = $r.conversationId
+    if ($script:segundoTicketId -eq $script:primeiroTicketId) { throw "reaproveitou o primeiro ticket em vez de abrir outro" }
+
+    $meusTickets = Invoke-RestMethod "$base/customer-portal/me/tickets" -Headers $ownHeaders
+    if ($meusTickets.Count -ne 2) { throw "esperados 2 tickets abertos ao mesmo tempo, obtidos $($meusTickets.Count)" }
+    if (($meusTickets | Where-Object { $_.status -eq "Open" }).Count -ne 2) { throw "os dois tickets deviam continuar Open" }
+
+    "2 tickets abertos ao mesmo tempo: $($script:primeiroTicketId) e $($script:segundoTicketId)"
+}
+
+Test-Case "23. Cliente responde a UM dos seus tickets -- o outro fica intacto" {
+    $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
+    $b = @{ body = "Continua sem funcionar, tentei de novo." } | ConvertTo-Json
+    Invoke-RestMethod "$base/customer-portal/me/tickets/$($script:primeiroTicketId)/messages" -Method Post -Body $b -ContentType "application/json" -Headers $ownHeaders | Out-Null
+
+    $meusTickets = Invoke-RestMethod "$base/customer-portal/me/tickets" -Headers $ownHeaders
+    $primeiro = $meusTickets | Where-Object { $_.conversationId -eq $script:primeiroTicketId }
+    $segundo = $meusTickets | Where-Object { $_.conversationId -eq $script:segundoTicketId }
+    if ($primeiro.messages.Count -ne 2) { throw "primeiro ticket devia ter 2 mensagens, tem $($primeiro.messages.Count)" }
+    if ($segundo.messages.Count -ne 1) { throw "segundo ticket devia continuar com 1 mensagem, tem $($segundo.messages.Count)" }
+
+    "primeiro ticket com 2 mensagens, segundo continua com 1"
+}
+
+Test-Case "24. Responder a ticket de outro cliente -- 404, nao revela a outrem" {
+    $e2 = "cliente-ticket-$stamp@rivo-teste.local"
+    $b = @{ name = "Terceiro Cliente CP $stamp"; taxId = "59$stamp"; addressDetail = "Rua W"; city = "Luanda"; country = "AO" } | ConvertTo-Json
+    $cliente3Id = (Invoke-RestMethod "$base/commercial/customers" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders).customerId
+    $b = @{ email = $e2; password = $pass } | ConvertTo-Json
+    $user3Id = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
+    $b = @{ userId = $user3Id } | ConvertTo-Json
+    Invoke-RestMethod "$base/commercial/customers/$cliente3Id/account" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
+    $b = @{ profile = "Cliente" } | ConvertTo-Json
+    Invoke-RestMethod "$base/identity/users/$user3Id/roles" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    $h3 = @{ Authorization = "Bearer " + (Get-Token $e2 $pass) }
+    $b = @{ body = "Sou de outro cliente, isto devia falhar." } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/customer-portal/me/tickets/$($script:primeiroTicketId)/messages" -Method Post -Body $b -ContentType "application/json" -Headers $h3 }
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+    "HTTP 404 -- ticket nao e do terceiro cliente"
+}
+
+Test-Case "25. Sales fecha um ticket; responder depois de fechado -- 409" {
+    $fila = Invoke-RestMethod "$base/messaging/conversations?kind=Ticket&status=Open" -Headers $salesHeaders
+    if (-not ($fila | Where-Object { $_.conversationId -eq $script:segundoTicketId })) { throw "segundo ticket nao aparece na fila filtrada por kind=Ticket" }
+
+    Invoke-RestMethod "$base/messaging/conversations/$($script:segundoTicketId)/closure" -Method Post -Headers $salesHeaders | Out-Null
+
+    $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
+    $b = @{ body = "Ainda preciso de ajuda." } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/customer-portal/me/tickets/$($script:segundoTicketId)/messages" -Method Post -Body $b -ContentType "application/json" -Headers $ownHeaders }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+
+    $meusTickets = Invoke-RestMethod "$base/customer-portal/me/tickets" -Headers $ownHeaders
+    $fechado = $meusTickets | Where-Object { $_.conversationId -eq $script:segundoTicketId }
+    if ($fechado.status -ne "Closed") { throw "segundo ticket devia estar Closed" }
+    $aberto = $meusTickets | Where-Object { $_.conversationId -eq $script:primeiroTicketId }
+    if ($aberto.status -ne "Open") { throw "primeiro ticket nao devia ter sido afectado" }
+
+    "segundo ticket fechado por Sales, resposta a fechado -- 409, primeiro ticket continua Open"
+}
+
+Test-Case "26. Vista, extracto, pedidos, mensagens e tickets sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)
     do {
@@ -408,7 +498,14 @@ Test-Case "21. Vista, extracto, pedidos e mensagens sobrevivem ao reinicio da st
     $fechadaApos = $mensagens | Where-Object { $_.conversationId -eq $script:conversationId }
     if ($fechadaApos.status -ne "Closed" -or $fechadaApos.messages.Count -ne 3) { throw "primeira conversa alterada apos restart" }
 
-    "customerId=$($script:customerId), 2 facturas, fecho=114000, 2 pedidos e 2 conversas intactos apos restart"
+    $tickets = Invoke-RestMethod "$base/customer-portal/me/tickets" -Headers $ownHeaders
+    if ($tickets.Count -ne 2) { throw "tickets perdidos apos restart: $($tickets.Count)" }
+    $primeiroApos = $tickets | Where-Object { $_.conversationId -eq $script:primeiroTicketId }
+    if ($primeiroApos.status -ne "Open" -or $primeiroApos.subject -ne "Problema com login" -or $primeiroApos.messages.Count -ne 2) { throw "primeiro ticket alterado apos restart" }
+    $segundoApos = $tickets | Where-Object { $_.conversationId -eq $script:segundoTicketId }
+    if ($segundoApos.status -ne "Closed") { throw "segundo ticket devia continuar Closed apos restart" }
+
+    "customerId=$($script:customerId), 2 facturas, fecho=114000, 2 pedidos, 2 conversas e 2 tickets intactos apos restart"
 }
 
 Write-Host ""

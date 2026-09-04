@@ -8,15 +8,49 @@ public class ConversationTests
 {
     private static readonly DateTimeOffset Agora = new(2026, 9, 3, 10, 0, 0, TimeSpan.Zero);
 
-    private static Conversation Aberta() => Conversation.Open(Guid.CreateVersion7(), Agora);
+    private static Conversation Aberta() => Conversation.OpenMessage(Guid.CreateVersion7(), Agora);
 
     [Fact]
-    public void Open_NasceComoOpenSemMensagens()
+    public void OpenMessage_NasceComoOpenSemMensagensSemAssunto()
     {
         var conversa = Aberta();
 
         Assert.Equal(ConversationStatus.Open, conversa.Status);
+        Assert.Equal(ConversationKind.Message, conversa.Kind);
+        Assert.Null(conversa.Subject);
         Assert.Empty(conversa.Messages);
+    }
+
+    [Fact]
+    public void OpenTicket_NasceComoOpenComAssunto()
+    {
+        var conversa = Conversation.OpenTicket(Guid.CreateVersion7(), "Problema com login", Agora);
+
+        Assert.Equal(ConversationStatus.Open, conversa.Status);
+        Assert.Equal(ConversationKind.Ticket, conversa.Kind);
+        Assert.Equal("Problema com login", conversa.Subject);
+    }
+
+    [Fact]
+    public void OpenTicket_SemAssunto_ERecusado()
+    {
+        Assert.Throws<ArgumentException>(() => Conversation.OpenTicket(Guid.CreateVersion7(), "  ", Agora));
+    }
+
+    [Fact]
+    public void OpenTicket_AssuntoAcimaDoLimite_ERecusado()
+    {
+        var demasiado = new string('a', 201);
+
+        Assert.Throws<ArgumentException>(() => Conversation.OpenTicket(Guid.CreateVersion7(), demasiado, Agora));
+    }
+
+    [Fact]
+    public void OpenTicket_AssuntoENormalizado()
+    {
+        var conversa = Conversation.OpenTicket(Guid.CreateVersion7(), "  Problema com login  ", Agora);
+
+        Assert.Equal("Problema com login", conversa.Subject);
     }
 
     [Fact]
