@@ -24,7 +24,7 @@ public sealed record VehicleView(
     IReadOnlyList<FleetExpenseView> Expenses);
 
 public sealed record MaintenanceRecordView(
-    Guid MaintenanceId, string Type, string Description, DateOnly StartedOn, DateOnly? EndedOn);
+    Guid MaintenanceId, string Type, string Description, DateOnly StartedOn, DateOnly? EndedOn, decimal? Cost);
 
 public sealed record VehicleAssignmentView(
     Guid AssignmentId, Guid EmployeeId, DateOnly StartedOn, DateOnly? EndedOn);
@@ -53,7 +53,7 @@ internal static class VehicleViews
         veiculo.Model,
         veiculo.Status.ToString(),
         [.. veiculo.Maintenances.Select(m =>
-            new MaintenanceRecordView(m.Id, m.Type.ToString(), m.Description, m.StartedOn, m.EndedOn))],
+            new MaintenanceRecordView(m.Id, m.Type.ToString(), m.Description, m.StartedOn, m.EndedOn, m.Cost))],
         [.. veiculo.Assignments.Select(a =>
             new VehicleAssignmentView(a.Id, a.EmployeeId, a.StartedOn, a.EndedOn))],
         [.. veiculo.Plans.Select(p =>

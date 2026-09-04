@@ -29,7 +29,7 @@ public class GetAnalyticsOverviewTests
         {
             MonthlyExpenses = [new MonthlyAmount(2026, 7, 300_000m), new MonthlyAmount(2026, 8, 320_000m)],
         };
-        var fleet = new FakeFleetActivityOverview { PeriodExpenses = 45_000m, PeriodDistance = 1_200m };
+        var fleet = new FakeFleetActivityOverview { PeriodExpenses = 45_000m, PeriodDistance = 1_200m, PeriodMaintenanceCost = 18_000m };
         var inventory = new FakeInventoryValuationOverview { CurrentStockValue = 2_000_000m, PeriodValuation = 150_000m };
         var useCase = NovoCasoDeUso(receivables, payables, fleet, inventory);
 
@@ -41,6 +41,7 @@ public class GetAnalyticsOverviewTests
         Assert.Equal(2, vista.MonthlyExpenses.Count);
         Assert.Equal(45_000m, vista.FleetPeriodExpenses);
         Assert.Equal(1_200m, vista.FleetPeriodDistanceKm);
+        Assert.Equal(18_000m, vista.FleetPeriodMaintenanceCost);
         Assert.Equal(2_000_000m, vista.InventoryCurrentValue);
         Assert.Equal(150_000m, vista.InventoryPeriodValuation);
         Assert.Equal("AOA", vista.Currency);

@@ -161,7 +161,7 @@ public static class FleetModuleEndpoints
         CancellationToken cancellationToken)
     {
         var outcome = await closeMaintenance.ExecuteAsync(
-            vehicleId, maintenanceId, request.EndedOn, BuildAuditContext(http), cancellationToken);
+            vehicleId, maintenanceId, request.EndedOn, request.Cost, BuildAuditContext(http), cancellationToken);
 
         return outcome switch
         {
@@ -375,7 +375,8 @@ public sealed record RegisterVehicleRequest(string PlateNumber, string Model);
 
 public sealed record OpenMaintenanceRequest(string Type, string Description, DateOnly StartedOn);
 
-public sealed record CloseMaintenanceRequest(DateOnly EndedOn);
+/// <param name="Cost">Opcional (ADR-048) — o valor final da intervenção, se houver a registar.</param>
+public sealed record CloseMaintenanceRequest(DateOnly EndedOn, decimal? Cost = null);
 
 public sealed record AssignVehicleRequest(Guid EmployeeId, DateOnly StartedOn);
 

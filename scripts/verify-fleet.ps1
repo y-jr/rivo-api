@@ -156,14 +156,15 @@ Test-Case "9. Viatura em manutencao continua na listagem por omissao" {
     "InMaintenance visivel na listagem por omissao"
 }
 
-Test-Case "10. Fechar manutencao" {
-    $body = @{ endedOn = "2026-09-03" } | ConvertTo-Json
+Test-Case "10. Fechar manutencao, com custo (ADR-048)" {
+    $body = @{ endedOn = "2026-09-03"; cost = 45000 } | ConvertTo-Json
     Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/maintenance/$($script:maintenanceId)/closure" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
     $v = Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)" -Headers $adminHeaders
     if ($v.status -ne "Active") { throw "estado nao voltou a Active: $($v.status)" }
     $registo = $v.maintenances | Where-Object { $_.maintenanceId -eq $script:maintenanceId }
     if ($registo.endedOn -notmatch "2026-09-03") { throw "endedOn nao gravado: $($registo.endedOn)" }
-    "manutencao fechada, de volta a Active"
+    if ($registo.cost -ne 45000) { throw "custo nao gravado: $($registo.cost)" }
+    "manutencao fechada, de volta a Active, custo=45000"
 }
 
 Test-Case "11. Fechar a mesma manutencao outra vez e recusado" {
@@ -433,7 +434,34 @@ Test-Case "42. Anexar documento inexistente devolve 404" {
     "documento inexistente -- 404, verificado pelo contrato publicado de documents"
 }
 
-Test-Case "43. Desactivar esconde da listagem, includeInactive traz de volta" {
+Test-Case "43. Fechar manutencao sem custo e aceite; custo negativo e recusado (ADR-048)" {
+    # abre e fecha uma segunda manutencao sem indicar custo -- fica nulo,
+    # nao zero.
+    $bodyAbrir = @{ type = "Corrective"; description = "Troca de pastilhas"; startedOn = "2026-09-05" } | ConvertTo-Json
+    $aberta = Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/maintenance" -Method Post -Body $bodyAbrir -ContentType "application/json" -Headers $adminHeaders
+    $bodyFechar = @{ endedOn = "2026-09-06" } | ConvertTo-Json
+    Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/maintenance/$($aberta.maintenanceId)/closure" -Method Post -Body $bodyFechar -ContentType "application/json" -Headers $adminHeaders | Out-Null
+    $v = Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)" -Headers $adminHeaders
+    $registoSemCusto = $v.maintenances | Where-Object { $_.maintenanceId -eq $aberta.maintenanceId }
+    if ($null -ne $registoSemCusto.cost) { throw "custo devia ficar nulo, veio $($registoSemCusto.cost)" }
+
+    # abre uma terceira -- custo negativo e recusado (409), e a manutencao
+    # continua aberta; fecha-a a seguir com um custo valido, para a viatura
+    # voltar a Active antes do caso seguinte a desactivar.
+    $bodyAbrir2 = @{ type = "Preventive"; description = "Revisao"; startedOn = "2026-09-07" } | ConvertTo-Json
+    $aberta2 = Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/maintenance" -Method Post -Body $bodyAbrir2 -ContentType "application/json" -Headers $adminHeaders
+
+    $bodyNegativo = @{ endedOn = "2026-09-08"; cost = -100 } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/maintenance/$($aberta2.maintenanceId)/closure" -Method Post -Body $bodyNegativo -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 409) { throw "custo negativo devia ser recusado (409), obtido $code" }
+
+    $bodyValido = @{ endedOn = "2026-09-08"; cost = 12000 } | ConvertTo-Json
+    Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/maintenance/$($aberta2.maintenanceId)/closure" -Method Post -Body $bodyValido -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    "sem custo -> null; custo negativo -> 409; corrigido e fechado com custo valido"
+}
+
+Test-Case "44. Desactivar esconde da listagem, includeInactive traz de volta" {
     Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/deactivation" -Method Post -Headers $adminHeaders | Out-Null
 
     $activos = Invoke-RestMethod "$base/fleet/vehicles" -Headers $adminHeaders
@@ -444,7 +472,7 @@ Test-Case "43. Desactivar esconde da listagem, includeInactive traz de volta" {
     "Inactive sai da listagem por omissao; InMaintenance nao saia (caso 9)"
 }
 
-Test-Case "44. Viatura inactiva nao aceita manutencao, atribuicao, plano, viagem nem despesa novos" {
+Test-Case "45. Viatura inactiva nao aceita manutencao, atribuicao, plano, viagem nem despesa novos" {
     # Conflito com o estado da viatura, nao pedido malformado -- 409, nao 400.
     $bodyManut = @{ type = "Preventive"; description = "Revisao tardia"; startedOn = "2026-09-12" } | ConvertTo-Json
     $codeManut = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/maintenance" -Method Post -Body $bodyManut -ContentType "application/json" -Headers $adminHeaders }
@@ -469,7 +497,7 @@ Test-Case "44. Viatura inactiva nao aceita manutencao, atribuicao, plano, viagem
     "viatura inactiva recusa nova manutencao, nova atribuicao, novo plano, nova viagem e nova despesa"
 }
 
-Test-Case "45. Cancelar plano de viatura inactiva continua permitido" {
+Test-Case "46. Cancelar plano de viatura inactiva continua permitido" {
     # Cancelar planos de uma viatura que acabou de ficar inactiva e o que se
     # espera -- nao ha guarda de Status aqui, ao contrario dos outros tres.
     Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)/maintenance-plans/$($script:planFiltroId)/cancellation" -Method Post -Headers $adminHeaders | Out-Null
@@ -479,7 +507,7 @@ Test-Case "45. Cancelar plano de viatura inactiva continua permitido" {
     "cancelamento permitido mesmo com a viatura inactiva"
 }
 
-Test-Case "46. Nao ha eliminacao de viatura" {
+Test-Case "47. Nao ha eliminacao de viatura" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles/$($script:vehicleId)" -Method Delete -Headers $adminHeaders }
     if ($code -ne 405 -and $code -ne 404) { throw "DELETE devia ser recusado, obtido $code" }
     $existe = Invoke-Sql "select count(*) from fleet.vehicle where id='$($script:vehicleId)'"
@@ -487,7 +515,7 @@ Test-Case "46. Nao ha eliminacao de viatura" {
     "DELETE recusado ($code); a linha continua la"
 }
 
-Test-Case "47. Registo e desactivacao ficam na trilha, com actor" {
+Test-Case "48. Registo e desactivacao ficam na trilha, com actor" {
     $reg = Invoke-Sql "select count(*) from audit.audit_event where action='fleet.vehicle.registered' and entity_id='$($script:vehicleId)' and actor_id is not null"
     if ($reg -ne "1") { throw "registo nao auditado com actor" }
     $desact = Invoke-Sql "select count(*) from audit.audit_event where action='fleet.vehicle.deactivated' and entity_id='$($script:vehicleId)' and actor_id is not null"
@@ -495,7 +523,7 @@ Test-Case "47. Registo e desactivacao ficam na trilha, com actor" {
     "registo e desactivacao na trilha, ambos com actor"
 }
 
-Test-Case "48. Autorizacao: sem token 401, sem perfil 403" {
+Test-Case "49. Autorizacao: sem token 401, sem perfil 403" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles" }
     if ($code -ne 401) { throw "sem token: esperado 401, obtido $code" }
 
@@ -504,13 +532,13 @@ Test-Case "48. Autorizacao: sem token 401, sem perfil 403" {
     "401 e 403 correctos"
 }
 
-Test-Case "49. Matricula e unica na base de dados" {
+Test-Case "50. Matricula e unica na base de dados" {
     $dup = Invoke-Sql "select count(*) from (select plate_number from fleet.vehicle group by plate_number having count(*)>1) d"
     if ($dup -ne "0") { throw "$dup matriculas repetidas" }
     "indice unico e a segunda linha; a verificacao no caso de uso e a primeira"
 }
 
-Test-Case "50. Dados sobrevivem ao reinicio da stack" {
+Test-Case "51. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
@@ -520,6 +548,7 @@ Test-Case "50. Dados sobrevivem ao reinicio da stack" {
     if ($v.status -ne "Inactive") { throw "estado perdido apos restart: $($v.status)" }
     $registo = $v.maintenances | Where-Object { $_.maintenanceId -eq $script:maintenanceId }
     if ($registo.endedOn -notmatch "2026-09-03") { throw "manutencao perdida apos restart" }
+    if ($registo.cost -ne 45000) { throw "custo de manutencao perdido apos restart: $($registo.cost)" }
     $segunda = $v.assignments | Where-Object { $_.assignmentId -eq $script:segundaAtribuicaoId }
     if (-not $segunda -or $segunda.endedOn) { throw "segunda atribuicao (ainda aberta) perdida apos restart" }
     $oleo = $v.plans | Where-Object { $_.planId -eq $script:planOleoId }

@@ -24,4 +24,7 @@ public sealed class FleetActivityOverview(IVehicleStore store) : IFleetActivityO
 
     public Task<decimal> GetPeriodDistanceAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken) =>
         store.SumTripDistanceAsync(from, to, cancellationToken);
+
+    public Task<decimal> GetPeriodMaintenanceCostAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken) =>
+        store.SumMaintenanceCostAsync(from, to, cancellationToken);
 }

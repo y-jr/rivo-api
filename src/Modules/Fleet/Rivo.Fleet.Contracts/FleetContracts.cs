@@ -31,17 +31,8 @@ public sealed record VehicleReference(Guid VehicleId, string PlateNumber, string
 
 /// <summary>
 /// Leitura agregada de actividade de frota para composição (Analytics &amp;
-/// IA, módulo 10) — despesa e distância percorrida por período, para toda a
-/// frota, não por viatura.
-///
-/// <para>
-/// <strong>Sem custo de manutenção.</strong> <c>MaintenanceRecord</c> não
-/// tem nenhum campo de valor — o custo de uma manutenção nunca foi
-/// capturado no domínio, e inventar aqui um número que a manutenção não
-/// guarda seria pior do que não ter a métrica (mesmo princípio do
-/// ADR-036 para códigos de isenção). Fica registado em
-/// `pending-decisions.md`.
-/// </para>
+/// IA, módulo 10) — despesa, distância percorrida e custo de manutenção por
+/// período, para toda a frota, não por viatura.
 /// </summary>
 public interface IFleetActivityOverview
 {
@@ -50,4 +41,13 @@ public interface IFleetActivityOverview
 
     /// <summary>Distância percorrida no período, toda a frota.</summary>
     Task<decimal> GetPeriodDistanceAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Soma do custo das manutenções fechadas no período (por
+    /// <c>EndedOn</c>, não <c>StartedOn</c> — é quando o custo passa a
+    /// existir), toda a frota. <c>MaintenanceRecord.Cost</c> é opcional
+    /// (ADR-048): manutenções sem custo registado não entram na soma, não
+    /// contam como zero.
+    /// </summary>
+    Task<decimal> GetPeriodMaintenanceCostAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken);
 }
