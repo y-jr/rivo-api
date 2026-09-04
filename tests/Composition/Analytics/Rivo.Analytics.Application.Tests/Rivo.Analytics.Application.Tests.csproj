@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Composition\Analytics\Rivo.Analytics.Application\Rivo.Analytics.Application.csproj" />
+  </ItemGroup>
+
+</Project>

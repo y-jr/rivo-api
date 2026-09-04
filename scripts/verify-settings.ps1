@@ -117,7 +117,77 @@ Test-Case "6. Autenticado sem as duas permissoes -> 403" {
     "HTTP 403 -- HR nao tem as duas permissoes que a vista soma"
 }
 
-Test-Case "7. Vista sobrevive ao reinicio da stack" {
+function New-CsvFile {
+    param([string]$Content)
+    $path = Join-Path ([System.IO.Path]::GetTempPath()) ("rivo-verify-settings-" + [Guid]::NewGuid().ToString("N") + ".csv")
+    Set-Content -Path $path -Value $Content -NoNewline -Encoding utf8
+    return $path
+}
+
+$importPass = "Rivo!Import2026"
+
+function New-ImportPerfilHeaders {
+    param([string]$Perfil, [string]$Sufixo)
+    $email = "$Sufixo-$stamp@rivo.ao"
+    $body = @{ email = $email; password = $importPass } | ConvertTo-Json
+    $id = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $body -ContentType "application/json").userId
+    Invoke-RestMethod "$base/identity/users/$id/roles" -Method Post -Body (@{ profile = $Perfil } | ConvertTo-Json) -ContentType "application/json" -Headers $adminHeaders | Out-Null
+    return @{ Authorization = "Bearer " + (Get-Token $email $importPass) }
+}
+
+$hrHeaders = New-ImportPerfilHeaders "HR" "settings-import-hr"
+$salesHeaders = New-ImportPerfilHeaders "Sales" "settings-import-sales"
+
+$script:deptId = (Invoke-RestMethod "$base/hr/departments" -Method Post -Body (@{ name = "Comercial-$stamp" } | ConvertTo-Json) -ContentType "application/json" -Headers $hrHeaders).departmentId
+
+Test-Case "7. Importar clientes via CSV -- um novo, um duplicado, um rejeitado" {
+    $csv = New-CsvFile "Nome,NIF,Morada,Cidade,Pais,Email,Telefone`nCliente CSV $stamp,IC$stamp,Rua A,Luanda,AO,,`nCliente CSV $stamp,IC$stamp,Rua A,Luanda,AO,,`n,IC2$stamp,Rua A,Luanda,AO,,"
+    $resposta = Invoke-RestMethod "$base/settings/import/customers" -Method Post -Form @{ file = Get-Item $csv } -Headers $salesHeaders
+    Remove-Item $csv
+    if ($resposta.totalRows -ne 3) { throw "esperadas 3 linhas, vieram $($resposta.totalRows)" }
+    if ($resposta.imported -ne 1) { throw "esperado 1 importado, veio $($resposta.imported)" }
+    if ($resposta.duplicates -ne 1) { throw "esperado 1 duplicado, veio $($resposta.duplicates)" }
+    if ($resposta.rejected -ne 1) { throw "esperado 1 rejeitado (sem nome), veio $($resposta.rejected)" }
+    "3 linhas: 1 importado, 1 duplicado (mesmo NIF), 1 rejeitado (sem nome)"
+}
+
+Test-Case "8. Importar colaboradores via CSV -- departamento existente e inexistente" {
+    $csv = New-CsvFile "Nome,Departamento,DataAdmissao`nColaborador CSV $stamp,Comercial-$stamp,2026-01-15`nOutro CSV $stamp,Departamento-Que-Nao-Existe,2026-01-15"
+    $resposta = Invoke-RestMethod "$base/settings/import/employees" -Method Post -Form @{ file = Get-Item $csv } -Headers $hrHeaders
+    Remove-Item $csv
+    if ($resposta.imported -ne 1) { throw "esperado 1 importado, veio $($resposta.imported)" }
+    if ($resposta.rejected -ne 1) { throw "esperado 1 rejeitado (departamento inexistente), veio $($resposta.rejected)" }
+    "1 importado (departamento resolvido por nome), 1 rejeitado (departamento inexistente)"
+}
+
+Test-Case "9. Importar fornecedores via CSV -- so Admin tem a permissao" {
+    $csv = New-CsvFile "Nome,NIF`nFornecedor CSV $stamp,IF$stamp"
+    $codigo403 = Get-StatusCode { Invoke-RestMethod "$base/settings/import/suppliers" -Method Post -Form @{ file = Get-Item $csv } -Headers $salesHeaders }
+    if ($codigo403 -ne 403) { throw "Sales nao devia poder importar fornecedores, obtido $codigo403" }
+
+    $resposta = Invoke-RestMethod "$base/settings/import/suppliers" -Method Post -Form @{ file = Get-Item $csv } -Headers $adminHeaders
+    Remove-Item $csv
+    if ($resposta.imported -ne 1) { throw "esperado 1 importado, veio $($resposta.imported)" }
+    "Sales -> 403; Admin importa 1 fornecedor"
+}
+
+Test-Case "10. Cabecalho sem coluna obrigatoria -> 400" {
+    $csv = New-CsvFile "Nome`nSo nome $stamp"
+    $codigo = Get-StatusCode { Invoke-RestMethod "$base/settings/import/customers" -Method Post -Form @{ file = Get-Item $csv } -Headers $salesHeaders }
+    Remove-Item $csv
+    if ($codigo -ne 400) { throw "esperado 400, obtido $codigo" }
+    "HTTP 400 -- falta NIF/Morada/Cidade/Pais no cabecalho"
+}
+
+Test-Case "11. Sem autenticacao -> 401 na importacao" {
+    $csv = New-CsvFile "Nome,NIF`nX,Y"
+    $codigo = Get-StatusCode { Invoke-RestMethod "$base/settings/import/suppliers" -Method Post -Form @{ file = Get-Item $csv } }
+    Remove-Item $csv
+    if ($codigo -ne 401) { throw "esperado 401, obtido $codigo" }
+    "HTTP 401"
+}
+
+Test-Case "12. Vista sobrevive ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)
     do {

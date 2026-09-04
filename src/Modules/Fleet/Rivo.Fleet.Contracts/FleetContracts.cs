@@ -28,3 +28,26 @@ public interface IVehicleDirectory
 }
 
 public sealed record VehicleReference(Guid VehicleId, string PlateNumber, string Model, string Status);
+
+/// <summary>
+/// Leitura agregada de actividade de frota para composição (Analytics &amp;
+/// IA, módulo 10) — despesa e distância percorrida por período, para toda a
+/// frota, não por viatura.
+///
+/// <para>
+/// <strong>Sem custo de manutenção.</strong> <c>MaintenanceRecord</c> não
+/// tem nenhum campo de valor — o custo de uma manutenção nunca foi
+/// capturado no domínio, e inventar aqui um número que a manutenção não
+/// guarda seria pior do que não ter a métrica (mesmo princípio do
+/// ADR-036 para códigos de isenção). Fica registado em
+/// `pending-decisions.md`.
+/// </para>
+/// </summary>
+public interface IFleetActivityOverview
+{
+    /// <summary>Soma de despesas (combustível, portagens, estacionamento) ocorridas no período, toda a frota.</summary>
+    Task<decimal> GetPeriodExpensesAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken);
+
+    /// <summary>Distância percorrida no período, toda a frota.</summary>
+    Task<decimal> GetPeriodDistanceAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken);
+}

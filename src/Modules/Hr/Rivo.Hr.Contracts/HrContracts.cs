@@ -37,6 +37,42 @@ public interface IEmployeeDirectory
     /// em Março tem de resolver quem ocupava o Cargo em Março (BR-6).
     /// </summary>
     Task<IReadOnlyList<EmployeeReference>> FindByPositionAsync(Guid positionId, DateTimeOffset asOf, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Contrata um colaborador — escrita através do contrato, mesmo padrão
+    /// de <c>ICustomerMessaging</c>/<c>ICustomerPayments</c>
+    /// (ADR-044/ADR-045). Primeiro consumidor: a importação em massa via
+    /// CSV de `Rivo.Settings` (Analytics & IA, ADR-047).
+    /// </summary>
+    /// <param name="departmentName">
+    /// Opcional, resolvido por nome exacto (sem distinguir
+    /// maiúsculas/minúsculas) — a importação não tem como conhecer
+    /// identificadores internos de `hr`, só o que está na folha CSV.
+    /// </param>
+    /// <param name="actorId">Quem importou, para a trilha de auditoria — nunca <c>AuditContext</c> através do contrato (ADR-017, sem dependências).</param>
+    Task<EmployeeHireResult> HireAsync(
+        string fullName,
+        string? departmentName,
+        DateTimeOffset hiredOn,
+        Guid actorId,
+        CancellationToken cancellationToken);
+}
+
+public sealed record EmployeeHireResult(EmployeeHireOutcome Outcome, Guid? EmployeeId, string? Error)
+{
+    public static EmployeeHireResult Success(Guid employeeId) => new(EmployeeHireOutcome.Hired, employeeId, null);
+
+    public static EmployeeHireResult Rejected(string error) => new(EmployeeHireOutcome.Rejected, null, error);
+
+    public static EmployeeHireResult DepartmentNotFound(string departmentName) =>
+        new(EmployeeHireOutcome.DepartmentNotFound, null, $"Departamento '{departmentName}' não encontrado.");
+}
+
+public enum EmployeeHireOutcome
+{
+    Hired,
+    Rejected,
+    DepartmentNotFound,
 }
 
 /// <param name="UserId">

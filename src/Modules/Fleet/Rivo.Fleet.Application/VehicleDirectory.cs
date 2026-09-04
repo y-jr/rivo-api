@@ -15,3 +15,13 @@ public sealed class VehicleDirectory(IVehicleStore store) : IVehicleDirectory
             : new VehicleReference(viatura.Id, viatura.PlateNumber, viatura.Model, viatura.Status.ToString());
     }
 }
+
+/// <summary>O contrato publicado de actividade de frota para composição (Analytics &amp; IA, módulo 10).</summary>
+public sealed class FleetActivityOverview(IVehicleStore store) : IFleetActivityOverview
+{
+    public Task<decimal> GetPeriodExpensesAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken) =>
+        store.SumExpensesAsync(from, to, cancellationToken);
+
+    public Task<decimal> GetPeriodDistanceAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken) =>
+        store.SumTripDistanceAsync(from, to, cancellationToken);
+}

@@ -19,6 +19,11 @@ internal sealed class FakeCustomerDirectory : ICustomerDirectory
 
     public Task<CustomerReference?> FindByUserIdAsync(Guid userId, CancellationToken cancellationToken) =>
         Task.FromResult(_byUserId.GetValueOrDefault(userId));
+
+    public Task<CustomerRegistrationResult> RegisterAsync(
+        string name, string taxId, string addressDetail, string city, string country,
+        string? email, string? phone, Guid actorId, CancellationToken cancellationToken) =>
+        Task.FromResult(CustomerRegistrationResult.Success(Guid.CreateVersion7()));
 }
 
 internal sealed class FakeReceivablesOverview : IReceivablesOverview
@@ -86,6 +91,10 @@ internal sealed class FakeReceivablesOverview : IReceivablesOverview
     public Task<CustomerStatementView> GetCustomerStatementAsync(
         Guid customerId, DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
         Task.FromResult(_statements.GetValueOrDefault(customerId, new CustomerStatementView(0m, [], 0m)));
+
+    public Task<IReadOnlyList<MonthlyAmount>> GetMonthlyNetRevenueAsync(
+        DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<MonthlyAmount>>([]);
 }
 
 internal sealed class FakeCustomerPayments : ICustomerPayments

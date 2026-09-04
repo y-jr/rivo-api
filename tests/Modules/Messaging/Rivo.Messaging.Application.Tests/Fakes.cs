@@ -70,6 +70,11 @@ internal sealed class FakeCustomerDirectory : ICustomerDirectory
 
     public Task<CustomerReference?> FindByUserIdAsync(Guid userId, CancellationToken cancellationToken) =>
         throw new NotSupportedException("Não usado por messaging — a composição já resolve o cliente.");
+
+    public Task<CustomerRegistrationResult> RegisterAsync(
+        string name, string taxId, string addressDetail, string city, string country,
+        string? email, string? phone, Guid actorId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Não usado por messaging.");
 }
 
 internal sealed class FakeEmployeeDirectory : IEmployeeDirectory
@@ -90,6 +95,10 @@ internal sealed class FakeEmployeeDirectory : IEmployeeDirectory
 
     public Task<IReadOnlyList<EmployeeReference>> FindByPositionAsync(
         Guid positionId, DateTimeOffset asOf, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("Não usado por messaging.");
+
+    public Task<EmployeeHireResult> HireAsync(
+        string fullName, string? departmentName, DateTimeOffset hiredOn, Guid actorId, CancellationToken cancellationToken) =>
         throw new NotSupportedException("Não usado por messaging.");
 }
 

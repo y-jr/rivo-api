@@ -126,6 +126,11 @@
     <Project Path="src/Composition/CustomerPortal/Rivo.CustomerPortal.Api/Rivo.CustomerPortal.Api.csproj" />
     <Project Path="src/Composition/CustomerPortal/Rivo.CustomerPortal.Application/Rivo.CustomerPortal.Application.csproj" />
   </Folder>
+  <Folder Name="/src/Composition/Analytics/">
+    <Project Path="src/Composition/Analytics/Rivo.Analytics.Api/Rivo.Analytics.Api.csproj" />
+    <Project Path="src/Composition/Analytics/Rivo.Analytics.Application/Rivo.Analytics.Application.csproj" />
+    <Project Path="src/Composition/Analytics/Rivo.Analytics.Contracts/Rivo.Analytics.Contracts.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rivo.Api.Tests/Rivo.Api.Tests.csproj" />
     <Project Path="tests/Rivo.Architecture.Tests/Rivo.Architecture.Tests.csproj" />
@@ -185,6 +190,9 @@
   </Folder>
   <Folder Name="/tests/EmployeePortal/">
     <Project Path="tests/Composition/EmployeePortal/Rivo.EmployeePortal.Application.Tests/Rivo.EmployeePortal.Application.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Analytics/">
+    <Project Path="tests/Composition/Analytics/Rivo.Analytics.Application.Tests/Rivo.Analytics.Application.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/Dashboard/">
     <Project Path="tests/Composition/Dashboard/Rivo.Dashboard.Application.Tests/Rivo.Dashboard.Application.Tests.csproj" />

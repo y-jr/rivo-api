@@ -17,4 +17,18 @@ public sealed class PayablesOverview(IPayablesStore payables) : IPayablesOvervie
 
     public Task<decimal> GetOutstandingPayablesAsync(string currency, CancellationToken cancellationToken) =>
         payables.SumOutstandingPayablesAsync(currency, cancellationToken);
+
+    public async Task<IReadOnlyList<MonthlyAmount>> GetMonthlyNetExpensesAsync(
+        DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken)
+    {
+        var pontos = new List<MonthlyAmount>();
+
+        foreach (var (ano, mes, inicio, fim) in MonthlyWindows.Enumerate(from, to))
+        {
+            var valor = await payables.SumNetExpensesAsync(inicio, fim, currency, cancellationToken);
+            pontos.Add(new MonthlyAmount(ano, mes, valor));
+        }
+
+        return pontos;
+    }
 }

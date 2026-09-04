@@ -40,6 +40,7 @@ using Rivo.Fleet.Infrastructure;
 using Rivo.Settings.Api;
 using Rivo.EmployeePortal.Api;
 using Rivo.Dashboard.Api;
+using Rivo.Analytics.Api;
 using Rivo.CustomerPortal.Api;
 using Rivo.Messaging.Api;
 using Rivo.Messaging.Infrastructure;
@@ -108,6 +109,14 @@ builder.Services.AddCustomerPortalModule();
 // registados por `AddFinanceModule` acima) e regista a sua própria policy
 // de autorização (`dashboard.overview.read`).
 builder.Services.AddDashboardModule();
+
+// Quarta camada de composição (ADR-041/ADR-047) — Analytics & IA. Depende
+// de `finance` (as mesmas duas leituras do Dashboard, mais a variante
+// mensal), `fleet` e `inventory` (`IFleetActivityOverview`/
+// `IInventoryValuationOverview`, já registados pelos respectivos
+// AddXModule acima) e regista a sua própria policy de autorização
+// (`analytics.overview.read`).
+builder.Services.AddAnalyticsModule();
 
 // Apresenta `hr` a `approval`, sem que nenhum dos dois conheça o outro.
 //
@@ -336,6 +345,7 @@ app.MapSettingsModule();
 app.MapEmployeePortalModule();
 app.MapCustomerPortalModule();
 app.MapDashboardModule();
+app.MapAnalyticsModule();
 
 // Verifica que a aplicação está viva e que alcança a base de dados.
 app.MapGet("/health", async (RivoIdentityDbContext db, CancellationToken ct) =>

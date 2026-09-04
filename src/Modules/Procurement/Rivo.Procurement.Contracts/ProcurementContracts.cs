@@ -41,6 +41,43 @@ public interface ISupplierDirectory
     /// </para>
     /// </summary>
     Task<SupplierReference?> FindByTaxIdAsync(string taxId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Regista um fornecedor — escrita através do contrato, mesmo padrão de
+    /// <c>ICustomerMessaging</c>/<c>ICustomerPayments</c>
+    /// (ADR-044/ADR-045). Primeiro consumidor: a importação em massa via
+    /// CSV de `Rivo.Settings` (Analytics & IA, ADR-047) — mesma validação e
+    /// mesma verificação de NIF duplicado do caso de uso interno.
+    /// </summary>
+    /// <param name="actorId">Quem importou, para a trilha de auditoria — nunca <c>AuditContext</c> através do contrato (ADR-017, sem dependências).</param>
+    Task<SupplierRegistrationResult> RegisterAsync(
+        string name,
+        string taxId,
+        string? iban,
+        string? email,
+        string? phone,
+        Guid actorId,
+        CancellationToken cancellationToken);
+}
+
+public sealed record SupplierRegistrationResult(SupplierRegistrationOutcome Outcome, Guid? SupplierId, string? Error)
+{
+    public static SupplierRegistrationResult Success(Guid supplierId) =>
+        new(SupplierRegistrationOutcome.Registered, supplierId, null);
+
+    public static SupplierRegistrationResult Rejected(string error) =>
+        new(SupplierRegistrationOutcome.Rejected, null, error);
+
+    /// <param name="existingId">Devolvido de propósito — ver <c>RegisterSupplierResult.Duplicate</c>, mesma razão.</param>
+    public static SupplierRegistrationResult Duplicate(Guid existingId) =>
+        new(SupplierRegistrationOutcome.DuplicateTaxId, existingId, null);
+}
+
+public enum SupplierRegistrationOutcome
+{
+    Registered,
+    Rejected,
+    DuplicateTaxId,
 }
 
 /// <param name="TaxId">NIF, normalizado.</param>

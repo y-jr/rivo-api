@@ -69,6 +69,11 @@ $suites = @(
     # verify-finance/verify-payables.
     "verify-dashboard",
 
+    # Quinta camada de composicao (ADR-047) -- mesmo truque do dashboard,
+    # moeda propria (ZZY, distinta de ZZZ) para os totais mensais saIrem
+    # exactos independentemente do que correu antes.
+    "verify-analytics",
+
     # Quarta camada de composicao -- cada corrida regista o seu proprio
     # cliente novo (por identificador, nao por moeda), por isso a receita e
     # o em-aberto saem exactos sem precisar de moeda isolada.

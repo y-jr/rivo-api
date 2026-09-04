@@ -130,7 +130,8 @@ public class ProjectReferenceTests
         // mesma razão a partir de 2026-08-31: uma camada de composição
         // também declara o seu catálogo de permissões, e `identity` é
         // consumidor dele da mesma forma que é de qualquer módulo.
-        ["Identity"] = ["Audit", "Hr", "Documents", "Notifications", "Approval", "Fiscal", "Commercial", "Finance", "Procurement", "Payroll", "Projects", "Inventory", "Fleet", "Dashboard", "Messaging"],
+        // `Analytics` — 2026-09-04 (ADR-047), mesma razão.
+        ["Identity"] = ["Audit", "Hr", "Documents", "Notifications", "Approval", "Fiscal", "Commercial", "Finance", "Procurement", "Payroll", "Projects", "Inventory", "Fleet", "Dashboard", "Messaging", "Analytics"],
 
         // `approval` resolve aprovadores por Cargo, que é de `hr` (ADR-034).
         //
@@ -157,7 +158,10 @@ public class ProjectReferenceTests
         // por isso: só pelos contratos de quem compõe. Primeira aplicação de
         // Configurações & Administração (domain-map.md §Read models):
         // perfis de acesso de `identity`, políticas de `approval`.
-        ["Settings"] = ["Identity", "Approval"],
+        // `Commercial`/`Hr`/`Procurement` — 2026-09-04 (ADR-047): a
+        // importação em massa via CSV escreve através dos contratos já
+        // publicados de Cliente, Colaborador e Fornecedor.
+        ["Settings"] = ["Identity", "Approval", "Commercial", "Hr", "Procurement"],
 
         // Segunda camada de composição (ADR-042, Portal do Colaborador) —
         // resolve "o próprio" pelo contrato de `hr`. Não depende de
@@ -184,6 +188,11 @@ public class ProjectReferenceTests
         // notificar; `Notifications` enfileira o aviso. Nenhuma dependência a
         // `Approval` — sem SLA, sem alçada, é fila simples.
         ["Messaging"] = ["Audit", "Commercial", "Hr", "Notifications"],
+
+        // Quinta camada de composição (ADR-047, Analytics & IA) — tendência
+        // mensal de `finance` (variante de `Dashboard`), mais actividade de
+        // `fleet` e valorização de `inventory`.
+        ["Analytics"] = ["Finance", "Fleet", "Inventory"],
     };
 
     /// <summary>
@@ -194,7 +203,7 @@ public class ProjectReferenceTests
     /// os outros.
     /// </summary>
     private static readonly HashSet<string> CamadasDeComposicao =
-        new(StringComparer.Ordinal) { "Settings", "EmployeePortal", "Dashboard", "CustomerPortal" };
+        new(StringComparer.Ordinal) { "Settings", "EmployeePortal", "Dashboard", "CustomerPortal", "Analytics" };
 
     [Fact]
     public void Module_ReferencesAnotherModuleOnlyThroughItsContracts()

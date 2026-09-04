@@ -10,6 +10,12 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\Modules\Identity\Rivo.Identity.Contracts\Rivo.Identity.Contracts.csproj" />
     <ProjectReference Include="..\..\..\Modules\Approval\Rivo.Approval.Contracts\Rivo.Approval.Contracts.csproj" />
+
+    <!-- Importação em massa via CSV (ADR-047): escrita através dos
+         contratos já publicados, mesma regra de dependência. -->
+    <ProjectReference Include="..\..\..\Modules\Commercial\Rivo.Commercial.Contracts\Rivo.Commercial.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\Modules\Hr\Rivo.Hr.Contracts\Rivo.Hr.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\Modules\Procurement\Rivo.Procurement.Contracts\Rivo.Procurement.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

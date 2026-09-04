@@ -36,7 +36,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
 | 6 | `payroll` | Motor de IRT/INSS ganhou regra de negócio real em 2026-08-30 — trave de **produção** continua por parecer fiscal, ver a nota da fase |
 | 7 | `projects`, `inventory`, `fleet` | **Fechada por completo a 2026-08-31.** Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). A 2026-08-31, `projects` ganhou Alocação de Recursos (Colaborador e Viatura, via `hr`/`fleet`), `inventory` ganhou Armazém, Transferência (retrofit do Movimento, transferência atómica) e Contagem (gera Ajuste no fecho, tudo numa transacção), e `fleet` ganhou Registo de Viagem, Despesa de Frota (sem abrir/fechar, ao contrário de Manutenção/Atribuição) e Seguros (`VehicleDocument`, ligação autónoma a `documents`) |
-| 8 | Camadas de composição e portais | **2026-09-04** — Configurações & Administração (ADR-041), Portal do Colaborador (ADR-042), Dashboard Executivo e Portal do Cliente **completo** (ADR-043: resumo financeiro + facturas + extracto + pagamento ADR-044 + mensagens ADR-045 + tickets ADR-046) feitos; falta só Analytics & IA |
+| 8 | Camadas de composição e portais | **2026-09-04** — Configurações & Administração (ADR-041), Portal do Colaborador (ADR-042), Dashboard Executivo e Portal do Cliente **completo** (ADR-043: resumo financeiro + facturas + extracto + pagamento ADR-044 + mensagens ADR-045 + tickets ADR-046) feitos; Analytics & IA (ADR-047) com dashboards prontos, falta só a importação CSV |
 
 **Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
 arranca na Fase 3. Ver no fim.
@@ -790,6 +790,46 @@ por contrato publicado.
 > Com isto, as três capacidades adiadas do Portal do Cliente (ADR-043
 > §12) estão todas fechadas. O único item de Fase 8 ainda por começar é
 > Analytics & IA, deliberadamente adiado.
+>
+> **2026-09-04, quarta ronda — Analytics & IA, âmbito reduzido a dashboards
+> mais profundos e importação CSV (ADR-047).** Cruzando
+> `docs/rivo-suite-descricao-modulos.md` §10 com `pending-decisions.md`
+> antes de propor âmbito: log de auditoria já feito (módulo `audit`),
+> previsões de IA bloqueadas (provider por decidir), CSV duplicado entre
+> §10 e §14. Utilizador escolheu, em duas rondas: dashboards mais
+> profundos + CSV (sem alertas, sem previsões de IA); tendência mensal de
+> Finance + Frota (despesas, distância) + Inventário (valor de stock,
+> valorização), sem HR; CSV para Clientes/Colaboradores/Fornecedores,
+> vivendo em `Rivo.Settings` (não um módulo novo).
+>
+> Quinta camada de composição (ADR-041): `Rivo.Analytics`
+> (`Application`+`Api`+`Contracts`, sem Domain/Infrastructure). Três
+> contratos de leitura novos compõem o `GetAnalyticsOverview`:
+> `IReceivablesOverview.GetMonthlyNetRevenueAsync`/
+> `IPayablesOverview.GetMonthlyNetExpensesAsync` (variante mensal dos dois
+> já publicados para o Dashboard Executivo), e os primeiros contratos
+> alguma vez publicados por `fleet` (`IFleetActivityOverview`) e
+> `inventory` (`IInventoryValuationOverview`). `GET /analytics/overview`,
+> atrás de `analytics.overview.read`, concedida a `Manager`+`Admin` —
+> mesmo raciocínio do `dashboard.overview.read` (`Manager` não tem as
+> permissões subjacentes de `finance`/`fleet`/`inventory`).
+>
+> **Lacuna de domínio encontrada, não inventada:** `fleet` não tem custo
+> de manutenção (`MaintenanceRecord` sem campo de valor,
+> `FleetExpenseCategory` sem categoria `Maintenance`) — o utilizador pediu
+> essa métrica, o contrato expõe só o que o domínio suporta hoje
+> (despesas das três categorias existentes, distância), e o vazio ficou
+> registado em `pending-decisions.md` em vez de resolvido por invenção.
+>
+> Testes de arquitectura actualizados (`ProjectReferenceTests`: tabela de
+> dependências + `CamadasDeComposicao` ganharam `Analytics`) — 21/21.
+> `Rivo.Analytics.Application.Tests` novo, 3 casos. Build da solução
+> inteira e suite completa (26 projectos de teste) confirmados limpos.
+>
+> **Fica por fazer:** a importação CSV em si (parser, validação
+> linha-a-linha, relatório) — só o âmbito e a localização estão
+> decididos (ADR-047). Depois disso, o único item por abrir na Fase 8
+> fica fechado.
 >
 > **Antes disto, 2026-09-02/03 — incidente de produção fora do fluxo desta
 > sessão, resolvido, e `main` ganhou protecção.** Sete commits

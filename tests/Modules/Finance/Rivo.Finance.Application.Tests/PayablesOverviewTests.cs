@@ -115,4 +115,22 @@ public class PayablesOverviewTests
         Assert.Equal(100_000m, emAoa);
         Assert.Equal(5_000m, emUsd);
     }
+
+    [Fact]
+    public async Task GetMonthlyNetExpensesAsync_UmPontoPorMes_ComOsSemMovimentoAZero()
+    {
+        var store = new FakePayablesStore()
+            .With(Factura("F-1", new DateOnly(2026, 8, 10), 100_000m))
+            .With(Factura("F-2", new DateOnly(2026, 10, 5), 30_000m));
+
+        var overview = new PayablesOverview(store);
+
+        var serie = await overview.GetMonthlyNetExpensesAsync(
+            new DateOnly(2026, 8, 1), new DateOnly(2026, 10, 31), "AOA", CancellationToken.None);
+
+        Assert.Equal(3, serie.Count);
+        Assert.Equal((2026, 8, 100_000m), (serie[0].Year, serie[0].Month, serie[0].Amount));
+        Assert.Equal((2026, 9, 0m), (serie[1].Year, serie[1].Month, serie[1].Amount));
+        Assert.Equal((2026, 10, 30_000m), (serie[2].Year, serie[2].Month, serie[2].Amount));
+    }
 }

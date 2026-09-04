@@ -1,4 +1,6 @@
+using Rivo.Audit.Contracts;
 using Rivo.Hr.Application.Abstractions;
+using Rivo.Hr.Application.UseCases;
 using Rivo.Hr.Contracts;
 using Rivo.Hr.Domain;
 
@@ -10,7 +12,7 @@ namespace Rivo.Hr.Application;
 /// É o único caminho por onde outros módulos lêem dados de colaborador — não
 /// há acesso directo às tabelas (ADR-010).
 /// </summary>
-public sealed class EmployeeDirectory(IHrStore store) : IEmployeeDirectory
+public sealed class EmployeeDirectory(IHrStore store, HireEmployee hire) : IEmployeeDirectory
 {
     public async Task<EmployeeReference?> FindAsync(
         Guid employeeId,
@@ -83,6 +85,45 @@ public sealed class EmployeeDirectory(IHrStore store) : IEmployeeDirectory
         }
 
         return references;
+    }
+
+    public async Task<EmployeeHireResult> HireAsync(
+        string fullName,
+        string? departmentName,
+        DateTimeOffset hiredOn,
+        Guid actorId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(fullName))
+        {
+            return EmployeeHireResult.Rejected("Um colaborador precisa de nome.");
+        }
+
+        Guid? departmentId = null;
+
+        if (!string.IsNullOrWhiteSpace(departmentName))
+        {
+            var departamentos = await store.ListDepartmentsAsync(cancellationToken);
+            var departamento = departamentos.FirstOrDefault(
+                d => string.Equals(d.Name, departmentName, StringComparison.OrdinalIgnoreCase));
+
+            if (departamento is null)
+            {
+                return EmployeeHireResult.DepartmentNotFound(departmentName);
+            }
+
+            departmentId = departamento.Id;
+        }
+
+        var result = await hire.ExecuteAsync(
+            fullName, departmentId, userId: null, hiredOn,
+            new AuditContext(actorId, null, null), cancellationToken);
+
+        return result.Outcome switch
+        {
+            HireEmployeeOutcome.Hired => EmployeeHireResult.Success(result.EmployeeId!.Value),
+            _ => EmployeeHireResult.Rejected(result.Error ?? "Não foi possível contratar o colaborador."),
+        };
     }
 
     private async Task<PositionReference?> ResolvePositionAsync(
