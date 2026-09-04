@@ -1,23 +1,40 @@
 # Estado do Projecto
 
-_Última actualização: 2026-09-03_
+_Última actualização: 2026-09-04. Números verificados contra o repositório
+nesta data, não herdados da versão anterior deste ficheiro._
 
 ## Fase actual
 
-**Os catorze módulos têm código, e há um ambiente publicado.** Dez estão
-completos ou em fatia deliberada; os quatro últimos — `payroll`, `projects`,
-`inventory`, `fleet` — nasceram a 2026-08-29 como **esqueletos**: CRUD sem
-regra de negócio, sob prazo de apresentação, decisão explícita e registada,
-não descoberta depois. **Todos os quatro ganharam regra de negócio real a
-2026-08-30** — Marco/Tarefa/Orçamento, Manutenção/Atribuição/Plano,
-Movimento, e por último `payroll` com o motor de cálculo de IRT/INSS (ver a
-secção Módulos) — e nenhum continua esqueleto puro.
+**Oito das nove fases do roteiro estão fechadas.** Restam duas coisas, e
+nenhuma delas é trabalho de engenharia deste repositório: o **K16** (sem TLS
+— falta um domínio apontado à VPS, e o Let's Encrypt não emite para IP) e as
+sete verificações que exigem `RIVO_RESTART_COMMAND`, deliberadamente não
+configurado para que uma suite de teste não possa reiniciar produção.
+
+**Quinze módulos têm código, mais cinco camadas de composição.** O décimo
+quinto, `messaging`, nasceu a 2026-09-04 (ADR-045) e ganhou tickets no mesmo
+dia (ADR-046). Nenhum módulo continua esqueleto: os quatro que nasceram assim
+a 2026-08-29 — `payroll`, `projects`, `inventory`, `fleet` — ganharam regra de
+negócio real a 2026-08-30, e a Fase 7 fechou a 2026-08-31.
 
 As quatro capacidades transversais estão feitas — `audit`, `documents`,
 `notifications` e `approval`. A partir daí, o objectivo do produto mudou: o
 ADR-036 dispensou a emissão legalmente válida e fixou **emitir** como meta, o
 que reordenou as Fases 3, 4 e 5 do
 [roadmap-execucao.md](roadmap-execucao.md).
+
+**A Fase 8 fechou a 2026-09-04** — as cinco camadas de composição existem
+(`Rivo.Settings`, `Rivo.EmployeePortal`, `Rivo.Dashboard`,
+`Rivo.CustomerPortal`, `Rivo.Analytics`), todas segundo o padrão do ADR-041.
+O Portal do Cliente está completo (ADR-043 a 046) e o Analytics saiu com
+âmbito reduzido por decisão do utilizador (ADR-047): dashboards mais
+profundos e importação CSV, **sem alertas e sem previsões de IA**.
+
+**A Fase 6 (`payroll`) fechou no mesmo dia** — não por código, mas por
+parecer: o parecer fiscal profissional confirmou os quatro valores de IRT e
+INSS que até aqui só tinham a confirmação do utilizador (ADR-049). Nenhuma
+linha mudou, precisamente porque o ADR-011 já obrigava a que taxas e escalões
+fossem dados com vigência e não código.
 
 Hoje o **ciclo de venda fecha** — emitir, corrigir por nota de crédito, receber
 por recibo, e o saldo diz o que falta — e o **ciclo de compra também**: registar
@@ -55,7 +72,8 @@ falta a certificação da AGT, e trazem menção disso congelada na emissão.
 | `procurement` | **Os quatro agregados, e o 3-way match fecha.** Fornecedor com IBAN verificado (ISO 13616) e publicado a `finance`; requisição com linhas e decisão de `approval`; Ordem de Compra, que só nasce de requisição aprovada e não deixa encomendar acima do aprovado; Recepção parcial, acumulada por linha e nunca acima do encomendado. A factura liga-se à Ordem (`PurchaseOrderId`, opcional) e `GET .../match` mostra encomendado, recebido e facturado lado a lado — recusa ligar a uma ordem de outro fornecedor, mas **não bloqueia** divergência de valor: fica visível, não impede o registo |
 | `payroll` | **Folha, itens, subsídios e Recibo, confirmado (2026-08-30/31).** `AddPayrollItem` pergunta a `fiscal` — nunca calcula por si — na ordem do artigo 7.º do CIRT: INSS do trabalhador, isenção de Alimentação/Transporte (até 30.000 Kz/mês cada, excesso tributado), matéria colectável, IRT por escalões; `NetSalary` sai sempre calculado, nunca recebido. Férias e Natal só compõem o recibo, sem isenção. Sem taxa/tabela/limiar em vigor, o item recusa (400) em vez de nascer com campo nulo. Recibo liga-se via `documents` (ADR-009, mesmo desenho de `hr`) a um item de folha Aprovada. Ligado a `approval` (submete pelo bruto). `verify-payroll.ps1` 26 casos. ✅ Parecer fiscal profissional confirmou os valores a 2026-09-04 (ADR-049) — trave de produção da Fase 6 levantada |
 | `projects` | **Marco, Tarefa, Orçamento e Alocação de Recursos com regra de negócio, confirmado (2026-08-30/31).** Projecto como agregado — fecha, e fechado é facto histórico: nada se altera depois. Tarefa e Alocação verificam o recurso por contrato (ADR-010, BR-18) — Colaborador contra `hr`, Viatura contra `fleet` (`IVehicleDirectory`, novo). Alocação é distinta da atribuição de Tarefa: ao nível do projecto, não da tarefa; o mesmo recurso não se aloca duas vezes em aberto. Orçamento é zero ou um por projecto, moeda fixa na primeira vez (ADR-040). `verify-projects.ps1` 43/43 contra a stack local, sem falha. ⚠ Custos ao nível do projecto continuam de fora — postagem em `finance` é decisão em aberto |
-| `fleet` | **Manutenção, Atribuição, Plano de Manutenção, Registo de Viagem, Despesa de Frota e Seguros com regra de negócio, confirmado (2026-08-30/31).** Viatura como agregado — um registo de manutenção aberto de cada vez, uma atribuição aberta de cada vez, vários planos activos ao mesmo tempo (sem exclusão mútua). Viagem e Despesa também pertencem ao agregado, mas sem abrir/fechar — registam-se já concluídas. `VehicleDocument` (Seguros e documentação legal) é ligação autónoma a `documents`, mesmo desenho de `EmployeeDocument` em `hr`. Atribuição e Viagem verificam o Colaborador contra `hr` (ADR-010, BR-18) — na Viagem, opcional. **Primeiro contrato de leitura publicado a 2026-08-31** — `IVehicleDirectory`, consumido por `projects`. `verify-fleet.ps1` 50/50 contra a stack local, sem falha. Fecha a Fase 7 de `fleet` por completo |
+| `fleet` | **Manutenção, Atribuição, Plano de Manutenção, Registo de Viagem, Despesa de Frota e Seguros com regra de negócio, confirmado (2026-08-30/31).** Viatura como agregado — um registo de manutenção aberto de cada vez, uma atribuição aberta de cada vez, vários planos activos ao mesmo tempo (sem exclusão mútua). Viagem e Despesa também pertencem ao agregado, mas sem abrir/fechar — registam-se já concluídas. `VehicleDocument` (Seguros e documentação legal) é ligação autónoma a `documents`, mesmo desenho de `EmployeeDocument` em `hr`. Atribuição e Viagem verificam o Colaborador contra `hr` (ADR-010, BR-18) — na Viagem, opcional. **Primeiro contrato de leitura publicado a 2026-08-31** — `IVehicleDirectory`, consumido por `projects`. **Custo de manutenção desde 2026-09-04 (ADR-048)** — `MaintenanceRecord.Cost`, opcional, preenchido só ao fechar o registo (é quando se sabe o valor final); nulo é "não registado", não zero, e a soma por período ignora-o em vez de o contar como grátis. `FleetExpenseCategory` **manteve-se com as três categorias** que o documento de produto nomeia — o custo de manutenção não passou a ser uma quarta. `verify-fleet.ps1` 51/51 contra a stack local, sem falha |
+| `messaging` | **Conversas e tickets, nascido a 2026-09-04 (ADR-045/046).** `Conversation` e `Message` como agregado — `Kind` distingue mensagem directa de ticket, e é a única diferença estrutural entre os dois. Mensagem directa: **uma conversa aberta por cliente de cada vez**, imposta por índice único filtrado. Ticket: **várias abertas ao mesmo tempo**, cada uma com assunto livre obrigatório. `AddMessage`/`Close` são os mesmos métodos para ambos. O aviso de mensagem nova vai para `Customer.AssignedToEmployeeId` (o vendedor responsável, novo em `commercial`) via `notifications`; **sem vendedor atribuído ninguém é avisado**, e a conversa fica só na fila partilhada. ⚠ **Sem notificação ao cliente quando Sales responde** — o cliente vê ao abrir o portal. ⚠ **Sem `modules/messaging.md`** — é o único módulo com código e sem ficheiro de módulo |
 | `inventory` | **Movimento, Armazém, Transferência, Contagem e Valorização com regra de negócio, confirmado (2026-08-30/31).** Item como agregado — Recepção, Saída e Ajuste, todos com `WarehouseId` obrigatório (retrofit 2026-08-31); `QuantityOnHand` é o total agregado, `QuantityOnHandAt` a leitura por armazém. `Warehouse` é agregado raiz próprio. Transferência é atómica — sem estado "em trânsito" — e nunca altera o total. `InventoryCount` (agregado raiz próprio) abre num armazém, acumula uma linha por item contado com o esperado congelado no momento em que nasce, e o fecho gera um Ajuste por linha com variância — tudo numa transacção, tudo ou nada. `AverageCost` por item, custo médio ponderado (decisão do utilizador), recalculado só na Recepção; `GET /inventory/valuation` soma o valor movimentado por período. `verify-inventory.ps1` 66/66 contra a stack local, sem falha. Fecha a Fase 7 de `inventory` por completo — nenhuma pergunta de negócio em aberto |
 
 Detalhe com datas e ressalvas em [implemented.md](implemented.md).
@@ -67,10 +85,22 @@ continua marcado ⚠⚠ (esqueleto de prazo)** — categoria que existiu entre
 sem regra de negócio, sem testes de domínio, feitos para "existir e
 responder". Os quatro ganharam regra de negócio real a 2026-08-30, o
 último a sair da categoria foi `payroll` (motor de IRT/INSS). **Todos têm
-verificação end-to-end**: `verify-projects.ps1` 43 casos, `verify-fleet.ps1`
-38, `verify-inventory.ps1` 41, `verify-payroll.ps1` 26 — todas confirmadas
-contra a stack local sem falha nova (só o K20, pré-existente e sem causa de
-código, em `verify-payroll`).
+verificação end-to-end**: `verify-inventory.ps1` 66 casos,
+`verify-fleet.ps1` 51, `verify-projects.ps1` 43, `verify-payroll.ps1` 26 —
+todas confirmadas contra a stack local sem falha nova (só o K20,
+pré-existente e sem causa de código, em `verify-payroll`).
+
+**As cinco camadas de composição** vivem em `src/Composition/`, não em
+`src/Modules/`, e não aparecem na tabela acima por não serem módulos
+(ADR-041, `domain/domain-map.md` §"Não são módulos"):
+
+| Camada | Estado |
+|---|---|
+| `Rivo.Settings` | Vista de governança (perfis + regras de aprovação, agrupadas por módulo). **Importação em massa via CSV desde 2026-09-04** (ADR-047) — Clientes, Colaboradores e Fornecedores, cada uma atrás da permissão de escrita que já protege o formulário normal da entidade, sem permissão nova. Escreve através de contratos novos publicados por `commercial`/`hr`/`procurement`. Parser CSV próprio (RFC 4180 mínimo, sem biblioteca). Uma linha malformada não pára o ficheiro. `verify-settings.ps1` 12 casos |
+| `Rivo.EmployeePortal` | "Próprio" resolvido por vínculo Identity → Employee (ADR-042). ⚠ **Só isso** — recibos, férias, assiduidade e documentos continuam por fazer. 1 endpoint. `verify-employee-portal.ps1` 8 casos |
+| `Rivo.Dashboard` | Os cinco números (receita, despesa, lucro, a receber, a pagar) mais os clientes que mais facturaram. Permissão própria (`dashboard.overview.read`) porque `Manager`, que o documento de produto nomeia, não tem `finance.invoices.read`. `verify-dashboard.ps1` 9 casos |
+| `Rivo.CustomerPortal` | **Completo a 2026-09-04.** Resumo financeiro, facturas, extracto de conta corrente, comprovativo de pagamento (ADR-044), mensagens directas (ADR-045) e tickets de suporte (ADR-046). Autorização por vínculo de identidade, não por permissão — excepto `documents.write`, para o comprovativo. `verify-customer-portal.ps1` 26 casos |
+| `Rivo.Analytics` | **Nasceu a 2026-09-04** (ADR-047). Tendência mensal de receita/despesa (variante mensal dos contratos que o Dashboard já usava), actividade de `fleet` (despesas, distância, custo de manutenção) e valorização de `inventory`. Primeiros contratos de leitura alguma vez publicados por `fleet` e `inventory`. Permissão própria, mesmo precedente do Dashboard. `verify-analytics.ps1` 8 casos |
 
 ## Ambiente publicado
 
@@ -93,21 +123,56 @@ superfície inteira é legível por quem estiver a ouvir.
 
 ## Números
 
+**Contados contra o repositório a 2026-09-04**, não herdados da versão
+anterior deste ficheiro — que já divergia do código em quase todas as
+linhas. O histórico de como cada número cresceu está em
+[roadmap-execucao.md](roadmap-execucao.md) e [implemented.md](implemented.md);
+**não voltar a acumulá-lo aqui**, foi o que tornou esta secção ilegível.
+
 | Área | Estado |
 |---|---|
-| Código | 15 módulos (`Rivo.Messaging`, ADR-045/046) + 4 camadas de composição (`Rivo.Settings` ADR-041, `Rivo.EmployeePortal` ADR-042, `Rivo.Dashboard`, `Rivo.CustomerPortal` ADR-043), 85 projectos em `src/` |
-| Superfície HTTP | 234 endpoints em 19 grupos de rota, mais `/health` — `POST/GET /customer-portal/me/tickets` e `POST .../tickets/{id}/messages` são os mais recentes (ADR-046); `GET /messaging/conversations` ganhou `?kind=` |
-| ADRs | 46, aceites — ADR-046 (2026-09-04): tickets de suporte, reaproveitando `messaging` (`Kind`/`Subject` em `Conversation`) em vez de módulo novo. Portal do Cliente **completo** |
-| Perfis de Acesso | **8** desde 2026-09-03 — os 7 do documento de produto mais `Cliente` (ADR-043), com `documents.write` desde o mesmo dia (ADR-044) para o comprovativo de pagamento — a autorização do resto do Portal do Cliente continua por vínculo de identidade, não por permissão. `Sales` e `Admin` ganharam `messaging.conversations.read`/`.write` a 2026-09-04 (ADR-045); `Admin` ficou sem elas na primeira versão — falha própria, apanhada por `verify-bootstrap` (67 em vez dos 69 esperados) e corrigida no mesmo dia |
-| Testes | **1094** em 25 projectos, **todos passam** — incluindo os 4 de integração (Testcontainers). A 2026-08-30, `Rivo.Projects.Domain.Tests` cresceu de 29 (Marco e Tarefa) para 39 (+ Orçamento), `Rivo.Fleet.Domain.Tests` de 25 para 42 (+ Plano de Manutenção), nasceu `Rivo.Inventory.Domain.Tests` com 21 (Movimento), `Rivo.Fiscal.Domain.Tests` cresceu de 18 para 39 (+ `IncomeTaxSchedule`) e nasceu `Rivo.Payroll.Domain.Tests` com 16 (`ApplyCalculation` e o ciclo da folha), depois 22 (+ `PayrollItemDocument`, o Recibo). A 2026-08-31, `Rivo.Fiscal.Domain.Tests` cresceu de 39 para 50 (+ `SubsidyExemptionSchedule`), `Rivo.Payroll.Domain.Tests` de 22 para 30 (+ `PayrollItemAllowanceTests`, os subsídios), `Rivo.Projects.Domain.Tests` de 39 para 55 (+ `ProjectResourceAllocationTests`, a Alocação de Recursos), `Rivo.Inventory.Domain.Tests` de 21 para 43 (+ `WarehouseTests` e o retrofit de `WarehouseId`/`Transfer` em `InventoryItemTests`), depois 64 (+ `InventoryCountTests`, a Contagem), depois 73 (+ nove casos de `AverageCost`, a Valorização), e `Rivo.Fleet.Domain.Tests` de 42 para 63 (+ Viagem/Despesa no agregado Viatura, + `VehicleDocumentTests`). Nasceu `Rivo.Settings.Application.Tests` com 4 (ADR-041, Fase 8) e `Rivo.EmployeePortal.Application.Tests` com 4 (ADR-042, mesmo dia). `Rivo.Finance.Application.Tests` cresceu de 119 para 133 (+ `ReceivablesOverviewTests`, `PayablesOverviewTests` — os contratos de leitura da Fase 8). Nasceu `Rivo.Dashboard.Application.Tests` com 5 (o Dashboard Executivo, mesmo dia). A 2026-09-03, `Rivo.Commercial.Domain.Tests` cresceu de 20 para 21 (+ `Customer.LinkToUser`, ADR-043), `Rivo.Finance.Application.Tests` cresceu de 142 para 146 (+ as variantes por cliente de `IReceivablesOverview` — apanharam um defeito real na fake partilhada: `FakeSalesInvoiceStore.ListAsync` ignorava os filtros de cliente e período por completo, nunca exercitado antes por não haver consumidor a filtrar), nasceu `Rivo.CustomerPortal.Application.Tests` com 4 (Portal do Cliente, mesmo dia), depois 7 (+ `GetMyStatementTests`, o extracto), e `Rivo.Finance.Application.Tests` cresceu de 146 para 149 (+ `GetCustomerStatementAsync` — apanhou um segundo defeito na mesma fake: `ListReceiptsAsync` também ignorava os filtros de cliente e período). Mesmo dia, ADR-044: `Rivo.Finance.Domain.Tests` +8 (`PaymentClaimTests`), `Rivo.Finance.Application.Tests` de 149 para 158 (+9, submissão/confirmação/rejeição do pedido de pagamento), `Rivo.CustomerPortal.Application.Tests` de 7 para 12 (+5, `SubmitPaymentProofTests`/`ListMyPaymentClaimsTests`) — 1016 no total. 2026-09-04, ADR-045: `Rivo.Commercial.Domain.Tests` de 21 para 23 (+2, `AssignOwner`), nasceram `Rivo.Messaging.Domain.Tests` com 7 (`ConversationTests`) e `Rivo.Messaging.Application.Tests` com 13 (`ManageConversationsTests`), `Rivo.CustomerPortal.Application.Tests` de 12 para 17 (+5, `SendMessageTests`/`ListMyMessagesTests`) — 1072. Mesmo dia, terceira ronda (ADR-046, tickets): `Rivo.Messaging.Domain.Tests` de 7 para 11 (+4, `OpenTicket`/`Subject`), `Rivo.Messaging.Application.Tests` de 13 para 23 (+10, `OpenTicket`/`AddCustomerTicketMessage`/filtro por `Kind`), `Rivo.CustomerPortal.Application.Tests` de 17 para 25 (+8, `OpenTicketTests`/`AddTicketMessageTests`/`ListMyTicketsTests`) — **1094** no total, em 25 projectos |
-| Verificação end-to-end | **21 suites** PowerShell, **534 casos** (2026-09-03: nasceu `verify-customer-portal` com 9 casos — Portal do Cliente, ADR-043 —, depois 10 (+ extracto de conta corrente, mesmo dia), depois 15 (+5, comprovativo de pagamento, ADR-044). 2026-09-04, ADR-045: `verify-customer-portal` de 15 para 21 (+6, mensagens), `verify-commercial` de 17 para 21 (+4, atribuir vendedor). Mesmo dia, ADR-046 (tickets): `verify-customer-portal` de 21 para 26 (+5 — abrir com aviso ao vendedor por delta, dois tickets abertos ao mesmo tempo, responder a um sem afectar o outro, ticket de outro cliente 404, Sales fechar e resposta a fechado 409; confirmado 26/26 — apanhou um erro de aritmética meu no próprio teste, a mesma classe de erro já vista no extracto: assumi 1 aviso anterior ao vendedor, já iam 2, corrigido para asserção por delta), sem regressão em `verify-authorization`/`verify-bootstrap`/`verify-commercial`) — a 2026-08-30, `verify-projects` cresceu de 14 para 33 (+ Orçamento), `verify-fleet` de 15 para 38 (+ Plano de Manutenção), `verify-inventory` de 13 para 25 (Movimento), `verify-fiscal` de 12 para 20 (+ motor de IRT/INSS) e `verify-payroll` de 5 para 17 (cálculo real), depois 22 (+ Recibo, mesmo dia). A 2026-08-31, `verify-fiscal` cresceu de 20 para 23 (+ limiares de subsídio), `verify-payroll` de 22 para 26 (+ dois cenários de subsídio ponta a ponta), `verify-projects` de 33 para 43 (+ Alocação de Recursos, confirmado 43/43), `verify-inventory` de 25 para 41 (+ Armazém e Transferência, confirmado 41/41), depois de 41 para 60 (+ Contagem, confirmado 60/60), depois de 60 para 66 (+ Valorização, confirmado 66/66 na segunda corrida), e `verify-fleet` de 38 para 50 (+ Registo de Viagem, Despesa de Frota e Seguros, confirmado 50/50). Nasceu `verify-settings` com 7 casos (ADR-041, Fase 8), confirmado 7/7 na primeira corrida. Nasceu `verify-employee-portal` com 8 casos (ADR-042, mesmo dia), confirmado 8/8 na primeira corrida; `verify-hr` cresceu de 18 para 20 (+ unicidade de `UserId`), confirmado 20/20 sem regressão. Sem suite nova para os contratos de leitura de `finance` (`IReceivablesOverview`/`IPayablesOverview`) — sem endpoint HTTP, nada para uma suite caixa-preta verificar ainda; `verify-finance` 29/29 e `verify-payables` 30/30 confirmados sem regressão. Nasceu `verify-dashboard` com 9 casos (Dashboard Executivo, mesmo dia), confirmado 9/9 — apanhou um defeito real (`TopCustomersByInvoicedAsync` sem tradução SQL para `GroupBy` seguido de registo posicional) e um bug na própria suite (assumia moeda de teste a zero, corrigido para asserção por delta, re-executável); `verify-bootstrap` confirma Admin com 67 permissões, sem regressão em `verify-settings`/`verify-employee-portal`. **Corrida completa (`verify-all.ps1`) confirmada a 2026-08-31, já com a Fase 8 quase inteira: 496/499** — as 3 falhas continuam a ser o mesmo K20 (limpeza de política, sem causa de código), nas mesmas três suites de sempre (`verify-ledger`, `verify-payroll`, `verify-procurement`); zero regressão nova. A primeira ronda de `verify-fleet` (26 casos) apanhou dois defeitos reais (400 em vez de 409); a primeira ronda do motor de IRT/INSS apanhou um terceiro (`TaxKind` sem entrada no `switch` de tradução, 500 em vez de determinar); a primeira ronda dos subsídios apanhou um quarto, só visível ao subir a stack — migração de EF esquecida (`PendingModelChangesWarning` fatal no arranque). O Recibo, a Alocação de Recursos e o Armazém/Transferência, sozinhos, não apanharam nenhum defeito de aplicação — só erros na própria suite (contagem de eventos auditados na Alocação; `itemId` aleatório em vez do item real num caso da Contagem, que mascarava 404 por 400). Registo de Viagem/Despesa/Seguros apanhou um defeito real, só visível nos testes de arquitectura: `VehicleDocument` sem a isenção documentada do contador de concorrência (K14/ADR-019) — corrigida antes de subir a stack. Valorização apanhou um quinto defeito real, na resposta da API de Transferência (`averageCost` em falta) — corrigido, confirmado na segunda corrida.
-
-**2026-09-02/03 — `main` ganhou protecção (PR obrigatório, os dois checks de CI como obrigatórios).** Até aqui `main` não tinha nenhuma, e foi por essa porta que sete commits fora do fluxo desta sessão (`lts`…`lts6`, `Abrir swagger`) chegaram a produção sem build, teste nem `verify-all` a correr — causaram um deploy partido (migração em falta de `AccountingRule`/`ChartOfAccountsVersion`) e reabriram o K8 por outra via (porta 5080 publicada directamente no host, contra o próprio comentário do `docker-compose.yml`). Os dois, corrigidos. A primeira CI real contra este código apanhou mais dois defeitos genuínos, também de fora do fluxo: `LedgerTests.cs` não compilava (API de domínio inventada — `PostingRule.Create` não existe, é `.Define`) e `ChartOfAccountsVersion.Version` colidia de nome com o contador de concorrência reservado — renomeado para `Revision`, com o contador `int Version` real acrescentado a par de `AccountingRule`. `verify-all.ps1` passou a tolerar explicitamente o K20 conhecido (por texto do caso, não pelo número — já mudou várias vezes), em vez de bloquear o gate inteiro por um defeito de quatro investigações sem causa de código encontrada. `develop` nasceu como branch de trabalho.
-
-**2026-09-03 — Customer.UserId e a ligação de conta (ADR-043), primeiro passo da decisão de identidade externa que bloqueava o Portal do Cliente.** Decisão do utilizador: conta própria em `identity`, oitavo Perfil de Acesso (`Cliente`, vazio até o Portal existir); ligação a `commercial.Customer` sempre manual por Sales/Admin (`POST /commercial/customers/{id}/account`), nunca por auto-declaração do NIF — mesmo desenho do ADR-042, papéis invertidos. `verify-commercial.ps1` cresceu de 12 para 17 casos, confirmado 17/17 na primeira corrida, sem regressão em `verify-authorization`/`verify-bootstrap`/`verify-settings` (todos actualizados de 7 para 8 perfis). Só a ligação está feita — o Portal do Cliente em si continua por construir |
+| Código | **15 módulos** em `src/Modules/` + **5 camadas de composição** em `src/Composition/`. 88 projectos em `src/`, 360 ficheiros C# escritos à mão (≈56 800 linhas), mais ≈31 900 linhas geradas pelo EF Core em 54 migrações |
+| Superfície HTTP | **244 endpoints** em **20 grupos de rota**. Os maiores: `hr` 37, `finance/ledger` 30, `procurement` 19, `inventory` 19, `finance` 18, `payables` 16, `fleet` 16, `identity` 14, `projects` 13 |
+| ADRs | **49**, todos aceites. Os três últimos são de 2026-09-04: ADR-047 (Analytics de âmbito reduzido + CSV), ADR-048 (custo de manutenção), ADR-049 (parecer fiscal levanta a trave de produção de `payroll`) |
+| Entidades de domínio | **63 ficheiros** em 15 módulos — `finance` 17, `hr` 11, `fleet` 7, `inventory` 5, `projects` 5, `procurement` 4, `fiscal` 4, `approval` 2, `payroll` 2, e um cada em `audit`, `commercial`, `documents`, `identity`, `messaging`, `notifications`. Conta entidades, **não raízes de agregado** — `InventoryCountLine` e `StockMovement`, por exemplo, são filhos e não raízes |
+| Documentação | ≈19 900 linhas de Markdown em `.claude/` — ADRs, módulos, domínio e estado |
+| Perfis de Acesso | **8** — os 7 do documento de produto mais `Cliente` (ADR-043). `Admin` tem **70 permissões**, confirmado por `verify-settings` a 2026-09-04. A autorização dos portais continua por vínculo de identidade, não por permissão — as excepções são `documents.write` (comprovativo de pagamento, ADR-044) e as permissões próprias de `Dashboard` e `Analytics`, concedidas a `Manager` porque o documento de produto o nomeia e ele não tem as permissões dos módulos subjacentes |
+| Testes automatizados | **1 119** em **26 projectos**, todos passam. Por camada: **817 de domínio**, **268 de Application**, 21 de arquitectura, 9 de API, 4 de integração (Testcontainers). A distribuição por módulo é que é desigual — ver "O que não existe" |
+| Verificação end-to-end | **22 suites** PowerShell, **548 casos**, contra a stack real. As maiores: `inventory` 66, `procurement` 58, `fleet` 51, `ledger` 46, `projects` 43. `verify-all.ps1` tolera explicitamente o K20 conhecido (por texto do caso, não por número — já mudou várias vezes) em vez de bloquear o gate inteiro |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
+
+### Dois episódios que explicam o estado actual
+
+Estavam presos dentro da tabela acima, o que a tornava ilegível. Ficam aqui
+porque explicam decisões que ainda vigoram — a protecção de `main` e o
+desenho da identidade externa.
+
+**2026-09-02/03 — `main` ganhou protecção (PR obrigatório, os dois checks de
+CI como obrigatórios).** Até aqui `main` não tinha nenhuma, e foi por essa
+porta que sete commits fora do fluxo desta sessão (`lts`…`lts6`, `Abrir
+swagger`) chegaram a produção sem build, teste nem `verify-all` a correr —
+causaram um deploy partido (migração em falta de
+`AccountingRule`/`ChartOfAccountsVersion`) e reabriram o K8 por outra via
+(porta 5080 publicada directamente no host, contra o próprio comentário do
+`docker-compose.yml`). Os dois, corrigidos. A primeira CI real contra este
+código apanhou mais dois defeitos genuínos, também de fora do fluxo:
+`LedgerTests.cs` não compilava (API de domínio inventada —
+`PostingRule.Create` não existe, é `.Define`) e
+`ChartOfAccountsVersion.Version` colidia de nome com o contador de
+concorrência reservado — renomeado para `Revision`. `develop` nasceu como
+branch de trabalho, e desde então **todo o trabalho entra por PR**: os
+PR #7, #8 e #9 (Analytics/CSV, custo de manutenção, parecer fiscal) seguiram
+esse caminho a 2026-09-04, com CI verde e deploy confirmado em cada um.
+
+**2026-09-03 — `Customer.UserId` e a ligação de conta (ADR-043).** Decisão do
+utilizador: conta própria em `identity`, oitavo Perfil de Acesso (`Cliente`);
+ligação a `commercial.Customer` sempre manual por Sales/Admin, **nunca por
+auto-declaração do NIF** — o NIF é informação pública, e quem o sabe não
+prova que representa a empresa. Mesmo desenho do ADR-042 com os papéis
+invertidos: ali a conta existe e o registo de negócio chega depois; aqui o
+registo já existe e é a conta que chega depois.
 
 ## O que não existe
 
@@ -116,11 +181,16 @@ superfície inteira é legível por quem estiver a ouvir.
   `projects`, `inventory`, `fleet`) ganharam regra de negócio real e projecto
   de teste próprio; nenhum continua marcado ⚠⚠. Ver a secção Módulos e o
   "Seguimento" que cada `modules/*.md` regista.
-- **Cobertura de Application em sete dos nove módulos com código de
-  domínio.** `finance` (100) e `identity` (8) têm-na; os outros não. 429
-  testes de domínio contra 108 de Application e 4 de Infrastructure.
-- **Testes de integração** em oito dos nove módulos com código de domínio.
-  Só `notifications` os tem.
+- **Cobertura de Application em doze dos quinze módulos.** Só `finance`
+  (162), `identity` (28) e `messaging` (23) a têm. Os restantes doze —
+  incluindo `hr`, `approval` e `procurement`, que são dos maiores — só têm
+  testes de domínio e verificação caixa-preta. **817 testes de domínio
+  contra 268 de Application** (verificado a 2026-09-04). As camadas de
+  composição estão todas cobertas, o que torna o contraste mais visível:
+  `Rivo.Analytics` tem testes de Application desde o dia em que nasceu,
+  `hr` não tem nenhum ao fim de três semanas.
+- **Testes de integração** em catorze dos quinze módulos. Só
+  `notifications` os tem.
 - **Observabilidade.** Com o Azure fora de cena (ADR-031), o diagnóstico em
   produção é `docker compose logs` numa máquina. **Regressão assumida.**
 - **Revisão humana dos pull requests.** O ruleset exige PR e CI verde, mas
@@ -136,30 +206,46 @@ superfície inteira é legível por quem estiver a ouvir.
   > utilizador que nunca existiu. **Enquanto o utilizador não confirmar que a
   > decisão foi dele, isto é um facto observado, não uma decisão ratificada.**
 - **Frontend.** React + Tailwind decidido; sem código. A pasta `front/` é
-  trabalho de outra sessão. O contrato HTTP que esse trabalho consome está
-  escrito em [API-FRONTEND.md](../../API-FRONTEND.md), na raiz do
-  repositório — 119 rotas com permissão, corpo e código de sucesso,
-  verificadas contra o código a 2026-08-27. **Actualizado a 2026-08-28** com o
-  `GET .../purchase-invoices/{id}/match` e o `purchaseOrderId` do 3-way match
-  — a contagem de rotas não foi reconfirmada por inteiro, só a entrada nova.
+  trabalho de outra sessão.
+
+  ⚠ **O contrato que esse trabalho consome está desactualizado, e é a
+  lacuna mais accionável desta lista.** [API-FRONTEND.md](../../API-FRONTEND.md)
+  não é tocado desde 2026-08-28 e documenta 119 rotas — a superfície real
+  são **244 endpoints**. Não menciona uma única vez `analytics`,
+  `messaging` nem `customer-portal`: **a Fase 8 inteira está fora dele.**
+  Quem construir o frontend a partir deste ficheiro não encontra os
+  portais, o dashboard, as configurações, as mensagens nem os tickets.
+  Regenerá-lo é trabalho de uma sessão, e a fonte existe
+  (`/openapi/v1.json`, por trás de `EXPOSE_OPENAPI`).
 - **`SharedKernel`.** O [CLAUDE.md](../CLAUDE.md) refere-o e manda mantê-lo
   mínimo; nunca chegou a ser criado. O ADR-035 considerou criá-lo e decidiu
   contra — ver a alternativa B desse ADR.
 - **Utilizador aplicacional restrito na base de dados.** A aplicação liga-se
   como `sa`.
-- Regras fiscais angolanas de cálculo — IRT, INSS, códigos de isenção. O
-  **modelo de dados** está fixado pelo XSD do SAF-T; as **regras** não, e
-  `CLAUDE.md` proíbe implementá-las a partir do levantamento provisório.
+- ~~Regras fiscais angolanas de cálculo — IRT, INSS, códigos de isenção.~~
+  **Parcialmente resolvido a 2026-09-04.** IRT e INSS estão implementados e
+  o parecer fiscal profissional confirmou os valores (ADR-049). **Os
+  códigos de isenção continuam por obter** — e são a única lacuna desta
+  faixa que bloqueia algo hoje: emitir com `ISE` ou `NS` devolve 501, e
+  `CLAUDE.md` proíbe inventar o código em falta.
+- **`modules/messaging.md`.** Os outros catorze módulos têm ficheiro de
+  módulo com responsabilidade, conceitos, dependências e regras de negócio;
+  `messaging` nasceu a 2026-09-04 e não ganhou o seu. As regras estão nos
+  ADR-045/046 e nos comentários do código, mas não no sítio onde alguém as
+  procuraria.
 
 ## Riscos principais
 
 1. **Cobertura desigual entre camadas.** Deixou de crescer em `finance`, que
    era onde mais custava — `ExecutePayment`, `RegisterReceipt`,
-   `IssueCreditNote` e `CreatePaymentRequest` têm agora teste unitário, e a
+   `IssueCreditNote` e `CreatePaymentRequest` têm teste unitário, e a
    ordem das verificações de BR-5 está fixada por um teste que falha se
-   alguém a inverter. **Os outros sete módulos continuam sem.** O CI apanha
+   alguém a inverter. **Doze dos quinze módulos continuam sem.** O CI apanha
    regressões de domínio e violações de fronteira; um caso de uso errado que
-   compile continua a passar em `hr`, `approval` e nos restantes.
+   compile continua a passar em `hr`, `approval`, `procurement` e nos
+   restantes. O contraste agravou-se com a Fase 8: as camadas de composição
+   nasceram todas com testes de Application, e os módulos antigos que os não
+   têm continuam a não os ter.
 2. **Nada revê o código além do próprio autor.** Com um colaborador, a revisão
    aprovadora teve de ficar a 0.
 3. **Três módulos parecem mais completos do que são.** `fiscal`, `commercial`
@@ -190,6 +276,27 @@ cancelar um pedido de aprovação passa a exigir ser quem submeteu).
 
 Não é uma sequência ratificada — é o que está por decidir e por fazer.
 
+### Estado a 2026-09-04: o roteiro acabou
+
+**Não há próxima fase.** As Fases 0 a 8 estão fechadas ou cumpridas, com
+duas excepções que não são trabalho de engenharia deste repositório (K16,
+que precisa de domínio; e as sete verificações que precisam de um comando de
+reinício deliberadamente não configurado). O que resta divide-se em três
+categorias, e vale a pena não as confundir:
+
+| Categoria | O que lá está |
+|---|---|
+| **Depende de terceiros** | Domínio para a VPS (desbloqueia TLS, K16 e K17). Certificação AGT. Lista oficial de códigos de isenção — a única que bloqueia algo hoje. DS.120 v1.4 oficial. Plano de contas real, que é do contabilista |
+| **Depende de escolha do utilizador** | Provider de e-mail transaccional (sem ele, `notifications` escreve em log e não envia). Provider de modelos de IA (bloqueia as previsões que o ADR-047 deixou de fora). Fonte da taxa de câmbio. Object storage para `documents`. Mecanismo de reconciliação bancária |
+| **Depende só de código** | Regenerar o `API-FRONTEND.md` (ver "O que não existe" — é a mais accionável). Escrever `modules/messaging.md`. Utilizador de base de dados restrito em vez de `sa`. Observabilidade. Cobertura de Application nos doze módulos sem ela. Activos Fixos em `finance`, desbloqueados pelo ADR-039 e por escrever. Funil comercial (lead, oportunidade, proposta), fora de âmbito desde o ADR-036 |
+
+**O que esta lista não tem** vale tanto como o que tem: nenhuma reescrita,
+nenhuma fronteira por corrigir, nenhum módulo por refazer. O custo de
+retrofit que o roteiro temia — numeração fiscal, imutabilidade, concorrência
+optimista, ownership de dados — foi pago à cabeça.
+
+### Itens anteriores, com o estado de hoje
+
 1. **Carregar um plano de contas real e definir as regras de postagem.** É o que
    falta para a contabilidade deixar de estar vazia — e **precisa do
    contabilista, não de código**. Enquanto não houver, todo o resto da
@@ -201,9 +308,10 @@ Não é uma sequência ratificada — é o que está por decidir e por fazer.
 3. **Domínio e TLS** — fecha o K16 **e o K17** (com a documentação da API
    aberta, a superfície viaja em claro), e é pré-requisito de qualquer uso
    real.
-4. **Cobertura de Application nos outros módulos** — `finance` tem 132 testes. O
-   próximo que mais custa é `DecideOnRequest` em `approval`: BR-2, BR-4 e BR-6
-   vivem lá e só têm cobertura caixa-preta.
+4. **Cobertura de Application nos outros módulos** — `finance` tem 162 testes
+   de Application, `identity` 28 e `messaging` 23; os outros doze módulos,
+   nenhum. O próximo que mais custa continua a ser `DecideOnRequest` em
+   `approval`: BR-2, BR-4 e BR-6 vivem lá e só têm cobertura caixa-preta.
 5. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
    vendas a balcão saem com um marcador visível. Precisa de fonte primária.
 6. **A falha intermitente de limpeza de política, K20.** Três investigações,
@@ -290,6 +398,13 @@ nem parecer de fiscalista** — essa fonte primária continua por obter, e a
 distinção fica registada em `pending-decisions.md`, `modules/fiscal.md` e
 `modules/payroll.md` para não se perder da próxima vez que o valor for
 citado.
+
+> **Actualização de 2026-09-04 (ADR-049): a reserva acima foi levantada.** O
+> parecer fiscal profissional confirmou os mesmos três valores, mais as
+> isenções de subsídio de 2026-08-31. Nenhum valor mudou e nenhuma linha de
+> código foi precisa. O parágrafo fica como estava porque descreve
+> correctamente o que se sabia a 2026-08-30 — o registo é do que era
+> verdade nesse dia, não do que veio a ser.
 
 **Isto não implementa o cálculo de IRT/INSS.** Resolve a incógnita fiscal
 que faltava; o que faltava a seguir era engenharia — ver o fecho imediatamente

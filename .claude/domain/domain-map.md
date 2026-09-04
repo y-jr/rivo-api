@@ -1,5 +1,7 @@
 # Mapa de Domínios
 
+_Estado verificado contra o código a 2026-09-04._
+
 Destilado de `docs/rivo-arquitetura-global-v1.md` §1. Em caso de dúvida,
 esse documento prevalece.
 
@@ -28,7 +30,8 @@ Necessários e específicos do negócio, mas não diferenciadores.
 | **Fiscal & Compliance** | [fiscal](../modules/fiscal.md) | Motor fiscal angolano — regras próprias suficientes para ser contexto à parte, não feature de Financeiro |
 | **Gestão de Projectos** | [projects](../modules/projects.md) | — |
 | **Gestão de Frota** | [fleet](../modules/fleet.md) | Auto-contido, baixo acoplamento |
-| **Inventário & Armazém** | [inventory](../modules/inventory.md) | Sobreposição parcial com Activos Fixos do Financeiro — a resolver |
+| **Inventário & Armazém** | [inventory](../modules/inventory.md) | ~~Sobreposição parcial com Activos Fixos do Financeiro — a resolver~~ **Resolvida por ADR-039** (2026-08-30): `inventory` dono do activo físico/operacional, `finance` do contabilístico |
+| **Conversas e Tickets** | `messaging` | Nasceu a 2026-09-04 (ADR-045/ADR-046). ⚠ **Classificação por inferência** — o ADR-045 fixou-o como bounded context novo, sem lhe atribuir classificação estratégica. Fica em supporting por ter invariantes próprias ligadas à relação comercial (uma conversa aberta por cliente, assunto obrigatório em ticket), ao contrário de `notifications`, que é entrega pura. Se a distinção vier a importar, é decisão de ADR, não desta tabela. **Sem `modules/messaging.md`** — o único módulo com código e sem ficheiro de módulo |
 
 ## Generic domains
 
@@ -49,13 +52,17 @@ seguintes são camadas de leitura/composição ou canais de apresentação. Não
 possuem entidades próprias, não têm base de dados própria, e **não devem
 gerar módulos**.
 
+**As cinco existem em código desde 2026-09-04**, todas em `src/Composition/`,
+todas segundo o padrão do ADR-041 (`Application` + `Api`, sem Domain nem
+Infrastructure, sem base de dados própria).
+
 | Item do documento de produto | O que é realmente | Estado |
 |---|---|---|
 | Dashboard Executivo | Read model agregado sobre Financeiro, Comercial e Analytics | **Implementado 2026-08-31** — `Rivo.Dashboard`, ADR-041 |
 | Portal do Colaborador | Canal self-service que compõe RH, Financeiro, Approval, Documentos, Notificações | **Iniciado 2026-08-31** — `Rivo.EmployeePortal`, ADR-042. "Próprio" resolvido; recibos/férias/assiduidade/documentos ainda por fazer |
-| Portal do Cliente | Canal self-service que compõe Comercial, Financeiro/AR, Documentos | Por fazer — superfície externa, precisa de autenticação de cliente própria |
-| Configurações & Administração | UI de gestão de Identity & Access e de políticas de aprovação | **Implementado 2026-08-31** — `Rivo.Settings`, ADR-041 |
-| Analytics & IA | Misto: exportações/importações = infraestrutura; previsões/insights = read model | Por fazer |
+| Portal do Cliente | Canal self-service que compõe Comercial, Financeiro/AR, Documentos, Mensagens | **Completo 2026-09-04** — `Rivo.CustomerPortal`. Identidade externa (ADR-043), resumo financeiro, facturas, extracto, comprovativo de pagamento (ADR-044), mensagens directas (ADR-045) e tickets de suporte (ADR-046) |
+| Configurações & Administração | UI de gestão de Identity & Access e de políticas de aprovação | **Implementado 2026-08-31** — `Rivo.Settings`, ADR-041. Ganhou a importação em massa via CSV a 2026-09-04 (ADR-047) |
+| Analytics & IA | Misto: exportações/importações = infraestrutura; previsões/insights = read model | **Âmbito reduzido, implementado 2026-09-04** — `Rivo.Analytics`, ADR-047: tendência mensal de `finance`, actividade de `fleet`, valorização de `inventory`. **Sem alertas** (exclusão deliberada) e **sem previsões de IA** (bloqueadas — provider por decidir) |
 
 Tratá-los como domínios geraria duplicação de dados por audiência —
 exactamente o padrão que o protótipo já exibia (`notifications` vs
@@ -82,6 +89,15 @@ Comercial   ──(cliente, factura)───> Financeiro/AR
 hr          ──(ReferenciaColaborador)──> quase todos os contextos
 Projects    ──> finance (centro de custo), hr (recursos), commercial (facturação)
 Fiscal      ──lê──> Financeiro, Payroll
+Messaging   ──lê──> commercial (vendedor responsável), hr (conta do vendedor)
+            ──escreve──> notifications (aviso de mensagem/ticket novo)
+
+Camadas de composição (src/Composition/, ADR-041) — só consomem contratos:
+ Settings       ──> identity, approval, commercial, hr, procurement
+ EmployeePortal ──> hr
+ Dashboard      ──> finance
+ CustomerPortal ──> commercial, finance, messaging
+ Analytics      ──> finance, fleet, inventory
 ```
 
 **Padrão mais importante:** `hr.Colaborador` tem o maior fan-out do sistema.
@@ -109,3 +125,6 @@ Comercial. Por isso o acesso é feito **exclusivamente pelo contrato
 | Documento | documents | Ligação e retenção ficam no contexto de origem (ADR-009) |
 | Contrato de Trabalho | hr | ADR-009 |
 | Contrato Comercial | commercial | ADR-009 |
+| Conversa e Ticket | messaging | Distinguidos por `Conversation.Kind`, não por agregado separado (ADR-046) |
+| Vendedor responsável por cliente | commercial | `Customer.AssignedToEmployeeId`. **Controla só para quem vai o aviso**, nunca o acesso — qualquer utilizador com permissão em conversas vê e responde a qualquer uma (ADR-045) |
+| Custo de manutenção de viatura | fleet | Campo de `MaintenanceRecord`, não uma quarta categoria de Despesa de Frota (ADR-048) |
