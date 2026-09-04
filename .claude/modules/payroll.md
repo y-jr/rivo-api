@@ -189,7 +189,9 @@ devolve 404 — e os dois cenários de subsídio: dentro do limiar (isenção
 total) e acima dele (excesso tributado, Férias/Natal sem isenção nenhuma)).
 Permissões atribuídas a `HR`.
 
-**A fonte dos valores continua a ser o utilizador, não o Anexo I da Lei
-n.º 14/25 nem parecer de fiscalista** — ver `state/pending-decisions.md`
-para a reserva completa; o que mudou a 2026-08-30/31 foi o mecanismo, não a
-proveniência do dado.
+**2026-09-04 — reserva de fonte levantada (ADR-049).** Parecer fiscal
+profissional confirma exactamente os valores acima (as duas parcelas
+fixas dos escalões de IRT, a ausência de tecto no INSS, as isenções de
+subsídio) — nenhum valor mudou, nenhum código mudou. A trave de produção
+da Fase 6 (`state/roadmap-execucao.md`) está levantada; ver
+`state/pending-decisions.md` para o histórico completo da reserva.

@@ -34,7 +34,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 3 | `fiscal` — o que não está bloqueado | **Reduzida a fatia mínima** em 2026-08-24 (ADR-036) |
 | 4 | `finance` — o núcleo | ✅ **Critério de saída cumprido** em 2026-08-25 — os cinco contextos internos, BR-1/3/5/8 impostas, os documentos a lançar nos livros e (2026-08-29) a anular a estornar. Em dívida: o plano de contas, que é do contabilista |
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
-| 6 | `payroll` | Motor de IRT/INSS ganhou regra de negócio real em 2026-08-30 — trave de **produção** continua por parecer fiscal, ver a nota da fase |
+| 6 | `payroll` | ✅ **Critério de saída cumprido em 2026-09-04 (ADR-049).** Motor de IRT/INSS com regra de negócio real desde 2026-08-30; parecer fiscal profissional confirmou os valores a 2026-09-04 — a trave de produção está levantada |
 | 7 | `projects`, `inventory`, `fleet` | **Fechada por completo a 2026-08-31.** Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). A 2026-08-31, `projects` ganhou Alocação de Recursos (Colaborador e Viatura, via `hr`/`fleet`), `inventory` ganhou Armazém, Transferência (retrofit do Movimento, transferência atómica) e Contagem (gera Ajuste no fecho, tudo numa transacção), e `fleet` ganhou Registo de Viagem, Despesa de Frota (sem abrir/fechar, ao contrário de Manutenção/Atribuição) e Seguros (`VehicleDocument`, ligação autónoma a `documents`) |
 | 8 | Camadas de composição e portais | **Fechada por completo a 2026-09-04.** Configurações & Administração (ADR-041), Portal do Colaborador (ADR-042), Dashboard Executivo e Portal do Cliente (ADR-043: resumo financeiro + facturas + extracto + pagamento ADR-044 + mensagens ADR-045 + tickets ADR-046) e Analytics & IA (ADR-047: dashboards mais profundos + importação CSV) — todos feitos |
 
@@ -375,6 +375,18 @@ condicionada ao parecer, por decisão explícita e registada.
 > arranque), corrigido no mesmo dia. **A trave de produção continua de
 > pé**, mesma razão de cima: mecanismo pronto e testado, fonte por
 > confirmar profissionalmente.
+>
+> **2026-09-04 — trave de produção levantada (ADR-049).** O utilizador
+> confirmou directamente que o parecer fiscal profissional já obtido
+> valida exactamente os quatro valores que, até aqui, só tinham a
+> confirmação do próprio utilizador: as duas parcelas fixas dos escalões
+> de IRT (150.001–200.000 → 12.500 Kz; 1.500.001–2.000.000 → 292.250 Kz),
+> a ausência de tecto no INSS, e as isenções de subsídio (30.000 Kz/mês
+> em Alimentação e Transporte). Nenhum valor mudou — o mecanismo já
+> implementado e testado desde 2026-08-30/31 não precisou de nenhuma
+> alteração de código. O critério de saída da Fase 6 ("ida a produção
+> condicionada ao parecer, por decisão explícita e registada") está
+> cumprido — ver ADR-049 e `pending-decisions.md`.
 
 ---
 
@@ -914,6 +926,9 @@ por contrato publicado.
   algo **hoje**: sem ela, emitir com `ISE` ou `NS` devolve `501`.
 - Obter a DS.120 v1.4 oficial.
 - Parecer de fiscalista sobre a parcela fixa do IRT — bloqueia `payroll`.
+- ~~Parecer de fiscalista sobre a parcela fixa do IRT — bloqueia `payroll`.~~
+  **Obtido a 2026-09-04 (ADR-049)** — confirma os valores já implementados,
+  ver Fase 6.
 - Confirmar se existe API oficial da AGT.
 - Confirmar RPO ≤24h / RTO ≤8h e o alvo de disponibilidade.
 

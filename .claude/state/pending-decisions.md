@@ -249,16 +249,14 @@ re-litigação:
       pelo utilizador a 2026-08-30: 12.500 Kz, o salto é real** (produz um
       rendimento de 150.001 a pagar 12.500 Kz — salto de 12.500 Kz por 1 Kz —
       tal como no escalão equivalente da tabela histórica, isenção 70.000).
-
-      Reafirmado antes pelo mesmo utilizador, no mesmo dia, como
-      deliberadamente por decidir e não inventável por decisão de
-      arquitectura — a fonte da confirmação é o próprio utilizador, **não**
-      o Anexo I da Lei n.º 14/25 nem parecer de fiscalista, que continuam por
-      obter. Registar esta distinção sempre que o valor for citado.
+      **Reserva de fonte levantada a 2026-09-04**: parecer fiscal profissional
+      confirma o mesmo valor — ver a nota geral abaixo, junto à entrada do
+      motor de cálculo.
 - [x] ~~Divergência na parcela fixa do escalão 1.500.001–2.000.000: 292.000
       vs. 292.250~~ — **confirmado pelo utilizador a 2026-08-30: 292.250 Kz**
       (valor da Angolex; a contribuição do cliente, 292.000, fica descartada
-      como provável erro de OCR). Mesma reserva de fonte da entrada acima.
+      como provável erro de OCR). **Reserva de fonte levantada a 2026-09-04**,
+      mesmo parecer da entrada acima.
 - [ ] **Obter DS.120 v1.4 oficial da AGT** (Especificação Técnica de
       Facturação Electrónica, Agosto 2025). As cópias localizadas estão em
       Scribd — não é fonte fiável para especificação normativa.
@@ -272,23 +270,27 @@ re-litigação:
       cada**; o excesso soma-se à matéria colectável (não perde a isenção
       da parte dentro do limiar). Subsídio de Férias e Subsídio de Natal
       **sem isenção nenhuma** — tributados normalmente, somam-se ao
-      salário do mês em que são pagos. **A fonte é o utilizador, não
-      fonte fiscal profissional** — mesma reserva das entradas
-      equivalentes de IRT/INSS acima. Implementado no mesmo dia:
+      salário do mês em que são pagos. **Reserva de fonte levantada a
+      2026-09-04** — parecer fiscal profissional confirma o mesmo valor,
+      ver a nota geral abaixo. Implementado no mesmo dia:
       `SubsidyExemptionSchedule` em `fiscal` (ADR-011), `PayrollItem` com
       os quatro componentes.
 - [x] ~~Tecto contributivo no INSS~~ — **confirmado pelo utilizador a
       2026-08-30: sem tecto.** Os 3%/8% incidem sobre o salário bruto
-      inteiro, sem limite superior. Fonte é o utilizador, não texto legal
-      primário — mesma reserva das duas entradas acima. Prazo de entrega e
-      regras de expatriados continuam em aberto, sem resposta.
+      inteiro, sem limite superior. **Reserva de fonte levantada a
+      2026-09-04** — parecer fiscal profissional confirma o mesmo valor.
+      Prazo de entrega e regras de expatriados continuam em aberto, sem
+      resposta.
 - [x] ~~Motor de cálculo de IRT/INSS em `payroll`~~ — **implementado a
       2026-08-30**, com as quatro entradas acima como valores de entrada.
       `IncomeTaxSchedule` (novo agregado em `fiscal`) modela a tabela de
       escalões; `AddPayrollItem` pergunta a `fiscal` na ordem do artigo 7.º
-      do CIRT. **A reserva de fonte não muda** — o mecanismo está pronto e
-      testado, mas os valores continuam por confirmar profissionalmente
-      antes de produção.
+      do CIRT. **A trave de produção da Fase 6 foi levantada a 2026-09-04
+      (ADR-049)**: parecer fiscal profissional confirma os quatro valores
+      acima (as duas parcelas fixas, o tecto do INSS, as isenções de
+      subsídio) — a fonte deixou de ser só o utilizador. O critério de
+      saída da Fase 6 ("ida a produção condicionada ao parecer") está
+      cumprido.
 - [ ] Regras completas do Grupo B do IRT.
 - [ ] Prazos e formatos das declarações periódicas à AGT.
 - [ ] Processo de certificação de software junto da AGT
