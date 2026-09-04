@@ -1,4 +1,6 @@
+using Rivo.Audit.Contracts;
 using Rivo.Commercial.Application.Abstractions;
+using Rivo.Commercial.Application.UseCases;
 using Rivo.Commercial.Contracts;
 using Rivo.Commercial.Domain;
 
@@ -8,7 +10,7 @@ namespace Rivo.Commercial.Application;
 /// O contrato publicado de `commercial`. É por aqui que `finance` lê o cliente
 /// para emitir, sem conhecer nada além de `Rivo.Commercial.Contracts`.
 /// </summary>
-public sealed class CustomerDirectory(ICustomerStore store) : ICustomerDirectory
+public sealed class CustomerDirectory(ICustomerStore store, RegisterCustomer register) : ICustomerDirectory
 {
     public async Task<CustomerReference?> FindAsync(Guid customerId, CancellationToken cancellationToken)
     {
@@ -22,6 +24,29 @@ public sealed class CustomerDirectory(ICustomerStore store) : ICustomerDirectory
         var cliente = await store.FindByUserIdAsync(userId, cancellationToken);
 
         return cliente is null ? null : ToReference(cliente);
+    }
+
+    public async Task<CustomerRegistrationResult> RegisterAsync(
+        string name,
+        string taxId,
+        string addressDetail,
+        string city,
+        string country,
+        string? email,
+        string? phone,
+        Guid actorId,
+        CancellationToken cancellationToken)
+    {
+        var result = await register.ExecuteAsync(
+            name, taxId, addressDetail, city, country, email, phone,
+            new AuditContext(actorId, null, null), cancellationToken);
+
+        return result.Outcome switch
+        {
+            RegisterCustomerOutcome.Registered => CustomerRegistrationResult.Success(result.CustomerId!.Value),
+            RegisterCustomerOutcome.DuplicateTaxId => CustomerRegistrationResult.Duplicate(result.CustomerId!.Value),
+            _ => CustomerRegistrationResult.Rejected(result.Error!),
+        };
     }
 
     internal static CustomerReference ToReference(Customer customer) =>

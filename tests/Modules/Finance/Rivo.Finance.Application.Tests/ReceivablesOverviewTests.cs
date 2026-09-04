@@ -297,4 +297,54 @@ public class ReceivablesOverviewTests
         Assert.Single(extracto.Lines);
         Assert.Equal(100_000m, extracto.ClosingBalance);
     }
+
+    [Fact]
+    public async Task GetMonthlyNetRevenueAsync_UmPontoPorMes_ComOsSemMovimentoAZero()
+    {
+        var store = new FakeSalesInvoiceStore()
+            .With(Factura(new DateOnly(2026, 8, 10), 100_000m))
+            .With(Factura(new DateOnly(2026, 10, 5), 30_000m));
+
+        var overview = new ReceivablesOverview(store, new FakeCustomerDirectory());
+
+        var serie = await overview.GetMonthlyNetRevenueAsync(
+            new DateOnly(2026, 8, 1), new DateOnly(2026, 10, 31), "AOA", CancellationToken.None);
+
+        Assert.Equal(3, serie.Count);
+        Assert.Equal((2026, 8, 100_000m), (serie[0].Year, serie[0].Month, serie[0].Amount));
+        Assert.Equal((2026, 9, 0m), (serie[1].Year, serie[1].Month, serie[1].Amount));
+        Assert.Equal((2026, 10, 30_000m), (serie[2].Year, serie[2].Month, serie[2].Amount));
+    }
+
+    [Fact]
+    public async Task GetMonthlyNetRevenueAsync_NotaDeCreditoReduzNoMesEmQueEEmitida()
+    {
+        var factura = Factura(new DateOnly(2026, 8, 5), 100_000m);
+        var nota = Nota(factura, new DateOnly(2026, 9, 10), 20_000m);
+
+        var store = new FakeSalesInvoiceStore().With(factura).With(nota);
+        var overview = new ReceivablesOverview(store, new FakeCustomerDirectory());
+
+        var serie = await overview.GetMonthlyNetRevenueAsync(
+            new DateOnly(2026, 8, 1), new DateOnly(2026, 9, 30), "AOA", CancellationToken.None);
+
+        Assert.Equal(100_000m, serie[0].Amount);
+        Assert.Equal(-20_000m, serie[1].Amount);
+    }
+
+    [Fact]
+    public async Task GetMonthlyNetRevenueAsync_JanelaDentroDoMesmoMes_UmSoPonto()
+    {
+        var store = new FakeSalesInvoiceStore()
+            .With(Factura(new DateOnly(2026, 8, 5), 100_000m))
+            .With(Factura(new DateOnly(2026, 8, 20), 999_999m));
+
+        var overview = new ReceivablesOverview(store, new FakeCustomerDirectory());
+
+        var serie = await overview.GetMonthlyNetRevenueAsync(
+            new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 10), "AOA", CancellationToken.None);
+
+        Assert.Single(serie);
+        Assert.Equal(100_000m, serie[0].Amount);
+    }
 }

@@ -35,6 +35,10 @@ public static class FleetModuleExtensions
         // Recursos, 2026-08-31).
         services.AddScoped<IVehicleDirectory, VehicleDirectory>();
 
+        // Segundo contrato publicado — despesa e distância por período,
+        // primeiro consumidor Analytics & IA (módulo 10).
+        services.AddScoped<IFleetActivityOverview, FleetActivityOverview>();
+
         services.AddScoped<ListVehicles>();
         services.AddScoped<GetVehicle>();
         services.AddScoped<RegisterVehicle>();

@@ -1,4 +1,6 @@
+using Rivo.Audit.Contracts;
 using Rivo.Procurement.Application.Abstractions;
+using Rivo.Procurement.Application.UseCases;
 using Rivo.Procurement.Contracts;
 using Rivo.Procurement.Domain;
 
@@ -8,13 +10,33 @@ namespace Rivo.Procurement.Application;
 /// O contrato publicado de `procurement`. É por aqui que `finance` lê o
 /// fornecedor, sem conhecer nada além de `Rivo.Procurement.Contracts`.
 /// </summary>
-public sealed class SupplierDirectory(IProcurementStore store) : ISupplierDirectory
+public sealed class SupplierDirectory(IProcurementStore store, RegisterSupplier register) : ISupplierDirectory
 {
     public async Task<SupplierReference?> FindAsync(Guid supplierId, CancellationToken cancellationToken)
     {
         var fornecedor = await store.FindSupplierAsync(supplierId, cancellationToken);
 
         return fornecedor is null ? null : ToReference(fornecedor);
+    }
+
+    public async Task<SupplierRegistrationResult> RegisterAsync(
+        string name,
+        string taxId,
+        string? iban,
+        string? email,
+        string? phone,
+        Guid actorId,
+        CancellationToken cancellationToken)
+    {
+        var result = await register.ExecuteAsync(
+            name, taxId, iban, email, phone, new AuditContext(actorId, null, null), cancellationToken);
+
+        return result.Outcome switch
+        {
+            RegisterSupplierOutcome.Registered => SupplierRegistrationResult.Success(result.SupplierId!.Value),
+            RegisterSupplierOutcome.DuplicateTaxId => SupplierRegistrationResult.Duplicate(result.SupplierId!.Value),
+            _ => SupplierRegistrationResult.Rejected(result.Error!),
+        };
     }
 
     public async Task<SupplierReference?> FindByTaxIdAsync(string taxId, CancellationToken cancellationToken)

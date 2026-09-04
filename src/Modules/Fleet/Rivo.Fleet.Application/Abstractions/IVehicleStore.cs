@@ -26,6 +26,19 @@ public interface IVehicleStore
 
     Task AddAsync(Vehicle vehicle, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Soma de <c>FleetExpense.Amount</c> (combustível, portagens,
+    /// estacionamento) ocorrida no período, para toda a frota — não por
+    /// viatura. Primeiro consumidor: Analytics & IA (módulo 10).
+    /// </summary>
+    Task<decimal> SumExpensesAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Distância percorrida no período (<c>EndOdometer − StartOdometer</c>,
+    /// somada sobre as viagens), para toda a frota.
+    /// </summary>
+    Task<decimal> SumTripDistanceAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken);
+
     // --- Documentos anexados (ADR-009: a ligação vive aqui, não em `documents`) ---
 
     Task AddVehicleDocumentAsync(VehicleDocument link, CancellationToken cancellationToken);

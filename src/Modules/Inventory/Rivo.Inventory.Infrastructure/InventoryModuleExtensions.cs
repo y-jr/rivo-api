@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Rivo.Inventory.Application;
 using Rivo.Inventory.Application.Abstractions;
 using Rivo.Inventory.Application.UseCases;
 using Rivo.Inventory.Contracts;
@@ -51,6 +52,10 @@ public static class InventoryModuleExtensions
         services.AddScoped<CloseInventoryCount>();
         services.AddScoped<CancelInventoryCount>();
         services.AddScoped<GetStockValuationByPeriod>();
+
+        // O contrato publicado — primeiro consumidor, Analytics & IA
+        // (módulo 10).
+        services.AddScoped<IInventoryValuationOverview, InventoryValuationOverview>();
 
         services.AddAuthorization(options =>
         {

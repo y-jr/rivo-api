@@ -36,6 +36,19 @@ public sealed class InventoryItemStore(InventoryDbContext context) : IInventoryI
     public async Task AddAsync(InventoryItem item, CancellationToken cancellationToken) =>
         await context.Items.AddAsync(item, cancellationToken);
 
+    public async Task<decimal> SumCurrentStockValueAsync(CancellationToken cancellationToken) =>
+        await context.Items
+            .AsNoTracking()
+            .Where(i => i.Status == InventoryItemStatus.Active)
+            .SumAsync(i => (decimal?)(i.QuantityOnHand * i.AverageCost), cancellationToken) ?? 0m;
+
+    public async Task<decimal> SumMovementValueInPeriodAsync(
+        DateOnly from, DateOnly to, CancellationToken cancellationToken) =>
+        await context.Set<StockMovement>()
+            .AsNoTracking()
+            .Where(m => m.OccurredOn >= from && m.OccurredOn <= to)
+            .SumAsync(m => (decimal?)(m.Quantity * m.UnitCost), cancellationToken) ?? 0m;
+
     public Task SaveChangesAsync(CancellationToken cancellationToken) =>
         context.SaveChangesAsync(cancellationToken);
 }

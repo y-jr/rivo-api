@@ -582,6 +582,11 @@ internal sealed class FakeCustomerDirectory : ICustomerDirectory
 
     public Task<CustomerReference?> FindByUserIdAsync(Guid userId, CancellationToken cancellationToken) =>
         Task.FromResult<CustomerReference?>(null);
+
+    public Task<CustomerRegistrationResult> RegisterAsync(
+        string name, string taxId, string addressDetail, string city, string country,
+        string? email, string? phone, Guid actorId, CancellationToken cancellationToken) =>
+        Task.FromResult(CustomerRegistrationResult.Success(Guid.CreateVersion7()));
 }
 
 internal sealed class FakeSupplierDirectory(SupplierReference? supplier = null) : ISupplierDirectory
@@ -594,6 +599,11 @@ internal sealed class FakeSupplierDirectory(SupplierReference? supplier = null) 
             supplier is not null && string.Equals(supplier.TaxId, taxId, StringComparison.OrdinalIgnoreCase)
                 ? supplier
                 : null);
+
+    public Task<SupplierRegistrationResult> RegisterAsync(
+        string name, string taxId, string? iban, string? email, string? phone,
+        Guid actorId, CancellationToken cancellationToken) =>
+        Task.FromResult(SupplierRegistrationResult.Success(Guid.CreateVersion7()));
 }
 
 internal sealed class FakePurchaseOrderDirectory(PurchaseOrderReference? order = null) : IPurchaseOrderDirectory

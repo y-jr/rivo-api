@@ -54,6 +54,7 @@
     <ProjectReference Include="..\Composition\EmployeePortal\Rivo.EmployeePortal.Api\Rivo.EmployeePortal.Api.csproj" />
     <ProjectReference Include="..\Composition\Dashboard\Rivo.Dashboard.Api\Rivo.Dashboard.Api.csproj" />
     <ProjectReference Include="..\Composition\CustomerPortal\Rivo.CustomerPortal.Api\Rivo.CustomerPortal.Api.csproj" />
+    <ProjectReference Include="..\Composition\Analytics\Rivo.Analytics.Api\Rivo.Analytics.Api.csproj" />
   </ItemGroup>
 
 </Project>

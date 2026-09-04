@@ -187,7 +187,22 @@ public interface IReceivablesOverview
     /// </summary>
     Task<CustomerStatementView> GetCustomerStatementAsync(
         Guid customerId, DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A mesma conta de <see cref="GetNetRevenueAsync"/>, como série mensal
+    /// em vez de um total — um ponto por mês civil dentro da janela,
+    /// incluindo os que não tiveram nenhuma factura (a zero, para o
+    /// consumidor desenhar uma série contínua sem buracos). Primeiro
+    /// consumidor: Analytics & IA (módulo 10, "dashboards analíticos
+    /// interactivos").
+    /// </summary>
+    Task<IReadOnlyList<MonthlyAmount>> GetMonthlyNetRevenueAsync(
+        DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken);
 }
+
+/// <param name="Year">Ano civil.</param>
+/// <param name="Month">Mês, 1–12.</param>
+public sealed record MonthlyAmount(int Year, int Month, decimal Amount);
 
 public sealed record CustomerStatementView(
     decimal OpeningBalance,
@@ -310,6 +325,10 @@ public interface IPayablesOverview
     /// reduzem o que ainda se deve; o dinheiro não saiu).
     /// </summary>
     Task<decimal> GetOutstandingPayablesAsync(string currency, CancellationToken cancellationToken);
+
+    /// <summary>A mesma conta de <see cref="GetNetExpensesAsync"/>, como série mensal — ver <see cref="IReceivablesOverview.GetMonthlyNetRevenueAsync"/>.</summary>
+    Task<IReadOnlyList<MonthlyAmount>> GetMonthlyNetExpensesAsync(
+        DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken);
 }
 
 /// <summary>

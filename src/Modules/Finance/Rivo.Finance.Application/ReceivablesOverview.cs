@@ -126,4 +126,20 @@ public sealed class ReceivablesOverview(ISalesInvoiceStore invoices, ICustomerDi
 
         return new CustomerStatementView(abertura, linhas, saldo);
     }
+
+    public async Task<IReadOnlyList<MonthlyAmount>> GetMonthlyNetRevenueAsync(
+        DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken)
+    {
+        var pontos = new List<MonthlyAmount>();
+
+        foreach (var (ano, mes, inicio, fim) in MonthlyWindows.Enumerate(from, to))
+        {
+            var facturado = await invoices.SumNetInvoicedAsync(inicio, fim, currency, cancellationToken);
+            var creditado = await invoices.SumNetCreditedAsync(inicio, fim, currency, cancellationToken);
+
+            pontos.Add(new MonthlyAmount(ano, mes, facturado - creditado));
+        }
+
+        return pontos;
+    }
 }

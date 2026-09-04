@@ -41,6 +41,10 @@ internal sealed class FakeReceivablesOverview : IReceivablesOverview
     public Task<CustomerStatementView> GetCustomerStatementAsync(
         Guid customerId, DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
         Task.FromResult(new CustomerStatementView(0m, [], 0m));
+
+    public Task<IReadOnlyList<MonthlyAmount>> GetMonthlyNetRevenueAsync(
+        DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<MonthlyAmount>>([]);
 }
 
 internal sealed class FakePayablesOverview : IPayablesOverview
@@ -54,4 +58,8 @@ internal sealed class FakePayablesOverview : IPayablesOverview
 
     public Task<decimal> GetOutstandingPayablesAsync(string currency, CancellationToken cancellationToken) =>
         Task.FromResult(OutstandingPayables);
+
+    public Task<IReadOnlyList<MonthlyAmount>> GetMonthlyNetExpensesAsync(
+        DateOnly from, DateOnly to, string currency, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<MonthlyAmount>>([]);
 }

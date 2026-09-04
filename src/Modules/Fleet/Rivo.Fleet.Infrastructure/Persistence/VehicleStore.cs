@@ -60,6 +60,18 @@ public sealed class VehicleStore(FleetDbContext context) : IVehicleStore
     public async Task AddAsync(Vehicle vehicle, CancellationToken cancellationToken) =>
         await context.Vehicles.AddAsync(vehicle, cancellationToken);
 
+    public async Task<decimal> SumExpensesAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken) =>
+        await context.Set<FleetExpense>()
+            .AsNoTracking()
+            .Where(e => e.OccurredOn >= from && e.OccurredOn <= to)
+            .SumAsync(e => (decimal?)e.Amount, cancellationToken) ?? 0m;
+
+    public async Task<decimal> SumTripDistanceAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken) =>
+        await context.Set<VehicleTrip>()
+            .AsNoTracking()
+            .Where(t => t.StartedOn >= from && t.StartedOn <= to)
+            .SumAsync(t => (decimal?)(t.EndOdometer - t.StartOdometer), cancellationToken) ?? 0m;
+
     public async Task AddVehicleDocumentAsync(VehicleDocument link, CancellationToken cancellationToken) =>
         await context.VehicleDocuments.AddAsync(link, cancellationToken);
 

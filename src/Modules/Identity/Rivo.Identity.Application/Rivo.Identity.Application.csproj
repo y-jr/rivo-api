@@ -22,6 +22,9 @@
          consumidor da mesma forma: precisa do catálogo de permissões para
          conceder `dashboard.overview.read` a um Perfil de Acesso. -->
     <ProjectReference Include="..\..\..\Composition\Dashboard\Rivo.Dashboard.Contracts\Rivo.Dashboard.Contracts.csproj" />
+
+    <!-- Idem, para `analytics.overview.read` (ADR-047). -->
+    <ProjectReference Include="..\..\..\Composition\Analytics\Rivo.Analytics.Contracts\Rivo.Analytics.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

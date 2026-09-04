@@ -22,4 +22,8 @@ internal sealed class FakeEmployeeDirectory : IEmployeeDirectory
     public Task<IReadOnlyList<EmployeeReference>> FindByPositionAsync(
         Guid positionId, DateTimeOffset asOf, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<EmployeeReference>>([]);
+
+    public Task<EmployeeHireResult> HireAsync(
+        string fullName, string? departmentName, DateTimeOffset hiredOn, Guid actorId, CancellationToken cancellationToken) =>
+        Task.FromResult(EmployeeHireResult.Success(Guid.CreateVersion7()));
 }
