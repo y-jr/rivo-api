@@ -96,6 +96,14 @@ Recursos — **ligado**, 2026-08-31, via `IVehicleDirectory`).
   Atribuição, **não têm abrir/fechar**: registam-se já como facto concluído
   (mesma disciplina de `StockMovement` em `inventory`), e nunca se alteram
   nem se eliminam depois (BR-9, BR-14).
+- **2026-09-04 — Manutenção ganhou `Cost` (ADR-048), opcional.** Preenchido
+  só ao fechar o registo (`CloseMaintenance`), nunca à abertura — é quando
+  se sabe o valor final. Nulo é "não registado", não zero; a soma por
+  período (`IFleetActivityOverview.GetPeriodMaintenanceCostAsync`) ignora o
+  que não tem custo em vez de o contar como grátis. **Despesa de Frota
+  manteve-se com exactamente as três categorias já documentadas** — o custo
+  de manutenção não passou a ser uma quarta categoria; vive no registo de
+  Manutenção, que já existia para capturar o que aconteceu.
 - O motorista de uma Viagem é **opcional** (ao contrário do de uma
   Atribuição) — uma viatura pode ser usada sem atribuição formal. Quando
   indicado, verifica-se contra `hr` como qualquer outra referência de

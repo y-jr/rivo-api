@@ -109,6 +109,48 @@ public class VehicleTests
     }
 
     [Fact]
+    public void CloseMaintenance_WithCost_RecordsIt()
+    {
+        var viatura = Registada();
+        var registo = viatura.OpenMaintenance(MaintenanceType.Preventive, "Revisão", Hoje);
+
+        viatura.CloseMaintenance(registo.Id, Hoje.AddDays(2), 45_000m);
+
+        Assert.Equal(45_000m, registo.Cost);
+    }
+
+    [Fact]
+    public void CloseMaintenance_WithoutCost_LeavesItNull()
+    {
+        var viatura = Registada();
+        var registo = viatura.OpenMaintenance(MaintenanceType.Preventive, "Revisão", Hoje);
+
+        viatura.CloseMaintenance(registo.Id, Hoje.AddDays(2));
+
+        Assert.Null(registo.Cost);
+    }
+
+    [Fact]
+    public void CloseMaintenance_NegativeCost_Throws()
+    {
+        var viatura = Registada();
+        var registo = viatura.OpenMaintenance(MaintenanceType.Preventive, "Revisão", Hoje);
+
+        Assert.Throws<ArgumentException>(() => viatura.CloseMaintenance(registo.Id, Hoje.AddDays(2), -1m));
+    }
+
+    [Fact]
+    public void CloseMaintenance_ZeroCost_IsAccepted()
+    {
+        var viatura = Registada();
+        var registo = viatura.OpenMaintenance(MaintenanceType.Preventive, "Revisão em garantia", Hoje);
+
+        viatura.CloseMaintenance(registo.Id, Hoje.AddDays(1), 0m);
+
+        Assert.Equal(0m, registo.Cost);
+    }
+
+    [Fact]
     public void CloseMaintenance_AlreadyClosed_Throws()
     {
         var viatura = Registada();

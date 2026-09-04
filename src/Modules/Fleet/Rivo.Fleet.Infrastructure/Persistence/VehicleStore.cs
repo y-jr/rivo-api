@@ -72,6 +72,12 @@ public sealed class VehicleStore(FleetDbContext context) : IVehicleStore
             .Where(t => t.StartedOn >= from && t.StartedOn <= to)
             .SumAsync(t => (decimal?)(t.EndOdometer - t.StartOdometer), cancellationToken) ?? 0m;
 
+    public async Task<decimal> SumMaintenanceCostAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken) =>
+        await context.Set<MaintenanceRecord>()
+            .AsNoTracking()
+            .Where(m => m.EndedOn != null && m.EndedOn >= from && m.EndedOn <= to && m.Cost != null)
+            .SumAsync(m => (decimal?)m.Cost, cancellationToken) ?? 0m;
+
     public async Task AddVehicleDocumentAsync(VehicleDocument link, CancellationToken cancellationToken) =>
         await context.VehicleDocuments.AddAsync(link, cancellationToken);
 

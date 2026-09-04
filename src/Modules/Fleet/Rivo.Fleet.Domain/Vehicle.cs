@@ -101,13 +101,17 @@ public sealed class Vehicle
         return registo;
     }
 
-    /// <summary>Fecha o registo de manutenção aberto e devolve a viatura a activa.</summary>
-    public void CloseMaintenance(Guid maintenanceId, DateOnly endedOn)
+    /// <summary>
+    /// Fecha o registo de manutenção aberto e devolve a viatura a activa.
+    /// <paramref name="cost"/> é opcional (ADR-048) — nem toda a manutenção
+    /// tem custo a registar.
+    /// </summary>
+    public void CloseMaintenance(Guid maintenanceId, DateOnly endedOn, decimal? cost = null)
     {
         var registo = _maintenances.FirstOrDefault(m => m.Id == maintenanceId)
             ?? throw new InvalidOperationException("Registo de manutenção não encontrado nesta viatura.");
 
-        registo.Close(endedOn);
+        registo.Close(endedOn, cost);
         Status = VehicleStatus.Active;
     }
 

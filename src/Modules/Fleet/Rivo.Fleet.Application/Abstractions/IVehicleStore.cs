@@ -39,6 +39,13 @@ public interface IVehicleStore
     /// </summary>
     Task<decimal> SumTripDistanceAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Soma de <c>MaintenanceRecord.Cost</c> para as manutenções fechadas
+    /// (<c>EndedOn</c>) no período, para toda a frota — ignora as que não
+    /// têm custo registado (ADR-048).
+    /// </summary>
+    Task<decimal> SumMaintenanceCostAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken);
+
     // --- Documentos anexados (ADR-009: a ligação vive aqui, não em `documents`) ---
 
     Task AddVehicleDocumentAsync(VehicleDocument link, CancellationToken cancellationToken);

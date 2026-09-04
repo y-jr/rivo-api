@@ -88,6 +88,7 @@ public sealed class CloseMaintenance(IVehicleStore store, IAuditTrail audit)
         Guid vehicleId,
         Guid maintenanceId,
         DateOnly endedOn,
+        decimal? cost,
         AuditContext context,
         CancellationToken cancellationToken)
     {
@@ -105,7 +106,7 @@ public sealed class CloseMaintenance(IVehicleStore store, IAuditTrail audit)
 
         try
         {
-            veiculo.CloseMaintenance(maintenanceId, endedOn);
+            veiculo.CloseMaintenance(maintenanceId, endedOn, cost);
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException)
         {
@@ -120,7 +121,7 @@ public sealed class CloseMaintenance(IVehicleStore store, IAuditTrail audit)
                 FleetAuditEntityTypes.Maintenance,
                 maintenanceId.ToString(),
                 context,
-                NewValue: $$"""{"endedOn":"{{endedOn}}"}"""),
+                NewValue: $$"""{"endedOn":"{{endedOn}}","cost":{{(cost is { } valor ? valor.ToString(System.Globalization.CultureInfo.InvariantCulture) : "null")}}}"""),
             cancellationToken);
 
         return MaintenanceLifecycleOutcome.Closed;
@@ -133,6 +134,6 @@ public enum MaintenanceLifecycleOutcome
     VehicleNotFound,
     MaintenanceNotFound,
 
-    /// <summary>Já estava fechado, ou a data de fecho é anterior ao início.</summary>
+    /// <summary>Já estava fechado, a data de fecho é anterior ao início, ou o custo é negativo.</summary>
     Rejected,
 }

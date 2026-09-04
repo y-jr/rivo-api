@@ -67,12 +67,16 @@ internal sealed class FakeFleetActivityOverview : IFleetActivityOverview
 {
     public decimal PeriodExpenses { get; set; }
     public decimal PeriodDistance { get; set; }
+    public decimal PeriodMaintenanceCost { get; set; }
 
     public Task<decimal> GetPeriodExpensesAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken) =>
         Task.FromResult(PeriodExpenses);
 
     public Task<decimal> GetPeriodDistanceAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken) =>
         Task.FromResult(PeriodDistance);
+
+    public Task<decimal> GetPeriodMaintenanceCostAsync(DateOnly from, DateOnly to, CancellationToken cancellationToken) =>
+        Task.FromResult(PeriodMaintenanceCost);
 }
 
 internal sealed class FakeInventoryValuationOverview : IInventoryValuationOverview

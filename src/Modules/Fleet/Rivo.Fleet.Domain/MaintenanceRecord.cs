@@ -47,13 +47,23 @@ public sealed class MaintenanceRecord
 
     public DateOnly? EndedOn { get; private set; }
 
+    /// <summary>
+    /// Custo da intervenção — opcional (2026-09-04, ADR-048). Nulo em todo o
+    /// histórico anterior a esta data, porque o campo não existia; nulo
+    /// também daqui em diante para quem não regista custo por manutenção
+    /// (ex.: trabalho interno, garantia). Preenchido ao fechar
+    /// (<see cref="Close"/>), nunca à abertura — é quando se sabe o valor
+    /// final, não uma estimativa.
+    /// </summary>
+    public decimal? Cost { get; private set; }
+
     /// <summary>Verdadeiro enquanto a manutenção ainda não fechou.</summary>
     public bool IsOpen => EndedOn is null;
 
     /// <summary>Concorrência optimista (ADR-025). O domínio nunca lhe toca.</summary>
     public int Version { get; private set; }
 
-    internal void Close(DateOnly endedOn)
+    internal void Close(DateOnly endedOn, decimal? cost = null)
     {
         if (!IsOpen)
         {
@@ -66,7 +76,13 @@ public sealed class MaintenanceRecord
                 "A data de fecho não pode ser anterior ao início da manutenção.", nameof(endedOn));
         }
 
+        if (cost is < 0)
+        {
+            throw new ArgumentException("O custo da manutenção não pode ser negativo.", nameof(cost));
+        }
+
         EndedOn = endedOn;
+        Cost = cost;
     }
 }
 

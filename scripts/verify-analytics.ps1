@@ -92,6 +92,7 @@ Test-Case "3. Manager consegue ver a vista, com os tres domInios presentes" {
     if ($null -eq $vista.monthlyExpenses) { throw "monthlyExpenses em falta" }
     if ($null -eq $vista.fleetPeriodExpenses) { throw "fleetPeriodExpenses em falta" }
     if ($null -eq $vista.fleetPeriodDistanceKm) { throw "fleetPeriodDistanceKm em falta" }
+    if ($null -eq $vista.fleetPeriodMaintenanceCost) { throw "fleetPeriodMaintenanceCost em falta" }
     if ($null -eq $vista.inventoryCurrentValue) { throw "inventoryCurrentValue em falta" }
     if ($null -eq $vista.inventoryPeriodValuation) { throw "inventoryPeriodValuation em falta" }
     "Finance (mensal), Frota e Inventario, todos presentes"
@@ -132,7 +133,25 @@ Test-Case "6. Moeda tem omissao -- AOA" {
     "moeda='AOA' por omissao"
 }
 
-Test-Case "7. Vista sobrevive ao reinicio da stack" {
+Test-Case "7. Fechar manutencao com custo (ADR-048) soma ao FleetPeriodMaintenanceCost" {
+    $assetHeaders = New-PerfilHeaders "AssetManager" "analytics-frota"
+
+    $baseline = Invoke-RestMethod "$base/analytics/overview?from=$de&to=$ate&currency=AOA" -Headers $managerHeaders
+    $antes = $baseline.fleetPeriodMaintenanceCost
+
+    $placa = "AN" + ("$stamp".Substring("$stamp".Length - 6))
+    $viatura = Invoke-RestMethod "$base/fleet/vehicles" -Method Post -Body (@{ plateNumber = $placa; model = "Hilux" } | ConvertTo-Json) -ContentType "application/json" -Headers $assetHeaders
+    $manut = Invoke-RestMethod "$base/fleet/vehicles/$($viatura.vehicleId)/maintenance" -Method Post -Body (@{ type = "Corrective"; description = "Suite analytics"; startedOn = "2026-08-10" } | ConvertTo-Json) -ContentType "application/json" -Headers $assetHeaders
+    Invoke-RestMethod "$base/fleet/vehicles/$($viatura.vehicleId)/maintenance/$($manut.maintenanceId)/closure" -Method Post -Body (@{ endedOn = "2026-08-11"; cost = 33000 } | ConvertTo-Json) -ContentType "application/json" -Headers $assetHeaders | Out-Null
+
+    $vista = Invoke-RestMethod "$base/analytics/overview?from=$de&to=$ate&currency=AOA" -Headers $managerHeaders
+    if (($vista.fleetPeriodMaintenanceCost - $antes) -ne 33000) {
+        throw "custo de manutencao devia subir 33000, subiu $($vista.fleetPeriodMaintenanceCost - $antes)"
+    }
+    "custo de manutencao +33000 (moeda AOA -- fleet nao tem moeda propria, ver modules/fleet.md)"
+}
+
+Test-Case "8. Vista sobrevive ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)
     do {

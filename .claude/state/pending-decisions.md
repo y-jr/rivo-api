@@ -135,17 +135,13 @@ re-litigação:
       manualmente. Ver ADR-044.
 - [ ] Fonte da taxa de câmbio — candidato: BNA.
 - [ ] Provider de modelos de IA.
-- [ ] **`fleet` não tem custo de manutenção.** `MaintenanceRecord` só tem
-      `Type`/`Description`/`StartedOn`/`EndedOn` — nenhum campo de valor — e
-      `FleetExpenseCategory` só distingue Combustível/Portagem/Estacionamento,
-      sem categoria `Maintenance`. Descoberto ao construir Analytics & IA
-      (ADR-047, 2026-09-04): o utilizador pediu "custos de manutenção" como
-      métrica de Frota, mas o domínio não a suporta — `IFleetActivityOverview`
-      expõe só despesas (as três categorias existentes) e distância no
-      período, documentando o vazio no próprio contrato em vez de o inventar.
-      Falta decidir: acrescentar campo de custo a `MaintenanceRecord`, ou nova
-      categoria em `FleetExpenseCategory`, ou as duas coisas — decisão de
-      `fleet`, não de Analytics.
+- [x] ~~`fleet` não tem custo de manutenção.~~ **Resolvido a 2026-09-04
+      (ADR-048).** `MaintenanceRecord` ganhou `Cost` (`decimal?`, opcional),
+      preenchido ao fechar o registo — é quando se sabe o valor final, não
+      uma estimativa à abertura. `FleetExpenseCategory` manteve-se com
+      exactamente as três categorias já documentadas (não se reabriu essa
+      decisão). `IFleetActivityOverview.GetPeriodMaintenanceCostAsync` e
+      `AnalyticsOverviewView.FleetPeriodMaintenanceCost` publicam a soma.
 - [ ] **Serviço de object storage para `documents`.** A implementação actual de
       `IDocumentStorage` escreve num volume do sistema de ficheiros. É também
       do que depende a resolução do K11 (sem cifra em repouso).

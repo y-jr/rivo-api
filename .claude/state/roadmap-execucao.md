@@ -36,7 +36,7 @@ adoptadas, registam-se como ADR, nunca por reescrita dos documentos-fonte.
 | 5 | `procurement` e `commercial` | ✅ `commercial` reduzido ao Cliente e feito; `procurement` fechado em 2026-08-28 (4 agregados, 3-way match) |
 | 6 | `payroll` | Motor de IRT/INSS ganhou regra de negócio real em 2026-08-30 — trave de **produção** continua por parecer fiscal, ver a nota da fase |
 | 7 | `projects`, `inventory`, `fleet` | **Fechada por completo a 2026-08-31.** Os três ganharam regra de negócio em 2026-08-30 — `projects` (Marco, Tarefa e Orçamento, desbloqueado por ADR-040 no mesmo dia), `fleet` (Manutenção, Atribuição e Plano de Manutenção com alerta por consulta), `inventory` (Movimento, desbloqueado por ADR-039 no mesmo dia). A 2026-08-31, `projects` ganhou Alocação de Recursos (Colaborador e Viatura, via `hr`/`fleet`), `inventory` ganhou Armazém, Transferência (retrofit do Movimento, transferência atómica) e Contagem (gera Ajuste no fecho, tudo numa transacção), e `fleet` ganhou Registo de Viagem, Despesa de Frota (sem abrir/fechar, ao contrário de Manutenção/Atribuição) e Seguros (`VehicleDocument`, ligação autónoma a `documents`) |
-| 8 | Camadas de composição e portais | **2026-09-04** — Configurações & Administração (ADR-041), Portal do Colaborador (ADR-042), Dashboard Executivo e Portal do Cliente **completo** (ADR-043: resumo financeiro + facturas + extracto + pagamento ADR-044 + mensagens ADR-045 + tickets ADR-046) feitos; Analytics & IA (ADR-047) com dashboards prontos, falta só a importação CSV |
+| 8 | Camadas de composição e portais | **Fechada por completo a 2026-09-04.** Configurações & Administração (ADR-041), Portal do Colaborador (ADR-042), Dashboard Executivo e Portal do Cliente (ADR-043: resumo financeiro + facturas + extracto + pagamento ADR-044 + mensagens ADR-045 + tickets ADR-046) e Analytics & IA (ADR-047: dashboards mais profundos + importação CSV) — todos feitos |
 
 **Faixas paralelas** — conformidade/jurídico e segurança arrancam já; frontend
 arranca na Fase 3. Ver no fim.
@@ -826,10 +826,56 @@ por contrato publicado.
 > `Rivo.Analytics.Application.Tests` novo, 3 casos. Build da solução
 > inteira e suite completa (26 projectos de teste) confirmados limpos.
 >
-> **Fica por fazer:** a importação CSV em si (parser, validação
-> linha-a-linha, relatório) — só o âmbito e a localização estão
-> decididos (ADR-047). Depois disso, o único item por abrir na Fase 8
-> fica fechado.
+> **Mesmo dia, importação CSV implementada e a Fase 8 fechada por
+> completo.** `Rivo.Settings` ganhou `ImportCustomersFromCsv`/
+> `ImportEmployeesFromCsv`/`ImportSuppliersFromCsv`, cada uma escrevendo
+> através de um contrato de escrita novo publicado por
+> `commercial`/`hr`/`procurement` (`ICustomerDirectory.RegisterAsync`,
+> `IEmployeeDirectory.HireAsync`, `ISupplierDirectory.RegisterAsync` —
+> mesmo padrão write-through-contract de `ICustomerMessaging`/
+> `ICustomerPayments`, actor cru em vez de `AuditContext` através da
+> fronteira). Parser CSV próprio (`CsvDocument`, RFC 4180 mínimo — campos
+> entre aspas, sem biblioteca externa). Colaboradores resolve
+> Departamento por nome exacto (`IEmployeeDirectory.HireAsync` ganhou
+> esse parâmetro) — a folha não tem como conhecer identificadores
+> internos de `hr`. Uma linha malformada não pára o ficheiro: fica
+> registada como rejeitada, e o resto continua. Sem permissão nova —
+> cada importação atrás da mesma permissão de escrita que já protege o
+> formulário normal da entidade (`SuppliersWrite` só em `Admin`,
+> deliberadamente mais restrito que `CustomersWrite`/`EmployeesWrite`).
+>
+> `POST /settings/import/{customers,employees,suppliers}` (multipart,
+> `IFormFile`, mesmo tecto e padrão de `Rivo.Documents.Api`).
+> `verify-settings.ps1` cresceu de 7 para 12 casos; `verify-analytics.ps1`
+> novo, 7/7. PR #7 aberto, CI verde (build+testes e verificação
+> end-to-end), merge para `main`, deploy confirmado (`/health` respondeu
+> após a migração, todos os hosts). Regressão confirmada:
+> `verify-commercial` 21/21, `verify-hr` 20/20, `verify-authorization`
+> 9/9, `verify-procurement` 57/58 (K20 conhecido, intermitente,
+> não-relacionado).
+>
+> Com isto, a Fase 8 (Camadas de composição e portais) está fechada por
+> completo — nenhum item por abrir.
+>
+> **2026-09-04, mesmo dia — lacuna de custo de manutenção da Frota
+> resolvida (ADR-048), fora da Fase 8.** `MaintenanceRecord` ganhou
+> `Cost` (`decimal?`, opcional), preenchido só ao fechar o registo — é
+> quando se sabe o valor final, nunca uma estimativa à abertura.
+> Perguntado directamente ao utilizador entre as duas alternativas
+> (campo em `MaintenanceRecord` vs. quarta categoria em
+> `FleetExpenseCategory`): escolheu a primeira, recomendada — mantém a
+> decisão já tomada de "exactamente três categorias de Despesa" sem a
+> reabrir. Migração nasce nula (sem `defaultValue`), evitando à partida
+> a classe de incidente do ADR-046 (coluna não-nula com backfill
+> errado) — não havia risco aqui porque a coluna é opcional por
+> desenho.
+>
+> `IFleetActivityOverview.GetPeriodMaintenanceCostAsync` (soma por
+> `EndedOn`, ignora o que não tem custo em vez de o contar como zero) e
+> `AnalyticsOverviewView.FleetPeriodMaintenanceCost` publicam a métrica
+> que Analytics & IA já expunha como vazia desde o ADR-047. 4 testes de
+> domínio novos (`Rivo.Fleet.Domain.Tests`, 63→67); build da solução
+> inteira e suite completa (26 projectos) confirmados limpos.
 >
 > **Antes disto, 2026-09-02/03 — incidente de produção fora do fluxo desta
 > sessão, resolvido, e `main` ganhou protecção.** Sete commits

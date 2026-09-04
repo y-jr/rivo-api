@@ -83,6 +83,7 @@ public sealed class FleetDbContext(DbContextOptions<FleetDbContext> options) : D
 
             maintenance.Property(m => m.Type).HasConversion<string>().HasMaxLength(20);
             maintenance.Property(m => m.Description).HasMaxLength(500).IsRequired();
+            maintenance.Property(m => m.Cost).HasPrecision(18, 2);
 
             maintenance.HasIndex(m => m.VehicleId);
         });
