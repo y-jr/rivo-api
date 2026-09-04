@@ -31,7 +31,7 @@ Necessários e específicos do negócio, mas não diferenciadores.
 | **Gestão de Projectos** | [projects](../modules/projects.md) | — |
 | **Gestão de Frota** | [fleet](../modules/fleet.md) | Auto-contido, baixo acoplamento |
 | **Inventário & Armazém** | [inventory](../modules/inventory.md) | ~~Sobreposição parcial com Activos Fixos do Financeiro — a resolver~~ **Resolvida por ADR-039** (2026-08-30): `inventory` dono do activo físico/operacional, `finance` do contabilístico |
-| **Conversas e Tickets** | `messaging` | Nasceu a 2026-09-04 (ADR-045/ADR-046). ⚠ **Classificação por inferência** — o ADR-045 fixou-o como bounded context novo, sem lhe atribuir classificação estratégica. Fica em supporting por ter invariantes próprias ligadas à relação comercial (uma conversa aberta por cliente, assunto obrigatório em ticket), ao contrário de `notifications`, que é entrega pura. Se a distinção vier a importar, é decisão de ADR, não desta tabela. **Sem `modules/messaging.md`** — o único módulo com código e sem ficheiro de módulo |
+| **Conversas e Tickets** | [messaging](../modules/messaging.md) | Nasceu a 2026-09-04 (ADR-045/ADR-046). ⚠ **Classificação por inferência** — o ADR-045 fixou-o como bounded context novo, sem lhe atribuir classificação estratégica. Fica em supporting por ter invariantes próprias ligadas à relação comercial (uma conversa aberta por cliente, assunto obrigatório em ticket), ao contrário de `notifications`, que é entrega pura. Se a distinção vier a importar, é decisão de ADR, não desta tabela |
 
 ## Generic domains
 

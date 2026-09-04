@@ -208,15 +208,20 @@ registo já existe e é a conta que chega depois.
 - **Frontend.** React + Tailwind decidido; sem código. A pasta `front/` é
   trabalho de outra sessão.
 
-  ⚠ **O contrato que esse trabalho consome está desactualizado, e é a
-  lacuna mais accionável desta lista.** [API-FRONTEND.md](../../API-FRONTEND.md)
-  não é tocado desde 2026-08-28 e documenta 119 rotas — a superfície real
-  são **244 endpoints**. Não menciona uma única vez `analytics`,
-  `messaging` nem `customer-portal`: **a Fase 8 inteira está fora dele.**
-  Quem construir o frontend a partir deste ficheiro não encontra os
-  portais, o dashboard, as configurações, as mensagens nem os tickets.
-  Regenerá-lo é trabalho de uma sessão, e a fonte existe
-  (`/openapi/v1.json`, por trás de `EXPOSE_OPENAPI`).
+  ~~O contrato que esse trabalho consome está desactualizado.~~
+  **Regenerado a 2026-09-04.** [API-FRONTEND.md](../../API-FRONTEND.md)
+  documentava 119 rotas e não mencionava `analytics`, `messaging` nem
+  `customer-portal` — a Fase 8 inteira estava fora dele. Passou a ter as
+  **244 rotas**, geradas do `/openapi/v1.json` da aplicação a correr e
+  cruzadas rota a rota com as permissões declaradas no código.
+
+  **O OpenAPI sozinho não chegava**, e é a razão de o documento continuar a
+  existir em vez de se remeter para o Swagger: os minimal APIs devolvem
+  `IResult` sem `.Produces<T>()`, por isso o documento gerado declara `200`
+  para tudo — falso para as **121 rotas** que devolvem `201`, `202` ou
+  `204`, metade da superfície. A
+  permissão exigida também não aparece em lado nenhum do OpenAPI. Essas duas
+  colunas vêm do código.
 - **`SharedKernel`.** O [CLAUDE.md](../CLAUDE.md) refere-o e manda mantê-lo
   mínimo; nunca chegou a ser criado. O ADR-035 considerou criá-lo e decidiu
   contra — ver a alternativa B desse ADR.
@@ -228,11 +233,10 @@ registo já existe e é a conta que chega depois.
   códigos de isenção continuam por obter** — e são a única lacuna desta
   faixa que bloqueia algo hoje: emitir com `ISE` ou `NS` devolve 501, e
   `CLAUDE.md` proíbe inventar o código em falta.
-- **`modules/messaging.md`.** Os outros catorze módulos têm ficheiro de
-  módulo com responsabilidade, conceitos, dependências e regras de negócio;
-  `messaging` nasceu a 2026-09-04 e não ganhou o seu. As regras estão nos
-  ADR-045/046 e nos comentários do código, mas não no sítio onde alguém as
-  procuraria.
+- ~~`modules/messaging.md`.~~ **Escrito a 2026-09-04.** Os quinze módulos
+  têm agora ficheiro de módulo. O de `messaging` regista também que a sua
+  classificação estratégica é **inferência e não decisão** — o ADR-045
+  fixou-o como bounded context novo sem lhe atribuir classificação.
 
 ## Riscos principais
 
