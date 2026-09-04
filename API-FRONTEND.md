@@ -195,8 +195,8 @@ dos casos de uso e não têm DTO HTTP nomeado.
 | `GET /approval/requests` | `approval.requests.read` | query: `processType, pendingFor` | `200` |
 | `GET /approval/requests/{requestId}` | `approval.requests.read` | Sem corpo | `200` |
 | `GET /approval/requests/{requestId}/history` | `approval.requests.read` | Sem corpo | `200` |
-| `POST /approval/requests/{requestId}/decisions` | `approval.requests.decide` | { decidedByEmployeeId, action, notes } | `200` |
-| `POST /approval/requests/{requestId}/cancellation` | `approval.requests.read` | { cancelledByEmployeeId } | `204` |
+| `POST /approval/requests/{requestId}/decisions` | `approval.requests.decide` | { action, notes } — **quem decide vem do token** (ADR-050) | `200` |
+| `POST /approval/requests/{requestId}/cancellation` | `approval.requests.read` | Sem corpo — **quem cancela vem do token** (ADR-050) | `204` |
 
 ## Fiscal
 

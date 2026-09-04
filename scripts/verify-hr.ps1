@@ -147,8 +147,13 @@ Test-Case "10. Cargo COM autoridade nunca fica efectivo directamente (BR-20)" {
 
 Test-Case "11. ⚠ Cargo COM autoridade fica PENDENTE e nao confere nada (BR-20)" {
     # Politica de um passo, aprovada por quem ocupa o cargo simples.
-    $aprovador = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $hrHeaders `
-        -Body (@{ fullName = "Aprovador Verify" } | ConvertTo-Json)).employeeId
+    # Com conta propria: desde o ADR-050, quem decide resolve-se do token e o
+    # identificador deixou de vir no corpo do pedido.
+    $script:aprovadorConta = New-RivoColaboradorComConta `
+        -Email "apr-hr-$stamp@rivo.ao" -Nome "Aprovador Verify" `
+        -AdminHeaders $adminHeaders -HeadersDeAdmissao $hrHeaders -Perfil "Admin"
+    $aprovador = $script:aprovadorConta.EmployeeId
+
     Invoke-RestMethod "$base/hr/employees/$aprovador/positions" -Method Post -ContentType "application/json" -Headers $hrHeaders `
         -Body (@{ positionId = $script:plainPositionId } | ConvertTo-Json) | Out-Null
 
@@ -206,8 +211,8 @@ Test-Case "12. Aprovado, o cargo passa a ser conferido" {
     if (-not $requestId) { throw "pedido de aprovacao nao encontrado para a atribuicao pendente" }
     $script:pendingRequestId = $requestId
 
-    Invoke-RestMethod "$base/approval/requests/$requestId/decisions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-        -Body (@{ decidedByEmployeeId = $script:pendingApprover; action = "Approved" } | ConvertTo-Json) | Out-Null
+    Invoke-RestMethod "$base/approval/requests/$requestId/decisions" -Method Post -ContentType "application/json" -Headers $script:aprovadorConta.Headers `
+        -Body (@{ action = "Approved" } | ConvertTo-Json) | Out-Null
 
     Invoke-RestMethod "$base/hr/position-assignments/$($script:pendingAssignmentId)/approval-outcome" -Method Post -Headers $hrHeaders | Out-Null
 
@@ -253,8 +258,13 @@ Test-Case "14. Historico de pedido inexistente -> 404" {
 }
 
 Test-Case "15. BR-2: quem submete nao decide sobre o proprio pedido" {
-    $alvo = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $hrHeaders `
-        -Body (@{ fullName = "Alvo BR2" } | ConvertTo-Json)).employeeId
+    # O alvo precisa de conta propria: desde o ADR-050, a unica forma de
+    # tentar decidir e autenticado como ele. Antes bastava declarar o
+    # identificador dele no corpo -- e era precisamente essa a falha.
+    $alvoConta = New-RivoColaboradorComConta `
+        -Email "alvo-br2-$stamp@rivo.ao" -Nome "Alvo BR2" `
+        -AdminHeaders $adminHeaders -HeadersDeAdmissao $hrHeaders -Perfil "Admin"
+    $alvo = $alvoConta.EmployeeId
 
     $resposta = Invoke-RestMethod "$base/hr/employees/$alvo/positions" -Method Post -ContentType "application/json" -Headers $hrHeaders `
         -Body (@{ positionId = $script:authorityPositionId } | ConvertTo-Json)
@@ -265,8 +275,8 @@ Test-Case "15. BR-2: quem submete nao decide sobre o proprio pedido" {
     # O requisitante e o proprio alvo. Decidir sobre si mesmo e 403, nao 409:
     # nao e o estado que impede, e a pessoa.
     $code = Get-StatusCode {
-        Invoke-RestMethod "$base/approval/requests/$requestId/decisions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-            -Body (@{ decidedByEmployeeId = $alvo; action = "Approved" } | ConvertTo-Json)
+        Invoke-RestMethod "$base/approval/requests/$requestId/decisions" -Method Post -ContentType "application/json" -Headers $alvoConta.Headers `
+            -Body (@{ action = "Approved" } | ConvertTo-Json)
     }
     if ($code -ne 403) { throw "esperado 403, obtido $code" }
 

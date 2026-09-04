@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testa a camada Application de `approval`, e não o domínio.
+
+    Nasceu a 2026-09-04 com o ADR-050. As regras de segregação vivem no
+    domínio e já tinham cobertura (`SegregationOfDutiesTests`) — o que não
+    tinha era **quem as regras são aplicadas a**. Esse passo é de
+    orquestração: resolver o colaborador a partir da conta autenticada.
+
+    Enquanto o identificador do colaborador veio no corpo do pedido HTTP,
+    nenhum teste de domínio podia apanhar a falha, porque o domínio recebia o
+    identificador já escolhido e aplicava as regras correctamente sobre ele.
+    A falha estava em quem escolhia.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Approval\Rivo.Approval.Application\Rivo.Approval.Application.csproj" />
+  </ItemGroup>
+
+</Project>

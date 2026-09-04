@@ -133,11 +133,11 @@ linhas. O histórico de como cada número cresceu está em
 |---|---|
 | Código | **15 módulos** em `src/Modules/` + **5 camadas de composição** em `src/Composition/`. 88 projectos em `src/`, 360 ficheiros C# escritos à mão (≈56 800 linhas), mais ≈31 900 linhas geradas pelo EF Core em 54 migrações |
 | Superfície HTTP | **244 endpoints** em **20 grupos de rota**. Os maiores: `hr` 37, `finance/ledger` 30, `procurement` 19, `inventory` 19, `finance` 18, `payables` 16, `fleet` 16, `identity` 14, `projects` 13 |
-| ADRs | **49**, todos aceites. Os três últimos são de 2026-09-04: ADR-047 (Analytics de âmbito reduzido + CSV), ADR-048 (custo de manutenção), ADR-049 (parecer fiscal levanta a trave de produção de `payroll`) |
+| ADRs | **50**, todos aceites. Os quatro últimos são de 2026-09-04: ADR-047 (Analytics de âmbito reduzido + CSV), ADR-048 (custo de manutenção), ADR-049 (parecer fiscal levanta a trave de produção de `payroll`) e **ADR-050 (quem decide uma aprovação vem do token, não do corpo — corrige falha de segurança)** |
 | Entidades de domínio | **63 ficheiros** em 15 módulos — `finance` 17, `hr` 11, `fleet` 7, `inventory` 5, `projects` 5, `procurement` 4, `fiscal` 4, `approval` 2, `payroll` 2, e um cada em `audit`, `commercial`, `documents`, `identity`, `messaging`, `notifications`. Conta entidades, **não raízes de agregado** — `InventoryCountLine` e `StockMovement`, por exemplo, são filhos e não raízes |
 | Documentação | ≈19 900 linhas de Markdown em `.claude/` — ADRs, módulos, domínio e estado |
 | Perfis de Acesso | **8** — os 7 do documento de produto mais `Cliente` (ADR-043). `Admin` tem **70 permissões**, confirmado por `verify-settings` a 2026-09-04. A autorização dos portais continua por vínculo de identidade, não por permissão — as excepções são `documents.write` (comprovativo de pagamento, ADR-044) e as permissões próprias de `Dashboard` e `Analytics`, concedidas a `Manager` porque o documento de produto o nomeia e ele não tem as permissões dos módulos subjacentes |
-| Testes automatizados | **1 119** em **26 projectos**, todos passam. Por camada: **817 de domínio**, **268 de Application**, 21 de arquitectura, 9 de API, 4 de integração (Testcontainers). A distribuição por módulo é que é desigual — ver "O que não existe" |
+| Testes automatizados | **1 127** em **27 projectos**, todos passam. Por camada: **817 de domínio**, **276 de Application**, 21 de arquitectura, 9 de API, 4 de integração (Testcontainers). A distribuição por módulo é que é desigual — ver "O que não existe" |
 | Verificação end-to-end | **22 suites** PowerShell, **548 casos**, contra a stack real. As maiores: `inventory` 66, `procurement` 58, `fleet` 51, `ledger` 46, `projects` 43. `verify-all.ps1` tolera explicitamente o K20 conhecido (por texto do caso, não por número — já mudou várias vezes) em vez de bloquear o gate inteiro |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
@@ -181,14 +181,18 @@ registo já existe e é a conta que chega depois.
   `projects`, `inventory`, `fleet`) ganharam regra de negócio real e projecto
   de teste próprio; nenhum continua marcado ⚠⚠. Ver a secção Módulos e o
   "Seguimento" que cada `modules/*.md` regista.
-- **Cobertura de Application em doze dos quinze módulos.** Só `finance`
-  (162), `identity` (28) e `messaging` (23) a têm. Os restantes doze —
-  incluindo `hr`, `approval` e `procurement`, que são dos maiores — só têm
-  testes de domínio e verificação caixa-preta. **817 testes de domínio
-  contra 268 de Application** (verificado a 2026-09-04). As camadas de
-  composição estão todas cobertas, o que torna o contraste mais visível:
-  `Rivo.Analytics` tem testes de Application desde o dia em que nasceu,
-  `hr` não tem nenhum ao fim de três semanas.
+- **Cobertura de Application em onze dos quinze módulos.** Só `finance`
+  (162), `identity` (28), `messaging` (23) e `approval` (8) a têm. Os
+  restantes onze — incluindo `hr` e `procurement`, que são dos maiores — só
+  têm testes de domínio e verificação caixa-preta.
+
+  ⚠ **`approval` só a ganhou depois de a lacuna custar uma falha de
+  segurança** (ADR-050, K21): a decisão de quem aprova vinha do corpo do
+  pedido e não era confrontada com o token. Os testes de domínio passavam,
+  porque o domínio recebia o identificador já escolhido e aplicava-lhe as
+  regras correctamente — **o defeito estava em quem escolhia**, que é
+  orquestração. É o argumento mais concreto que este projecto tem para
+  fechar as outras onze.
 - **Testes de integração** em catorze dos quinze módulos. Só
   `notifications` os tem.
 - **Observabilidade.** Com o Azure fora de cena (ADR-031), o diagnóstico em

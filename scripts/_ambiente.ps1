@@ -312,3 +312,64 @@ function Clear-RivoApprovalPolicies {
         throw "Nao foi possivel garantir zero politicas activas de '$ProcessType' apos $MaxAttempts tentativas (K20) - $restantes continuam activas."
     }
 }
+
+<#
+.SYNOPSIS
+Cria um Colaborador **ligado a uma conta**, e devolve os cabeçalhos dessa conta.
+
+.DESCRIPTION
+Existe desde 2026-09-04, com o ADR-050.
+
+Até essa data, uma suite que precisasse de aprovar alguma coisa autenticava-se
+como `Admin` e indicava o identificador do aprovador no corpo do pedido. O
+servidor aceitava — e era essa a falha que o ADR-050 fechou: quem decide passou
+a ser resolvido a partir da conta autenticada, e o corpo já não tem por onde o
+declarar.
+
+Consequência para as suites: **quem decide tem de ser uma conta ligada a um
+Colaborador.** A ligação só se faz na admissão (`POST /hr/employees` aceita
+`userId`); não há rota para ligar um colaborador que já exista. Por isso a
+conta cria-se primeiro e o colaborador a seguir.
+
+.OUTPUTS
+Hashtable com `EmployeeId`, `UserId`, `Email` e `Headers`.
+#>
+function New-RivoColaboradorComConta {
+    param(
+        [Parameter(Mandatory)][string]$Email,
+        [Parameter(Mandatory)][string]$Nome,
+        [Parameter(Mandatory)][hashtable]$AdminHeaders,
+        [hashtable]$HeadersDeAdmissao,
+        [string]$Perfil = "Admin",
+        [string]$Password = "Rivo!Aprovador2026",
+        [string]$DepartmentId
+    )
+
+    $base = $script:BaseUrl
+    if (-not $HeadersDeAdmissao) { $HeadersDeAdmissao = $AdminHeaders }
+
+    $corpo = @{ email = $Email; password = $Password } | ConvertTo-Json
+    $userId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $corpo `
+        -ContentType "application/json").userId
+
+    Invoke-RestMethod "$base/identity/users/$userId/roles" -Method Post `
+        -Body (@{ profile = $Perfil } | ConvertTo-Json) -ContentType "application/json" `
+        -Headers $AdminHeaders | Out-Null
+
+    $admissao = @{ fullName = $Nome; userId = $userId }
+    if ($DepartmentId) { $admissao.departmentId = $DepartmentId }
+
+    $employeeId = (Invoke-RestMethod "$base/hr/employees" -Method Post `
+        -Body ($admissao | ConvertTo-Json) -ContentType "application/json" `
+        -Headers $HeadersDeAdmissao).employeeId
+
+    $token = (Invoke-RestMethod "$base/identity/login" -Method Post `
+        -Body $corpo -ContentType "application/json").accessToken
+
+    return @{
+        EmployeeId = $employeeId
+        UserId     = $userId
+        Email      = $Email
+        Headers    = @{ Authorization = "Bearer $token" }
+    }
+}
