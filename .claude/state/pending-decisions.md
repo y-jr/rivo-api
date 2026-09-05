@@ -164,6 +164,16 @@ re-litigação:
       ADR-051 para divergir era específico de `hr`, e a justificação do
       ADR-043 mantém-se aqui. O retroactivo usa `0001-01-01` como sentinela,
       porque `commercial.customer` não tem coluna de data nenhuma.
+- [ ] **`finance` colapsa 400 e 409 num só código.** Observação levantada a
+      2026-09-05 ao construir o ecrã de Facturas, não corrigida. O desfecho
+      `Rejected` de `CancelSalesInvoice` cobre duas coisas distintas — motivo
+      vazio, que é pedido malformado, e factura já anulada ou período fechado,
+      que é conflito de estado — e a tradução HTTP devolve `409` para ambas.
+      Verificado: anular com `reason: ""` dá `409`, quando devia dar `400`.
+      `procurement`, `inventory`, `fleet` e `approval` separam `Rejected` de
+      `Conflict` com cuidado; `finance` não. Um cliente não consegue
+      distinguir «corrija o pedido» de «o estado não permite». Decidir se se
+      alinha `finance` com o resto — é alteração de contrato.
 - [ ] Fonte da taxa de câmbio — candidato: BNA.
 - [ ] Provider de modelos de IA.
 - [x] ~~`fleet` não tem custo de manutenção.~~ **Resolvido a 2026-09-04
