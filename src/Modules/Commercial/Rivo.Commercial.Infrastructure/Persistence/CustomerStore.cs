@@ -25,6 +25,26 @@ public sealed class CustomerStore(CommercialDbContext context) : ICustomerStore
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.UserId == userId, cancellationToken);
 
+    public async Task AddAccountLinkAsync(CustomerAccountLink link, CancellationToken cancellationToken) =>
+        await context.CustomerAccountLinks.AddAsync(link, cancellationToken);
+
+    public async Task<CustomerAccountLink?> FindOpenAccountLinkAsync(
+        Guid customerId,
+        CancellationToken cancellationToken) =>
+        await context.CustomerAccountLinks
+            .FirstOrDefaultAsync(
+                l => l.CustomerId == customerId && l.UnlinkedOn == null,
+                cancellationToken);
+
+    public async Task<IReadOnlyList<CustomerAccountLink>> ListAccountLinksAsync(
+        Guid customerId,
+        CancellationToken cancellationToken) =>
+        await context.CustomerAccountLinks
+            .Where(l => l.CustomerId == customerId)
+            .OrderByDescending(l => l.LinkedOn)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<Customer>> ListAsync(
         bool includeInactive,
         CancellationToken cancellationToken)

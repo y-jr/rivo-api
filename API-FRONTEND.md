@@ -225,7 +225,9 @@ dos casos de uso e não têm DTO HTTP nomeado.
 | `GET /commercial/customers/{customerId}` | `commercial.customers.read` | Sem corpo | `200` |
 | `POST /commercial/customers/{customerId}/details` | `commercial.customers.write` | { name, addressDetail, city, country, email, phone } | `204` |
 | `POST /commercial/customers/{customerId}/status` | `commercial.customers.write` | { active } | `204` |
-| `POST /commercial/customers/{customerId}/account` | `commercial.customers.write` | { userId } | `204` |
+| `POST /commercial/customers/{customerId}/account` | `commercial.customers.write` | { userId } — `409` se já houver conta, `403` se for a própria (ADR-055) | `204` |
+| `DELETE /commercial/customers/{customerId}/account` | `commercial.customers.write` | Sem corpo (ADR-055) | `204` |
+| `GET /commercial/customers/{customerId}/account-history` | `commercial.customers.read` | Sem corpo — que conta pôde agir como este cliente | `200` |
 | `POST /commercial/customers/{customerId}/owner` | `commercial.customers.write` | { employeeId } | `204` |
 
 ## Financeiro

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testa a camada Application de `commercial`.
+
+    Nasceu a 2026-09-05 com o ADR-055, e a razão é a mesma que criou os
+    equivalentes em `approval` e `hr`: `Customer.LinkToUser` é um setter, e
+    nenhuma das regras do vínculo vive no domínio — recusar a auto-ligação
+    depende do actor, e as duas unicidades dependem do armazenamento.
+
+    É o terceiro módulo a ganhar cobertura desta camada, e os três ganharam-na
+    pelo mesmo motivo: a decisão sobre *quem* pode fazer alguma coisa é
+    orquestração, e era exactamente aí que estava a falha do ADR-050.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Commercial\Rivo.Commercial.Application\Rivo.Commercial.Application.csproj" />
+  </ItemGroup>
+
+</Project>

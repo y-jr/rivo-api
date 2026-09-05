@@ -234,7 +234,7 @@ public sealed class SetCustomerStatus(ICustomerStore store, IAuditTrail audit)
 /// negócio já existe, e é a conta que chega depois.
 /// </para>
 /// </summary>
-public sealed class LinkCustomerAccount(ICustomerStore store, IAuditTrail audit)
+public sealed class LinkCustomerAccount(ICustomerStore store, IAuditTrail audit, TimeProvider clock)
 {
     public async Task<LinkCustomerAccountResult> ExecuteAsync(
         Guid customerId,
@@ -242,11 +242,39 @@ public sealed class LinkCustomerAccount(ICustomerStore store, IAuditTrail audit)
         AuditContext context,
         CancellationToken cancellationToken)
     {
+        // Auto-ligação recusada (ADR-055), e não por simetria com `hr`: aqui a
+        // consequência é própria. Quem ligue a sua conta a um cliente age como
+        // esse cliente no portal — incluindo submeter comprovativos de
+        // pagamento, que `finance` confirma manualmente (ADR-044). Recusado
+        // antes de saber se o cliente existe, para não depender de o atacante
+        // ter acertado num identificador.
+        if (context.ActorId is { } actor && actor == userId)
+        {
+            return LinkCustomerAccountResult.SelfLinkRefused();
+        }
+
         var cliente = await store.FindForUpdateAsync(customerId, cancellationToken);
 
         if (cliente is null)
         {
             return LinkCustomerAccountResult.NotFound();
+        }
+
+        // Repetível sem erro e sem auditar: ligar de novo a mesma conta produz
+        // o estado pretendido na mesma.
+        if (cliente.UserId == userId)
+        {
+            return LinkCustomerAccountResult.Success();
+        }
+
+        // ⚠ **Isto é a correcção do ADR-055.** Até aqui, ligar uma conta a um
+        // cliente que já tinha outra substituía-a em silêncio: o portal do
+        // cliente mudava de dono sem que nada o registasse, e a conta anterior
+        // perdia o acesso sem explicação. Agora recusa-se, e desfazer exige
+        // desligar primeiro — que deixa rasto.
+        if (cliente.UserId is not null)
+        {
+            return LinkCustomerAccountResult.CustomerAlreadyLinked();
         }
 
         if (await store.FindByUserIdAsync(userId, cancellationToken) is not null)
@@ -256,6 +284,11 @@ public sealed class LinkCustomerAccount(ICustomerStore store, IAuditTrail audit)
 
         cliente.LinkToUser(userId);
 
+        // Histórico, na mesma transacção que o campo (ADR-055).
+        await store.AddAccountLinkAsync(
+            CustomerAccountLink.Open(cliente.Id, userId, clock.GetUtcNow(), context.ActorId),
+            cancellationToken);
+
         await store.SaveChangesAsync(cancellationToken);
 
         await audit.RecordAsync(
@@ -263,7 +296,9 @@ public sealed class LinkCustomerAccount(ICustomerStore store, IAuditTrail audit)
                 CommercialAuditActions.CustomerAccountLinked,
                 CommercialAuditEntityTypes.Customer,
                 cliente.Id.ToString(),
-                context),
+                context,
+                PreviousValue: null,
+                NewValue: $$"""{"userId":"{{userId}}"}"""),
             cancellationToken);
 
         return LinkCustomerAccountResult.Success();
@@ -278,9 +313,18 @@ public enum LinkCustomerAccountOutcome
     /// <summary>
     /// A conta indicada já está ligada a outro cliente — conflito com o
     /// estado, não pedido malformado (mesma razão de
-    /// <c>HireEmployeeOutcome.UserAlreadyLinked</c>).
+    /// <c>LinkEmployeeAccountOutcome.UserAlreadyLinked</c>).
     /// </summary>
     UserAlreadyLinked,
+
+    /// <summary>Este cliente já tem outra conta ligada (ADR-055).</summary>
+    CustomerAlreadyLinked,
+
+    /// <summary>
+    /// O actor tentou ligar a conta com que está autenticado. Segregação de
+    /// funções, não conflito de estado — traduz-se em 403.
+    /// </summary>
+    SelfLinkRefused,
 }
 
 public sealed record LinkCustomerAccountResult(LinkCustomerAccountOutcome Outcome, string? Error)
@@ -292,7 +336,116 @@ public sealed record LinkCustomerAccountResult(LinkCustomerAccountOutcome Outcom
 
     public static LinkCustomerAccountResult UserAlreadyLinked() =>
         new(LinkCustomerAccountOutcome.UserAlreadyLinked, "Esta conta já está associada a outro cliente.");
+
+    public static LinkCustomerAccountResult CustomerAlreadyLinked() =>
+        new(LinkCustomerAccountOutcome.CustomerAlreadyLinked, "Este cliente já tem outra conta associada.");
+
+    public static LinkCustomerAccountResult SelfLinkRefused() =>
+        new(
+            LinkCustomerAccountOutcome.SelfLinkRefused,
+            "Não pode ligar a sua própria conta a um cliente. Outra pessoa tem de o fazer.");
 }
+
+/// <summary>
+/// Desliga a conta de um Cliente (ADR-055).
+///
+/// <para>
+/// <strong>Não invalida nada do que aquela conta já fez.</strong> Comprovativos
+/// de pagamento e mensagens submetidos pelo portal ficam registados contra o
+/// <em>Cliente</em>, não contra a conta — desligar remove a capacidade de agir
+/// daqui para a frente e não reescreve o passado. Mesma conclusão do ADR-052
+/// para `hr`, e pela mesma razão: o facto gravado nunca foi «a conta A fez».
+/// </para>
+/// </summary>
+public sealed class UnlinkCustomerAccount(ICustomerStore store, IAuditTrail audit, TimeProvider clock)
+{
+    public async Task<UnlinkCustomerAccountResult> ExecuteAsync(
+        Guid customerId,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        var cliente = await store.FindForUpdateAsync(customerId, cancellationToken);
+
+        if (cliente is null)
+        {
+            return UnlinkCustomerAccountResult.NotFound();
+        }
+
+        // Repetível sem erro, e sem encher a trilha.
+        if (cliente.UserId is not { } contaAnterior)
+        {
+            return UnlinkCustomerAccountResult.Success();
+        }
+
+        cliente.LinkToUser(null);
+
+        // Pode não existir episódio: os vínculos anteriores à migração de
+        // retroactivo ficaram cobertos, mas um criado por escrita directa em
+        // base não. Desliga-se na mesma — o campo é a verdade operacional.
+        var episodio = await store.FindOpenAccountLinkAsync(cliente.Id, cancellationToken);
+        episodio?.Close(clock.GetUtcNow(), context.ActorId);
+
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                CommercialAuditActions.CustomerAccountUnlinked,
+                CommercialAuditEntityTypes.Customer,
+                cliente.Id.ToString(),
+                context,
+                PreviousValue: $$"""{"userId":"{{contaAnterior}}"}""",
+                NewValue: null),
+            cancellationToken);
+
+        return UnlinkCustomerAccountResult.Success();
+    }
+}
+
+public enum UnlinkCustomerAccountOutcome
+{
+    Unlinked,
+    NotFound,
+}
+
+public sealed record UnlinkCustomerAccountResult(UnlinkCustomerAccountOutcome Outcome, string? Error)
+{
+    public static UnlinkCustomerAccountResult Success() =>
+        new(UnlinkCustomerAccountOutcome.Unlinked, null);
+
+    public static UnlinkCustomerAccountResult NotFound() =>
+        new(UnlinkCustomerAccountOutcome.NotFound, "Cliente não encontrado.");
+}
+
+/// <summary>
+/// Que contas já puderam agir como este Cliente, e quando (ADR-055).
+/// </summary>
+public sealed class GetCustomerAccountHistory(ICustomerStore store)
+{
+    public async Task<IReadOnlyList<CustomerAccountLinkView>?> ExecuteAsync(
+        Guid customerId,
+        CancellationToken cancellationToken)
+    {
+        // Lista vazia e 404 dizem coisas diferentes: «nunca teve conta» e «não
+        // há tal cliente».
+        if (await store.FindAsync(customerId, cancellationToken) is null)
+        {
+            return null;
+        }
+
+        var episodios = await store.ListAccountLinksAsync(customerId, cancellationToken);
+
+        return [.. episodios.Select(l => new CustomerAccountLinkView(
+            l.UserId, l.LinkedOn, l.LinkedByUserId, l.UnlinkedOn, l.UnlinkedByUserId))];
+    }
+}
+
+/// <param name="LinkedByUserId">Nulo é <strong>desconhecido</strong>, não «ninguém».</param>
+public sealed record CustomerAccountLinkView(
+    Guid UserId,
+    DateTimeOffset LinkedOn,
+    Guid? LinkedByUserId,
+    DateTimeOffset? UnlinkedOn,
+    Guid? UnlinkedByUserId);
 
 /// <summary>
 /// Atribui o vendedor responsável por um cliente (ADR-045) — para quem vai a
@@ -368,6 +521,13 @@ public static class CommercialAuditActions
     public const string CustomerDeactivated = "commercial.customer.deactivated";
     public const string CustomerReactivated = "commercial.customer.reactivated";
     public const string CustomerAccountLinked = "commercial.customer.account_linked";
+
+    /// <summary>
+    /// Uma conta deixou de agir como este cliente (ADR-055). Guarda a conta
+    /// removida em <c>PreviousValue</c>, para uma transferência feita em dois
+    /// passos ficar legível.
+    /// </summary>
+    public const string CustomerAccountUnlinked = "commercial.customer.account_unlinked";
     public const string CustomerOwnerAssigned = "commercial.customer.owner_assigned";
 }
 

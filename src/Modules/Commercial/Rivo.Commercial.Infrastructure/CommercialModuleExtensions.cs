@@ -37,6 +37,8 @@ public static class CommercialModuleExtensions
         services.AddScoped<UpdateCustomer>();
         services.AddScoped<SetCustomerStatus>();
         services.AddScoped<LinkCustomerAccount>();
+        services.AddScoped<UnlinkCustomerAccount>();
+        services.AddScoped<GetCustomerAccountHistory>();
         services.AddScoped<AssignCustomerOwner>();
 
         // Cada módulo regista as policies das suas permissões (ADR-014).

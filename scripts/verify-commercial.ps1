@@ -227,6 +227,124 @@ Test-Case "16. Ligar conta exige a mesma permissao de escrever no cliente" {
     "403 sem commercial.customers.write"
 }
 
+# --- Religar, desligar e historico (ADR-055) --------------------------------
+#
+# Ate 2026-09-05, ligar uma conta a um cliente que ja tinha outra substituia-a
+# EM SILENCIO: o portal mudava de dono sem registo, e a conta anterior perdia
+# o acesso sem explicacao.
+
+Test-Case "16b. Religar por cima e recusado, nao substitui (ADR-055)" {
+    $outraEmail = "cliente-outra-$stamp@rivo-teste.local"
+    $reg = Invoke-RestMethod "$base/identity/register" -Method Post `
+        -Body (@{ email = $outraEmail; password = $pass } | ConvertTo-Json) -ContentType "application/json"
+    $script:outraContaId = $reg.userId
+
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/account" -Method Post `
+            -Body (@{ userId = $script:outraContaId } | ConvertTo-Json) -ContentType "application/json" -Headers $adminHeaders
+    }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+
+    # O vinculo original tem de continuar intacto -- e o que antes nao
+    # acontecia.
+    $intacto = Invoke-Sql "select count(*) from commercial.customer where id='$($script:customerId)' and user_id='$($script:contaUserId)'"
+    if ($intacto -ne "1") { throw "o vinculo original foi substituido" }
+    "409 e o dono do portal nao mudou"
+}
+
+Test-Case "16c. Auto-ligacao recusada com 403 (ADR-055)" {
+    # Quem ligue a propria conta a um cliente passa a poder submeter
+    # comprovativos de pagamento como esse cliente (ADR-044).
+    $adminUserId = Invoke-Sql "select id from [identity].app_user where email='$($dotenv["BOOTSTRAP_ADMIN_EMAIL"])'"
+    $b = @{ name = "Cliente Auto $stamp"; taxId = "77$stamp"; addressDetail = "Rua Z"; city = "Luanda"; country = "AO" } | ConvertTo-Json
+    $alvo = (Invoke-RestMethod "$base/commercial/customers" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders).customerId
+
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/commercial/customers/$alvo/account" -Method Post `
+            -Body (@{ userId = $adminUserId } | ConvertTo-Json) -ContentType "application/json" -Headers $adminHeaders
+    }
+    if ($code -ne 403) { throw "esperado 403, obtido $code" }
+    "403 e nao 409: nao e o estado que impede, e quem pede"
+}
+
+Test-Case "16d. Desligar liberta o cliente e fecha o episodio" {
+    $r = Invoke-WebRequest "$base/commercial/customers/$($script:customerId)/account" -Method Delete `
+        -Headers $adminHeaders -SkipHttpErrorCheck
+    if ($r.StatusCode -ne 204) { throw "esperado 204, obtido $($r.StatusCode)" }
+
+    $livre = Invoke-Sql "select count(*) from commercial.customer where id='$($script:customerId)' and user_id is null"
+    if ($livre -ne "1") { throw "o vinculo nao foi removido" }
+
+    $fechado = Invoke-Sql "select count(*) from commercial.customer_account_link where customer_id='$($script:customerId)' and user_id='$($script:contaUserId)' and unlinked_on is not null"
+    if ($fechado -ne "1") { throw "o episodio nao foi fechado" }
+    "conta desligada e episodio fechado"
+}
+
+Test-Case "16e. Desligar de novo e repetivel; inexistente da 404" {
+    $r = Invoke-WebRequest "$base/commercial/customers/$($script:customerId)/account" -Method Delete `
+        -Headers $adminHeaders -SkipHttpErrorCheck
+    if ($r.StatusCode -ne 204) { throw "esperado 204, obtido $($r.StatusCode)" }
+
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/commercial/customers/$([Guid]::NewGuid())/account" -Method Delete -Headers $adminHeaders
+    }
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+    "204 repetivel; 404 para cliente inexistente"
+}
+
+Test-Case "16f. A conta libertada liga-se a outro cliente" {
+    # A sequencia que corrige um vinculo errado, e a unica que existe desde que
+    # religar por cima passou a ser recusado.
+    $b = @{ name = "Cliente Certo $stamp"; taxId = "88$stamp"; addressDetail = "Rua W"; city = "Luanda"; country = "AO" } | ConvertTo-Json
+    $script:clienteCertoId = (Invoke-RestMethod "$base/commercial/customers" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders).customerId
+
+    Invoke-RestMethod "$base/commercial/customers/$($script:clienteCertoId)/account" -Method Post `
+        -Body (@{ userId = $script:contaUserId } | ConvertTo-Json) -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    $ligado = Invoke-Sql "select count(*) from commercial.customer where id='$($script:clienteCertoId)' and user_id='$($script:contaUserId)'"
+    if ($ligado -ne "1") { throw "a conta libertada nao ligou ao cliente novo" }
+    "desligar e voltar a ligar e o caminho de correccao"
+}
+
+Test-Case "16g. Campo e historico nunca divergem" {
+    $orfaos = Invoke-Sql "select count(*) from commercial.customer c where c.user_id is not null and not exists (select 1 from commercial.customer_account_link l where l.customer_id=c.id and l.user_id=c.user_id and l.unlinked_on is null)"
+    if ($orfaos -ne "0") { throw "$orfaos vinculo(s) activo(s) sem episodio aberto" }
+
+    $fantasmas = Invoke-Sql "select count(*) from commercial.customer_account_link l where l.unlinked_on is null and not exists (select 1 from commercial.customer c where c.id=l.customer_id and c.user_id=l.user_id)"
+    if ($fantasmas -ne "0") { throw "$fantasmas episodio(s) aberto(s) sem vinculo correspondente" }
+    "nenhum vinculo sem episodio, nenhum episodio sem vinculo"
+}
+
+Test-Case "16h. O historico mostra a transferencia dos dois lados" {
+    $h = @(Invoke-RestMethod "$base/commercial/customers/$($script:clienteCertoId)/account-history" -Headers $adminHeaders)
+    if ($h.Count -lt 1) { throw "historico vazio para um cliente com conta" }
+    if ($h[0].userId -ne $script:contaUserId) { throw "o episodio aberto nao e o da conta ligada" }
+    if ($h[0].unlinkedOn) { throw "o episodio deveria estar aberto" }
+
+    # E o cliente anterior mantem o episodio fechado -- a conta saiu de um e
+    # entrou noutro, com registo dos dois lados.
+    $anterior = @(Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/account-history" -Headers $adminHeaders)
+    $fechado = $anterior | Where-Object { $_.userId -eq $script:contaUserId -and $_.unlinkedOn }
+    if (-not $fechado) { throw "o cliente anterior nao mostra o episodio fechado" }
+    "a mesma conta, fechada num cliente e aberta noutro"
+}
+
+Test-Case "16i. Cliente sem conta da lista vazia; inexistente da 404" {
+    $b = @{ name = "Nunca Teve Conta $stamp"; taxId = "99$stamp"; addressDetail = "Rua V"; city = "Luanda"; country = "AO" } | ConvertTo-Json
+    $nunca = (Invoke-RestMethod "$base/commercial/customers" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders).customerId
+
+    # Corpo cru: Invoke-RestMethod devolve $null para array vazio, e @($null)
+    # tem um elemento -- o mesmo engano que ja deu falso positivo no verify-hr.
+    $corpo = (Invoke-WebRequest "$base/commercial/customers/$nunca/account-history" -Headers $adminHeaders).Content
+    if ($corpo.Trim() -ne "[]") { throw "esperado '[]', obtido '$corpo'" }
+
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/commercial/customers/$([Guid]::NewGuid())/account-history" -Headers $adminHeaders
+    }
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+    "lista vazia e 404 dizem coisas diferentes"
+}
+
 Test-Case "17. Atribuir vendedor responsavel a um cliente (ADR-045)" {
     $vendedor = Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
         -Body (@{ fullName = "Vendedor CO $stamp" } | ConvertTo-Json)
@@ -282,13 +400,20 @@ Test-Case "21. Dados sobrevivem ao reinicio da stack" {
     $c = Invoke-RestMethod "$base/commercial/customers/$($script:customerId)" -Headers $adminHeaders
     if ($c.taxId -ne $nif) { throw "cliente perdido ou alterado" }
 
-    $ligado = Invoke-Sql "select count(*) from commercial.customer where id='$($script:customerId)' and user_id='$($script:contaUserId)'"
+    # A conta ja nao esta neste cliente: o caso 16d desligou-a e o 16f ligou-a
+    # ao cliente certo. E onde ela esta agora que tem de sobreviver.
+    $ligado = Invoke-Sql "select count(*) from commercial.customer where id='$($script:clienteCertoId)' and user_id='$($script:contaUserId)'"
     if ($ligado -ne "1") { throw "ligacao da conta perdida apos restart" }
+
+    # E o historico tambem: e o registo de quem pode agir como quem, e
+    # perde-lo no reinicio seria pior do que nao o ter.
+    $episodios = Invoke-Sql "select count(*) from commercial.customer_account_link where user_id='$($script:contaUserId)'"
+    if ([int]$episodios -lt 2) { throw "historico do vinculo perdido: esperados >=2 episodios, encontrados $episodios" }
 
     $atribuido = Invoke-Sql "select count(*) from commercial.customer where id='$($script:customerId)' and assigned_to_employee_id='$($script:vendedorId)'"
     if ($atribuido -ne "1") { throw "vendedor responsavel perdido apos restart" }
 
-    "cliente $nif, ligacao da conta e vendedor responsavel intactos apos restart"
+    "cliente $nif, vendedor responsavel, e $episodios episodios de vinculo intactos apos restart"
 }
 
 Write-Host ""

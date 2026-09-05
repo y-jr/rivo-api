@@ -156,12 +156,14 @@ re-litigação:
       quem o enviasse ficaria convencido de que tinha ligado a conta. O
       vínculo passa a nascer por um único caminho, o do ADR-051. `verify-hr`
       caso 19 prova de ponta a ponta que RH admite e não liga.
-- [ ] **`LinkCustomerAccount` sobrepõe vínculos em silêncio.** Observação
-      levantada ao escrever o ADR-051, não corrigida: ao contrário do
-      equivalente em `hr`, ligar uma conta a um Cliente que já tenha outra
-      substitui-a sem recusar nem distinguir na trilha. Requer
-      `commercial.customers.write` e a consequência é menor do que seria em
-      `hr` — mas é a mesma classe de lacuna.
+- [x] ~~**`LinkCustomerAccount` sobrepõe vínculos em silêncio.**~~ **Resolvido
+      a 2026-09-05 (ADR-055).** Religar por cima dá `409`, auto-ligação dá
+      `403` (quem ligue a própria conta age como o cliente no portal, e pode
+      submeter comprovativos de pagamento em nome dele), e existe desligar e
+      histórico. **Sem permissão dedicada, de propósito:** o argumento do
+      ADR-051 para divergir era específico de `hr`, e a justificação do
+      ADR-043 mantém-se aqui. O retroactivo usa `0001-01-01` como sentinela,
+      porque `commercial.customer` não tem coluna de data nenhuma.
 - [ ] Fonte da taxa de câmbio — candidato: BNA.
 - [ ] Provider de modelos de IA.
 - [x] ~~`fleet` não tem custo de manutenção.~~ **Resolvido a 2026-09-04
