@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testa a camada Application de `hr`, e não o domínio.
+
+    Nasceu a 2026-09-05 com o ADR-051, e a razão é a mesma que criou o
+    equivalente em `approval` no dia anterior: a ligação entre conta e
+    colaborador não tem regra nenhuma no domínio. `Employee.LinkToUser` é um
+    setter — recusar a auto-ligação, recusar religar por cima, e garantir que
+    uma conta serve no máximo um colaborador são todas decisões de
+    orquestração, porque dependem do actor e do armazenamento.
+
+    Um teste de domínio não podia apanhar nenhuma delas. Era exactamente esta
+    a forma da falha do ADR-050.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Hr\Rivo.Hr.Application\Rivo.Hr.Application.csproj" />
+  </ItemGroup>
+
+</Project>

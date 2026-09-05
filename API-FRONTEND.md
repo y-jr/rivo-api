@@ -149,6 +149,7 @@ dos casos de uso e não têm DTO HTTP nomeado.
 |---|---|---|---|
 | `GET /hr/employees` | `hr.employees.read` | Sem corpo | `200` |
 | `POST /hr/employees` | `hr.employees.write` | { fullName, departmentId, userId, hiredOn } | `201` |
+| `POST /hr/employees/{employeeId}/account` | `hr.employees.link_account` | { userId } — **fora do perfil HR** (ADR-051) | `204` |
 | `GET /hr/employees/{employeeId}` | `hr.employees.read` | Sem corpo | `200` |
 | `GET /hr/departments` | `hr.departments.read` | Sem corpo | `200` |
 | `POST /hr/departments` | `hr.departments.write` | { name, managerId } | `201` |

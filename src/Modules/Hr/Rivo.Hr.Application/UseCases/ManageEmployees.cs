@@ -93,10 +93,161 @@ public sealed record HireEmployeeResult(HireEmployeeOutcome Outcome, Guid? Emplo
         new(HireEmployeeOutcome.UserAlreadyLinked, null, "Esta conta já está associada a outro colaborador.");
 }
 
+/// <summary>
+/// Liga uma conta de `identity` a um Colaborador <strong>já admitido</strong>
+/// (ADR-051).
+///
+/// <para>
+/// Antes disto o vínculo só se estabelecia na admissão. Passou a fazer falta
+/// com o ADR-050: <strong>quem decide uma aprovação tem de ter conta
+/// ligada</strong>, e quem já estava admitido sem conta não tinha como ser
+/// ligado sem ser readmitido.
+/// </para>
+///
+/// <para>
+/// <strong>Não é uma operação corrente de RH.</strong> Exige
+/// <c>hr.employees.link_account</c>, que fica fora do perfil HR — criar o
+/// vínculo é conceder, indirectamente, o que o Cargo do colaborador confere,
+/// incluindo autoridade de aprovação. Mesma razão pela qual
+/// <c>hr.positions.write</c> já era só do Admin.
+/// </para>
+///
+/// <para>
+/// ⚠ <strong>Não verifica que a conta existe em `identity`.</strong> Fazê-lo
+/// exigiria uma dependência nova de `hr` para `identity`, que a regra de
+/// fronteiras não deixa introduzir sem justificação — e o precedente é
+/// explícito nos dois lados: nem <see cref="HireEmployee"/> nem
+/// <c>LinkCustomerAccount</c> a verificam. A consequência é um vínculo para
+/// uma conta inexistente: inútil, mas não perigoso — ninguém se autentica com
+/// ela, e ocupa o índice único até ser corrigido.
+/// </para>
+/// </summary>
+public sealed class LinkEmployeeAccount(IHrStore store, IAuditTrail audit)
+{
+    public async Task<LinkEmployeeAccountResult> ExecuteAsync(
+        Guid employeeId,
+        Guid userId,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        // Recusado antes de tocar no armazenamento, e antes de saber sequer se
+        // o colaborador existe: é o caminho de escalada mais directo — ligo a
+        // minha conta a um colaborador com Cargo de aprovação e passo a
+        // decidir. Mesmo princípio do BR-2, ninguém resolve o seu próprio caso.
+        if (context.ActorId is { } actor && actor == userId)
+        {
+            return LinkEmployeeAccountResult.SelfLinkRefused();
+        }
+
+        var colaborador = await store.FindEmployeeAsync(employeeId, cancellationToken);
+
+        if (colaborador is null)
+        {
+            return LinkEmployeeAccountResult.NotFound();
+        }
+
+        // Repetível sem erro: ligar de novo a mesma conta produz o estado
+        // pretendido na mesma. Sai antes de gravar e de auditar, para a trilha
+        // não encher de ligações que não mudaram nada — mesma disciplina de
+        // `DeactivateApprovalPolicy`.
+        if (colaborador.UserId == userId)
+        {
+            return LinkEmployeeAccountResult.Success();
+        }
+
+        // Religar por cima recusa-se em vez de substituir em silêncio. É aqui
+        // que esta rota diverge de `LinkCustomerAccount`, que sobrepõe: no
+        // `commercial` a troca reatribui o acesso ao portal do cliente; aqui
+        // transferia a identidade com que se aprova. Corrigir um vínculo
+        // errado exige desligar primeiro — e desligar ainda não existe, o que
+        // está registado como decisão em aberto.
+        if (colaborador.UserId is not null)
+        {
+            return LinkEmployeeAccountResult.EmployeeAlreadyLinked();
+        }
+
+        // Uma conta liga-se, no máximo, a um colaborador — é o que o Portal do
+        // Colaborador e a resolução de quem decide passaram a confiar (ADR-042,
+        // ADR-050). Primeira linha de defesa; o índice único é a segunda.
+        if (await store.FindEmployeeByUserIdAsync(userId, cancellationToken) is not null)
+        {
+            return LinkEmployeeAccountResult.UserAlreadyLinked();
+        }
+
+        colaborador.LinkToUser(userId);
+
+        await store.SaveChangesAsync(cancellationToken);
+
+        // `NewValue` guarda a conta ligada de propósito: quem investiga uma
+        // decisão de aprovação precisa de saber quando é que aquela conta
+        // passou a poder agir por aquela pessoa, e por ordem de quem.
+        await audit.RecordAsync(
+            new AuditRecord(
+                HrAuditActions.EmployeeAccountLinked,
+                HrAuditEntityTypes.Employee,
+                colaborador.Id.ToString(),
+                context,
+                PreviousValue: null,
+                NewValue: $$"""{"userId":"{{userId}}"}"""),
+            cancellationToken);
+
+        return LinkEmployeeAccountResult.Success();
+    }
+}
+
+public enum LinkEmployeeAccountOutcome
+{
+    Linked,
+    NotFound,
+
+    /// <summary>A conta indicada já está ligada a outro colaborador.</summary>
+    UserAlreadyLinked,
+
+    /// <summary>Este colaborador já tem outra conta ligada.</summary>
+    EmployeeAlreadyLinked,
+
+    /// <summary>
+    /// O actor tentou ligar a conta com que está autenticado. Não é conflito
+    /// de estado — é a segregação de funções, e traduz-se em 403.
+    /// </summary>
+    SelfLinkRefused,
+}
+
+public sealed record LinkEmployeeAccountResult(LinkEmployeeAccountOutcome Outcome, string? Error)
+{
+    public bool Succeeded => Outcome == LinkEmployeeAccountOutcome.Linked;
+
+    public static LinkEmployeeAccountResult Success() =>
+        new(LinkEmployeeAccountOutcome.Linked, null);
+
+    public static LinkEmployeeAccountResult NotFound() =>
+        new(LinkEmployeeAccountOutcome.NotFound, "Colaborador não encontrado.");
+
+    public static LinkEmployeeAccountResult UserAlreadyLinked() =>
+        new(LinkEmployeeAccountOutcome.UserAlreadyLinked, "Esta conta já está associada a outro colaborador.");
+
+    public static LinkEmployeeAccountResult EmployeeAlreadyLinked() =>
+        new(
+            LinkEmployeeAccountOutcome.EmployeeAlreadyLinked,
+            "Este colaborador já tem outra conta associada.");
+
+    public static LinkEmployeeAccountResult SelfLinkRefused() =>
+        new(
+            LinkEmployeeAccountOutcome.SelfLinkRefused,
+            "Não pode ligar a sua própria conta a um colaborador. Outra pessoa tem de o fazer.");
+}
+
 /// <summary>Acções de `hr` registadas na trilha de auditoria.</summary>
 public static class HrAuditActions
 {
     public const string EmployeeHired = "hr.employee.hired";
+
+    /// <summary>
+    /// Uma conta passou a agir em nome de um colaborador (ADR-051). É evento
+    /// de segurança, não administrativo: desde o ADR-050 é este vínculo que
+    /// determina quem pode decidir aprovações.
+    /// </summary>
+    public const string EmployeeAccountLinked = "hr.employee.account_linked";
     public const string DepartmentCreated = "hr.department.created";
     public const string PositionCreated = "hr.position.created";
     public const string PositionAssigned = "hr.position.assigned";

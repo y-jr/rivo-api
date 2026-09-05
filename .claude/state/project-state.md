@@ -132,13 +132,13 @@ linhas. O histórico de como cada número cresceu está em
 | Área | Estado |
 |---|---|
 | Código | **15 módulos** em `src/Modules/` + **5 camadas de composição** em `src/Composition/`. 88 projectos em `src/`, 360 ficheiros C# escritos à mão (≈56 800 linhas), mais ≈31 900 linhas geradas pelo EF Core em 54 migrações |
-| Superfície HTTP | **244 endpoints** em **20 grupos de rota**. Os maiores: `hr` 37, `finance/ledger` 30, `procurement` 19, `inventory` 19, `finance` 18, `payables` 16, `fleet` 16, `identity` 14, `projects` 13 |
-| ADRs | **50**, todos aceites. Os quatro últimos são de 2026-09-04: ADR-047 (Analytics de âmbito reduzido + CSV), ADR-048 (custo de manutenção), ADR-049 (parecer fiscal levanta a trave de produção de `payroll`) e **ADR-050 (quem decide uma aprovação vem do token, não do corpo — corrige falha de segurança)** |
+| Superfície HTTP | **245 endpoints** em **20 grupos de rota**. Os maiores: `hr` 38, `finance/ledger` 30, `procurement` 19, `inventory` 19, `finance` 18, `payables` 16, `fleet` 16, `identity` 14, `projects` 13 |
+| ADRs | **51**, todos aceites. Os quatro últimos: ADR-048 (custo de manutenção), ADR-049 (parecer fiscal levanta a trave de produção de `payroll`), **ADR-050 (quem decide uma aprovação vem do token, não do corpo — corrige falha de segurança)** e **ADR-051 (ligar uma conta a um Colaborador já admitido, com permissão própria fora do perfil HR)**. Os dois últimos são um par: o 050 tornou o vínculo conta↔colaborador o único determinante de quem decide, e o 051 deu-lhe a rota que faltava |
 | Entidades de domínio | **63 ficheiros** em 15 módulos — `finance` 17, `hr` 11, `fleet` 7, `inventory` 5, `projects` 5, `procurement` 4, `fiscal` 4, `approval` 2, `payroll` 2, e um cada em `audit`, `commercial`, `documents`, `identity`, `messaging`, `notifications`. Conta entidades, **não raízes de agregado** — `InventoryCountLine` e `StockMovement`, por exemplo, são filhos e não raízes |
 | Documentação | ≈19 900 linhas de Markdown em `.claude/` — ADRs, módulos, domínio e estado |
-| Perfis de Acesso | **8** — os 7 do documento de produto mais `Cliente` (ADR-043). `Admin` tem **70 permissões**, confirmado por `verify-settings` a 2026-09-04. A autorização dos portais continua por vínculo de identidade, não por permissão — as excepções são `documents.write` (comprovativo de pagamento, ADR-044) e as permissões próprias de `Dashboard` e `Analytics`, concedidas a `Manager` porque o documento de produto o nomeia e ele não tem as permissões dos módulos subjacentes |
-| Testes automatizados | **1 127** em **27 projectos**, todos passam. Por camada: **817 de domínio**, **276 de Application**, 21 de arquitectura, 9 de API, 4 de integração (Testcontainers). A distribuição por módulo é que é desigual — ver "O que não existe" |
-| Verificação end-to-end | **22 suites** PowerShell, **548 casos**, contra a stack real. As maiores: `inventory` 66, `procurement` 58, `fleet` 51, `ledger` 46, `projects` 43. `verify-all.ps1` tolera explicitamente o K20 conhecido (por texto do caso, não por número — já mudou várias vezes) em vez de bloquear o gate inteiro |
+| Perfis de Acesso | **8** — os 7 do documento de produto mais `Cliente` (ADR-043). `Admin` tem **71 permissões**, confirmado em base a 2026-09-05 (a 71.ª é `hr.employees.link_account`, ADR-051). A autorização dos portais continua por vínculo de identidade, não por permissão — as excepções são `documents.write` (comprovativo de pagamento, ADR-044) e as permissões próprias de `Dashboard` e `Analytics`, concedidas a `Manager` porque o documento de produto o nomeia e ele não tem as permissões dos módulos subjacentes |
+| Testes automatizados | **1 136** em **28 projectos**, todos passam. Por camada: **817 de domínio**, **285 de Application**, 21 de arquitectura, 9 de API, 4 de integração (Testcontainers). A distribuição por módulo é que é desigual — ver "O que não existe" |
+| Verificação end-to-end | **22 suites** PowerShell, **556 casos**, contra a stack real. As maiores: `inventory` 66, `procurement` 58, `fleet` 51, `ledger` 46, `projects` 43. `verify-all.ps1` tolera explicitamente o K20 conhecido (por texto do caso, não por número — já mudou várias vezes) em vez de bloquear o gate inteiro |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
@@ -181,18 +181,22 @@ registo já existe e é a conta que chega depois.
   `projects`, `inventory`, `fleet`) ganharam regra de negócio real e projecto
   de teste próprio; nenhum continua marcado ⚠⚠. Ver a secção Módulos e o
   "Seguimento" que cada `modules/*.md` regista.
-- **Cobertura de Application em onze dos quinze módulos.** Só `finance`
-  (162), `identity` (28), `messaging` (23) e `approval` (8) a têm. Os
-  restantes onze — incluindo `hr` e `procurement`, que são dos maiores — só
-  têm testes de domínio e verificação caixa-preta.
+- **Cobertura de Application em dez dos quinze módulos.** Só `finance`
+  (162), `identity` (28), `messaging` (23), `hr` (9) e `approval` (8) a têm.
+  Os restantes dez — incluindo `procurement`, que é dos maiores — só têm
+  testes de domínio e verificação caixa-preta.
 
-  ⚠ **`approval` só a ganhou depois de a lacuna custar uma falha de
-  segurança** (ADR-050, K21): a decisão de quem aprova vinha do corpo do
-  pedido e não era confrontada com o token. Os testes de domínio passavam,
-  porque o domínio recebia o identificador já escolhido e aplicava-lhe as
-  regras correctamente — **o defeito estava em quem escolhia**, que é
-  orquestração. É o argumento mais concreto que este projecto tem para
-  fechar as outras onze.
+  ⚠ **Os dois últimos foram ganhos a reboque de um problema, não por
+  disciplina.** `approval` só a ganhou depois de a lacuna custar uma falha de
+  segurança (ADR-050, K21): a decisão de quem aprova vinha do corpo do pedido
+  e não era confrontada com o token. Os testes de domínio passavam, porque o
+  domínio recebia o identificador já escolhido e aplicava-lhe as regras
+  correctamente — **o defeito estava em quem escolhia**, que é orquestração.
+
+  `hr` ganhou-a no dia seguinte (ADR-051) exactamente pela mesma forma:
+  `Employee.LinkToUser` é um setter, e nenhuma das regras do vínculo vive no
+  domínio. É o argumento mais concreto que este projecto tem para fechar os
+  outros dez — a falha aparece sempre na camada que não está coberta.
 - **Testes de integração** em catorze dos quinze módulos. Só
   `notifications` os tem.
 - **Observabilidade.** Com o Azure fora de cena (ADR-031), o diagnóstico em
@@ -296,7 +300,7 @@ categorias, e vale a pena não as confundir:
 |---|---|
 | **Depende de terceiros** | Domínio para a VPS (desbloqueia TLS, K16 e K17). Certificação AGT. Lista oficial de códigos de isenção — a única que bloqueia algo hoje. DS.120 v1.4 oficial. Plano de contas real, que é do contabilista |
 | **Depende de escolha do utilizador** | Provider de e-mail transaccional (sem ele, `notifications` escreve em log e não envia). Provider de modelos de IA (bloqueia as previsões que o ADR-047 deixou de fora). Fonte da taxa de câmbio. Object storage para `documents`. Mecanismo de reconciliação bancária |
-| **Depende só de código** | Regenerar o `API-FRONTEND.md` (ver "O que não existe" — é a mais accionável). Escrever `modules/messaging.md`. Utilizador de base de dados restrito em vez de `sa`. Observabilidade. Cobertura de Application nos doze módulos sem ela. Activos Fixos em `finance`, desbloqueados pelo ADR-039 e por escrever. Funil comercial (lead, oportunidade, proposta), fora de âmbito desde o ADR-036 |
+| **Depende só de código** | Regenerar o `API-FRONTEND.md` (ver "O que não existe" — é a mais accionável). Escrever `modules/messaging.md`. Utilizador de base de dados restrito em vez de `sa`. Observabilidade. Cobertura de Application nos dez módulos sem ela. Activos Fixos em `finance`, desbloqueados pelo ADR-039 e por escrever. Funil comercial (lead, oportunidade, proposta), fora de âmbito desde o ADR-036 |
 
 **O que esta lista não tem** vale tanto como o que tem: nenhuma reescrita,
 nenhuma fronteira por corrigir, nenhum módulo por refazer. O custo de
@@ -317,9 +321,14 @@ optimista, ownership de dados — foi pago à cabeça.
    aberta, a superfície viaja em claro), e é pré-requisito de qualquer uso
    real.
 4. **Cobertura de Application nos outros módulos** — `finance` tem 162 testes
-   de Application, `identity` 28 e `messaging` 23; os outros doze módulos,
-   nenhum. O próximo que mais custa continua a ser `DecideOnRequest` em
-   `approval`: BR-2, BR-4 e BR-6 vivem lá e só têm cobertura caixa-preta.
+   de Application, `identity` 28, `messaging` 23, `hr` 9 e `approval` 8; os
+   outros dez módulos, nenhum.
+
+   Os dois últimos da lista entraram a reboque de problemas concretos
+   (ADR-050 e ADR-051), não por plano — e é esse o padrão a inverter. O
+   próximo que mais custa é `procurement`: é dos maiores, submete pedidos a
+   `approval`, e o 3-way match é orquestração pura sobre três agregados que o
+   domínio não vê em conjunto.
 5. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
    vendas a balcão saem com um marcador visível. Precisa de fonte primária.
 6. **A falha intermitente de limpeza de política, K20.** Três investigações,
