@@ -6,17 +6,60 @@ using Rivo.Hr.Contracts;
 
 namespace Rivo.Commercial.Application.UseCases;
 
+/// <summary>
+/// A lista de clientes, como <strong>vista própria do módulo</strong> e não
+/// como o contrato publicado.
+///
+/// <para>
+/// A diferença é <c>UserId</c>. <see cref="CustomerReference"/> não o expõe, e
+/// não deve: é o contrato que outros módulos lêem (ADR-010), e a que conta age
+/// como um cliente não lhes diz respeito. Mas a vista de administração precisa
+/// de o mostrar — desde o ADR-055 é o que distingue um cliente com acesso ao
+/// portal de um sem.
+/// </para>
+///
+/// <para>
+/// Mesmo desenho de `hr`, onde <c>GET /hr/employees</c> devolve
+/// <c>EmployeeView</c> (com <c>UserId</c>) e <c>GET /hr/employees/{id}</c>
+/// devolve <c>EmployeeReference</c> (sem). O módulo pode mostrar de si mais do
+/// que publica aos outros.
+/// </para>
+/// </summary>
 public sealed class ListCustomers(ICustomerStore store)
 {
-    public async Task<IReadOnlyList<CustomerReference>> ExecuteAsync(
+    public async Task<IReadOnlyList<CustomerListItem>> ExecuteAsync(
         bool includeInactive,
         CancellationToken cancellationToken)
     {
         var clientes = await store.ListAsync(includeInactive, cancellationToken);
 
-        return [.. clientes.Select(CustomerDirectory.ToReference)];
+        return [.. clientes.Select(c => new CustomerListItem(
+            c.Id,
+            c.Name,
+            c.TaxId,
+            c.Status.ToString(),
+            c.BillingAddress.City,
+            c.BillingAddress.Country,
+            c.UserId,
+            c.AssignedToEmployeeId))];
     }
 }
+
+/// <param name="Status">
+/// Como texto, ao contrário de <see cref="CustomerReference"/>, que o serializa
+/// como inteiro do enum. Uma vista de administração não deve obrigar quem a lê
+/// a saber que <c>0</c> é <c>Active</c>.
+/// </param>
+/// <param name="UserId">A conta que age como este cliente no portal, se houver.</param>
+public sealed record CustomerListItem(
+    Guid CustomerId,
+    string Name,
+    string TaxId,
+    string Status,
+    string City,
+    string Country,
+    Guid? UserId,
+    Guid? AssignedToEmployeeId);
 
 public sealed class GetCustomer(ICustomerStore store)
 {
