@@ -172,6 +172,7 @@
     <Project Path="tests/Modules/Hr/Rivo.Hr.Domain.Tests/Rivo.Hr.Domain.Tests.csproj" />
     <Project Path="tests/Modules/Hr/Rivo.Hr.Application.Tests/Rivo.Hr.Application.Tests.csproj" />
     <Project Path="tests/Modules/Commercial/Rivo.Commercial.Application.Tests/Rivo.Commercial.Application.Tests.csproj" />
+    <Project Path="tests/Modules/Procurement/Rivo.Procurement.Application.Tests/Rivo.Procurement.Application.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/Approval/">
     <Project Path="tests/Modules/Approval/Rivo.Approval.Application.Tests/Rivo.Approval.Application.Tests.csproj" />
