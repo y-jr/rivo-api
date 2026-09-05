@@ -133,11 +133,11 @@ linhas. O histórico de como cada número cresceu está em
 |---|---|
 | Código | **15 módulos** em `src/Modules/` + **5 camadas de composição** em `src/Composition/`. 88 projectos em `src/`, 360 ficheiros C# escritos à mão (≈56 800 linhas), mais ≈31 900 linhas geradas pelo EF Core em 54 migrações |
 | Superfície HTTP | **249 endpoints** em **20 grupos de rota**. Os maiores: `hr` 40, `finance/ledger` 30, `procurement` 19, `inventory` 19, `finance` 18, `payables` 16, `fleet` 16, `identity` 14, `projects` 13 |
-| ADRs | **55**, todos aceites. Os cinco últimos: **ADR-050 (quem decide uma aprovação vem do token, não do corpo — corrige falha de segurança)**, **ADR-051 (ligar uma conta a um Colaborador já admitido, com permissão própria fora do perfil HR)**, **ADR-052 (desligar, e as decisões já tomadas continuam válidas)** , **ADR-053 (histórico do vínculo, sem tocar no caminho que decide)** , **ADR-054 (a admissão deixa de criar vínculos)** e **ADR-055 (o mesmo tratamento ao vínculo conta↔cliente)**. Os seis são uma linha só: o 050 tornou o vínculo conta↔colaborador o único determinante de quem decide, o 051 deu-lhe a rota que faltava, o 052 deu-lhe a saída, o 053 deu-lhe memória, o 054 deixou-lhe um único caminho de entrada, e o 055 levou o mesmo desenho ao `commercial`. Cada um foi aberto pelo anterior |
+| ADRs | **56**, todos aceites. Os cinco últimos: **ADR-050 (quem decide uma aprovação vem do token, não do corpo — corrige falha de segurança)**, **ADR-051 (ligar uma conta a um Colaborador já admitido, com permissão própria fora do perfil HR)**, **ADR-052 (desligar, e as decisões já tomadas continuam válidas)** , **ADR-053 (histórico do vínculo, sem tocar no caminho que decide)** , **ADR-054 (a admissão deixa de criar vínculos)** e **ADR-055 (o mesmo tratamento ao vínculo conta↔cliente)**. Os seis são uma linha só: o 050 tornou o vínculo conta↔colaborador o único determinante de quem decide, o 051 deu-lhe a rota que faltava, o 052 deu-lhe a saída, o 053 deu-lhe memória, o 054 deixou-lhe um único caminho de entrada, e o 055 levou o mesmo desenho ao `commercial`. Cada um foi aberto pelo anterior |
 | Entidades de domínio | **65 ficheiros** em 15 módulos — `finance` 17, `hr` 12, `fleet` 7, `inventory` 5, `projects` 5, `procurement` 4, `fiscal` 4, `approval` 2, `payroll` 2, `commercial` 2, e um cada em `audit`, `documents`, `identity`, `messaging`, `notifications`. Conta entidades, **não raízes de agregado** — `InventoryCountLine` e `StockMovement`, por exemplo, são filhos e não raízes |
 | Documentação | ≈19 900 linhas de Markdown em `.claude/` — ADRs, módulos, domínio e estado |
 | Perfis de Acesso | **8** — os 7 do documento de produto mais `Cliente` (ADR-043). `Admin` tem **71 permissões**, confirmado em base a 2026-09-05 (a 71.ª é `hr.employees.link_account`, ADR-051). A autorização dos portais continua por vínculo de identidade, não por permissão — as excepções são `documents.write` (comprovativo de pagamento, ADR-044) e as permissões próprias de `Dashboard` e `Analytics`, concedidas a `Manager` porque o documento de produto o nomeia e ele não tem as permissões dos módulos subjacentes |
-| Testes automatizados | **1 216** em **31 projectos**, todos passam. Por camada: **830 de domínio**, **352 de Application**, 21 de arquitectura, 9 de API, 4 de integração (Testcontainers). A distribuição por módulo é que é desigual — ver "O que não existe" |
+| Testes automatizados | **1 235** em **32 projectos**, todos passam. Por camada: **830 de domínio**, **371 de Application**, 21 de arquitectura, 9 de API, 4 de integração (Testcontainers). A distribuição por módulo é que é desigual — ver "O que não existe" |
 | Verificação end-to-end | **22 suites** PowerShell, **575 casos**, contra a stack real. As maiores: `inventory` 66, `procurement` 58, `fleet` 51, `ledger` 46, `projects` 43. `verify-all.ps1` tolera explicitamente o K20 conhecido (por texto do caso, não por número — já mudou várias vezes) em vez de bloquear o gate inteiro |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
@@ -181,10 +181,18 @@ registo já existe e é a conta que chega depois.
   `projects`, `inventory`, `fleet`) ganharam regra de negócio real e projecto
   de teste próprio; nenhum continua marcado ⚠⚠. Ver a secção Módulos e o
   "Seguimento" que cada `modules/*.md` regista.
-- **Cobertura de Application em sete dos quinze módulos.** Só `finance`
+- **Cobertura de Application em nove dos quinze módulos.** Só `finance`
   (162), `identity` (28), `hr` (25), `procurement` (24), `messaging` (23),
-  `inventory` (16), `commercial` (11) e `approval` (8) a têm. Os restantes
-  sete só têm testes de domínio e verificação caixa-preta.
+  `inventory` (16), `fleet` (19), `commercial` (11) e `approval` (8) a têm. Os
+  restantes seis só têm testes de domínio e verificação caixa-preta.
+
+  ⚠ **Em `fleet`, o critério apontou para o sítio errado e corrigiu-se no
+  levantamento.** A previsão era que as somas por período fossem o alvo, pela
+  mesma forma da valorização de `inventory`. Não são: `FleetActivityOverview`
+  é passagem directa para o armazenamento, e a lógica vive no SQL — testá-lo
+  nesta camada seria testar uma delegação. O que lá estava era outra coisa: a
+  janela de planos por vencer, o custo opcional do ADR-048 a ser serializado à
+  mão para a trilha, e a verificação de colaborador em `hr`.
 
   `procurement` e `inventory` foram **os primeiros a ganhá-la por decisão, e
   não a reboque de um defeito** — os três anteriores vieram dos ADR-050, 053 e
@@ -330,8 +338,8 @@ optimista, ownership de dados — foi pago à cabeça.
    real.
 4. **Cobertura de Application nos outros módulos** — `finance` tem 162 testes
    de Application, `identity` 28, `hr` 25, `procurement` 24, `messaging` 23,
-   `inventory` 16, `commercial` 11 e `approval` 8; os outros sete módulos,
-   nenhum.
+   `inventory` 16, `fleet` 19, `commercial` 11 e `approval` 8; os outros seis
+   módulos, nenhum.
 
    Os de `approval`, `hr` e `commercial` entraram a reboque de problemas
    concretos (ADR-050, 053 e 055), não por plano. **`procurement` e
@@ -340,9 +348,14 @@ optimista, ownership de dados — foi pago à cabeça.
    procurar o que uma operação isolada não vê — o conjunto acumulado, ou outro
    agregado.
 
-   O próximo com a mesma forma é `fleet`, onde as despesas e o custo de
-   manutenção se somam por período, e a seguir `projects`, onde as horas e os
-   custos se acumulam por projecto. Nenhum tem cobertura desta camada.
+   `fleet` seguiu, e ensinou uma correcção ao critério: **procurar a forma não
+   dispensa ler o código.** As somas por período de `fleet` pareciam o alvo
+   óbvio e não eram — delegam para o SQL. O que valia a pena estava noutro
+   sítio do mesmo módulo.
+
+   O próximo é `projects`, onde as horas e os custos se acumulam por projecto —
+   com a ressalva acima: confirmar onde a soma vive antes de escrever o
+   primeiro teste.
 5. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
    vendas a balcão saem com um marcador visível. Precisa de fonte primária.
 6. **A falha intermitente de limpeza de política, K20.** Três investigações,

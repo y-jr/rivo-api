@@ -62,7 +62,7 @@ public sealed class AssignVehicle(IVehicleStore store, IEmployeeDirectory employ
                 FleetAuditEntityTypes.Assignment,
                 atribuicao.Id.ToString(),
                 context,
-                NewValue: $$"""{"vehicleId":"{{vehicleId}}","employeeId":"{{employeeId}}","startedOn":"{{startedOn}}"}"""),
+                NewValue: $$"""{"vehicleId":"{{vehicleId}}","employeeId":"{{employeeId}}","startedOn":"{{startedOn:yyyy-MM-dd}}"}"""),
             cancellationToken);
 
         return AssignVehicleResult.Success(atribuicao.Id);
@@ -139,7 +139,7 @@ public sealed class EndVehicleAssignment(IVehicleStore store, IAuditTrail audit)
                 FleetAuditEntityTypes.Assignment,
                 assignmentId.ToString(),
                 context,
-                NewValue: $$"""{"endedOn":"{{endedOn}}"}"""),
+                NewValue: $$"""{"endedOn":"{{endedOn:yyyy-MM-dd}}"}"""),
             cancellationToken);
 
         return AssignmentLifecycleOutcome.Ended;

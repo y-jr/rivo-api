@@ -45,7 +45,7 @@ public sealed class AddMilestone(IProjectStore store, IAuditTrail audit)
                 ProjectsAuditEntityTypes.Milestone,
                 marco.Id.ToString(),
                 context,
-                NewValue: $$"""{"projectId":"{{projectId}}","name":"{{marco.Name}}","targetDate":"{{marco.TargetDate}}"}"""),
+                NewValue: $$"""{"projectId":"{{projectId}}","name":"{{marco.Name}}","targetDate":"{{marco.TargetDate:yyyy-MM-dd}}"}"""),
             cancellationToken);
 
         return AddMilestoneResult.Success(marco.Id);
@@ -122,7 +122,7 @@ public sealed class ReachMilestone(IProjectStore store, IAuditTrail audit)
                 ProjectsAuditEntityTypes.Milestone,
                 milestoneId.ToString(),
                 context,
-                NewValue: $$"""{"reachedOn":"{{reachedOn}}"}"""),
+                NewValue: $$"""{"reachedOn":"{{reachedOn:yyyy-MM-dd}}"}"""),
             cancellationToken);
 
         return ReachMilestoneOutcome.Reached;
