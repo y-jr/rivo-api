@@ -47,7 +47,7 @@ public sealed class SchedulePlan(IVehicleStore store, IAuditTrail audit)
                 FleetAuditEntityTypes.MaintenancePlan,
                 plano.Id.ToString(),
                 context,
-                NewValue: $$"""{"vehicleId":"{{vehicleId}}","intervalDays":{{plano.IntervalDays}},"nextDueOn":"{{plano.NextDueOn}}"}"""),
+                NewValue: $$"""{"vehicleId":"{{vehicleId}}","intervalDays":{{plano.IntervalDays}},"nextDueOn":"{{plano.NextDueOn:yyyy-MM-dd}}"}"""),
             cancellationToken);
 
         return SchedulePlanResult.Success(plano.Id);
@@ -115,7 +115,7 @@ public sealed class CompletePlanCycle(IVehicleStore store, IAuditTrail audit)
                 FleetAuditEntityTypes.MaintenancePlan,
                 planId.ToString(),
                 context,
-                NewValue: $$"""{"completedOn":"{{completedOn}}","nextDueOn":"{{plano.NextDueOn}}"}"""),
+                NewValue: $$"""{"completedOn":"{{completedOn:yyyy-MM-dd}}","nextDueOn":"{{plano.NextDueOn:yyyy-MM-dd}}"}"""),
             cancellationToken);
 
         return PlanLifecycleOutcome.Applied;
