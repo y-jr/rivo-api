@@ -140,12 +140,15 @@ re-litigação:
       indirectamente quem aprova. Auto-ligação recusada com 403; religar por
       cima recusado com 409. Verificado: `gestor@rivo.ao` passou de 403 para
       200 em `/portal/me`.
-- [ ] **Desligar uma conta de um Colaborador.** Aberto pelo ADR-051: um
-      vínculo errado só se corrige hoje em base de dados. Desligar é tão
-      sensível como ligar, e a pergunta de domínio é o que acontece às
-      decisões de aprovação já tomadas por aquela conta — continuam válidas
-      (foram tomadas por quem detinha o vínculo à data) ou passam a estar em
-      questão? **Depende do utilizador, não da técnica.**
+- [x] ~~**Desligar uma conta de um Colaborador.**~~ **Resolvido a 2026-09-05
+      (ADR-052).** `DELETE /hr/employees/{employeeId}/account`, mesma
+      permissão de ligar. A pergunta de domínio tinha resposta no código e não
+      no gosto: `ApprovalDecision` guarda `DecidedByEmployeeId`, nunca a
+      conta — o facto gravado é «o colaborador X decidiu». Desligar não reabre
+      decisão nenhuma, só remove a capacidade de agir daqui para a frente.
+      Assumido que isto torna o 409 de religação contornável em dois passos;
+      o par de registos na trilha nomeia a conta dos dois lados e torna a
+      transferência legível.
 - [ ] **A admissão continua a aceitar `userId` com `hr.employees.write`.**
       Assimetria conhecida e deliberada do ADR-051: o perfil HR não pode
       reatribuir um vínculo, mas pode criar um **na admissão**. Fechar isso

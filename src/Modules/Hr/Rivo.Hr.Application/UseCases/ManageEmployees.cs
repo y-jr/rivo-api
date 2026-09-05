@@ -237,6 +237,97 @@ public sealed record LinkEmployeeAccountResult(LinkEmployeeAccountOutcome Outcom
             "Não pode ligar a sua própria conta a um colaborador. Outra pessoa tem de o fazer.");
 }
 
+/// <summary>
+/// Desliga a conta de um Colaborador (ADR-052).
+///
+/// <para>
+/// <strong>As decisões de aprovação já tomadas continuam válidas</strong>, e
+/// isso não é uma escolha de política — é o que o modelo já dizia.
+/// <c>ApprovalDecision</c> guarda <c>DecidedByEmployeeId</c>: o facto gravado
+/// é «o colaborador X decidiu», nunca «a conta A decidiu». Desligar a conta
+/// não altera quem a pessoa era nem que ela decidiu. Só remove a capacidade
+/// de agir <em>daqui para a frente</em>.
+/// </para>
+///
+/// <para>
+/// ⚠ <strong>Torna o 409 de <see cref="LinkEmployeeAccount"/> contornável em
+/// dois passos.</strong> Quem tiver a permissão pode desligar e voltar a
+/// ligar outra conta, conseguindo a transferência que numa só chamada é
+/// recusada. Isto é aceite conscientemente: o que a recusa numa chamada
+/// impede é a substituição <em>silenciosa</em>, não a deliberada. Dois passos
+/// deixam dois registos na trilha, e o do desligar nomeia a conta anterior em
+/// <c>PreviousValue</c> — a transferência fica legível, que é o que se quer
+/// de uma acção legítima e o que denuncia uma ilegítima.
+/// </para>
+///
+/// <para>
+/// Não verifica se o colaborador é aprovador de algum pedido em curso. Fazê-lo
+/// exigiria que `hr` visse `approval`, e `hr` define o seu próprio port
+/// (<c>IHrApprovalSubmission</c>) precisamente para o ciclo não se formar. O
+/// risco — um passo de aprovação cujo aprovador não tem conta — já existe sem
+/// isto, porque um colaborador pode ser aprovador sem nunca ter tido conta.
+/// </para>
+/// </summary>
+public sealed class UnlinkEmployeeAccount(IHrStore store, IAuditTrail audit)
+{
+    public async Task<UnlinkEmployeeAccountResult> ExecuteAsync(
+        Guid employeeId,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        var colaborador = await store.FindEmployeeAsync(employeeId, cancellationToken);
+
+        if (colaborador is null)
+        {
+            return UnlinkEmployeeAccountResult.NotFound();
+        }
+
+        // Repetível sem erro, e sem encher a trilha: desligar quem já está
+        // desligado produz o estado pretendido na mesma.
+        if (colaborador.UserId is not { } contaAnterior)
+        {
+            return UnlinkEmployeeAccountResult.Success();
+        }
+
+        // Sem restrição de auto-desligamento, ao contrário da ligação.
+        // Desligar é estritamente uma perda de capacidade, e não encadeia em
+        // escalada: para se voltar a ligar a outro colaborador seria preciso
+        // ligar a própria conta, que continua recusado.
+        colaborador.LinkToUser(null);
+
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                HrAuditActions.EmployeeAccountUnlinked,
+                HrAuditEntityTypes.Employee,
+                colaborador.Id.ToString(),
+                context,
+                PreviousValue: $$"""{"userId":"{{contaAnterior}}"}""",
+                NewValue: null),
+            cancellationToken);
+
+        return UnlinkEmployeeAccountResult.Success();
+    }
+}
+
+public enum UnlinkEmployeeAccountOutcome
+{
+    Unlinked,
+    NotFound,
+}
+
+public sealed record UnlinkEmployeeAccountResult(UnlinkEmployeeAccountOutcome Outcome, string? Error)
+{
+    public bool Succeeded => Outcome == UnlinkEmployeeAccountOutcome.Unlinked;
+
+    public static UnlinkEmployeeAccountResult Success() =>
+        new(UnlinkEmployeeAccountOutcome.Unlinked, null);
+
+    public static UnlinkEmployeeAccountResult NotFound() =>
+        new(UnlinkEmployeeAccountOutcome.NotFound, "Colaborador não encontrado.");
+}
+
 /// <summary>Acções de `hr` registadas na trilha de auditoria.</summary>
 public static class HrAuditActions
 {
@@ -248,6 +339,13 @@ public static class HrAuditActions
     /// determina quem pode decidir aprovações.
     /// </summary>
     public const string EmployeeAccountLinked = "hr.employee.account_linked";
+
+    /// <summary>
+    /// Uma conta deixou de agir em nome de um colaborador (ADR-052). Guarda a
+    /// conta removida em <c>PreviousValue</c>: é o que torna legível uma
+    /// transferência feita em dois passos, desligar seguido de ligar.
+    /// </summary>
+    public const string EmployeeAccountUnlinked = "hr.employee.account_unlinked";
     public const string DepartmentCreated = "hr.department.created";
     public const string PositionCreated = "hr.position.created";
     public const string PositionAssigned = "hr.position.assigned";

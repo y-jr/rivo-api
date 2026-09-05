@@ -34,6 +34,13 @@ public static class HrModuleEndpoints
         group.MapPost("/employees/{employeeId:guid}/account", LinkEmployeeAccountAsync)
             .RequireAuthorization(HrPermissions.EmployeesLinkAccount);
 
+        // Desligar (ADR-052). Mesma permissão de ligar: desligar é uma perda
+        // de capacidade, não um ganho, e exigir mais do que para ligar
+        // atrasaria a correcção de um vínculo errado — que é resposta a
+        // incidente, não operação de rotina.
+        group.MapDelete("/employees/{employeeId:guid}/account", UnlinkEmployeeAccountAsync)
+            .RequireAuthorization(HrPermissions.EmployeesLinkAccount);
+
         group.MapGet("/departments", ListDepartmentsAsync)
             .RequireAuthorization(HrPermissions.DepartmentsRead);
 
@@ -267,6 +274,27 @@ public static class HrModuleEndpoints
             // pedir**. Mesma distinção que `approval` faz para BR-2 e BR-4.
             LinkEmployeeAccountOutcome.SelfLinkRefused =>
                 Results.Problem(result.Error, statusCode: StatusCodes.Status403Forbidden),
+
+            _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
+        };
+    }
+
+    private static async Task<IResult> UnlinkEmployeeAccountAsync(
+        Guid employeeId,
+        UnlinkEmployeeAccount unlinkAccount,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await unlinkAccount.ExecuteAsync(
+            employeeId, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            // Desligar quem já está desligado devolve o mesmo: o estado
+            // pretendido verifica-se nos dois casos.
+            UnlinkEmployeeAccountOutcome.Unlinked => Results.NoContent(),
+
+            UnlinkEmployeeAccountOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
 
             _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
         };
