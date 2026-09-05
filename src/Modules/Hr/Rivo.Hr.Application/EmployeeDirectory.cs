@@ -116,7 +116,7 @@ public sealed class EmployeeDirectory(IHrStore store, HireEmployee hire) : IEmpl
         }
 
         var result = await hire.ExecuteAsync(
-            fullName, departmentId, userId: null, hiredOn,
+            fullName, departmentId, hiredOn,
             new AuditContext(actorId, null, null), cancellationToken);
 
         return result.Outcome switch

@@ -318,8 +318,13 @@ Test-Case "16. Atribuir vendedor responsavel; a proxima mensagem notifica-o (ADR
     Invoke-RestMethod "$base/identity/users/$($script:vendedorUserId)/roles" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
 
     $emp = Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-        -Body (@{ fullName = "Vendedor CP $stamp"; userId = $script:vendedorUserId } | ConvertTo-Json)
+        -Body (@{ fullName = "Vendedor CP $stamp" } | ConvertTo-Json)
     $script:vendedorEmployeeId = $emp.employeeId
+
+    # Passo proprio desde o ADR-054: a admissao ja nao aceita userId.
+    Invoke-RestMethod "$base/hr/employees/$($script:vendedorEmployeeId)/account" -Method Post `
+        -ContentType "application/json" -Headers $adminHeaders `
+        -Body (@{ userId = $script:vendedorUserId } | ConvertTo-Json) | Out-Null
 
     $b = @{ employeeId = $script:vendedorEmployeeId } | ConvertTo-Json
     Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/owner" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null

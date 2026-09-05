@@ -149,12 +149,13 @@ re-litigação:
       Assumido que isto torna o 409 de religação contornável em dois passos;
       o par de registos na trilha nomeia a conta dos dois lados e torna a
       transferência legível.
-- [ ] **A admissão continua a aceitar `userId` com `hr.employees.write`.**
-      Assimetria conhecida e deliberada do ADR-051: o perfil HR não pode
-      reatribuir um vínculo, mas pode criar um **na admissão**. Fechar isso
-      partiria o fluxo de admissão e as suites que dele dependem. Decidir se
-      a admissão deve deixar de aceitar `userId`, passando o vínculo a ser
-      sempre um segundo passo.
+- [x] ~~**A admissão continua a aceitar `userId` com `hr.employees.write`.**~~
+      **Resolvido a 2026-09-05 (ADR-054).** `POST /hr/employees` deixou de
+      aceitar `userId`, e enviá-lo dá `400` — recusado e não ignorado, porque
+      apagar o campo do DTO faria o desserializador descartá-lo em silêncio e
+      quem o enviasse ficaria convencido de que tinha ligado a conta. O
+      vínculo passa a nascer por um único caminho, o do ADR-051. `verify-hr`
+      caso 19 prova de ponta a ponta que RH admite e não liga.
 - [ ] **`LinkCustomerAccount` sobrepõe vínculos em silêncio.** Observação
       levantada ao escrever o ADR-051, não corrigida: ao contrário do
       equivalente em `hr`, ligar uma conta a um Cliente que já tenha outra

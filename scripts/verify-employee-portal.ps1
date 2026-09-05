@@ -80,9 +80,15 @@ Test-Case "4. Colaborador com conta ligada ve o seu proprio perfil" {
     $b = @{ email = $script:ownEmail; password = $pass } | ConvertTo-Json
     $script:ownUserId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
 
-    $b = @{ fullName = "Colaborador Portal $stamp"; departmentId = $script:deptId; userId = $script:ownUserId } | ConvertTo-Json
+    $b = @{ fullName = "Colaborador Portal $stamp"; departmentId = $script:deptId } | ConvertTo-Json
     $script:ownEmployeeId = (Invoke-RestMethod "$base/hr/employees" -Method Post -Body $b -ContentType "application/json" -Headers $hrHeaders).employeeId
     if (-not $script:ownEmployeeId) { throw "colaborador nao foi criado" }
+
+    # Ligacao em passo proprio desde o ADR-054, e com cabecalhos de Admin: RH
+    # admite mas nao liga -- a permissao esta fora do perfil de proposito.
+    Invoke-RestMethod "$base/hr/employees/$($script:ownEmployeeId)/account" -Method Post `
+        -Body (@{ userId = $script:ownUserId } | ConvertTo-Json) -ContentType "application/json" `
+        -Headers $adminHeaders | Out-Null
 
     $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
     $perfil = Invoke-RestMethod "$base/portal/me" -Headers $ownHeaders
