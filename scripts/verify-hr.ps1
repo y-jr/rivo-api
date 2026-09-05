@@ -565,15 +565,19 @@ Test-Case "38. Perfil HR nao ve o historico de contas" {
     "o mapa conta<->pessoa e informacao de seguranca, nao de organograma"
 }
 
-Test-Case "39. Retroactivo cobriu os vinculos anteriores a migracao" {
-    # Episodios sem autor sao os que a migracao criou: o vinculo existia antes
-    # de haver quem o registasse, e NULL le-se como desconhecido.
-    $retroactivos = Invoke-Sql "select count(*) from hr.employee_account_link where linked_by_user_id is null"
-    if ([int]$retroactivos -lt 1) { throw "nenhum episodio retroactivo -- a migracao nao correu?" }
-    "$retroactivos episodio(s) sem autor conhecido, como esperado"
-}
+# Nao ha caso para "o retroactivo correu".
+#
+# Houve um, e estava errado: afirmava que existiam episodios sem autor, o que
+# so e verdade numa base que ja existia antes da migracao. Em CI a base nasce
+# vazia -- nao ha nada para retroagir, e todos os episodios tem autor porque
+# foram criados pelo codigo. O caso afirmava o estado de uma maquina, nao uma
+# propriedade do sistema, e falhou no primeiro ambiente limpo.
+#
+# O que importa do retroactivo ja esta no caso 34: nenhum vinculo activo sem
+# episodio aberto. Essa invariante vale nas duas situacoes, e e ela que diz se
+# a migracao fez o que devia.
 
-Test-Case "40. Dados sobrevivem ao reinicio da stack" {
+Test-Case "39. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)

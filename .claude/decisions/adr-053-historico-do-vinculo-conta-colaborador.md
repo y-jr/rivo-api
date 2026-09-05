@@ -107,6 +107,21 @@ por isso que essa invariante passou a ser caso de verificação permanente, e
 É a mesma forma da falha do ADR-050 outra vez: o defeito não estava numa regra,
 estava em **um dos caminhos não a aplicar**.
 
+### E um erro de teste, que o CI apanhou
+
+Houve um caso de verificação a mais, «o retroactivo correu», que afirmava
+existirem episódios sem autor. Passava na máquina de desenvolvimento e falhou
+no primeiro ambiente limpo — porque numa base que nasce vazia não há nada para
+retroagir, e todos os episódios têm autor por terem sido criados pelo código.
+
+O caso afirmava o estado de uma máquina, não uma propriedade do sistema. Foi
+removido, e não substituído: o que importa do retroactivo já está na invariante
+«nenhum vínculo activo sem episódio aberto», que vale nas duas situações e é
+ela que diz se a migração fez o que devia.
+
+Fica registado porque é um modo de falha fácil de repetir — uma verificação que
+depende de dados acumulados localmente parece mais forte do que é.
+
 ### O que isto não resolve
 
 Não fecha o buraco de dois passos do ADR-052 — desligar e voltar a ligar
@@ -119,7 +134,7 @@ vínculos em silêncio. Fica como estava: decisão em aberto.
 
 ### Números
 
-- `verify-hr`: 34 → **40 casos**
+- `verify-hr`: 34 → **39 casos**
 - `Rivo.Hr.Application.Tests`: 15 → **25**; `Rivo.Hr.Domain.Tests`: 129 → **136**
 - **1159 testes** em 28 projectos
 - **247 endpoints**
