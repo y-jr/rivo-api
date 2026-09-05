@@ -4,19 +4,20 @@ using Rivo.Hr.Application.UseCases;
 namespace Rivo.Hr.Application.Tests;
 
 /// <summary>
-/// Admissão, e o que ela faz ao histórico do vínculo (ADR-053).
+/// Admissão.
 ///
 /// <para>
-/// Estes testes nasceram de um defeito. O histórico foi acrescentado a
-/// <c>LinkEmployeeAccount</c> e esquecido em <c>HireEmployee</c> — e o vínculo
-/// pode nascer pelos dois caminhos. Quem fosse admitido já com conta ficava
-/// fora do histórico, que é pior do que não haver histórico: parece uma
-/// resposta completa.
+/// Estes testes nasceram de um defeito — o histórico do vínculo tinha sido
+/// acrescentado a <c>LinkEmployeeAccount</c> e esquecido aqui (ADR-053) — e
+/// mudaram de propósito no dia seguinte, quando o ADR-054 tirou o
+/// <c>userId</c> da admissão. Passaram de «admitir com conta abre um episódio»
+/// a <strong>«admitir não cria vínculo nenhum»</strong>, que é a garantia que
+/// interessa agora.
 /// </para>
 ///
 /// <para>
-/// Apanhou-o a verificação end-to-end, não o compilador nem os testes — porque
-/// nada obrigava os dois caminhos a concordar. Estes testes passam a obrigar.
+/// A conversão é o próprio argumento do ADR-054: o defeito só era possível
+/// porque o vínculo podia nascer por dois caminhos. Passou a nascer por um.
 /// </para>
 /// </summary>
 public class HireEmployeeTests
@@ -26,83 +27,83 @@ public class HireEmployeeTests
     private static AuditContext Actor(Guid quem) => new(quem, null, null);
 
     [Fact]
-    public async Task Admitir_Com_Conta_Abre_Um_Episodio()
+    public async Task Admitir_Cria_Colaborador_Sem_Conta()
     {
         var store = new FakeHrStore();
-        var conta = Guid.NewGuid();
-        var quem = Guid.NewGuid();
 
         var resultado = await new HireEmployee(store, new FakeAuditTrail()).ExecuteAsync(
-            "Ana Bento", departmentId: null, conta, Admissao, Actor(quem), CancellationToken.None);
+            "Ana Bento", departmentId: null, Admissao, Actor(Guid.NewGuid()), CancellationToken.None);
 
         Assert.True(resultado.Succeeded);
-
-        var episodio = Assert.Single(store.Episodios);
-        Assert.Equal(resultado.EmployeeId, episodio.EmployeeId);
-        Assert.Equal(conta, episodio.UserId);
-        Assert.True(episodio.IsOpen);
-
-        // A data é a da admissão, não a de agora: é quando o vínculo passou a
-        // existir, e é a mesma regra que a migração de retroactivo seguiu.
-        Assert.Equal(Admissao, episodio.LinkedOn);
-        Assert.Equal(quem, episodio.LinkedByUserId);
-    }
-
-    [Fact]
-    public async Task Admitir_Sem_Conta_Nao_Abre_Episodio()
-    {
-        var store = new FakeHrStore();
-
-        await new HireEmployee(store, new FakeAuditTrail()).ExecuteAsync(
-            "Ana Bento", departmentId: null, userId: null, Admissao,
-            Actor(Guid.NewGuid()), CancellationToken.None);
-
-        Assert.Empty(store.Episodios);
-    }
-
-    [Fact]
-    public async Task Admissao_Recusada_Nao_Abre_Episodio()
-    {
-        var store = new FakeHrStore();
-        var conta = Guid.NewGuid();
-        store.Admitir("Ja Tem A Conta", conta);
-
-        var resultado = await new HireEmployee(store, new FakeAuditTrail()).ExecuteAsync(
-            "Ana Bento", departmentId: null, conta, Admissao,
-            Actor(Guid.NewGuid()), CancellationToken.None);
-
-        Assert.Equal(HireEmployeeOutcome.UserAlreadyLinked, resultado.Outcome);
-
-        // Só o episódio de quem já tinha a conta.
-        Assert.Single(store.Episodios);
+        Assert.Equal(HireEmployeeOutcome.Hired, resultado.Outcome);
     }
 
     /// <summary>
-    /// A invariante que o defeito violou, escrita como teste: qualquer
-    /// colaborador com conta tem episódio aberto, tenha o vínculo nascido na
-    /// admissão ou depois.
+    /// A garantia central do ADR-054. Enquanto a admissão aceitou
+    /// <c>userId</c>, o perfil HR podia criar aqui o vínculo que o ADR-051 lhe
+    /// tinha recusado reatribuir — uma porta trancada ao lado de uma janela
+    /// aberta.
     /// </summary>
     [Fact]
-    public async Task Os_Dois_Caminhos_Do_Vinculo_Deixam_Ambos_Episodio()
+    public async Task Admitir_Nunca_Abre_Episodio_De_Vinculo()
+    {
+        var store = new FakeHrStore();
+
+        var resultado = await new HireEmployee(store, new FakeAuditTrail()).ExecuteAsync(
+            "Ana Bento", departmentId: null, Admissao, Actor(Guid.NewGuid()), CancellationToken.None);
+
+        Assert.Empty(store.Episodios);
+
+        // E o colaborador nasce sem conta, não com uma conta qualquer.
+        var historico = await new GetEmployeeAccountHistory(store)
+            .ExecuteAsync(resultado.EmployeeId!.Value, CancellationToken.None);
+        Assert.Empty(historico!);
+    }
+
+    [Fact]
+    public async Task Departamento_Inexistente_E_Recusado()
+    {
+        var store = new FakeHrStoreSemDepartamentos();
+
+        var resultado = await new HireEmployee(store, new FakeAuditTrail()).ExecuteAsync(
+            "Ana Bento", Guid.NewGuid(), Admissao, Actor(Guid.NewGuid()), CancellationToken.None);
+
+        Assert.Equal(HireEmployeeOutcome.DepartmentNotFound, resultado.Outcome);
+    }
+
+    /// <summary>
+    /// Só há um caminho para o vínculo nascer, e é o do ADR-051. Depois da
+    /// admissão, e com a permissão dedicada.
+    /// </summary>
+    [Fact]
+    public async Task O_Vinculo_So_Nasce_Pela_Rota_Dedicada()
     {
         var store = new FakeHrStore();
         var trilha = new FakeAuditTrail();
         var relogio = new RelogioFixo(Admissao.AddMonths(1));
         var actor = Guid.NewGuid();
 
-        // Caminho 1: na admissão.
-        var naAdmissao = await new HireEmployee(store, trilha).ExecuteAsync(
-            "Pela Admissao", null, Guid.NewGuid(), Admissao, Actor(actor), CancellationToken.None);
+        var admitido = await new HireEmployee(store, trilha).ExecuteAsync(
+            "Ana Bento", null, Admissao, Actor(actor), CancellationToken.None);
 
-        // Caminho 2: depois, pela rota do ADR-051.
-        var depois = await new HireEmployee(store, trilha).ExecuteAsync(
-            "Pela Rota", null, userId: null, Admissao, Actor(actor), CancellationToken.None);
+        Assert.Empty(store.Episodios);
+
         await new LinkEmployeeAccount(store, trilha, relogio).ExecuteAsync(
-            depois.EmployeeId!.Value, Guid.NewGuid(), Actor(actor), CancellationToken.None);
+            admitido.EmployeeId!.Value, Guid.NewGuid(), Actor(actor), CancellationToken.None);
 
-        var historico = new GetEmployeeAccountHistory(store);
+        var episodio = Assert.Single(store.Episodios);
+        Assert.Equal(admitido.EmployeeId, episodio.EmployeeId);
 
-        Assert.Single((await historico.ExecuteAsync(naAdmissao.EmployeeId!.Value, CancellationToken.None))!);
-        Assert.Single((await historico.ExecuteAsync(depois.EmployeeId!.Value, CancellationToken.None))!);
+        // A data é a da ligação, não a da admissão: o vínculo passou a existir
+        // depois, e datá-lo da admissão seria dizer que aquela conta podia agir
+        // por aquela pessoa num período em que não podia.
+        Assert.Equal(Admissao.AddMonths(1), episodio.LinkedOn);
     }
+}
+
+/// <summary>Dobra que recusa qualquer departamento, para o caminho do 404.</summary>
+internal sealed class FakeHrStoreSemDepartamentos : HrStoreParcial
+{
+    public override Task<bool> DepartmentExistsAsync(Guid departmentId, CancellationToken cancellationToken) =>
+        Task.FromResult(false);
 }

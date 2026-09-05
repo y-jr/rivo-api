@@ -24,12 +24,28 @@ public sealed record EmployeeView(
     Guid? UserId,
     DateTimeOffset HiredOn);
 
+/// <summary>
+/// Admite um Colaborador.
+///
+/// <para>
+/// <strong>Não cria vínculo com nenhuma conta</strong> desde o ADR-054. Admitir
+/// é registar uma pessoa; dizer que conta age por ela é outro acto, com outra
+/// permissão (<c>hr.employees.link_account</c>) e outra rota
+/// (<c>POST /hr/employees/{id}/account</c>).
+/// </para>
+///
+/// <para>
+/// Enquanto aceitou <c>userId</c>, o perfil HR — que tem
+/// <c>hr.employees.write</c> — podia criar na admissão exactamente o vínculo
+/// que o ADR-051 lhe tinha recusado reatribuir depois. A permissão dedicada era
+/// uma porta trancada ao lado de uma janela aberta.
+/// </para>
+/// </summary>
 public sealed class HireEmployee(IHrStore store, IAuditTrail audit)
 {
     public async Task<HireEmployeeResult> ExecuteAsync(
         string fullName,
         Guid? departmentId,
-        Guid? userId,
         DateTimeOffset hiredOn,
         AuditContext context,
         CancellationToken cancellationToken)
@@ -42,32 +58,9 @@ public sealed class HireEmployee(IHrStore store, IAuditTrail audit)
             return HireEmployeeResult.DepartmentNotFound();
         }
 
-        // Uma conta liga-se, no máximo, a um colaborador — é o que o Portal
-        // do Colaborador passa a confiar para resolver "o próprio" (ADR-042).
-        // Verificado aqui, primeira linha de defesa; o índice único em
-        // `HrDbContext` é a segunda.
-        if (userId is not null && await store.FindEmployeeByUserIdAsync(userId.Value, cancellationToken) is not null)
-        {
-            return HireEmployeeResult.UserAlreadyLinked();
-        }
-
-        var employee = Employee.Hire(fullName, departmentId, userId, hiredOn);
+        var employee = Employee.Hire(fullName, departmentId, userId: null, hiredOn);
 
         await store.AddEmployeeAsync(employee, cancellationToken);
-
-        // Admitir com conta **também** abre um episódio de histórico (ADR-053).
-        //
-        // É fácil esquecer isto, e esquecê-lo é grave: o vínculo pode nascer
-        // por dois caminhos — aqui e em `LinkEmployeeAccount` — e um histórico
-        // que só cobrisse um deles seria pior do que não existir, porque
-        // pareceria uma resposta completa. `hiredOn` é a data certa, e é a
-        // mesma que a migração de retroactivo usou.
-        if (userId is { } conta)
-        {
-            await store.AddAccountLinkAsync(
-                EmployeeAccountLink.Open(employee.Id, conta, hiredOn, context.ActorId),
-                cancellationToken);
-        }
 
         await store.SaveChangesAsync(cancellationToken);
 
@@ -87,7 +80,10 @@ public enum HireEmployeeOutcome
 {
     Hired,
     DepartmentNotFound,
-    UserAlreadyLinked,
+
+    // Não há `UserAlreadyLinked` desde o ADR-054: a admissão deixou de criar
+    // vínculos, e o conflito de conta só pode acontecer onde os vínculos se
+    // criam — em `LinkEmployeeAccount`.
 }
 
 public sealed record HireEmployeeResult(HireEmployeeOutcome Outcome, Guid? EmployeeId, string? Error)
@@ -98,14 +94,6 @@ public sealed record HireEmployeeResult(HireEmployeeOutcome Outcome, Guid? Emplo
 
     public static HireEmployeeResult DepartmentNotFound() =>
         new(HireEmployeeOutcome.DepartmentNotFound, null, "Departamento não encontrado.");
-
-    /// <summary>
-    /// A conta indicada já está ligada a outro colaborador — conflito com o
-    /// estado, não pedido malformado (400 seria para um `userId` que nem
-    /// sequer parece um identificador).
-    /// </summary>
-    public static HireEmployeeResult UserAlreadyLinked() =>
-        new(HireEmployeeOutcome.UserAlreadyLinked, null, "Esta conta já está associada a outro colaborador.");
 }
 
 /// <summary>

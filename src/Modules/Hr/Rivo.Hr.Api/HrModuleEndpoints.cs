@@ -236,10 +236,23 @@ public static class HrModuleEndpoints
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
+        // A admissão deixou de criar vínculos (ADR-054). Recusa-se em vez de
+        // ignorar: remover o campo do DTO faria o System.Text.Json descartá-lo
+        // em silêncio, e quem continuasse a enviá-lo ficaria convencido de que
+        // tinha ligado a conta. Uma alteração de contrato tem de ser ruidosa
+        // para quem ainda depende do contrato antigo.
+        if (request.UserId is not null)
+        {
+            return Results.BadRequest(new
+            {
+                erro = "A admissão já não associa contas. Admita o colaborador e depois use "
+                     + "POST /hr/employees/{employeeId}/account, que exige hr.employees.link_account.",
+            });
+        }
+
         var result = await hireEmployee.ExecuteAsync(
             request.FullName,
             request.DepartmentId,
-            request.UserId,
             request.HiredOn ?? clock.GetUtcNow(),
             BuildAuditContext(http),
             cancellationToken);
@@ -249,7 +262,6 @@ public static class HrModuleEndpoints
             HireEmployeeOutcome.Hired =>
                 Results.Created($"/hr/employees/{result.EmployeeId}", new { employeeId = result.EmployeeId }),
             HireEmployeeOutcome.DepartmentNotFound => Results.NotFound(new { erro = result.Error }),
-            HireEmployeeOutcome.UserAlreadyLinked => Results.Conflict(new { erro = result.Error }),
             _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
         };
     }
@@ -951,6 +963,16 @@ public static class HrModuleEndpoints
 }
 
 // DTOs da fronteira HTTP. Entidades de domínio nunca são expostas.
+/// <param name="UserId">
+/// ⚠ <strong>Já não é aceite (ADR-054).</strong> Continua declarado só para
+/// poder ser <em>recusado</em> com 400: apagá-lo do contrato faria o
+/// desserializador ignorá-lo em silêncio, e quem ainda o enviasse ficaria a
+/// pensar que tinha ligado a conta.
+///
+/// <para>
+/// Pode desaparecer quando não houver cliente a enviá-lo.
+/// </para>
+/// </param>
 public sealed record HireEmployeeRequest(string FullName, Guid? DepartmentId, Guid? UserId, DateTimeOffset? HiredOn);
 
 /// <summary>

@@ -327,9 +327,17 @@ a ser resolvido a partir da conta autenticada, e o corpo já não tem por onde o
 declarar.
 
 Consequência para as suites: **quem decide tem de ser uma conta ligada a um
-Colaborador.** A ligação só se faz na admissão (`POST /hr/employees` aceita
-`userId`); não há rota para ligar um colaborador que já exista. Por isso a
-conta cria-se primeiro e o colaborador a seguir.
+Colaborador.**
+
+A ligação faz-se em três passos desde o ADR-054: registar a conta, admitir o
+colaborador, e ligar os dois com `POST /hr/employees/{id}/account`. Eram dois
+até 2026-09-05, porque a admissão aceitava `userId` — e era essa aceitação que
+deixava o perfil HR criar vínculos sem ter `hr.employees.link_account`.
+
+⚠ **A ligação exige `AdminHeaders`, e não `HeadersDeAdmissao`.** A permissão
+está fora do perfil HR de propósito: uma suite que se autentique como RH admite
+o colaborador mas não o liga. É por isso que os dois conjuntos de cabeçalhos são
+parâmetros separados.
 
 .OUTPUTS
 Hashtable com `EmployeeId`, `UserId`, `Email` e `Headers`.
@@ -356,12 +364,19 @@ function New-RivoColaboradorComConta {
         -Body (@{ profile = $Perfil } | ConvertTo-Json) -ContentType "application/json" `
         -Headers $AdminHeaders | Out-Null
 
-    $admissao = @{ fullName = $Nome; userId = $userId }
+    $admissao = @{ fullName = $Nome }
     if ($DepartmentId) { $admissao.departmentId = $DepartmentId }
 
     $employeeId = (Invoke-RestMethod "$base/hr/employees" -Method Post `
         -Body ($admissao | ConvertTo-Json) -ContentType "application/json" `
         -Headers $HeadersDeAdmissao).employeeId
+
+    # Passo proprio desde o ADR-054, e sempre com os cabecalhos de Admin: a
+    # permissao de ligar fica fora do perfil HR, e quem admite pode nao poder
+    # ligar.
+    Invoke-RestMethod "$base/hr/employees/$employeeId/account" -Method Post `
+        -Body (@{ userId = $userId } | ConvertTo-Json) -ContentType "application/json" `
+        -Headers $AdminHeaders | Out-Null
 
     $token = (Invoke-RestMethod "$base/identity/login" -Method Post `
         -Body $corpo -ContentType "application/json").accessToken

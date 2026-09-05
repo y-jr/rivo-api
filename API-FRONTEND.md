@@ -148,7 +148,7 @@ dos casos de uso e não têm DTO HTTP nomeado.
 | Método e rota | Permissão | Request | Sucesso |
 |---|---|---|---|
 | `GET /hr/employees` | `hr.employees.read` | Sem corpo | `200` |
-| `POST /hr/employees` | `hr.employees.write` | { fullName, departmentId, userId, hiredOn } | `201` |
+| `POST /hr/employees` | `hr.employees.write` | { fullName, departmentId, hiredOn } — **`userId` dá 400** (ADR-054) | `201` |
 | `POST /hr/employees/{employeeId}/account` | `hr.employees.link_account` | { userId } — **fora do perfil HR** (ADR-051) | `204` |
 | `DELETE /hr/employees/{employeeId}/account` | `hr.employees.link_account` | Sem corpo — decisões já tomadas continuam válidas (ADR-052) | `204` |
 | `GET /hr/employees/{employeeId}/account-history` | `hr.employees.link_account` | Sem corpo — que conta pôde agir por esta pessoa, e quando (ADR-053) | `200` |

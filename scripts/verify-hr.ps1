@@ -311,25 +311,45 @@ Test-Case "17. Sem autenticacao -> 401; sem permissao -> 403" {
 }
 
 $script:linkedUserId = $null
-Test-Case "18. Contratar com conta ja ligada a outro colaborador e recusado (ADR-042)" {
+Test-Case "18. A admissao recusa userId em vez de o ignorar (ADR-054)" {
     $e = "portal-$stamp@rivo.ao"
     $b = @{ email = $e; password = $pass } | ConvertTo-Json
     $script:linkedUserId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
 
-    $b = @{ fullName = "Primeiro Colaborador"; userId = $script:linkedUserId } | ConvertTo-Json
-    $primeiro = (Invoke-RestMethod "$base/hr/employees" -Method Post -Body $b -ContentType "application/json" -Headers $hrHeaders).employeeId
-    if (-not $primeiro) { throw "primeiro colaborador nao foi criado" }
-
-    $b = @{ fullName = "Segundo Colaborador"; userId = $script:linkedUserId } | ConvertTo-Json
+    # 400 e nao "aceite e ignorado". O campo continua declarado no DTO so para
+    # poder ser recusado: apaga-lo faria o desserializador descarta-lo em
+    # silencio, e quem ainda o enviasse ficava convencido de que tinha ligado.
+    $b = @{ fullName = "Com UserId $stamp"; userId = $script:linkedUserId } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/hr/employees" -Method Post -Body $b -ContentType "application/json" -Headers $hrHeaders }
-    if ($code -ne 409) { throw "esperado 409, obtido $code" }
-    "409 -- a conta ja tem um colaborador, nao se liga a um segundo"
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+
+    # E nao criou colaborador nenhum pelo caminho.
+    $criado = Invoke-Sql "select count(*) from hr.employee where full_name='Com UserId $stamp'"
+    if ($criado -ne "0") { throw "a admissao recusada criou o colaborador na mesma" }
+    "400 com instrucao para a rota certa, e nada criado"
 }
 
-Test-Case "19. UserId e unico na base de dados" {
+Test-Case "19. RH admite mas nao liga -- a janela fechou (ADR-054)" {
+    # O argumento do ADR-054 verificado de ponta a ponta: enquanto a admissao
+    # aceitava userId, o perfil HR criava aqui o vinculo que o ADR-051 lhe
+    # recusava reatribuir. Porta trancada ao lado de janela aberta.
+    $b = @{ fullName = "Admitido Por RH $stamp" } | ConvertTo-Json
+    $emp = (Invoke-RestMethod "$base/hr/employees" -Method Post -Body $b -ContentType "application/json" -Headers $hrHeaders).employeeId
+    if (-not $emp) { throw "RH deixou de conseguir admitir" }
+
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/hr/employees/$emp/account" -Method Post `
+            -Body (@{ userId = $script:linkedUserId } | ConvertTo-Json) -ContentType "application/json" -Headers $hrHeaders
+    }
+    if ($code -ne 403) { throw "esperado 403 ao ligar como RH, obtido $code" }
+
+    # O vinculo faz-se so com a permissao dedicada.
+    Invoke-RestMethod "$base/hr/employees/$emp/account" -Method Post `
+        -Body (@{ userId = $script:linkedUserId } | ConvertTo-Json) -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
     $dup = Invoke-Sql "select count(*) from hr.employee where user_id='$($script:linkedUserId)'"
-    if ($dup -ne "1") { throw "esperado exactamente 1 colaborador ligado, encontrados $dup -- indice unico nao impediu" }
-    "indice unico e a segunda linha; a verificacao no caso de uso e a primeira"
+    if ($dup -ne "1") { throw "esperado exactamente 1 colaborador ligado, encontrados $dup" }
+    "RH admite; so quem tem hr.employees.link_account liga"
 }
 
 # --- Ligacao de conta a colaborador ja admitido (ADR-051) -------------------
