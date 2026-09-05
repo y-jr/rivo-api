@@ -32,6 +32,9 @@ internal abstract class HrStoreParcial : IHrStore
     public virtual Task<Employee?> FindEmployeeByUserIdAsync(Guid userId, CancellationToken cancellationToken) => NaoUsado<Employee?>();
     public virtual Task<IReadOnlyList<Employee>> ListEmployeesAsync(CancellationToken cancellationToken) => NaoUsado<IReadOnlyList<Employee>>();
     public virtual Task AddEmployeeAsync(Employee employee, CancellationToken cancellationToken) => NaoUsado();
+    public virtual Task AddAccountLinkAsync(EmployeeAccountLink link, CancellationToken cancellationToken) => NaoUsado();
+    public virtual Task<EmployeeAccountLink?> FindOpenAccountLinkAsync(Guid employeeId, CancellationToken cancellationToken) => NaoUsado<EmployeeAccountLink?>();
+    public virtual Task<IReadOnlyList<EmployeeAccountLink>> ListAccountLinksAsync(Guid employeeId, CancellationToken cancellationToken) => NaoUsado<IReadOnlyList<EmployeeAccountLink>>();
     public virtual Task<bool> DepartmentExistsAsync(Guid departmentId, CancellationToken cancellationToken) => NaoUsado<bool>();
     public virtual Task<IReadOnlyList<Department>> ListDepartmentsAsync(CancellationToken cancellationToken) => NaoUsado<IReadOnlyList<Department>>();
     public virtual Task AddDepartmentAsync(Department department, CancellationToken cancellationToken) => NaoUsado();

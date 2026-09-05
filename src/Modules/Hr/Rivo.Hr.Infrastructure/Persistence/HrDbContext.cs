@@ -9,6 +9,9 @@ public sealed class HrDbContext(DbContextOptions<HrDbContext> options) : DbConte
 
     public DbSet<Employee> Employees => Set<Employee>();
 
+    /// <summary>Histórico do vínculo conta↔colaborador (ADR-053).</summary>
+    public DbSet<EmployeeAccountLink> EmployeeAccountLinks => Set<EmployeeAccountLink>();
+
     public DbSet<Department> Departments => Set<Department>();
 
     public DbSet<Position> Positions => Set<Position>();
@@ -57,6 +60,39 @@ public sealed class HrDbContext(DbContextOptions<HrDbContext> options) : DbConte
             // detalhe silencioso e passariam a expor dados de outrem.
             employee.HasIndex(e => e.UserId).IsUnique();
             employee.HasIndex(e => e.DepartmentId);
+        });
+
+        builder.Entity<EmployeeAccountLink>(link =>
+        {
+            link.ToTable("employee_account_link");
+            link.HasKey(l => l.Id);
+            link.Property(l => l.Version).IsConcurrencyToken();
+
+            // Sem chave estrangeira para identity.app_user, pela mesma razão
+            // de `employee`: schemas de módulos distintos (ADR-010).
+            // Percorrer o histórico de uma pessoa, e o inverso — todas as
+            // pessoas por quem uma conta já pôde agir.
+            link.HasIndex(l => l.EmployeeId, "IX_Historico")
+                .HasDatabaseName("ix_employee_account_link_employee");
+            link.HasIndex(l => l.UserId)
+                .HasDatabaseName("ix_employee_account_link_user");
+
+            // No máximo um episódio aberto por colaborador. Filtrado, porque
+            // os fechados repetem-se de propósito — é isso que é história.
+            //
+            // Nomeado à parte do índice acima: dois `HasIndex` sobre a mesma
+            // propriedade sem nome distinto configuram o **mesmo** índice em
+            // EF Core, e o segundo tornaria o primeiro único.
+            //
+            // Note-se que **não** há restrição equivalente por conta. A
+            // unicidade que protege quem decide continua a ser a de
+            // `employee.user_id` (ADR-050, ADR-053): esta tabela não participa
+            // nessa decisão, e dar-lhe uma restrição que sugerisse o contrário
+            // convidaria alguém a passar a lê-la para esse fim.
+            link.HasIndex(l => l.EmployeeId, "IX_Aberto")
+                .IsUnique()
+                .HasFilter("[unlinked_on] IS NULL")
+                .HasDatabaseName("ix_employee_account_link_aberto");
         });
 
         builder.Entity<Department>(department =>

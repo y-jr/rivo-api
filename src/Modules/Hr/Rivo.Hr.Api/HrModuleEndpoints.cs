@@ -41,6 +41,13 @@ public static class HrModuleEndpoints
         group.MapDelete("/employees/{employeeId:guid}/account", UnlinkEmployeeAccountAsync)
             .RequireAuthorization(HrPermissions.EmployeesLinkAccount);
 
+        // O histórico do vínculo (ADR-053). Mesma permissão de o gerir, e não
+        // `hr.employees.read`: expõe o mapa conta↔pessoa ao longo do tempo, que
+        // é informação de segurança e não de organograma. Quem só precisa de
+        // saber quem trabalha na empresa não precisa de saber com que conta.
+        group.MapGet("/employees/{employeeId:guid}/account-history", GetAccountHistoryAsync)
+            .RequireAuthorization(HrPermissions.EmployeesLinkAccount);
+
         group.MapGet("/departments", ListDepartmentsAsync)
             .RequireAuthorization(HrPermissions.DepartmentsRead);
 
@@ -298,6 +305,20 @@ public static class HrModuleEndpoints
 
             _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
         };
+    }
+
+    private static async Task<IResult> GetAccountHistoryAsync(
+        Guid employeeId,
+        GetEmployeeAccountHistory getHistory,
+        CancellationToken cancellationToken)
+    {
+        var historico = await getHistory.ExecuteAsync(employeeId, cancellationToken);
+
+        // Lista vazia e 404 dizem coisas diferentes: "nunca teve conta" e "não
+        // há tal pessoa".
+        return historico is null
+            ? Results.NotFound(new { erro = "Colaborador não encontrado." })
+            : Results.Ok(historico);
     }
 
     private static async Task<IResult> ListDepartmentsAsync(

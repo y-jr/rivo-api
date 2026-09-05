@@ -17,6 +17,11 @@ public class LinkEmployeeAccountTests
 {
     private static AuditContext Actor(Guid quem) => new(quem, null, null);
 
+    /// <summary>Instante fixo, para os episódios de histórico serem verificáveis.</summary>
+    private static readonly DateTimeOffset Agora = new(2026, 9, 5, 12, 0, 0, TimeSpan.Zero);
+
+    private static readonly TimeProvider Relogio = new RelogioFixo(Agora);
+
     [Fact]
     public async Task Liga_Colaborador_Sem_Conta()
     {
@@ -25,7 +30,7 @@ public class LinkEmployeeAccountTests
         var colaborador = store.Admitir("Ana Bento");
         var conta = Guid.NewGuid();
 
-        var resultado = await new LinkEmployeeAccount(store, trilha)
+        var resultado = await new LinkEmployeeAccount(store, trilha, Relogio)
             .ExecuteAsync(colaborador.Id, conta, Actor(Guid.NewGuid()), CancellationToken.None);
 
         Assert.Equal(LinkEmployeeAccountOutcome.Linked, resultado.Outcome);
@@ -46,7 +51,7 @@ public class LinkEmployeeAccountTests
         var conta = Guid.NewGuid();
         var quemLigou = Guid.NewGuid();
 
-        await new LinkEmployeeAccount(store, trilha)
+        await new LinkEmployeeAccount(store, trilha, Relogio)
             .ExecuteAsync(colaborador.Id, conta, Actor(quemLigou), CancellationToken.None);
 
         var registo = Assert.Single(trilha.Registos);
@@ -69,7 +74,7 @@ public class LinkEmployeeAccountTests
         var colaborador = store.Admitir("Ana Bento");
         var euProprio = Guid.NewGuid();
 
-        var resultado = await new LinkEmployeeAccount(store, trilha)
+        var resultado = await new LinkEmployeeAccount(store, trilha, Relogio)
             .ExecuteAsync(colaborador.Id, euProprio, Actor(euProprio), CancellationToken.None);
 
         Assert.Equal(LinkEmployeeAccountOutcome.SelfLinkRefused, resultado.Outcome);
@@ -83,7 +88,7 @@ public class LinkEmployeeAccountTests
         var store = new FakeHrStore();
         var euProprio = Guid.NewGuid();
 
-        var resultado = await new LinkEmployeeAccount(store, new FakeAuditTrail())
+        var resultado = await new LinkEmployeeAccount(store, new FakeAuditTrail(), Relogio)
             .ExecuteAsync(Guid.NewGuid(), euProprio, Actor(euProprio), CancellationToken.None);
 
         // A auto-ligação ganha ao 404 de propósito: a recusa não deve depender
@@ -96,7 +101,7 @@ public class LinkEmployeeAccountTests
     {
         var store = new FakeHrStore();
 
-        var resultado = await new LinkEmployeeAccount(store, new FakeAuditTrail())
+        var resultado = await new LinkEmployeeAccount(store, new FakeAuditTrail(), Relogio)
             .ExecuteAsync(Guid.NewGuid(), Guid.NewGuid(), Actor(Guid.NewGuid()), CancellationToken.None);
 
         Assert.Equal(LinkEmployeeAccountOutcome.NotFound, resultado.Outcome);
@@ -114,7 +119,7 @@ public class LinkEmployeeAccountTests
         store.Admitir("Ana Bento", conta);
         var outro = store.Admitir("Bruno Cabral");
 
-        var resultado = await new LinkEmployeeAccount(store, new FakeAuditTrail())
+        var resultado = await new LinkEmployeeAccount(store, new FakeAuditTrail(), Relogio)
             .ExecuteAsync(outro.Id, conta, Actor(Guid.NewGuid()), CancellationToken.None);
 
         Assert.Equal(LinkEmployeeAccountOutcome.UserAlreadyLinked, resultado.Outcome);
@@ -134,7 +139,7 @@ public class LinkEmployeeAccountTests
         var contaAntiga = Guid.NewGuid();
         var colaborador = store.Admitir("Ana Bento", contaAntiga);
 
-        var resultado = await new LinkEmployeeAccount(store, new FakeAuditTrail())
+        var resultado = await new LinkEmployeeAccount(store, new FakeAuditTrail(), Relogio)
             .ExecuteAsync(colaborador.Id, Guid.NewGuid(), Actor(Guid.NewGuid()), CancellationToken.None);
 
         Assert.Equal(LinkEmployeeAccountOutcome.EmployeeAlreadyLinked, resultado.Outcome);
@@ -154,7 +159,7 @@ public class LinkEmployeeAccountTests
         var conta = Guid.NewGuid();
         var colaborador = store.Admitir("Ana Bento", conta);
 
-        var resultado = await new LinkEmployeeAccount(store, trilha)
+        var resultado = await new LinkEmployeeAccount(store, trilha, Relogio)
             .ExecuteAsync(colaborador.Id, conta, Actor(Guid.NewGuid()), CancellationToken.None);
 
         Assert.Equal(LinkEmployeeAccountOutcome.Linked, resultado.Outcome);
@@ -167,6 +172,46 @@ public class LinkEmployeeAccountTests
     /// caso não há auto-ligação possível, e a verificação não pode confundir
     /// "sem actor" com "é o próprio".
     /// </summary>
+    /// <summary>
+    /// Ligar abre um episódio no histórico (ADR-053), na mesma transacção que
+    /// o campo. As duas representações divergirem seria pior do que não haver
+    /// histórico: uma investigação teria duas respostas e nenhuma forma de
+    /// saber qual vale.
+    /// </summary>
+    [Fact]
+    public async Task Ligar_Abre_Um_Episodio_No_Historico()
+    {
+        var store = new FakeHrStore();
+        var colaborador = store.Admitir("Ana Bento");
+        var conta = Guid.NewGuid();
+        var quem = Guid.NewGuid();
+
+        await new LinkEmployeeAccount(store, new FakeAuditTrail(), Relogio)
+            .ExecuteAsync(colaborador.Id, conta, Actor(quem), CancellationToken.None);
+
+        var episodio = Assert.Single(store.Episodios);
+        Assert.Equal(colaborador.Id, episodio.EmployeeId);
+        Assert.Equal(conta, episodio.UserId);
+        Assert.Equal(Agora, episodio.LinkedOn);
+        Assert.Equal(quem, episodio.LinkedByUserId);
+        Assert.True(episodio.IsOpen);
+    }
+
+    [Fact]
+    public async Task Ligacao_Recusada_Nao_Abre_Episodio()
+    {
+        var store = new FakeHrStore();
+        var conta = Guid.NewGuid();
+        store.Admitir("Ana Bento", conta);
+        var outro = store.Admitir("Bruno Cabral");
+
+        await new LinkEmployeeAccount(store, new FakeAuditTrail(), Relogio)
+            .ExecuteAsync(outro.Id, conta, Actor(Guid.NewGuid()), CancellationToken.None);
+
+        // Só o episódio que a admissão de Ana já tinha.
+        Assert.Single(store.Episodios);
+    }
+
     [Fact]
     public async Task Sem_Actor_A_Verificacao_De_Auto_Ligacao_Nao_Dispara()
     {
@@ -174,7 +219,7 @@ public class LinkEmployeeAccountTests
         var colaborador = store.Admitir("Ana Bento");
         var conta = Guid.NewGuid();
 
-        var resultado = await new LinkEmployeeAccount(store, new FakeAuditTrail())
+        var resultado = await new LinkEmployeeAccount(store, new FakeAuditTrail(), Relogio)
             .ExecuteAsync(colaborador.Id, conta, new AuditContext(null, null, null), CancellationToken.None);
 
         Assert.Equal(LinkEmployeeAccountOutcome.Linked, resultado.Outcome);

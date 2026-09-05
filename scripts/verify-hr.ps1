@@ -503,7 +503,77 @@ Test-Case "33. Desligar colaborador inexistente -> 404" {
     "404 e nao 204: nao ha estado pretendido para um colaborador que nao existe"
 }
 
-Test-Case "34. Dados sobrevivem ao reinicio da stack" {
+# --- Historico do vinculo (ADR-053) -----------------------------------------
+#
+# O campo employee.user_id continua a ser o vinculo activo e o caminho de
+# decisao. Esta tabela e historia: responde a "que conta podia agir por esta
+# pessoa no dia D" sem depender de LIKE sobre o JSON da trilha.
+
+Test-Case "34. Campo e historico nunca divergem" {
+    # A invariante que torna o historico confiavel. Se falhar, uma investigacao
+    # passa a ter duas respostas e nenhuma forma de saber qual vale.
+    $orfaos = Invoke-Sql "select count(*) from hr.employee e where e.user_id is not null and not exists (select 1 from hr.employee_account_link l where l.employee_id=e.id and l.user_id=e.user_id and l.unlinked_on is null)"
+    if ($orfaos -ne "0") { throw "$orfaos vinculo(s) activo(s) sem episodio aberto" }
+
+    $fantasmas = Invoke-Sql "select count(*) from hr.employee_account_link l where l.unlinked_on is null and not exists (select 1 from hr.employee e where e.id=l.employee_id and e.user_id=l.user_id)"
+    if ($fantasmas -ne "0") { throw "$fantasmas episodio(s) aberto(s) sem vinculo correspondente" }
+    "nenhum vinculo sem episodio, nenhum episodio sem vinculo"
+}
+
+Test-Case "35. No maximo um episodio aberto por colaborador" {
+    # Garantido pelo indice unico filtrado; verificado na mesma porque e a
+    # invariante de que FindOpenAccountLinkAsync depende.
+    $duplicados = Invoke-Sql "select count(*) from (select employee_id from hr.employee_account_link where unlinked_on is null group by employee_id having count(*) > 1) x"
+    if ($duplicados -ne "0") { throw "$duplicados colaborador(es) com mais de um episodio aberto" }
+    "indice unico filtrado em unlinked_on is null"
+}
+
+Test-Case "36. O historico mostra a sequencia completa do vinculo" {
+    # semContaId foi ligado (caso 21), desligado (caso 28) e nunca religado.
+    $h = Invoke-RestMethod "$base/hr/employees/$($script:semContaId)/account-history" -Headers $adminHeaders
+    $episodios = @($h)
+    if ($episodios.Count -lt 1) { throw "historico vazio para um colaborador que ja teve conta" }
+
+    $fechado = $episodios | Where-Object { $_.userId -eq $script:contaNovaId -and $_.unlinkedOn }
+    if (-not $fechado) { throw "o episodio da conta ligada e depois desligada nao aparece fechado" }
+    if (-not $fechado.unlinkedByUserId) { throw "o episodio fechado nao diz quem desligou" }
+    "$($episodios.Count) episodio(s), com quem ligou, quem desligou e quando"
+}
+
+Test-Case "37. Colaborador sem conta da lista vazia, inexistente da 404" {
+    $b = @{ fullName = "Nunca Teve Conta $stamp" } | ConvertTo-Json
+    $nunca = (Invoke-RestMethod "$base/hr/employees" -Method Post -Body $b -ContentType "application/json" -Headers $hrHeaders).employeeId
+
+    # Le-se o corpo cru: Invoke-RestMethod devolve $null para um array JSON
+    # vazio, e @($null) tem um elemento -- o teste dava falso positivo sobre a
+    # propria API que estava a verificar.
+    $corpo = (Invoke-WebRequest "$base/hr/employees/$nunca/account-history" -Headers $adminHeaders).Content
+    if ($corpo.Trim() -ne "[]") { throw "esperado corpo '[]', obtido '$corpo'" }
+
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/hr/employees/$([Guid]::NewGuid())/account-history" -Headers $adminHeaders
+    }
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+    "lista vazia e 404 dizem coisas diferentes"
+}
+
+Test-Case "38. Perfil HR nao ve o historico de contas" {
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/hr/employees/$($script:certoId)/account-history" -Headers $hrHeaders
+    }
+    if ($code -ne 403) { throw "esperado 403, obtido $code" }
+    "o mapa conta<->pessoa e informacao de seguranca, nao de organograma"
+}
+
+Test-Case "39. Retroactivo cobriu os vinculos anteriores a migracao" {
+    # Episodios sem autor sao os que a migracao criou: o vinculo existia antes
+    # de haver quem o registasse, e NULL le-se como desconhecido.
+    $retroactivos = Invoke-Sql "select count(*) from hr.employee_account_link where linked_by_user_id is null"
+    if ([int]$retroactivos -lt 1) { throw "nenhum episodio retroactivo -- a migracao nao correu?" }
+    "$retroactivos episodio(s) sem autor conhecido, como esperado"
+}
+
+Test-Case "40. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)

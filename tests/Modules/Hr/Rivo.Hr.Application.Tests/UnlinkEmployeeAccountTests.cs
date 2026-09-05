@@ -10,6 +10,11 @@ public class UnlinkEmployeeAccountTests
 {
     private static AuditContext Actor(Guid quem) => new(quem, null, null);
 
+    /// <summary>Instante fixo, para os episódios de histórico serem verificáveis.</summary>
+    private static readonly DateTimeOffset Agora = new(2026, 9, 5, 12, 0, 0, TimeSpan.Zero);
+
+    private static readonly TimeProvider Relogio = new RelogioFixo(Agora);
+
     [Fact]
     public async Task Desliga_Colaborador_Com_Conta()
     {
@@ -17,7 +22,7 @@ public class UnlinkEmployeeAccountTests
         var conta = Guid.NewGuid();
         var colaborador = store.Admitir("Ana Bento", conta);
 
-        var resultado = await new UnlinkEmployeeAccount(store, new FakeAuditTrail())
+        var resultado = await new UnlinkEmployeeAccount(store, new FakeAuditTrail(), Relogio)
             .ExecuteAsync(colaborador.Id, Actor(Guid.NewGuid()), CancellationToken.None);
 
         Assert.Equal(UnlinkEmployeeAccountOutcome.Unlinked, resultado.Outcome);
@@ -39,7 +44,7 @@ public class UnlinkEmployeeAccountTests
         var quemDesligou = Guid.NewGuid();
         var colaborador = store.Admitir("Ana Bento", conta);
 
-        await new UnlinkEmployeeAccount(store, trilha)
+        await new UnlinkEmployeeAccount(store, trilha, Relogio)
             .ExecuteAsync(colaborador.Id, Actor(quemDesligou), CancellationToken.None);
 
         var registo = Assert.Single(trilha.Registos);
@@ -57,7 +62,7 @@ public class UnlinkEmployeeAccountTests
         var trilha = new FakeAuditTrail();
         var colaborador = store.Admitir("Ana Bento");
 
-        var resultado = await new UnlinkEmployeeAccount(store, trilha)
+        var resultado = await new UnlinkEmployeeAccount(store, trilha, Relogio)
             .ExecuteAsync(colaborador.Id, Actor(Guid.NewGuid()), CancellationToken.None);
 
         Assert.Equal(UnlinkEmployeeAccountOutcome.Unlinked, resultado.Outcome);
@@ -70,7 +75,7 @@ public class UnlinkEmployeeAccountTests
     {
         var store = new FakeHrStore();
 
-        var resultado = await new UnlinkEmployeeAccount(store, new FakeAuditTrail())
+        var resultado = await new UnlinkEmployeeAccount(store, new FakeAuditTrail(), Relogio)
             .ExecuteAsync(Guid.NewGuid(), Actor(Guid.NewGuid()), CancellationToken.None);
 
         Assert.Equal(UnlinkEmployeeAccountOutcome.NotFound, resultado.Outcome);
@@ -88,7 +93,7 @@ public class UnlinkEmployeeAccountTests
         var euProprio = Guid.NewGuid();
         var colaborador = store.Admitir("Ana Bento", euProprio);
 
-        var resultado = await new UnlinkEmployeeAccount(store, new FakeAuditTrail())
+        var resultado = await new UnlinkEmployeeAccount(store, new FakeAuditTrail(), Relogio)
             .ExecuteAsync(colaborador.Id, Actor(euProprio), CancellationToken.None);
 
         Assert.Equal(UnlinkEmployeeAccountOutcome.Unlinked, resultado.Outcome);
@@ -110,10 +115,10 @@ public class UnlinkEmployeeAccountTests
         var certo = store.Admitir("Pessoa Certa");
         var actor = Guid.NewGuid();
 
-        await new UnlinkEmployeeAccount(store, trilha)
+        await new UnlinkEmployeeAccount(store, trilha, Relogio)
             .ExecuteAsync(errado.Id, Actor(actor), CancellationToken.None);
 
-        var refazer = await new LinkEmployeeAccount(store, trilha)
+        var refazer = await new LinkEmployeeAccount(store, trilha, Relogio)
             .ExecuteAsync(certo.Id, conta, Actor(actor), CancellationToken.None);
 
         Assert.Equal(LinkEmployeeAccountOutcome.Linked, refazer.Outcome);
@@ -127,5 +132,91 @@ public class UnlinkEmployeeAccountTests
         Assert.Equal(HrAuditActions.EmployeeAccountLinked, trilha.Registos[1].Action);
         Assert.Contains(conta.ToString(), trilha.Registos[0].PreviousValue);
         Assert.Contains(conta.ToString(), trilha.Registos[1].NewValue);
+    }
+
+    // ── histórico (ADR-053) ──
+
+    [Fact]
+    public async Task Desligar_Fecha_O_Episodio_Aberto()
+    {
+        var store = new FakeHrStore();
+        var quem = Guid.NewGuid();
+        var colaborador = store.Admitir("Ana Bento", Guid.NewGuid());
+
+        await new UnlinkEmployeeAccount(store, new FakeAuditTrail(), Relogio)
+            .ExecuteAsync(colaborador.Id, Actor(quem), CancellationToken.None);
+
+        var episodio = Assert.Single(store.Episodios);
+        Assert.False(episodio.IsOpen);
+        Assert.Equal(Agora, episodio.UnlinkedOn);
+        Assert.Equal(quem, episodio.UnlinkedByUserId);
+    }
+
+    /// <summary>
+    /// O campo é a verdade operacional. Um vínculo criado por escrita directa
+    /// em base não tem episódio, e recusar deixaria o sistema preso a uma
+    /// inconsistência que não foi ele a criar.
+    /// </summary>
+    [Fact]
+    public async Task Desligar_Sem_Episodio_Aberto_Desliga_Na_Mesma()
+    {
+        var store = new FakeHrStore();
+        var colaborador = store.Admitir("Ana Bento");
+        colaborador.LinkToUser(Guid.NewGuid()); // vínculo sem episódio, como em base
+
+        var resultado = await new UnlinkEmployeeAccount(store, new FakeAuditTrail(), Relogio)
+            .ExecuteAsync(colaborador.Id, Actor(Guid.NewGuid()), CancellationToken.None);
+
+        Assert.Equal(UnlinkEmployeeAccountOutcome.Unlinked, resultado.Outcome);
+        Assert.Null(colaborador.UserId);
+        Assert.Empty(store.Episodios);
+    }
+
+    /// <summary>
+    /// A pergunta que o ADR-050 tornou forense, respondida pelo histórico e
+    /// não por <c>LIKE</c> sobre JSON: quem podia agir por esta pessoa, e
+    /// quando.
+    /// </summary>
+    [Fact]
+    public async Task O_Historico_Responde_A_Quem_Podia_Agir_E_Quando()
+    {
+        var store = new FakeHrStore();
+        var trilha = new FakeAuditTrail();
+        var primeira = Guid.NewGuid();
+        var segunda = Guid.NewGuid();
+        var colaborador = store.Admitir("Ana Bento", primeira);
+        var actor = Guid.NewGuid();
+
+        await new UnlinkEmployeeAccount(store, trilha, Relogio)
+            .ExecuteAsync(colaborador.Id, Actor(actor), CancellationToken.None);
+        await new LinkEmployeeAccount(store, trilha, Relogio)
+            .ExecuteAsync(colaborador.Id, segunda, Actor(actor), CancellationToken.None);
+
+        var historico = await new GetEmployeeAccountHistory(store)
+            .ExecuteAsync(colaborador.Id, CancellationToken.None);
+
+        Assert.NotNull(historico);
+        Assert.Equal(2, historico.Count);
+
+        // Ordenado do mais recente para o mais antigo.
+        Assert.Equal(segunda, historico[0].UserId);
+        Assert.Null(historico[0].UnlinkedOn);
+        Assert.Equal(primeira, historico[1].UserId);
+        Assert.Equal(Agora, historico[1].UnlinkedOn);
+    }
+
+    /// <summary>
+    /// Lista vazia e 404 dizem coisas diferentes, e confundi-las faria uma
+    /// investigação concluir o contrário do que se passou.
+    /// </summary>
+    [Fact]
+    public async Task Colaborador_Sem_Conta_Da_Lista_Vazia_E_Inexistente_Da_Nulo()
+    {
+        var store = new FakeHrStore();
+        var semConta = store.Admitir("Ana Bento");
+        var caso = new GetEmployeeAccountHistory(store);
+
+        Assert.Empty((await caso.ExecuteAsync(semConta.Id, CancellationToken.None))!);
+        Assert.Null(await caso.ExecuteAsync(Guid.NewGuid(), CancellationToken.None));
     }
 }

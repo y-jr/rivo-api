@@ -54,6 +54,21 @@ public sealed class HireEmployee(IHrStore store, IAuditTrail audit)
         var employee = Employee.Hire(fullName, departmentId, userId, hiredOn);
 
         await store.AddEmployeeAsync(employee, cancellationToken);
+
+        // Admitir com conta **também** abre um episódio de histórico (ADR-053).
+        //
+        // É fácil esquecer isto, e esquecê-lo é grave: o vínculo pode nascer
+        // por dois caminhos — aqui e em `LinkEmployeeAccount` — e um histórico
+        // que só cobrisse um deles seria pior do que não existir, porque
+        // pareceria uma resposta completa. `hiredOn` é a data certa, e é a
+        // mesma que a migração de retroactivo usou.
+        if (userId is { } conta)
+        {
+            await store.AddAccountLinkAsync(
+                EmployeeAccountLink.Open(employee.Id, conta, hiredOn, context.ActorId),
+                cancellationToken);
+        }
+
         await store.SaveChangesAsync(cancellationToken);
 
         await audit.RecordAsync(
@@ -122,7 +137,7 @@ public sealed record HireEmployeeResult(HireEmployeeOutcome Outcome, Guid? Emplo
 /// ela, e ocupa o índice único até ser corrigido.
 /// </para>
 /// </summary>
-public sealed class LinkEmployeeAccount(IHrStore store, IAuditTrail audit)
+public sealed class LinkEmployeeAccount(IHrStore store, IAuditTrail audit, TimeProvider clock)
 {
     public async Task<LinkEmployeeAccountResult> ExecuteAsync(
         Guid employeeId,
@@ -175,6 +190,15 @@ public sealed class LinkEmployeeAccount(IHrStore store, IAuditTrail audit)
         }
 
         colaborador.LinkToUser(userId);
+
+        // Abre o episódio no histórico (ADR-053). Vai na mesma transacção que
+        // o campo, porque as duas representações divergirem seria pior do que
+        // não haver histórico nenhum: uma investigação passaria a ter duas
+        // respostas e nenhuma forma de saber qual vale.
+        await store.AddAccountLinkAsync(
+            EmployeeAccountLink.Open(
+                colaborador.Id, userId, clock.GetUtcNow(), context.ActorId),
+            cancellationToken);
 
         await store.SaveChangesAsync(cancellationToken);
 
@@ -268,7 +292,7 @@ public sealed record LinkEmployeeAccountResult(LinkEmployeeAccountOutcome Outcom
 /// isto, porque um colaborador pode ser aprovador sem nunca ter tido conta.
 /// </para>
 /// </summary>
-public sealed class UnlinkEmployeeAccount(IHrStore store, IAuditTrail audit)
+public sealed class UnlinkEmployeeAccount(IHrStore store, IAuditTrail audit, TimeProvider clock)
 {
     public async Task<UnlinkEmployeeAccountResult> ExecuteAsync(
         Guid employeeId,
@@ -295,6 +319,14 @@ public sealed class UnlinkEmployeeAccount(IHrStore store, IAuditTrail audit)
         // ligar a própria conta, que continua recusado.
         colaborador.LinkToUser(null);
 
+        // Fecha o episódio aberto (ADR-053). Pode não existir: os vínculos
+        // anteriores à migração de retroactivo ficaram cobertos, mas um criado
+        // por escrita directa em base de dados não. Nesse caso desliga-se na
+        // mesma — o campo é a verdade operacional, e recusar deixaria o
+        // sistema preso a uma inconsistência que não foi ele a criar.
+        var episodio = await store.FindOpenAccountLinkAsync(colaborador.Id, cancellationToken);
+        episodio?.Close(clock.GetUtcNow(), context.ActorId);
+
         await store.SaveChangesAsync(cancellationToken);
 
         await audit.RecordAsync(
@@ -310,6 +342,48 @@ public sealed class UnlinkEmployeeAccount(IHrStore store, IAuditTrail audit)
         return UnlinkEmployeeAccountResult.Success();
     }
 }
+
+/// <summary>
+/// O histórico de contas de um Colaborador (ADR-053).
+///
+/// <para>
+/// É a pergunta que o ADR-050 tornou forense — «que conta podia agir por esta
+/// pessoa no dia D» — a deixar de depender de <c>LIKE</c> sobre o JSON da
+/// trilha de auditoria.
+/// </para>
+/// </summary>
+public sealed class GetEmployeeAccountHistory(IHrStore store)
+{
+    public async Task<IReadOnlyList<EmployeeAccountLinkView>?> ExecuteAsync(
+        Guid employeeId,
+        CancellationToken cancellationToken)
+    {
+        // Distingue-se "colaborador não existe" de "existe e nunca teve
+        // conta": o primeiro é 404, o segundo é uma lista vazia, e confundi-los
+        // faria uma investigação concluir o contrário do que se passou.
+        if (await store.FindEmployeeAsync(employeeId, cancellationToken) is null)
+        {
+            return null;
+        }
+
+        var episodios = await store.ListAccountLinksAsync(employeeId, cancellationToken);
+
+        return [.. episodios.Select(l => new EmployeeAccountLinkView(
+            l.UserId, l.LinkedOn, l.LinkedByUserId, l.UnlinkedOn, l.UnlinkedByUserId))];
+    }
+}
+
+/// <param name="LinkedByUserId">
+/// Nulo é <strong>desconhecido</strong>, não «ninguém» — os episódios criados
+/// pela migração de retroactivo não têm autor registado.
+/// </param>
+/// <param name="UnlinkedOn">Nulo enquanto o episódio estiver aberto.</param>
+public sealed record EmployeeAccountLinkView(
+    Guid UserId,
+    DateTimeOffset LinkedOn,
+    Guid? LinkedByUserId,
+    DateTimeOffset? UnlinkedOn,
+    Guid? UnlinkedByUserId);
 
 public enum UnlinkEmployeeAccountOutcome
 {
