@@ -29,6 +29,25 @@ public interface IHrStore
 
     Task AddEmployeeAsync(Employee employee, CancellationToken cancellationToken);
 
+    // --- Histórico do vínculo conta↔colaborador (ADR-053) ---
+
+    Task AddAccountLinkAsync(EmployeeAccountLink link, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// O episódio ainda aberto deste colaborador, se existir.
+    ///
+    /// <para>
+    /// ⚠ <strong>Não é por aqui que se resolve quem pode decidir.</strong> Isso
+    /// continua a ser <see cref="FindEmployeeByUserIdAsync"/>, que lê
+    /// <c>Employee.UserId</c> — o ADR-053 acrescentou história e não mexeu no
+    /// caminho de decisão, de propósito.
+    /// </para>
+    /// </summary>
+    Task<EmployeeAccountLink?> FindOpenAccountLinkAsync(Guid employeeId, CancellationToken cancellationToken);
+
+    /// <summary>Todos os episódios de um colaborador, do mais recente para o mais antigo.</summary>
+    Task<IReadOnlyList<EmployeeAccountLink>> ListAccountLinksAsync(Guid employeeId, CancellationToken cancellationToken);
+
     // --- Departamentos ---
 
     Task<bool> DepartmentExistsAsync(Guid departmentId, CancellationToken cancellationToken);

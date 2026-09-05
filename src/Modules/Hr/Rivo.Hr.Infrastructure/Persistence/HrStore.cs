@@ -12,6 +12,26 @@ public sealed class HrStore(HrDbContext context) : IHrStore
     public async Task<Employee?> FindEmployeeByUserIdAsync(Guid userId, CancellationToken cancellationToken) =>
         await context.Employees.FirstOrDefaultAsync(e => e.UserId == userId, cancellationToken);
 
+    public async Task AddAccountLinkAsync(EmployeeAccountLink link, CancellationToken cancellationToken) =>
+        await context.EmployeeAccountLinks.AddAsync(link, cancellationToken);
+
+    public async Task<EmployeeAccountLink?> FindOpenAccountLinkAsync(
+        Guid employeeId,
+        CancellationToken cancellationToken) =>
+        await context.EmployeeAccountLinks
+            .FirstOrDefaultAsync(
+                l => l.EmployeeId == employeeId && l.UnlinkedOn == null,
+                cancellationToken);
+
+    public async Task<IReadOnlyList<EmployeeAccountLink>> ListAccountLinksAsync(
+        Guid employeeId,
+        CancellationToken cancellationToken) =>
+        await context.EmployeeAccountLinks
+            .Where(l => l.EmployeeId == employeeId)
+            .OrderByDescending(l => l.LinkedOn)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<Employee>> ListEmployeesAsync(CancellationToken cancellationToken) =>
         await context.Employees.AsNoTracking().OrderBy(e => e.FullName).ToListAsync(cancellationToken);
 
