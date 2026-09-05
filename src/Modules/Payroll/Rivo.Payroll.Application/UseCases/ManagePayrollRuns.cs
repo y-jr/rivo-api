@@ -2,6 +2,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Fiscal.Contracts;
 using Rivo.Payroll.Application.Abstractions;
 using Rivo.Payroll.Domain;
+using Rivo.Hr.Contracts;
 
 namespace Rivo.Payroll.Application.UseCases;
 
@@ -17,15 +18,35 @@ public sealed class GetPayrollRun(IPayrollRunStore store)
         store.FindAsync(runId, cancellationToken);
 }
 
-public sealed class OpenPayrollRun(IPayrollRunStore store, IAuditTrail audit)
+public sealed class OpenPayrollRun(
+    IPayrollRunStore store,
+    IEmployeeDirectory employees,
+    IAuditTrail audit,
+    TimeProvider clock)
 {
+    /// <param name="openedByUserId">
+    /// A conta autenticada, não o colaborador — resolve-se aqui (ADR-057).
+    /// Abrir a folha é o acto que fixa o período salarial, e quem o fez não se
+    /// declara.
+    /// </param>
     public async Task<OpenRunResult> ExecuteAsync(
         int year,
         int month,
-        Guid openedByEmployeeId,
+        Guid openedByUserId,
         AuditContext context,
         CancellationToken cancellationToken)
     {
+        var colaborador = await employees.FindByUserIdAsync(
+            openedByUserId, clock.GetUtcNow(), cancellationToken);
+
+        if (colaborador is null)
+        {
+            return OpenRunResult.Rejected(
+                "Esta conta não está associada a nenhum colaborador, e só um colaborador abre folhas.");
+        }
+
+        var openedByEmployeeId = colaborador.EmployeeId;
+
         PayrollRun folha;
 
         try

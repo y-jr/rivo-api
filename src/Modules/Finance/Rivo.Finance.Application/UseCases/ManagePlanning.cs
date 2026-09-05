@@ -2,6 +2,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Contracts;
 using Rivo.Finance.Domain;
+using Rivo.Hr.Contracts;
 
 namespace Rivo.Finance.Application.UseCases;
 
@@ -262,14 +263,34 @@ public enum ReviseBudgetOutcome
 /// seria dar uma resposta sem valor.
 /// </para>
 /// </summary>
-public sealed class ApproveBudget(IPlanningStore store, IAuditTrail audit, TimeProvider clock)
+public sealed class ApproveBudget(
+    IPlanningStore store,
+    IEmployeeDirectory employees,
+    IAuditTrail audit,
+    TimeProvider clock)
 {
+    /// <param name="approvedByUserId">
+    /// A conta autenticada, não o colaborador — resolve-se aqui (ADR-057).
+    /// Quem aprova o orçamento decide, indirectamente, o que BR-8 vai deixar
+    /// passar, e não pode ser declarado por quem chama.
+    /// </param>
     public async Task<ApproveBudgetResult> ExecuteAsync(
         Guid budgetId,
-        Guid approvedByEmployeeId,
+        Guid approvedByUserId,
         AuditContext context,
         CancellationToken cancellationToken)
     {
+        var colaborador = await employees.FindByUserIdAsync(
+            approvedByUserId, clock.GetUtcNow(), cancellationToken);
+
+        if (colaborador is null)
+        {
+            return ApproveBudgetResult.Rejected(
+                "Esta conta não está associada a nenhum colaborador, e só um colaborador aprova orçamentos.");
+        }
+
+        var approvedByEmployeeId = colaborador.EmployeeId;
+
         var orcamento = await store.FindBudgetForUpdateAsync(budgetId, cancellationToken);
 
         if (orcamento is null)

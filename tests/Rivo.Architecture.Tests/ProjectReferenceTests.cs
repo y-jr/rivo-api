@@ -66,11 +66,19 @@ public class ProjectReferenceTests
         // factura de compra liga ao Fornecedor, em vez de o guardar só como
         // retrato em texto. Mesma forma de `ICustomerDirectory` em cima.
         //
-        // As direcções que `modules/finance.md` lista e que ainda faltam —
-        // `hr`, `approval` — não precisam de referência directa: quem executa
-        // um pagamento e quem o aprova chegam por identificador simples e por
-        // `IPaymentApproval` invertido, sem resolver atributos do outro lado.
-        ["Finance"] = ["Audit", "Fiscal", "Commercial", "Procurement", "Documents"],
+        // ⚠ **`Hr` entrou a 2026-09-05 com o ADR-057, e a nota que aqui estava
+        // documentava a suposição que criou uma falha de segurança.**
+        //
+        // Dizia que `hr` não era precisa porque «quem executa um pagamento
+        // chega por identificador simples». Chegava — mas chegava *declarado
+        // pelo corpo do pedido*, e o BR-3 verificava-se contra ele. Verificado:
+        // a conta `Admin` executou 100 000 AOA e o sistema gravou o movimento
+        // como feito por um colaborador sem relação nenhuma com essa conta.
+        //
+        // Resolver o colaborador a partir da conta autenticada exige ler `hr`,
+        // e é por isso que a direcção passou a existir. `approval` continua
+        // invertida por `IPaymentApproval`, e essa parte da nota mantém-se.
+        ["Finance"] = ["Audit", "Fiscal", "Commercial", "Procurement", "Documents", "Hr"],
 
         // `procurement` é dono do Fornecedor e da Requisição Interna. Duas
         // direcções, e nenhuma delas é `approval`:
@@ -102,7 +110,9 @@ public class ProjectReferenceTests
         // módulo novo. Sem regra de negócio ainda, e sem as dependências que
         // os `.md` listam a mais: essas chegam com as funcionalidades que as
         // justificam.
-        ["Payroll"] = ["Audit", "Fiscal", "Documents"],
+        // `Hr` desde o ADR-057: quem abre a folha resolve-se a partir da conta
+        // autenticada, e isso exige ler `hr`.
+        ["Payroll"] = ["Audit", "Fiscal", "Documents", "Hr"],
         ["Inventory"] = ["Audit"],
 
         // `projects` ganhou Marco e Tarefa — 2026-08-30, já não é esqueleto

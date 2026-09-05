@@ -54,9 +54,14 @@ public sealed class RegisterGoodsReceipt(
     IAuditTrail audit,
     TimeProvider clock)
 {
+    /// <param name="receivedByUserId">
+    /// A <strong>conta autenticada</strong>, não o colaborador (ADR-057). É
+    /// quem fica responsável pela contagem — e a contagem é o que o 3-way
+    /// match compara.
+    /// </param>
     public async Task<RegisterGoodsReceiptResult> ExecuteAsync(
         Guid purchaseOrderId,
-        Guid receivedByEmployeeId,
+        Guid receivedByUserId,
         DateOnly? receivedOn,
         string? deliveryNote,
         IReadOnlyList<NewGoodsReceiptLine> lines,
@@ -81,13 +86,15 @@ public sealed class RegisterGoodsReceipt(
                 $"A ordem está em {ordem.Status} e não recebe mercadoria.");
         }
 
-        // Quem recebeu tem de existir, e existe em `hr` (ADR-010).
-        var colaborador = await employees.FindAsync(receivedByEmployeeId, agora, cancellationToken);
+        // Quem recebeu resolve-se a partir da conta, e existe em `hr` (ADR-010).
+        var colaborador = await employees.FindByUserIdAsync(receivedByUserId, agora, cancellationToken);
 
         if (colaborador is null)
         {
             return RegisterGoodsReceiptResult.ReceiverNotFound();
         }
+
+        var receivedByEmployeeId = colaborador.EmployeeId;
 
         if (lines.Count == 0)
         {

@@ -71,11 +71,15 @@ $adminHeaders = @{ Authorization = "Bearer " + (Get-Token $dotenv["BOOTSTRAP_ADM
 # Utilizador com perfil HR -- e quem tem payroll.runs.read/write (caso 2) e
 # documents.write (para o recibo, casos 6 e 19-22): HR nao precisa do Admin
 # para nenhum dos dois.
-$hrEmail = "rh-pl-$stamp@rivo.ao"
-$hrUserId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body (@{ email = $hrEmail; password = $pass } | ConvertTo-Json) -ContentType "application/json").userId
-Invoke-RestMethod "$base/identity/users/$hrUserId/roles" -Method Post -Body (@{ profile = "HR" } | ConvertTo-Json) -ContentType "application/json" -Headers $adminHeaders | Out-Null
-$hrToken = Get-Token $hrEmail $pass
-$hrHeaders = @{ Authorization = "Bearer $hrToken" }
+# A conta HR passou a ser tambem colaborador (ADR-057): quem abre a folha
+# resolve-se do token, e uma conta sem colaborador associado nao abre nenhuma.
+# Continua a ser perfil HR, para o caso 2 continuar a provar o que provava --
+# que HR le e escreve folhas sem precisar do Admin.
+$hrConta = New-RivoColaboradorComConta -Email "rh-pl-$stamp@rivo.ao" `
+    -Nome "RH PL $stamp" -AdminHeaders $adminHeaders -Perfil "HR" -Password $pass
+$hrHeaders = $hrConta.Headers
+# O upload de ficheiro usa curl, e precisa do token cru e nao do cabecalho.
+$hrToken = $hrConta.Headers.Authorization -replace '^Bearer '
 
 $semPerfilEmail = "semperfil-pl-$stamp@rivo.ao"
 Invoke-RestMethod "$base/identity/register" -Method Post -Body (@{ email = $semPerfilEmail; password = $pass } | ConvertTo-Json) -ContentType "application/json" | Out-Null
@@ -85,8 +89,8 @@ $semPerfilHeaders = @{ Authorization = "Bearer " + (Get-Token $semPerfilEmail $p
 $colaborador = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
     -Body (@{ fullName = "Colaborador PL $stamp" } | ConvertTo-Json)).employeeId
 
-$rh = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-    -Body (@{ fullName = "RH PL $stamp" } | ConvertTo-Json)).employeeId
+# Quem abre a folha é a conta HR criada acima — o colaborador dela.
+$rh = $hrConta.EmployeeId
 
 # Conta propria: desde o ADR-050 quem decide resolve-se do token, e nao de
 # um identificador no corpo do pedido.
@@ -151,7 +155,7 @@ Test-Case "2. HR le e escreve payroll" {
 }
 
 Test-Case "3. Abrir folha" {
-    $body = @{ year = $ano; month = $mes; openedByEmployeeId = $rh } | ConvertTo-Json
+    $body = @{ year = $ano; month = $mes } | ConvertTo-Json
     $r = Invoke-RestMethod "$base/payroll/runs" -Method Post -Body $body -ContentType "application/json" -Headers $hrHeaders
     if (-not $r.runId) { throw "sem runId na resposta" }
     $script:runId = $r.runId
@@ -159,7 +163,7 @@ Test-Case "3. Abrir folha" {
 }
 
 Test-Case "4. Mes fora de 1-12 e recusado" {
-    $body = @{ year = $ano; month = 13; openedByEmployeeId = $rh } | ConvertTo-Json
+    $body = @{ year = $ano; month = 13 } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/payroll/runs" -Method Post -Body $body -ContentType "application/json" -Headers $hrHeaders }
     if ($code -ne 400) { throw "esperado 400, obtido $code" }
     "mes invalido recusado (400)"
@@ -212,7 +216,7 @@ Test-Case "8. Sem INSS/IRT em vigor a data, o item e recusado (recusa, nao omiss
     # `IssueSalesInvoice` perante `NoRateInForce`: inventar o valor seria
     # pior do que recusar.
     $folhaAntiga = Invoke-RestMethod "$base/payroll/runs" -Method Post -ContentType "application/json" -Headers $hrHeaders `
-        -Body (@{ year = 2019; month = 6; openedByEmployeeId = $rh } | ConvertTo-Json)
+        -Body (@{ year = 2019; month = 6 } | ConvertTo-Json)
 
     $body = @{ employeeId = $colaborador; grossSalary = 100000 } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/payroll/runs/$($folhaAntiga.runId)/items" -Method Post -Body $body -ContentType "application/json" -Headers $hrHeaders }
@@ -227,7 +231,7 @@ Test-Case "9. Subsidios dentro do limiar: isencao total, sem excesso tributado" 
     # 25.000 de alimentacao e 20.000 de transporte, os dois abaixo do limiar
     # de 30.000 semeado por verify-fiscal.ps1 -- isentos por inteiro.
     $folhaSub = Invoke-RestMethod "$base/payroll/runs" -Method Post -ContentType "application/json" -Headers $hrHeaders `
-        -Body (@{ year = $ano; month = (($mes % 12) + 1); openedByEmployeeId = $rh } | ConvertTo-Json)
+        -Body (@{ year = $ano; month = (($mes % 12) + 1) } | ConvertTo-Json)
 
     $body = @{ employeeId = $colaborador; grossSalary = 300000; foodAllowance = 25000; transportAllowance = 20000 } | ConvertTo-Json
     Invoke-RestMethod "$base/payroll/runs/$($folhaSub.runId)/items" -Method Post -Body $body -ContentType "application/json" -Headers $hrHeaders | Out-Null
@@ -252,7 +256,7 @@ Test-Case "10. Subsidios acima do limiar: o excesso soma-se a materia colectavel
     # normalmente. Ferias e Natal (sem isencao nenhuma, confirmado pelo
     # utilizador) entram so como composicao, sem reduzir a materia colectavel.
     $folhaSub = Invoke-RestMethod "$base/payroll/runs" -Method Post -ContentType "application/json" -Headers $hrHeaders `
-        -Body (@{ year = $ano; month = (($mes % 12) + 1); openedByEmployeeId = $rh } | ConvertTo-Json)
+        -Body (@{ year = $ano; month = (($mes % 12) + 1) } | ConvertTo-Json)
 
     $body = @{
         employeeId          = $colaborador
@@ -280,7 +284,7 @@ Test-Case "10. Subsidios acima do limiar: o excesso soma-se a materia colectavel
 
 Test-Case "11. Subsidio negativo e recusado com 400" {
     $folhaSub = Invoke-RestMethod "$base/payroll/runs" -Method Post -ContentType "application/json" -Headers $hrHeaders `
-        -Body (@{ year = $ano; month = (($mes % 12) + 1); openedByEmployeeId = $rh } | ConvertTo-Json)
+        -Body (@{ year = $ano; month = (($mes % 12) + 1) } | ConvertTo-Json)
 
     $body = @{ employeeId = $colaborador; grossSalary = 300000; foodAllowance = -1 } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/payroll/runs/$($folhaSub.runId)/items" -Method Post -Body $body -ContentType "application/json" -Headers $hrHeaders }
@@ -292,7 +296,7 @@ Test-Case "12. Subsidios que nao cabem no bruto sao recusados com 400" {
     # O bruto e o total, nao a soma do bruto com os subsidios -- ver
     # PayrollItem. 60.000 + 60.000 excede o bruto de 100.000.
     $folhaSub = Invoke-RestMethod "$base/payroll/runs" -Method Post -ContentType "application/json" -Headers $hrHeaders `
-        -Body (@{ year = $ano; month = (($mes % 12) + 1); openedByEmployeeId = $rh } | ConvertTo-Json)
+        -Body (@{ year = $ano; month = (($mes % 12) + 1) } | ConvertTo-Json)
 
     $body = @{ employeeId = $colaborador; grossSalary = 100000; foodAllowance = 60000; transportAllowance = 60000 } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/payroll/runs/$($folhaSub.runId)/items" -Method Post -Body $body -ContentType "application/json" -Headers $hrHeaders }

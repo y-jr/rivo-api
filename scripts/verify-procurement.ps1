@@ -93,8 +93,13 @@ $ibanMau = "AO71000600000109131234152"
 $departamento = (Invoke-RestMethod "$base/hr/departments" -Method Post -ContentType "application/json" -Headers $adminHeaders `
     -Body (@{ name = "Contabilidade PR $curto" } | ConvertTo-Json)).departmentId
 
-$requisitante = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-    -Body (@{ fullName = "Requisitante PR $curto"; departmentId = $departamento } | ConvertTo-Json)).employeeId
+# Conta propria desde o ADR-057: o requisitante e a recepcao resolvem quem age
+# a partir do token, e nao de um identificador declarado no corpo. Antes a
+# suite declarava-os -- e por isso exercitava o buraco em vez de o expor.
+$requisitanteConta = New-RivoColaboradorComConta -Email "req-pr-$curto@rivo.ao" `
+    -Nome "Requisitante PR $curto" -AdminHeaders $adminHeaders -Perfil "Admin" `
+    -DepartmentId $departamento
+$requisitante = $requisitanteConta.EmployeeId
 
 # Conta propria: desde o ADR-050 quem decide resolve-se do token, e nao de um
 # identificador declarado no corpo do pedido.
@@ -104,8 +109,9 @@ $aprovador = $aprovadorConta.EmployeeId
 
 # Quem recebe a mercadoria, e nao e quem a pede: sem duas pessoas, a
 # segregacao do 3-way match nao se pode verificar.
-$recebedor = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-    -Body (@{ fullName = "Fiel de Armazem PR $curto" } | ConvertTo-Json)).employeeId
+$recebedorConta = New-RivoColaboradorComConta -Email "rec-pr-$curto@rivo.ao" `
+    -Nome "Fiel de Armazem PR $curto" -AdminHeaders $adminHeaders -Perfil "Admin"
+$recebedor = $recebedorConta.EmployeeId
 
 # Cargo sem autoridade de aprovação: o que a confere passaria ele próprio por
 # governança (BR-20), e não é isso que se verifica aqui.
@@ -296,24 +302,39 @@ Test-Case "9. O IBAN entra na trilha, antes e depois" {
 
 # --- Requisição Interna
 
-Test-Case "10. Requisitante inexistente e recusado" {
-    # O colaborador e lido pelo contrato de `hr` (ADR-010). Sem esta
-    # verificacao, uma requisicao nasceria com um identificador que nao e de
-    # ninguem, e so `approval` o descobriria ao tentar verificar BR-2.
+Test-Case "10. Conta sem colaborador associado nao requisita" {
+    # ⚠ Este caso mudou de assunto com o ADR-057.
+    #
+    # Verificava que um `requestedByEmployeeId` inexistente dava 404 -- ou
+    # seja, que o servidor recusava um nome escrito no corpo. O campo deixou de
+    # existir: o requisitante resolve-se da conta autenticada.
+    #
+    # O que resta verificar e a condicao equivalente e mais util: uma conta sem
+    # colaborador associado nao abre requisicao nenhuma. `$managerHeaders` e
+    # uma conta de perfil, sem vinculo.
     $body = @{
-        requestedByEmployeeId = [guid]::NewGuid().ToString()
-        justification         = "Requisitante que nao existe."
-        lines                 = @(@{ description = "Portatil"; quantity = 1; estimatedUnitPrice = 100 })
+        justification = "Conta sem colaborador associado."
+        lines         = @(@{ description = "Portatil"; quantity = 1; estimatedUnitPrice = 100 })
     } | ConvertTo-Json -Depth 5
 
     $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/requisitions" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
     if ($code -ne 404) { throw "esperado 404, obtido $code" }
-    "404 - o requisitante e lido do contrato de hr, nao aceite por palavra"
+
+    # E declarar o campo, que ja nao e aceite, da 400 -- recusa ruidosa em vez
+    # de ser ignorado em silencio.
+    $comCampo = @{
+        requestedByEmployeeId = $requisitante
+        justification         = "Campo obsoleto."
+        lines                 = @(@{ description = "Portatil"; quantity = 1; estimatedUnitPrice = 100 })
+    } | ConvertTo-Json -Depth 5
+
+    $codeCampo = Get-StatusCode { Invoke-RestMethod "$base/procurement/requisitions" -Method Post -Body $comCampo -ContentType "application/json" -Headers $requisitanteConta.Headers }
+    if ($codeCampo -ne 400) { throw "declarar requestedByEmployeeId: esperado 400, obtido $codeCampo" }
+    "404 sem vinculo, 400 a declarar o campo - o requisitante vem da conta"
 }
 
 Test-Case "11. Abrir requisicao: rascunho, e o total e a soma das linhas" {
     $body = @{
-        requestedByEmployeeId = $requisitante
         justification         = "Substituir os dois portateis avariados da contabilidade."
         lines                 = @(
             @{ description = "Portatil 14 pol, 16 GB"; quantity = 2; estimatedUnitPrice = 850000 },
@@ -321,7 +342,7 @@ Test-Case "11. Abrir requisicao: rascunho, e o total e a soma das linhas" {
         )
     } | ConvertTo-Json -Depth 5
 
-    $r = Invoke-RestMethod "$base/procurement/requisitions" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+    $r = Invoke-RestMethod "$base/procurement/requisitions" -Method Post -Body $body -ContentType "application/json" -Headers $requisitanteConta.Headers
     $script:requisicaoId = $r.requisitionId
 
     if ($r.estado -ne "Draft") { throw "estado '$($r.estado)', esperado Draft" }
@@ -363,12 +384,11 @@ Test-Case "13. Sem departamento indicado, herda o do requisitante" {
 
 Test-Case "14. Linha sem quantidade positiva e recusada" {
     $body = @{
-        requestedByEmployeeId = $requisitante
         justification         = "Quantidade invalida."
         lines                 = @(@{ description = "Portatil"; quantity = 0; estimatedUnitPrice = 100 })
     } | ConvertTo-Json -Depth 5
 
-    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/requisitions" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/requisitions" -Method Post -Body $body -ContentType "application/json" -Headers $requisitanteConta.Headers }
     if ($code -ne 400) { throw "esperado 400, obtido $code" }
     "400 - pedir zero de alguma coisa nao e um pedido"
 }
@@ -509,12 +529,11 @@ Test-Case "23. Uma requisicao aprovada ja nao se cancela" {
 
 Test-Case "24. Um rascunho cancela-se, com razao, e nao se elimina" {
     $body = @{
-        requestedByEmployeeId = $requisitante
         justification         = "Pedido que vai ser cancelado."
         lines                 = @(@{ description = "Cadeira"; quantity = 1; estimatedUnitPrice = 45000 })
     } | ConvertTo-Json -Depth 5
 
-    $r = Invoke-RestMethod "$base/procurement/requisitions" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+    $r = Invoke-RestMethod "$base/procurement/requisitions" -Method Post -Body $body -ContentType "application/json" -Headers $requisitanteConta.Headers
     $script:canceladaId = $r.requisitionId
 
     $body = @{ reason = "Resolvido de outra forma." } | ConvertTo-Json
@@ -537,11 +556,10 @@ Test-Case "25. Cancelar sem razao e recusado" {
     # Sem razao, quem abriu a requisicao nao sabe se foi engano, se foi decisao,
     # nem o que corrigir para voltar a pedir.
     $body = @{
-        requestedByEmployeeId = $requisitante
         justification         = "Outro pedido."
         lines                 = @(@{ description = "Secretaria"; quantity = 1; estimatedUnitPrice = 90000 })
     } | ConvertTo-Json -Depth 5
-    $r = Invoke-RestMethod "$base/procurement/requisitions" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
+    $r = Invoke-RestMethod "$base/procurement/requisitions" -Method Post -Body $body -ContentType "application/json" -Headers $requisitanteConta.Headers
 
     $body = @{ reason = "" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/requisitions/$($r.requisitionId)/cancellation" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
@@ -890,11 +908,10 @@ Test-Case "43. Nao se recebe uma linha de outra ordem" {
     # Deixa-lo passar poria a recepcao a satisfazer uma encomenda diferente da
     # que se pretende, e o match comparava coisas que nao se correspondem.
     $body = @{
-        receivedByEmployeeId = $recebedor
         lines                = @(@{ purchaseOrderLineId = [guid]::NewGuid().ToString(); quantityReceived = 1 })
     } | ConvertTo-Json -Depth 5
 
-    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $assetHeaders }
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $recebedorConta.Headers }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "409 - a contagem e sempre de uma linha desta ordem"
 }
@@ -904,12 +921,11 @@ Test-Case "44. Receber acima do encomendado e recusado" {
     # mais do que encomendou, e o 3-way match deixava de ter contra que
     # comparar. Um limiar de excesso aceitavel e decisao de negocio sem fonte.
     $body = @{
-        receivedByEmployeeId = $recebedor
         lines                = @(@{ purchaseOrderLineId = $script:linhaB; quantityReceived = 2 })
     } | ConvertTo-Json -Depth 5
 
     try {
-        Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $assetHeaders | Out-Null
+        Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $recebedorConta.Headers | Out-Null
         throw "recebeu o dobro do encomendado"
     }
     catch {
@@ -927,12 +943,11 @@ Test-Case "44. Receber acima do encomendado e recusado" {
 
 Test-Case "45. Registar a recepcao, com guia e com quem recebeu" {
     $body = @{
-        receivedByEmployeeId = $recebedor
         deliveryNote         = "GR $curto"
         lines                = @(@{ purchaseOrderLineId = $script:linhaB; quantityReceived = 1 })
     } | ConvertTo-Json -Depth 5
 
-    $g = Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $assetHeaders
+    $g = Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $recebedorConta.Headers
     $script:recepcaoId = $g.goodsReceiptId
     if ($g.estado -ne "Registered") { throw "estado '$($g.estado)'" }
 
@@ -957,11 +972,10 @@ Test-Case "46. A ordem passa a mostrar o que chegou" {
 
 Test-Case "47. Com a ordem completa, mais um e recusado" {
     $body = @{
-        receivedByEmployeeId = $recebedor
         lines                = @(@{ purchaseOrderLineId = $script:linhaB; quantityReceived = 1 })
     } | ConvertTo-Json -Depth 5
 
-    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $assetHeaders }
+    $code = Get-StatusCode { Invoke-RestMethod "$base/procurement/orders/$($script:ordemB)/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $recebedorConta.Headers }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "409 - o acumulado conta, nao so a contagem desta vez"
 }
@@ -1023,11 +1037,10 @@ Test-Case "50. Recepcoes parciais somam, e a ordem so fecha no fim" {
 
     foreach ($quantidade in @(4, 6)) {
         $body = @{
-            receivedByEmployeeId = $recebedor
             deliveryNote         = "GR $curto-$quantidade"
             lines                = @(@{ purchaseOrderLineId = $linhaC; quantityReceived = $quantidade })
         } | ConvertTo-Json -Depth 5
-        Invoke-RestMethod "$base/procurement/orders/$($script:ordemC)/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $assetHeaders | Out-Null
+        Invoke-RestMethod "$base/procurement/orders/$($script:ordemC)/receipts" -Method Post -Body $body -ContentType "application/json" -Headers $recebedorConta.Headers | Out-Null
 
         $parcial = Invoke-RestMethod "$base/procurement/orders/$($script:ordemC)" -Headers $managerHeaders
         if ($quantidade -eq 4 -and $parcial.fullyReceived -ne $false) { throw "4 de 10 e a ordem ja diz completa" }
@@ -1056,7 +1069,6 @@ Test-Case "51. Anular sem razao e recusado" {
 
 Test-Case "52. Autorizacao das recepcoes, nas duas direccoes" {
     $body = @{
-        receivedByEmployeeId = $recebedor
         lines                = @(@{ purchaseOrderLineId = $script:linhaB; quantityReceived = 1 })
     } | ConvertTo-Json -Depth 5
 

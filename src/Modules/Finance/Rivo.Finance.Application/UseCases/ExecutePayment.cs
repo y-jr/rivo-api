@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
+using Rivo.Hr.Contracts;
 
 namespace Rivo.Finance.Application.UseCases;
 
@@ -29,19 +30,52 @@ namespace Rivo.Finance.Application.UseCases;
 public sealed class ExecutePayment(
     IPayablesStore store,
     IPaymentApproval approval,
+    IEmployeeDirectory employees,
     IAuditTrail audit,
     PostDocument posting,
     TimeProvider clock)
 {
+    /// <summary>
+    /// <paramref name="executedByUserId"/> é a <strong>conta autenticada</strong>,
+    /// não o colaborador. O colaborador resolve-se aqui, a partir dela.
+    ///
+    /// <para>
+    /// <strong>Foi assim que se fechou a falha de 2026-09-05 (ADR-057).</strong>
+    /// Até essa data o identificador do colaborador chegava no corpo do pedido
+    /// HTTP e ninguém o confrontava com quem chamava — verificado
+    /// empiricamente: a conta `Admin` executou 100 000 AOA e o sistema gravou
+    /// o movimento como feito por um colaborador que não tinha relação nenhuma
+    /// com essa conta.
+    /// </para>
+    ///
+    /// <para>
+    /// O BR-3 (quem aprova não paga) estava correcto no domínio, e continuava
+    /// a estar: o defeito era estar a ser aplicado ao <em>colaborador
+    /// declarado</em> em vez de a quem estava a agir. A resolução vive aqui, e
+    /// não no endpoint, para não sobrar caminho de código que aceite um
+    /// executante arbitrário.
+    /// </para>
+    /// </summary>
     public async Task<ExecutePaymentResult> ExecuteAsync(
         Guid paymentRequestId,
         Guid bankAccountId,
-        Guid executedByEmployeeId,
+        Guid executedByUserId,
         PaymentMethod method,
         string? reference,
         AuditContext context,
         CancellationToken cancellationToken)
     {
+        var colaborador = await employees.FindByUserIdAsync(
+            executedByUserId, clock.GetUtcNow(), cancellationToken);
+
+        if (colaborador is null)
+        {
+            return ExecutePaymentResult.SegregationOfDuties(
+                "Esta conta não está associada a nenhum colaborador, e só um colaborador paga.");
+        }
+
+        var executedByEmployeeId = colaborador.EmployeeId;
+
         var pedido = await store.FindPaymentRequestForUpdateAsync(paymentRequestId, cancellationToken);
 
         if (pedido is null)

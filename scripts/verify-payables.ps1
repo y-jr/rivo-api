@@ -67,21 +67,36 @@ function New-PerfilHeaders {
 }
 
 # `Manager` pede e regista facturas; `Finance` executa. Nenhum faz os dois.
-$managerHeaders = New-PerfilHeaders "Manager" "chefe-p-$stamp"
-$financeHeaders = New-PerfilHeaders "Finance" "tesouraria-p-$stamp"
+#
+# ⚠ Desde o ADR-057 estas contas **são** o requisitante e o tesoureiro, e não
+# contas anónimas que os declaram. Ver a nota no cenário, abaixo.
 
 # --- Cenário, montado pelas rotas reais.
-$requisitante = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-    -Body (@{ fullName = "Requisitante $curto" } | ConvertTo-Json)).employeeId
+#
+# ⚠ **Os três intervenientes têm conta própria desde o ADR-057.**
+#
+# Antes, só o aprovador a tinha (ADR-050); o requisitante e o tesoureiro eram
+# colaboradores sem conta, e a suite **declarava-os** no corpo do pedido. Isso
+# fazia a suite exercitar exactamente o buraco que o ADR-057 fechou: o BR-3
+# verificava-se contra quem a suite dizia, e não contra quem agia.
+#
+# Agora cada um age com a sua conta, e os casos 10, 11 e 14 provam as regras a
+# sério — quem pede, quem aprova e quem paga são três sessões distintas.
+$requisitanteConta = New-RivoColaboradorComConta -Email "req-pay-$curto@rivo.ao" `
+    -Nome "Requisitante $curto" -AdminHeaders $adminHeaders -Perfil "Manager"
+$requisitante = $requisitanteConta.EmployeeId
+# O requisitante **é** o utilizador com perfil Manager — o que pede pagamentos.
+$managerHeaders = $requisitanteConta.Headers
 
-# Conta propria: desde o ADR-050 quem decide resolve-se do token, e nao de um
-# identificador declarado no corpo do pedido.
 $aprovadorConta = New-RivoColaboradorComConta -Email "apr-pay-$curto@rivo.ao" `
     -Nome "Aprovador $curto" -AdminHeaders $adminHeaders -Perfil "Admin"
 $aprovador = $aprovadorConta.EmployeeId
 
-$tesoureiro = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-    -Body (@{ fullName = "Tesoureiro $curto" } | ConvertTo-Json)).employeeId
+$tesoureiroConta = New-RivoColaboradorComConta -Email "tes-pay-$curto@rivo.ao" `
+    -Nome "Tesoureiro $curto" -AdminHeaders $adminHeaders -Perfil "Finance"
+$tesoureiro = $tesoureiroConta.EmployeeId
+# E o tesoureiro **é** o utilizador com perfil Finance — o que executa.
+$financeHeaders = $tesoureiroConta.Headers
 
 # Cargo sem autoridade de aprovação: o que confere autoridade passaria ele
 # próprio por governança (BR-20), e não é isso que se testa aqui.
@@ -216,7 +231,7 @@ Test-Case "7. Identificador de fornecedor inexistente em procurement e recusado"
 
 Test-Case "8. Pedido de pagamento devolve 202, nao 201" {
     $body = @{
-        purchaseInvoiceId = $script:compraId; amount = 114000; requestedByEmployeeId = $requisitante
+        purchaseInvoiceId = $script:compraId; amount = 114000
     } | ConvertTo-Json
     $p = Invoke-RestMethod "$base/finance/payment-requests" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders
     $script:pedidoId = $p.paymentRequestId
@@ -246,7 +261,7 @@ where table_schema='finance' and table_name='payment_request'
 }
 
 Test-Case "10. BR-1: sem decisao aprovada nao se paga" {
-    $body = @{ bankAccountId = $script:contaId; executedByEmployeeId = $tesoureiro; method = "TB" } | ConvertTo-Json
+    $body = @{ bankAccountId = $script:contaId; method = "TB" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
 
@@ -259,8 +274,18 @@ Test-Case "11. BR-3: quem aprova nao paga" {
     $body = @{ action = "Approved" } | ConvertTo-Json
     Invoke-RestMethod "$base/approval/requests/$($script:processoId)/decisions" -Method Post -Body $body -ContentType "application/json" -Headers $aprovadorConta.Headers | Out-Null
 
-    $body = @{ bankAccountId = $script:contaId; executedByEmployeeId = $aprovador; method = "TB" } | ConvertTo-Json
-    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
+    # ⚠ **É o proprio aprovador que tenta pagar**, com a conta dele.
+    #
+    # Antes do ADR-057 este caso corria com a conta de tesouraria e *declarava*
+    # o aprovador no corpo -- ou seja, provava que o servidor recusava um nome
+    # escrito no pedido, e nao que recusava a pessoa. Quem chamava podia
+    # escrever outro nome e o pagamento saia na mesma; foi assim que a falha
+    # passou despercebida.
+    #
+    # A conta do aprovador tem perfil Admin, logo tem finance.payments.execute:
+    # a permissao existe, e o que impede e o BR-3.
+    $body = @{ bankAccountId = $script:contaId; method = "TB" } | ConvertTo-Json
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $aprovadorConta.Headers }
 
     # **403 e nao 409:** nao e o estado que impede, e *esta pessoa*.
     if ($code -ne 403) { throw "esperado 403, obtido $code" }
@@ -282,7 +307,7 @@ Test-Case "12. BR-5 (saldo): conta sem fundos recusa" {
     $body = @{ amount = 1000 } | ConvertTo-Json
     Invoke-RestMethod "$base/finance/accounts/$pobre/deposits" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders | Out-Null
 
-    $body = @{ bankAccountId = $pobre; executedByEmployeeId = $tesoureiro; method = "TB" } | ConvertTo-Json
+    $body = @{ bankAccountId = $pobre; method = "TB" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
 
@@ -298,7 +323,7 @@ Test-Case "13. Moeda do pedido e da conta tem de coincidir" {
     $body = @{ amount = 900000 } | ConvertTo-Json
     Invoke-RestMethod "$base/finance/accounts/$usd/deposits" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders | Out-Null
 
-    $body = @{ bankAccountId = $usd; executedByEmployeeId = $tesoureiro; method = "TB" } | ConvertTo-Json
+    $body = @{ bankAccountId = $usd; method = "TB" } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
     if ($code -ne 400) { throw "esperado 400, obtido $code" }
     "sem conversao automatica: o cambio e uma decisao"
@@ -306,7 +331,7 @@ Test-Case "13. Moeda do pedido e da conta tem de coincidir" {
 
 Test-Case "14. Executar: dinheiro sai e o pedido fica executado" {
     $body = @{
-        bankAccountId = $script:contaId; executedByEmployeeId = $tesoureiro
+        bankAccountId = $script:contaId
         method = "TB"; reference = "TRF-$curto"
     } | ConvertTo-Json
     $r = Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders
@@ -322,7 +347,7 @@ Test-Case "14. Executar: dinheiro sai e o pedido fica executado" {
 }
 
 Test-Case "15. Pagar duas vezes recusa com a razao certa" {
-    $body = @{ bankAccountId = $script:contaId; executedByEmployeeId = $tesoureiro; method = "TB" } | ConvertTo-Json
+    $body = @{ bankAccountId = $script:contaId; method = "TB" } | ConvertTo-Json
     try {
         Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders | Out-Null
         throw "esperado 409, o pedido passou"
@@ -351,7 +376,7 @@ Test-Case "16. Um pedido executado nao se cancela" {
 
 Test-Case "17. Pedidos nao ultrapassam o total da factura" {
     # A factura de 114000 ja tem um pedido de 114000. Mais um nao cabe.
-    $body = @{ purchaseInvoiceId = $script:compraId; amount = 1; requestedByEmployeeId = $requisitante } | ConvertTo-Json
+    $body = @{ purchaseInvoiceId = $script:compraId; amount = 1 } | ConvertTo-Json
     $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "tres pedidos de metade cada passariam um a um; juntos pagavam a mais"
@@ -362,12 +387,12 @@ Test-Case "18. Autorizacao: 401 sem token, 403 na funcao errada" {
     if ($code -ne 401) { throw "sem token: esperado 401, obtido $code" }
 
     # Finance nao pede pagamentos.
-    $body = @{ purchaseInvoiceId = $script:compraId; amount = 1; requestedByEmployeeId = $requisitante } | ConvertTo-Json
+    $body = @{ purchaseInvoiceId = $script:compraId; amount = 1 } | ConvertTo-Json
     $c1 = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests" -Method Post -Body $body -ContentType "application/json" -Headers $financeHeaders }
     if ($c1 -ne 403) { throw "Finance pediu pagamento: esperado 403, obtido $c1" }
 
     # Manager nao executa.
-    $body = @{ bankAccountId = $script:contaId; executedByEmployeeId = $tesoureiro; method = "TB" } | ConvertTo-Json
+    $body = @{ bankAccountId = $script:contaId; method = "TB" } | ConvertTo-Json
     $c2 = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests/$($script:pedidoId)/execution" -Method Post -Body $body -ContentType "application/json" -Headers $managerHeaders }
     if ($c2 -ne 403) { throw "Manager executou pagamento: esperado 403, obtido $c2" }
 

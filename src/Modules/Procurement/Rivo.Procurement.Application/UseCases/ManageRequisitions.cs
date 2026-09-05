@@ -112,8 +112,19 @@ public sealed class OpenRequisition(
     IAuditTrail audit,
     TimeProvider clock)
 {
+    /// <param name="requestedByUserId">
+    /// A <strong>conta autenticada</strong>, não o colaborador (ADR-057).
+    ///
+    /// <para>
+    /// Antes recebia o colaborador declarado pelo corpo do pedido. A
+    /// verificação de existência estava lá e estava certa — o que faltava era
+    /// confrontá-lo com quem estava a agir. É contra o requisitante que BR-2
+    /// se verifica, e um requisitante escolhido por quem chama torna BR-2
+    /// decorativa.
+    /// </para>
+    /// </param>
     public async Task<OpenRequisitionResult> ExecuteAsync(
-        Guid requestedByEmployeeId,
+        Guid requestedByUserId,
         Guid? departmentId,
         string justification,
         string currency,
@@ -124,15 +135,14 @@ public sealed class OpenRequisition(
     {
         var agora = clock.GetUtcNow();
 
-        // O requisitante tem de existir, e existe em `hr` (ADR-010). Sem esta
-        // verificação, uma requisição podia nascer com um identificador que não
-        // é de ninguém — e `approval` só descobriria ao tentar verificar BR-2.
-        var colaborador = await employees.FindAsync(requestedByEmployeeId, agora, cancellationToken);
+        var colaborador = await employees.FindByUserIdAsync(requestedByUserId, agora, cancellationToken);
 
         if (colaborador is null)
         {
             return OpenRequisitionResult.RequesterNotFound();
         }
+
+        var requestedByEmployeeId = colaborador.EmployeeId;
 
         PurchaseRequisition requisicao;
 
