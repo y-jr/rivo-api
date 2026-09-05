@@ -137,7 +137,7 @@ linhas. O histórico de como cada número cresceu está em
 | Entidades de domínio | **65 ficheiros** em 15 módulos — `finance` 17, `hr` 12, `fleet` 7, `inventory` 5, `projects` 5, `procurement` 4, `fiscal` 4, `approval` 2, `payroll` 2, `commercial` 2, e um cada em `audit`, `documents`, `identity`, `messaging`, `notifications`. Conta entidades, **não raízes de agregado** — `InventoryCountLine` e `StockMovement`, por exemplo, são filhos e não raízes |
 | Documentação | ≈19 900 linhas de Markdown em `.claude/` — ADRs, módulos, domínio e estado |
 | Perfis de Acesso | **8** — os 7 do documento de produto mais `Cliente` (ADR-043). `Admin` tem **71 permissões**, confirmado em base a 2026-09-05 (a 71.ª é `hr.employees.link_account`, ADR-051). A autorização dos portais continua por vínculo de identidade, não por permissão — as excepções são `documents.write` (comprovativo de pagamento, ADR-044) e as permissões próprias de `Dashboard` e `Analytics`, concedidas a `Manager` porque o documento de produto o nomeia e ele não tem as permissões dos módulos subjacentes |
-| Testes automatizados | **1 200** em **30 projectos**, todos passam. Por camada: **830 de domínio**, **336 de Application**, 21 de arquitectura, 9 de API, 4 de integração (Testcontainers). A distribuição por módulo é que é desigual — ver "O que não existe" |
+| Testes automatizados | **1 216** em **31 projectos**, todos passam. Por camada: **830 de domínio**, **352 de Application**, 21 de arquitectura, 9 de API, 4 de integração (Testcontainers). A distribuição por módulo é que é desigual — ver "O que não existe" |
 | Verificação end-to-end | **22 suites** PowerShell, **575 casos**, contra a stack real. As maiores: `inventory` 66, `procurement` 58, `fleet` 51, `ledger` 46, `projects` 43. `verify-all.ps1` tolera explicitamente o K20 conhecido (por texto do caso, não por número — já mudou várias vezes) em vez de bloquear o gate inteiro |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
@@ -181,19 +181,21 @@ registo já existe e é a conta que chega depois.
   `projects`, `inventory`, `fleet`) ganharam regra de negócio real e projecto
   de teste próprio; nenhum continua marcado ⚠⚠. Ver a secção Módulos e o
   "Seguimento" que cada `modules/*.md` regista.
-- **Cobertura de Application em oito dos quinze módulos.** Só `finance`
+- **Cobertura de Application em sete dos quinze módulos.** Só `finance`
   (162), `identity` (28), `hr` (25), `procurement` (24), `messaging` (23),
-  `commercial` (11) e `approval` (8) a têm. Os restantes oito só têm testes de
-  domínio e verificação caixa-preta.
+  `inventory` (16), `commercial` (11) e `approval` (8) a têm. Os restantes
+  sete só têm testes de domínio e verificação caixa-preta.
 
-  `procurement` foi **o primeiro a ganhá-la por decisão, e não a reboque de um
-  defeito** — os três anteriores vieram dos ADR-050, 053 e 055. O que se cobriu
-  foram as duas invariantes cumulativas (não receber acima do encomendado, não
-  encomendar acima do aprovado) e a projecção do 3-way match, todas com a mesma
-  forma: **o agregado não vê o conjunto**.
+  `procurement` e `inventory` foram **os primeiros a ganhá-la por decisão, e
+  não a reboque de um defeito** — os três anteriores vieram dos ADR-050, 053 e
+  055. Em `procurement` cobriram-se as duas invariantes cumulativas (não
+  receber acima do encomendado, não encomendar acima do aprovado) e a
+  projecção do 3-way match; em `inventory`, as fronteiras da janela de
+  valorização e a verificação de armazém, que é cross-agregado. Todas com a
+  mesma forma: **o que uma operação isolada não vê**.
 
-  ⚠ **Os dois últimos foram ganhos a reboque de um problema, não por
-  disciplina.** `approval` só a ganhou depois de a lacuna custar uma falha de
+  ⚠ **Antes deles, os três primeiros foram ganhos a reboque de um problema, e
+  não por disciplina.** `approval` só a ganhou depois de a lacuna custar uma falha de
   segurança (ADR-050, K21): a decisão de quem aprova vinha do corpo do pedido
   e não era confrontada com o token. Os testes de domínio passavam, porque o
   domínio recebia o identificador já escolhido e aplicava-lhe as regras
@@ -328,17 +330,19 @@ optimista, ownership de dados — foi pago à cabeça.
    real.
 4. **Cobertura de Application nos outros módulos** — `finance` tem 162 testes
    de Application, `identity` 28, `hr` 25, `procurement` 24, `messaging` 23,
-   `commercial` 11 e `approval` 8; os outros oito módulos, nenhum.
+   `inventory` 16, `commercial` 11 e `approval` 8; os outros sete módulos,
+   nenhum.
 
    Os de `approval`, `hr` e `commercial` entraram a reboque de problemas
-   concretos (ADR-050, 053 e 055), não por plano. **`procurement` foi o
-   primeiro a inverter esse padrão** — cobriu-se antes de haver defeito, e o
-   critério de escolha foi o mesmo que os defeitos anteriores ensinaram:
-   procurar onde uma invariante depende do **conjunto** e não do agregado.
+   concretos (ADR-050, 053 e 055), não por plano. **`procurement` e
+   `inventory` inverteram esse padrão** — cobriram-se antes de haver defeito,
+   e o critério de escolha foi o que os defeitos anteriores ensinaram:
+   procurar o que uma operação isolada não vê — o conjunto acumulado, ou outro
+   agregado.
 
-   Os próximos com essa forma são `inventory` (a valorização acumula
-   movimentos) e `fleet` (as despesas e o custo de manutenção somam-se por
-   período). Nenhum tem cobertura desta camada.
+   O próximo com a mesma forma é `fleet`, onde as despesas e o custo de
+   manutenção se somam por período, e a seguir `projects`, onde as horas e os
+   custos se acumulam por projecto. Nenhum tem cobertura desta camada.
 5. **O NIF oficial de consumidor final** — enquanto for `CONSUMIDORFINAL`, as
    vendas a balcão saem com um marcador visível. Precisa de fonte primária.
 6. **A falha intermitente de limpeza de política, K20.** Três investigações,

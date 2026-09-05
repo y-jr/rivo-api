@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testa a camada Application de `inventory`.
+
+    Escolhido pelo mesmo critério que levou aos testes de `procurement`:
+    procurar onde uma invariante depende do **conjunto** ou de **outro
+    agregado**, que é onde o domínio não chega.
+
+    Aqui são dois sítios. A valorização por período é uma projecção sobre
+    movimentos acumulados, com fronteiras de janela que nenhum agregado
+    conhece. E o `WarehouseGuard` é cross-agregado: a quantidade disponível é
+    verificada pelo `InventoryItem`, mas se o armazém existe e está activo só
+    se sabe indo a outro armazenamento.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Inventory\Rivo.Inventory.Application\Rivo.Inventory.Application.csproj" />
+  </ItemGroup>
+
+</Project>
