@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testa a camada Application de `procurement`.
+
+    É o maior módulo que ainda não a tinha, e o que mais dela precisa: o
+    3-way match é orquestração pura. O domínio conhece a Ordem de Compra e
+    conhece a Recepção, mas **nunca as vê em conjunto** — quem as junta é o
+    caso de uso, lendo o acumulado de recepções do armazenamento.
+
+    A guarda que impede receber acima do encomendado é o exemplo exacto:
+    depende do que já foi recebido antes, e um teste de domínio sobre
+    `GoodsReceipt` não tem como o saber.
+
+    Quarto módulo a ganhar esta camada, depois de `approval` (ADR-050),
+    `hr` (ADR-053) e `commercial` (ADR-055). Os três primeiros ganharam-na a
+    reboque de defeitos; este é o primeiro por decisão.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Procurement\Rivo.Procurement.Application\Rivo.Procurement.Application.csproj" />
+  </ItemGroup>
+
+</Project>
