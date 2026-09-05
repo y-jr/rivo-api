@@ -34,6 +34,7 @@ public static class HrModuleExtensions
         services.AddScoped<ListEmployees>();
         services.AddScoped<HireEmployee>();
         services.AddScoped<LinkEmployeeAccount>();
+        services.AddScoped<UnlinkEmployeeAccount>();
         services.AddScoped<ListDepartments>();
         services.AddScoped<CreateDepartment>();
         services.AddScoped<ListPositions>();

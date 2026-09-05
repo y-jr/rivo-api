@@ -440,7 +440,70 @@ Test-Case "27. A ligacao fica na trilha, com a conta e o autor" {
     "quem investiga uma decisao sabe quando a conta passou a agir por aquela pessoa"
 }
 
-Test-Case "28. Dados sobrevivem ao reinicio da stack" {
+# --- Desligar (ADR-052) -----------------------------------------------------
+#
+# As decisoes de aprovacao ja tomadas continuam validas: ApprovalDecision
+# guarda DecidedByEmployeeId, e o facto gravado e "o colaborador X decidiu",
+# nunca "a conta A decidiu". Desligar so remove a capacidade de agir daqui
+# para a frente.
+
+Test-Case "28. Desligar a conta devolve 204 e liberta o colaborador" {
+    $r = Invoke-WebRequest "$base/hr/employees/$($script:semContaId)/account" -Method Delete `
+        -Headers $adminHeaders -SkipHttpErrorCheck
+    if ($r.StatusCode -ne 204) { throw "esperado 204, obtido $($r.StatusCode)" }
+
+    $vinculo = Invoke-Sql "select count(*) from hr.employee where id='$($script:semContaId)' and user_id is null"
+    if ($vinculo -ne "1") { throw "o vinculo nao foi removido" }
+    "a conta deixa de agir por esta pessoa"
+}
+
+Test-Case "29. Desligar de novo e repetivel sem erro" {
+    $r = Invoke-WebRequest "$base/hr/employees/$($script:semContaId)/account" -Method Delete `
+        -Headers $adminHeaders -SkipHttpErrorCheck
+    if ($r.StatusCode -ne 204) { throw "esperado 204, obtido $($r.StatusCode)" }
+    "mesmo estado pretendido, sem segundo registo"
+}
+
+Test-Case "30. A conta libertada pode ligar-se a outro colaborador" {
+    # E a sequencia que corrige um vinculo errado, e a unica que existe.
+    $b = @{ fullName = "Pessoa Certa $stamp" } | ConvertTo-Json
+    $script:certoId = (Invoke-RestMethod "$base/hr/employees" -Method Post -Body $b -ContentType "application/json" -Headers $hrHeaders).employeeId
+
+    $r = Invoke-WebRequest "$base/hr/employees/$($script:certoId)/account" -Method Post `
+        -Body (@{ userId = $script:contaNovaId } | ConvertTo-Json) -ContentType "application/json" `
+        -Headers $adminHeaders -SkipHttpErrorCheck
+    if ($r.StatusCode -ne 204) { throw "esperado 204, obtido $($r.StatusCode)" }
+    "desligar e voltar a ligar e o caminho de correccao"
+}
+
+Test-Case "31. A transferencia fica legivel na trilha" {
+    # O par desligar+ligar nomeia a mesma conta dos dois lados: PreviousValue
+    # no primeiro, NewValue no segundo. E o que torna a transferencia
+    # investigavel -- o preco assumido por o 409 ser contornavel em dois passos.
+    $saiu = Invoke-Sql "select count(*) from audit.audit_event where action='hr.employee.account_unlinked' and entity_id='$($script:semContaId)' and previous_value like '%$($script:contaNovaId)%'"
+    if ($saiu -ne "1") { throw "o desligar nao nomeia a conta removida" }
+    $entrou = Invoke-Sql "select count(*) from audit.audit_event where action='hr.employee.account_linked' and entity_id='$($script:certoId)' and new_value like '%$($script:contaNovaId)%'"
+    if ($entrou -ne "1") { throw "o ligar nao nomeia a conta recebida" }
+    "a conta saiu de um colaborador e entrou noutro, com registo dos dois lados"
+}
+
+Test-Case "32. Perfil HR nao consegue desligar contas" {
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/hr/employees/$($script:certoId)/account" -Method Delete -Headers $hrHeaders
+    }
+    if ($code -ne 403) { throw "esperado 403, obtido $code" }
+    "mesma permissao de ligar, e continua fora do perfil HR"
+}
+
+Test-Case "33. Desligar colaborador inexistente -> 404" {
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/hr/employees/$([Guid]::NewGuid())/account" -Method Delete -Headers $adminHeaders
+    }
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+    "404 e nao 204: nao ha estado pretendido para um colaborador que nao existe"
+}
+
+Test-Case "34. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
