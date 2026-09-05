@@ -132,13 +132,13 @@ linhas. O histórico de como cada número cresceu está em
 | Área | Estado |
 |---|---|
 | Código | **15 módulos** em `src/Modules/` + **5 camadas de composição** em `src/Composition/`. 88 projectos em `src/`, 360 ficheiros C# escritos à mão (≈56 800 linhas), mais ≈31 900 linhas geradas pelo EF Core em 54 migrações |
-| Superfície HTTP | **247 endpoints** em **20 grupos de rota**. Os maiores: `hr` 40, `finance/ledger` 30, `procurement` 19, `inventory` 19, `finance` 18, `payables` 16, `fleet` 16, `identity` 14, `projects` 13 |
-| ADRs | **54**, todos aceites. Os cinco últimos: **ADR-050 (quem decide uma aprovação vem do token, não do corpo — corrige falha de segurança)**, **ADR-051 (ligar uma conta a um Colaborador já admitido, com permissão própria fora do perfil HR)**, **ADR-052 (desligar, e as decisões já tomadas continuam válidas)** , **ADR-053 (histórico do vínculo, sem tocar no caminho que decide)** e **ADR-054 (a admissão deixa de criar vínculos)**. Os cinco são uma linha só: o 050 tornou o vínculo conta↔colaborador o único determinante de quem decide, o 051 deu-lhe a rota que faltava, o 052 deu-lhe a saída, o 053 deu-lhe memória, e o 054 deixou-lhe um único caminho de entrada. Cada um foi aberto pelo anterior |
-| Entidades de domínio | **64 ficheiros** em 15 módulos — `finance` 17, `hr` 12, `fleet` 7, `inventory` 5, `projects` 5, `procurement` 4, `fiscal` 4, `approval` 2, `payroll` 2, e um cada em `audit`, `commercial`, `documents`, `identity`, `messaging`, `notifications`. Conta entidades, **não raízes de agregado** — `InventoryCountLine` e `StockMovement`, por exemplo, são filhos e não raízes |
+| Superfície HTTP | **249 endpoints** em **20 grupos de rota**. Os maiores: `hr` 40, `finance/ledger` 30, `procurement` 19, `inventory` 19, `finance` 18, `payables` 16, `fleet` 16, `identity` 14, `projects` 13 |
+| ADRs | **55**, todos aceites. Os cinco últimos: **ADR-050 (quem decide uma aprovação vem do token, não do corpo — corrige falha de segurança)**, **ADR-051 (ligar uma conta a um Colaborador já admitido, com permissão própria fora do perfil HR)**, **ADR-052 (desligar, e as decisões já tomadas continuam válidas)** , **ADR-053 (histórico do vínculo, sem tocar no caminho que decide)** , **ADR-054 (a admissão deixa de criar vínculos)** e **ADR-055 (o mesmo tratamento ao vínculo conta↔cliente)**. Os seis são uma linha só: o 050 tornou o vínculo conta↔colaborador o único determinante de quem decide, o 051 deu-lhe a rota que faltava, o 052 deu-lhe a saída, o 053 deu-lhe memória, o 054 deixou-lhe um único caminho de entrada, e o 055 levou o mesmo desenho ao `commercial`. Cada um foi aberto pelo anterior |
+| Entidades de domínio | **65 ficheiros** em 15 módulos — `finance` 17, `hr` 12, `fleet` 7, `inventory` 5, `projects` 5, `procurement` 4, `fiscal` 4, `approval` 2, `payroll` 2, `commercial` 2, e um cada em `audit`, `documents`, `identity`, `messaging`, `notifications`. Conta entidades, **não raízes de agregado** — `InventoryCountLine` e `StockMovement`, por exemplo, são filhos e não raízes |
 | Documentação | ≈19 900 linhas de Markdown em `.claude/` — ADRs, módulos, domínio e estado |
 | Perfis de Acesso | **8** — os 7 do documento de produto mais `Cliente` (ADR-043). `Admin` tem **71 permissões**, confirmado em base a 2026-09-05 (a 71.ª é `hr.employees.link_account`, ADR-051). A autorização dos portais continua por vínculo de identidade, não por permissão — as excepções são `documents.write` (comprovativo de pagamento, ADR-044) e as permissões próprias de `Dashboard` e `Analytics`, concedidas a `Manager` porque o documento de produto o nomeia e ele não tem as permissões dos módulos subjacentes |
-| Testes automatizados | **1 159** em **28 projectos**, todos passam. Por camada: **824 de domínio**, **301 de Application**, 21 de arquitectura, 9 de API, 4 de integração (Testcontainers). A distribuição por módulo é que é desigual — ver "O que não existe" |
-| Verificação end-to-end | **22 suites** PowerShell, **567 casos**, contra a stack real. As maiores: `inventory` 66, `procurement` 58, `fleet` 51, `ledger` 46, `projects` 43. `verify-all.ps1` tolera explicitamente o K20 conhecido (por texto do caso, não por número — já mudou várias vezes) em vez de bloquear o gate inteiro |
+| Testes automatizados | **1 176** em **29 projectos**, todos passam. Por camada: **830 de domínio**, **312 de Application**, 21 de arquitectura, 9 de API, 4 de integração (Testcontainers). A distribuição por módulo é que é desigual — ver "O que não existe" |
+| Verificação end-to-end | **22 suites** PowerShell, **575 casos**, contra a stack real. As maiores: `inventory` 66, `procurement` 58, `fleet` 51, `ledger` 46, `projects` 43. `verify-all.ps1` tolera explicitamente o K20 conhecido (por texto do caso, não por número — já mudou várias vezes) em vez de bloquear o gate inteiro |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
@@ -181,10 +181,10 @@ registo já existe e é a conta que chega depois.
   `projects`, `inventory`, `fleet`) ganharam regra de negócio real e projecto
   de teste próprio; nenhum continua marcado ⚠⚠. Ver a secção Módulos e o
   "Seguimento" que cada `modules/*.md` regista.
-- **Cobertura de Application em dez dos quinze módulos.** Só `finance`
-  (162), `identity` (28), `messaging` (23), `hr` (25) e `approval` (8) a têm.
-  Os restantes dez — incluindo `procurement`, que é dos maiores — só têm
-  testes de domínio e verificação caixa-preta.
+- **Cobertura de Application em nove dos quinze módulos.** Só `finance`
+  (162), `identity` (28), `messaging` (23), `hr` (25), `commercial` (11) e
+  `approval` (8) a têm. Os restantes nove — incluindo `procurement`, que é dos
+  maiores — só têm testes de domínio e verificação caixa-preta.
 
   ⚠ **Os dois últimos foram ganhos a reboque de um problema, não por
   disciplina.** `approval` só a ganhou depois de a lacuna custar uma falha de

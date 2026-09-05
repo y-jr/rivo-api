@@ -10,6 +10,9 @@ public sealed class CommercialDbContext(DbContextOptions<CommercialDbContext> op
 
     public DbSet<Customer> Customers => Set<Customer>();
 
+    /// <summary>Histórico do vínculo conta↔cliente (ADR-055).</summary>
+    public DbSet<CustomerAccountLink> CustomerAccountLinks => Set<CustomerAccountLink>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -58,6 +61,31 @@ public sealed class CommercialDbContext(DbContextOptions<CommercialDbContext> op
                 address.Property(a => a.City).HasColumnName("billing_city").HasMaxLength(100).IsRequired();
                 address.Property(a => a.Country).HasColumnName("billing_country").HasMaxLength(2).IsRequired();
             });
+        });
+
+        builder.Entity<CustomerAccountLink>(link =>
+        {
+            link.ToTable("customer_account_link");
+            link.HasKey(l => l.Id);
+            link.Property(l => l.Version).IsConcurrencyToken();
+
+            // Sem chave estrangeira para identity.app_user: schemas de módulos
+            // distintos (ADR-010).
+            link.HasIndex(l => l.CustomerId, "IX_Historico")
+                .HasDatabaseName("ix_customer_account_link_customer");
+            link.HasIndex(l => l.UserId)
+                .HasDatabaseName("ix_customer_account_link_user");
+
+            // No máximo um episódio aberto por cliente. Filtrado, porque os
+            // fechados repetem-se de propósito — é isso que é história.
+            //
+            // Sem restrição equivalente por conta: a unicidade que protege a
+            // identidade no portal continua a ser a de `customer.user_id`
+            // (ADR-055). Esta tabela não participa nessa resolução.
+            link.HasIndex(l => l.CustomerId, "IX_Aberto")
+                .IsUnique()
+                .HasFilter("[unlinked_on] IS NULL")
+                .HasDatabaseName("ix_customer_account_link_aberto");
         });
 
         // As chaves são geradas pelo domínio (Guid.CreateVersion7), nunca pela

@@ -38,6 +38,16 @@ public static class CommercialModuleEndpoints
         group.MapPost("/customers/{customerId:guid}/account", LinkAccountAsync)
             .RequireAuthorization(CommercialPermissions.CustomersWrite);
 
+        // Desligar e histórico (ADR-055). Mesma permissão de ligar, e aqui a
+        // justificação do ADR-043 mantém-se: ao contrário de `hr`, não há
+        // audiência própria que distinga isto de quem já gere clientes — uma
+        // conta de Cliente dá o portal do cliente, não autoridade de aprovação.
+        group.MapDelete("/customers/{customerId:guid}/account", UnlinkAccountAsync)
+            .RequireAuthorization(CommercialPermissions.CustomersWrite);
+
+        group.MapGet("/customers/{customerId:guid}/account-history", GetAccountHistoryAsync)
+            .RequireAuthorization(CommercialPermissions.CustomersRead);
+
         // O vendedor responsável (ADR-045) — mesma permissão, mesma razão
         // que a ligação de conta: não há audiência própria que a distinga
         // de quem já gere clientes.
@@ -173,13 +183,53 @@ public static class CommercialModuleEndpoints
             LinkCustomerAccountOutcome.NotFound =>
                 Results.NotFound(new { erro = result.Error }),
 
-            // 409: a conta existe e o pedido está bem formado, colide com o
-            // que já está ligado — mesma razão de UserAlreadyLinked em hr.
-            LinkCustomerAccountOutcome.UserAlreadyLinked =>
+            // 409 nos dois sentidos: a conta já é de outro cliente, ou este
+            // cliente já tem outra conta. Até ao ADR-055 o segundo caso
+            // substituía em silêncio.
+            LinkCustomerAccountOutcome.UserAlreadyLinked or
+            LinkCustomerAccountOutcome.CustomerAlreadyLinked =>
                 Results.Conflict(new { erro = result.Error }),
+
+            // 403 e não 409: não é o estado que impede, é quem pede.
+            LinkCustomerAccountOutcome.SelfLinkRefused =>
+                Results.Problem(result.Error, statusCode: StatusCodes.Status403Forbidden),
 
             _ => Results.Problem("Resultado inesperado ao ligar a conta."),
         };
+    }
+
+    private static async Task<IResult> UnlinkAccountAsync(
+        Guid customerId,
+        UnlinkCustomerAccount unlinkAccount,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await unlinkAccount.ExecuteAsync(
+            customerId, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            UnlinkCustomerAccountOutcome.Unlinked => Results.NoContent(),
+
+            UnlinkCustomerAccountOutcome.NotFound =>
+                Results.NotFound(new { erro = result.Error }),
+
+            _ => Results.Problem("Resultado inesperado ao desligar a conta."),
+        };
+    }
+
+    private static async Task<IResult> GetAccountHistoryAsync(
+        Guid customerId,
+        GetCustomerAccountHistory getHistory,
+        CancellationToken cancellationToken)
+    {
+        var historico = await getHistory.ExecuteAsync(customerId, cancellationToken);
+
+        // Lista vazia e 404 dizem coisas diferentes: «nunca teve conta» e «não
+        // há tal cliente».
+        return historico is null
+            ? Results.NotFound(new { erro = "Cliente não encontrado." })
+            : Results.Ok(historico);
     }
 
     private static async Task<IResult> AssignOwnerAsync(

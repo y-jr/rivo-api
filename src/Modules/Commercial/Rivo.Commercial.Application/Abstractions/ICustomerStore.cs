@@ -32,6 +32,25 @@ public interface ICustomerStore
     /// </summary>
     Task<Customer?> FindByUserIdAsync(Guid userId, CancellationToken cancellationToken);
 
+    // --- Histórico do vínculo conta↔cliente (ADR-055) ---
+
+    Task AddAccountLinkAsync(CustomerAccountLink link, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// O episódio ainda aberto deste cliente, se existir.
+    ///
+    /// <para>
+    /// ⚠ <strong>Não é por aqui que o Portal do Cliente resolve «o próprio».</strong>
+    /// Isso continua a ser <see cref="FindByUserIdAsync"/>, que lê
+    /// <c>Customer.UserId</c> — o ADR-055 acrescentou história e não mexeu no
+    /// caminho de resolução de identidade, de propósito.
+    /// </para>
+    /// </summary>
+    Task<CustomerAccountLink?> FindOpenAccountLinkAsync(Guid customerId, CancellationToken cancellationToken);
+
+    /// <summary>Todos os episódios de um cliente, do mais recente para o mais antigo.</summary>
+    Task<IReadOnlyList<CustomerAccountLink>> ListAccountLinksAsync(Guid customerId, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<Customer>> ListAsync(bool includeInactive, CancellationToken cancellationToken);
 
     Task AddAsync(Customer customer, CancellationToken cancellationToken);
