@@ -84,9 +84,27 @@ public static class PayrollModuleEndpoints
         HttpContext http,
         CancellationToken cancellationToken)
     {
+        // Quem abre a folha vem do token (ADR-057).
+        if (request.OpenedByEmployeeId is not null)
+        {
+            return Results.BadRequest(new
+            {
+                erro = "A abertura já não aceita openedByEmployeeId. Quem abre é a conta "
+                     + "autenticada, e tem de estar associada a um colaborador.",
+            });
+        }
+
+        var contexto = BuildAuditContext(http);
+
+        if (contexto.ActorId is not { } quemAbre)
+        {
+            return Results.Problem(
+                "Sessão sem identificador de utilizador.",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
         var result = await openRun.ExecuteAsync(
-            request.Year, request.Month, request.OpenedByEmployeeId,
-            BuildAuditContext(http), cancellationToken);
+            request.Year, request.Month, quemAbre, contexto, cancellationToken);
 
         return result.Succeeded
             ? Results.Created($"/payroll/runs/{result.RunId}", new { runId = result.RunId })
@@ -215,7 +233,8 @@ public static class PayrollModuleEndpoints
     }
 }
 
-public sealed record OpenRunRequest(int Year, int Month, Guid OpenedByEmployeeId);
+/// <param name="OpenedByEmployeeId">⚠ Já não é aceite (ADR-057) — declarado só para ser recusado com 400.</param>
+public sealed record OpenRunRequest(int Year, int Month, Guid? OpenedByEmployeeId);
 
 public sealed record AddItemRequest(
     Guid EmployeeId,

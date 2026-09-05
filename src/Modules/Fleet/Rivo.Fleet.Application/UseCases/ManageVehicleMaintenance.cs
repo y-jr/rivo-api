@@ -47,7 +47,7 @@ public sealed class OpenMaintenance(IVehicleStore store, IAuditTrail audit)
                 FleetAuditEntityTypes.Maintenance,
                 registo.Id.ToString(),
                 context,
-                NewValue: $$"""{"vehicleId":"{{vehicleId}}","type":"{{registo.Type}}","startedOn":"{{registo.StartedOn}}"}"""),
+                NewValue: $$"""{"vehicleId":"{{vehicleId}}","type":"{{registo.Type}}","startedOn":"{{registo.StartedOn:yyyy-MM-dd}}"}"""),
             cancellationToken);
 
         return OpenMaintenanceResult.Success(registo.Id);
@@ -121,7 +121,7 @@ public sealed class CloseMaintenance(IVehicleStore store, IAuditTrail audit)
                 FleetAuditEntityTypes.Maintenance,
                 maintenanceId.ToString(),
                 context,
-                NewValue: $$"""{"endedOn":"{{endedOn}}","cost":{{(cost is { } valor ? valor.ToString(System.Globalization.CultureInfo.InvariantCulture) : "null")}}}"""),
+                NewValue: $$"""{"endedOn":"{{endedOn:yyyy-MM-dd}}","cost":{{(cost is { } valor ? valor.ToString(System.Globalization.CultureInfo.InvariantCulture) : "null")}}}"""),
             cancellationToken);
 
         return MaintenanceLifecycleOutcome.Closed;

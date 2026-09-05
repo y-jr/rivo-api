@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
+using Rivo.Hr.Contracts;
 
 namespace Rivo.Finance.Application.UseCases;
 
@@ -643,7 +644,11 @@ public enum VoidEntryOutcome
 
 // ---------- Fecho ----------
 
-public sealed class ManageAccountingPeriods(ILedgerStore store, IAuditTrail audit, TimeProvider clock)
+public sealed class ManageAccountingPeriods(
+    ILedgerStore store,
+    IEmployeeDirectory employees,
+    IAuditTrail audit,
+    TimeProvider clock)
 {
     public async Task<OpenPeriodResult> OpenAsync(
         int fiscalYear,
@@ -683,13 +688,29 @@ public sealed class ManageAccountingPeriods(ILedgerStore store, IAuditTrail audi
             p.ClosedAt, p.ClosedByEmployeeId, p.ReopenedAt, p.ReopenReason))];
     }
 
+    /// <param name="closedByUserId">
+    /// A conta autenticada, não o colaborador — resolve-se aqui (ADR-057).
+    /// Fechar um período é acto de responsabilidade contabilística, e o registo
+    /// de quem o fez não pode ser escolhido por quem chama.
+    /// </param>
     public async Task<ClosePeriodResult> CloseAsync(
         int fiscalYear,
         int number,
-        Guid closedByEmployeeId,
+        Guid closedByUserId,
         AuditContext context,
         CancellationToken cancellationToken)
     {
+        var colaborador = await employees.FindByUserIdAsync(
+            closedByUserId, clock.GetUtcNow(), cancellationToken);
+
+        if (colaborador is null)
+        {
+            return ClosePeriodResult.Rejected(
+                "Esta conta não está associada a nenhum colaborador, e só um colaborador fecha períodos.");
+        }
+
+        var closedByEmployeeId = colaborador.EmployeeId;
+
         var periodo = await store.FindPeriodForUpdateAsync(fiscalYear, number, cancellationToken);
 
         if (periodo is null)

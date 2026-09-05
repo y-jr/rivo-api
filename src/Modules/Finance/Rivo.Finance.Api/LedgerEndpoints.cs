@@ -391,14 +391,33 @@ public static class LedgerEndpoints
     private static async Task<IResult> ClosePeriodAsync(
         int fiscalYear,
         int number,
-        ClosePeriodRequest request,
+        // Corpo opcional desde o ADR-057: já não leva nada de essencial — só o
+        // campo obsoleto, que existe para ser recusado.
+        ClosePeriodRequest? request,
         ManageAccountingPeriods periods,
         HttpContext http,
         CancellationToken cancellationToken)
     {
+        // Quem fecha vem do token (ADR-057).
+        if (request?.ClosedByEmployeeId is not null)
+        {
+            return Results.BadRequest(new
+            {
+                erro = "O fecho já não aceita closedByEmployeeId. Quem fecha é a conta autenticada.",
+            });
+        }
+
+        var contexto = BuildAuditContext(http);
+
+        if (contexto.ActorId is not { } quemFecha)
+        {
+            return Results.Problem(
+                "Sessão sem identificador de utilizador.",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
         var result = await periods.CloseAsync(
-            fiscalYear, number, request.ClosedByEmployeeId,
-            BuildAuditContext(http), cancellationToken);
+            fiscalYear, number, quemFecha, contexto, cancellationToken);
 
         return result.Outcome switch
         {
@@ -749,13 +768,32 @@ public static class LedgerEndpoints
 
     private static async Task<IResult> ApproveBudgetAsync(
         Guid budgetId,
-        ApproveBudgetRequest request,
+        // Corpo opcional desde o ADR-057, mesma razão do fecho de período.
+        ApproveBudgetRequest? request,
         ApproveBudget approve,
         HttpContext http,
         CancellationToken cancellationToken)
     {
+        // Quem aprova o orçamento vem do token (ADR-057).
+        if (request?.ApprovedByEmployeeId is not null)
+        {
+            return Results.BadRequest(new
+            {
+                erro = "A aprovação já não aceita approvedByEmployeeId. Quem aprova é a conta autenticada.",
+            });
+        }
+
+        var contexto = BuildAuditContext(http);
+
+        if (contexto.ActorId is not { } quemAprova)
+        {
+            return Results.Problem(
+                "Sessão sem identificador de utilizador.",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
         var result = await approve.ExecuteAsync(
-            budgetId, request.ApprovedByEmployeeId, BuildAuditContext(http), cancellationToken);
+            budgetId, quemAprova, contexto, cancellationToken);
 
         return result.Outcome switch
         {
@@ -870,7 +908,8 @@ public sealed record VoidEntryRequest(string Reason);
 
 public sealed record OpenPeriodRequest(int FiscalYear, int Number);
 
-public sealed record ClosePeriodRequest(Guid ClosedByEmployeeId);
+/// <param name="ClosedByEmployeeId">⚠ Já não é aceite (ADR-057) — declarado só para ser recusado com 400.</param>
+public sealed record ClosePeriodRequest(Guid? ClosedByEmployeeId);
 
 /// <param name="Reason">
 /// Obrigatório: reabrir significa que números já dados por definitivos vão
@@ -896,7 +935,8 @@ public sealed record BudgetRequest(
 
 public sealed record BudgetRevisionRequest(IReadOnlyDictionary<int, decimal>? MonthlyCeilings);
 
-public sealed record ApproveBudgetRequest(Guid ApprovedByEmployeeId);
+/// <param name="ApprovedByEmployeeId">⚠ Já não é aceite (ADR-057) — declarado só para ser recusado com 400.</param>
+public sealed record ApproveBudgetRequest(Guid? ApprovedByEmployeeId);
 
 public sealed record CostForecastRequest(
     Guid DepartmentId,

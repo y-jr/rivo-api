@@ -989,3 +989,53 @@ internal sealed class FakeLedgerStore : ILedgerStore
         return Task.CompletedTask;
     }
 }
+
+/// <summary>
+/// Directório de colaboradores para os casos de uso que passaram a resolver o
+/// actor a partir da conta autenticada (ADR-057).
+///
+/// <para>
+/// <strong>Mapeia a conta no colaborador com o mesmo identificador.</strong> É
+/// deliberado, e preserva o significado dos testes escritos antes do ADR-057:
+/// onde eles passavam «o colaborador X executa», passam agora «a conta X
+/// executa», e a resolução devolve X. As afirmações sobre BR-3 — que o
+/// executante não pode ser quem decidiu — continuam a comparar os mesmos
+/// identificadores, e continuam a valer.
+/// </para>
+///
+/// <para>
+/// Uma dobra que devolvesse um colaborador fixo tornaria essas comparações
+/// vazias, e os testes de segregação passariam sem provar nada.
+/// </para>
+/// </summary>
+internal sealed class FakeEmployeeDirectory : Rivo.Hr.Contracts.IEmployeeDirectory
+{
+    private readonly HashSet<Guid> _semColaborador = [];
+
+    /// <summary>Marca uma conta como não tendo colaborador associado.</summary>
+    public FakeEmployeeDirectory SemColaborador(Guid userId)
+    {
+        _semColaborador.Add(userId);
+        return this;
+    }
+
+    public Task<Rivo.Hr.Contracts.EmployeeReference?> FindByUserIdAsync(
+        Guid userId, DateTimeOffset asOf, CancellationToken cancellationToken) =>
+        Task.FromResult(_semColaborador.Contains(userId)
+            ? null
+            : new Rivo.Hr.Contracts.EmployeeReference(
+                userId, "Colaborador", Rivo.Hr.Contracts.EmployeeStatus.Active, null, null, userId));
+
+    public Task<Rivo.Hr.Contracts.EmployeeReference?> FindAsync(
+        Guid employeeId, DateTimeOffset asOf, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("O teste não previu uma chamada a FindAsync.");
+
+    public Task<IReadOnlyList<Rivo.Hr.Contracts.EmployeeReference>> FindByPositionAsync(
+        Guid positionId, DateTimeOffset asOf, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("O teste não previu uma chamada a FindByPositionAsync.");
+
+    public Task<Rivo.Hr.Contracts.EmployeeHireResult> HireAsync(
+        string fullName, string? departmentName, DateTimeOffset hiredOn, Guid actorId,
+        CancellationToken cancellationToken) =>
+        throw new NotSupportedException("O teste não previu uma chamada a HireAsync.");
+}

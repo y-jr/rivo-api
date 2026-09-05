@@ -314,14 +314,36 @@ public static class PayablesEndpoints
         HttpContext http,
         CancellationToken cancellationToken)
     {
+        // Quem pede vem do token (ADR-057). O campo no corpo continua declarado
+        // só para poder ser recusado — apagá-lo faria o desserializador
+        // ignorá-lo, e quem o enviasse ficaria a pensar que tinha pedido em
+        // nome de outra pessoa quando o sistema regista o próprio.
+        if (request.RequestedByEmployeeId is not null)
+        {
+            return Results.BadRequest(new
+            {
+                erro = "O pedido já não aceita requestedByEmployeeId. Quem pede é a conta "
+                     + "autenticada, e tem de estar associada a um colaborador.",
+            });
+        }
+
+        var contexto = BuildAuditContext(http);
+
+        if (contexto.ActorId is not { } quemPede)
+        {
+            return Results.Problem(
+                "Sessão sem identificador de utilizador.",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
         var result = await createRequest.ExecuteAsync(
             request.PurchaseInvoiceId,
             request.Amount,
-            request.RequestedByEmployeeId,
+            quemPede,
             request.RequestedOn ?? DateOnly.FromDateTime(DateTime.UtcNow),
             request.CostCentreId,
             request.Notes,
-            BuildAuditContext(http),
+            contexto,
             cancellationToken);
 
         return result.Outcome switch
@@ -397,13 +419,36 @@ public static class PayablesEndpoints
             });
         }
 
+        // ⚠ Quem executa vem do token (ADR-057). Até 2026-09-05 vinha daqui, do
+        // corpo, e o BR-3 era verificado contra um valor que o próprio chamador
+        // escolhia — verificado: a conta `Admin` pagou 100 000 AOA e o sistema
+        // gravou o movimento como feito por um colaborador sem relação nenhuma
+        // com ela.
+        if (request.ExecutedByEmployeeId is not null)
+        {
+            return Results.BadRequest(new
+            {
+                erro = "A execução já não aceita executedByEmployeeId. Quem paga é a conta "
+                     + "autenticada, e tem de estar associada a um colaborador.",
+            });
+        }
+
+        var contexto = BuildAuditContext(http);
+
+        if (contexto.ActorId is not { } quemPaga)
+        {
+            return Results.Problem(
+                "Sessão sem identificador de utilizador.",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
         var result = await executePayment.ExecuteAsync(
             paymentRequestId,
             request.BankAccountId,
-            request.ExecutedByEmployeeId,
+            quemPaga,
             meio,
             request.Reference,
-            BuildAuditContext(http),
+            contexto,
             cancellationToken);
 
         return result.Outcome switch
@@ -487,13 +532,16 @@ public sealed record RegisterPurchaseInvoiceRequest(
     string? Description);
 
 /// <param name="RequestedByEmployeeId">
-/// Quem pede, como Colaborador de `hr`. É contra ele que BR-2 é verificada —
-/// quem submete não decide.
+/// ⚠ <strong>Já não é aceite (ADR-057).</strong> Quem pede é a conta
+/// autenticada. Continua declarado só para poder ser <em>recusado</em> com
+/// 400: apagá-lo do contrato faria o desserializador ignorá-lo em silêncio, e
+/// quem ainda o enviasse ficaria a pensar que tinha pedido em nome de outra
+/// pessoa quando o sistema regista o próprio.
 /// </param>
 public sealed record CreatePaymentRequestRequest(
     Guid PurchaseInvoiceId,
     decimal Amount,
-    Guid RequestedByEmployeeId,
+    Guid? RequestedByEmployeeId,
     DateOnly? RequestedOn,
 
     /// <summary>
@@ -504,11 +552,19 @@ public sealed record CreatePaymentRequestRequest(
     string? Notes);
 
 /// <param name="ExecutedByEmployeeId">
-/// Quem paga, como Colaborador. **Não pode ser nenhum dos que decidiram**
-/// (BR-3), e é verificado no momento.
+/// ⚠ <strong>Já não é aceite (ADR-057).</strong> Quem paga é a conta
+/// autenticada — este campo era a falha: o BR-3 verificava-se contra ele, e
+/// ele era escolhido por quem chamava.
+///
+/// <para>
+/// Continua declarado só para poder ser recusado com 400, pela mesma razão do
+/// ADR-054: uma alteração de contrato tem de ser ruidosa para quem ainda
+/// depende do contrato antigo — e aqui o silêncio faria alguém pensar que
+/// atribuiu o pagamento a outra pessoa.
+/// </para>
 /// </param>
 public sealed record ExecutePaymentRequest(
     Guid BankAccountId,
-    Guid ExecutedByEmployeeId,
+    Guid? ExecutedByEmployeeId,
     string Method,
     string? Reference);

@@ -68,7 +68,13 @@ function New-PerfilHeaders {
 }
 
 # `Manager` elabora o orçamento; `Finance` aprova-o e lança. Nenhum faz os dois.
-$managerHeaders = New-PerfilHeaders "Manager" "chefe-l-$stamp"
+#
+# ⚠ O `Manager` é também colaborador desde o ADR-057: pedir um pagamento
+# resolve o requisitante a partir do token, e uma conta sem colaborador
+# associado não pede nada. É ele que os casos de BR-8 usam.
+$managerConta = New-RivoColaboradorComConta -Email "chefe-l-$stamp@rivo.ao" `
+    -Nome "Chefe Ledger $stamp" -AdminHeaders $adminHeaders -Perfil "Manager" -Password $pass
+$managerHeaders = $managerConta.Headers
 $financeHeaders = New-PerfilHeaders "Finance" "conta-l-$stamp"
 
 # Códigos próprios desta corrida. O plano de contas do SAF-T admite letras.
@@ -100,8 +106,12 @@ $ano = 2030 + ([int]$curto % 900)
 # quando a asserção deixou de aceitar "409 ou 501".
 $anoOrcamento = (Get-Date).Year
 
-$responsavel = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-        -Body (@{ fullName = "Responsavel CC $curto" } | ConvertTo-Json)).employeeId
+# Conta propria desde o ADR-057: fechar um periodo e aprovar um orcamento
+# resolvem quem age a partir do token, e nao de um identificador no corpo do
+# pedido. Antes bastava declara-lo.
+$responsavelConta = New-RivoColaboradorComConta -Email "resp-lg-$curto@rivo.ao" `
+    -Nome "Responsavel CC $curto" -AdminHeaders $adminHeaders -Perfil "Admin"
+$responsavel = $responsavelConta.EmployeeId
 
 $scheduleId = (Invoke-RestMethod "$base/fiscal/tax-rates" -Method Post -ContentType "application/json" -Headers $adminHeaders `
         -Body (@{ code = $codigoTaxa; description = "IVA - suite ledger" } | ConvertTo-Json)).scheduleId
@@ -285,8 +295,8 @@ Test-Case "11. Balancete equilibra e soma por conta" {
 }
 
 Test-Case "12. Fechar o periodo para de aceitar lancamentos" {
-    Invoke-RestMethod "$base/finance/ledger/periods/$ano/8/closure" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-        -Body (@{ closedByEmployeeId = $responsavel } | ConvertTo-Json) | Out-Null
+    Invoke-RestMethod "$base/finance/ledger/periods/$ano/8/closure" -Method Post -ContentType "application/json" `
+        -Headers $responsavelConta.Headers | Out-Null
 
     $body = @{
         journalCode = $diario; archivalNumber = "TARDE-$curto"; transactionDate = "$ano-08-31"
@@ -314,8 +324,7 @@ Test-Case "13. Anular um lancamento de periodo fechado e recusado" {
 Test-Case "14. Fechar e reabrir sao mais restritos que lancar" {
     # `Finance` lanca mas nao fecha — reabrir faz numeros ja reportados voltarem
     # a mexer-se, e isso e do mesmo calibre que abrir uma serie de documento.
-    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/ledger/periods/$ano/7/closure" -Method Post -ContentType "application/json" -Headers $financeHeaders `
-            -Body (@{ closedByEmployeeId = $responsavel } | ConvertTo-Json) }
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/ledger/periods/$ano/7/closure" -Method Post -ContentType "application/json" -Headers $financeHeaders }
     if ($code -ne 403) { throw "Finance fechou periodo: esperado 403, obtido $code" }
 
     $temFechar = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='Finance' and c.claim_value='finance.ledger.close'"
@@ -385,8 +394,7 @@ Test-Case "17. Orcamento em rascunho nao controla nada" {
 Test-Case "18. Quem elabora o orcamento nao o aprova (BR-8 no catalogo)" {
     # Se fosse a mesma pessoa, bastava subir o tecto para o proprio pedido
     # passar a caber — e a verificacao orcamental deixaria de verificar nada.
-    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/planning/budgets/$($script:orcamentoId)/approval" -Method Post -ContentType "application/json" -Headers $managerHeaders `
-            -Body (@{ approvedByEmployeeId = $responsavel } | ConvertTo-Json) }
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/planning/budgets/$($script:orcamentoId)/approval" -Method Post -ContentType "application/json" -Headers $managerHeaders }
     if ($code -ne 403) { throw "Manager aprovou orcamento: esperado 403, obtido $code" }
 
     $escreve = Invoke-Sql "select count(*) from [identity].app_role_claim c join [identity].app_role r on r.id=c.role_id where r.name='Manager' and c.claim_value='finance.planning.write'"
@@ -398,8 +406,8 @@ Test-Case "18. Quem elabora o orcamento nao o aprova (BR-8 no catalogo)" {
 }
 
 Test-Case "19. Aprovar poe em vigor, e depois o tecto nao se altera" {
-    Invoke-RestMethod "$base/finance/planning/budgets/$($script:orcamentoId)/approval" -Method Post -ContentType "application/json" -Headers $financeHeaders `
-        -Body (@{ approvedByEmployeeId = $responsavel } | ConvertTo-Json) | Out-Null
+    Invoke-RestMethod "$base/finance/planning/budgets/$($script:orcamentoId)/approval" -Method Post -ContentType "application/json" `
+        -Headers $responsavelConta.Headers | Out-Null
 
     $estado = Invoke-Sql "select status from finance.budget where id='$($script:orcamentoId)'"
     if ($estado -ne "Approved") { throw "estado $estado" }
@@ -465,7 +473,20 @@ Test-Case "22. BR-8: politica com verificacao orcamental deixou de recusar sempr
     $has = Invoke-Sql "select count(*) from finance.budget where cost_centre_id='$($script:centroId)' and status='Approved' and fiscal_year=$anoOrcamento"
     if ($has -ne "1") { throw "sem orcamento aprovado para verificar" }
 
-    "cenario montado: cargo, aprovador e orcamento de 500000/mes"
+    # Requisitante com conta propria (ADR-057): o requisitante resolve-se do
+    # token, e nao de um identificador no corpo do pedido.
+    #
+    # ⚠ **Sem departamento, de proposito.** O caso 23 corre antes de existir
+    # politica com departamento — e a selecao de politica usa o departamento do
+    # requisitante. Dar-lhe um faria o caso 23 deixar de encontrar politica.
+    #
+    # Antes desta alteracao a suite declarava aqui o proprio aprovador como
+    # requisitante, o que era um cenario impossivel: BR-2 recusa que quem
+    # submete decida, e aquele pedido nunca poderia ser aprovado.
+    $script:requisitanteBR8 = New-RivoColaboradorComConta -Email "req-br8-$curto@rivo.ao" `
+        -Nome "Requisitante BR8 $curto" -AdminHeaders $adminHeaders -Perfil "Manager"
+
+    "cenario montado: cargo, aprovador, requisitante e orcamento de 500000/mes"
 }
 
 Test-Case "23. BR-8: pedido que cabe no tecto passa" {
@@ -476,9 +497,9 @@ Test-Case "23. BR-8: pedido que cabe no tecto passa" {
             supplierTaxId = "5401$curto"; currency = "AOA"; netTotal = 100000; taxTotal = 0 } | ConvertTo-Json)).purchaseInvoiceId
     $script:compraBR8 = $compra
 
-    $r = Invoke-RestMethod "$base/finance/payment-requests" -Method Post -ContentType "application/json" -Headers $managerHeaders `
-        -Body (@{ purchaseInvoiceId = $compra; amount = 100000; requestedByEmployeeId = $script:aprovadorBR8
-        costCentreId = $script:centroId } | ConvertTo-Json)
+    $r = Invoke-RestMethod "$base/finance/payment-requests" -Method Post -ContentType "application/json" `
+        -Headers $script:requisitanteBR8.Headers `
+        -Body (@{ purchaseInvoiceId = $compra; amount = 100000; costCentreId = $script:centroId } | ConvertTo-Json)
 
     if (-not $r.paymentRequestId) { throw "pedido nao criado" }
 
@@ -505,9 +526,8 @@ Test-Case "24. BR-8: pedido que excede o tecto e recusado antes da decisao" {
             supplierTaxId = "5401$curto"; currency = "AOA"; netTotal = 900000; taxTotal = 0 } | ConvertTo-Json)).purchaseInvoiceId
 
     try {
-        Invoke-RestMethod "$base/finance/payment-requests" -Method Post -ContentType "application/json" -Headers $managerHeaders `
-            -Body (@{ purchaseInvoiceId = $compra; amount = 900000; requestedByEmployeeId = $script:aprovadorBR8
-            costCentreId = $script:centroId } | ConvertTo-Json) | Out-Null
+        Invoke-RestMethod "$base/finance/payment-requests" -Method Post -ContentType "application/json" -Headers $script:requisitanteBR8.Headers `
+            -Body (@{ purchaseInvoiceId = $compra; amount = 900000;             costCentreId = $script:centroId } | ConvertTo-Json) | Out-Null
         throw "esperada recusa, o pedido passou"
     }
     catch {
@@ -542,9 +562,8 @@ select isnull(sum(amount), 0) from finance.payment_request
 where cost_centre_id = '$($script:centroId)' and status <> 'Cancelled'
 "@
 
-    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests" -Method Post -ContentType "application/json" -Headers $managerHeaders `
-            -Body (@{ purchaseInvoiceId = $compra; amount = 450000; requestedByEmployeeId = $script:aprovadorBR8
-            costCentreId = $script:centroId } | ConvertTo-Json) }
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/payment-requests" -Method Post -ContentType "application/json" -Headers $script:requisitanteBR8.Headers `
+            -Body (@{ purchaseInvoiceId = $compra; amount = 450000;             costCentreId = $script:centroId } | ConvertTo-Json) }
 
     if ($code -ne 409) { throw "esperado 409, obtido $code" }
     "ja comprometidos $comprometido; 450000 nao cabe no que resta"
@@ -831,8 +850,8 @@ Test-Case "39. Periodo fechado trava a emissao, e nada e gravado" {
     Get-StatusCode { Invoke-RestMethod "$base/finance/ledger/periods" -Method Post -ContentType "application/json" -Headers $financeHeaders `
             -Body (@{ fiscalYear = $anoOrcamento; number = 7 } | ConvertTo-Json) } | Out-Null
 
-    Get-StatusCode { Invoke-RestMethod "$base/finance/ledger/periods/$anoOrcamento/7/closure" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-            -Body (@{ closedByEmployeeId = $responsavel } | ConvertTo-Json) } | Out-Null
+    Get-StatusCode { Invoke-RestMethod "$base/finance/ledger/periods/$anoOrcamento/7/closure" -Method Post -ContentType "application/json" `
+            -Headers $responsavelConta.Headers } | Out-Null
 
     $estado = Invoke-Sql "select status from finance.accounting_period where fiscal_year=$anoOrcamento and number=7"
     if ($estado -ne "Closed") { throw "o periodo 7 nao ficou fechado: $estado" }

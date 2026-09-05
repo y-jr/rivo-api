@@ -63,10 +63,11 @@ $ano = 2026
 
 $adminHeaders = @{ Authorization = "Bearer " + (Get-Token $dotenv["BOOTSTRAP_ADMIN_EMAIL"] $dotenv["BOOTSTRAP_ADMIN_PASSWORD"]) }
 
-$hrEmail = "rh-ap-$stamp@rivo.ao"
-$hrUserId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body (@{ email = $hrEmail; password = $pass } | ConvertTo-Json) -ContentType "application/json").userId
-Invoke-RestMethod "$base/identity/users/$hrUserId/roles" -Method Post -Body (@{ profile = "HR" } | ConvertTo-Json) -ContentType "application/json" -Headers $adminHeaders | Out-Null
-$hrHeaders = @{ Authorization = "Bearer " + (Get-Token $hrEmail $pass) }
+# Havia aqui uma conta de perfil RH, sem colaborador associado, que abria a
+# folha declarando `openedByEmployeeId`. O ADR-057 tirou-lhe o campo: quem abre
+# uma folha e a conta autenticada, que tem de estar ligada a um colaborador.
+# A conta desapareceu porque nao havia nada que so ela pudesse fazer --
+# `$requisitanteConta`, ja ligada, abre a folha e submete-a.
 
 $semPerfilEmail = "semperfil-ap-$stamp@rivo.ao"
 Invoke-RestMethod "$base/identity/register" -Method Post -Body (@{ email = $semPerfilEmail; password = $pass } | ConvertTo-Json) -ContentType "application/json" | Out-Null
@@ -110,14 +111,14 @@ $politica = Invoke-RestMethod "$base/approval/policies" -Method Post -ContentTyp
     -Body (@{ processType = "payroll.payroll_run"; steps = @(@{ approverPositionId = $cargo }) } | ConvertTo-Json -Depth 5)
 $politicaId = $politica.policyId
 
-$folha = Invoke-RestMethod "$base/payroll/runs" -Method Post -ContentType "application/json" -Headers $hrHeaders `
-    -Body (@{ year = $ano; month = $mes; openedByEmployeeId = $rh } | ConvertTo-Json)
+$folha = Invoke-RestMethod "$base/payroll/runs" -Method Post -ContentType "application/json" -Headers $requisitanteConta.Headers `
+    -Body (@{ year = $ano; month = $mes } | ConvertTo-Json)
 $runId = $folha.runId
 
-Invoke-RestMethod "$base/payroll/runs/$runId/items" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+Invoke-RestMethod "$base/payroll/runs/$runId/items" -Method Post -ContentType "application/json" -Headers $requisitanteConta.Headers `
     -Body (@{ employeeId = $outroColaborador; grossSalary = 250000 } | ConvertTo-Json) | Out-Null
 
-$submissao = Invoke-RestMethod "$base/payroll/runs/$runId/submission" -Method Post -Headers $hrHeaders
+$submissao = Invoke-RestMethod "$base/payroll/runs/$runId/submission" -Method Post -Headers $requisitanteConta.Headers
 $requestId = $submissao.approvalRequestId
 
 Write-Host "`n=== Cancelamento de pedidos de aprovacao (K18) ===`n"
@@ -130,7 +131,7 @@ Test-Case "1. Pedido pendente foi criado, com o requisitante certo" {
 }
 
 Test-Case "2. Quem nao submeteu nao cancela (K18)" {
-    # $rh submeteu a folha (openedByEmployeeId) -- e quem approval regista como
+    # $rh submeteu a folha (abriu-a com a sua conta) -- e quem approval regista como
     # RequestedByEmployeeId. $aprovador esta atribuido ao passo, mas nao e o
     # requisitante: tentar cancelar e a mesma familia de regra que BR-2/BR-4.
     # Age com os cabecalhos do aprovador: e a conta dele que o servidor
@@ -191,7 +192,7 @@ Test-Case "8. payroll trata Cancelled como recusa -- approval nunca empurra" {
     $antes = Invoke-Sql "select status from payroll.payroll_run where id='$runId'"
     if ($antes -ne "PendingApproval") { throw "payroll mudou sozinho: '$antes'" }
 
-    $r = Invoke-RestMethod "$base/payroll/runs/$runId/decision" -Method Post -Headers $hrHeaders
+    $r = Invoke-RestMethod "$base/payroll/runs/$runId/decision" -Method Post -Headers $requisitanteConta.Headers
     if ($r.status -ne "Refused") { throw "estado '$($r.status)', esperado Refused" }
     "Cancelled em approval torna-se Refused em payroll, so quando perguntado"
 }

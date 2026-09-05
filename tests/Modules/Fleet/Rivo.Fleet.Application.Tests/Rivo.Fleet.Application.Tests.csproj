@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testa a camada Application de `fleet`.
+
+    ⚠ **Não é o que eu tinha previsto ao escolher este módulo.** A previsão era
+    que as somas por período — despesas, distância, custo de manutenção —
+    fossem o alvo, pela mesma forma da valorização de `inventory`. São, mas
+    não aqui: `FleetActivityOverview` é passagem directa para o
+    armazenamento, e a lógica está no SQL. Testá-lo nesta camada seria testar
+    uma delegação.
+
+    O que há mesmo é outra coisa, e melhor:
+
+    - `ListDueMaintenancePlans` — janela relativa a *hoje*, filtro de planos
+      activos, achatamento de vários veículos e ordenação. O relógio é
+      injectado, logo «hoje» é orquestração e não domínio.
+    - `CloseMaintenance` — o custo é opcional (ADR-048) e vai para a trilha
+      serializado à mão. Um `null` tem de sair `null` e não `0`, e um decimal
+      tem de sair com ponto decimal em qualquer locale.
+    - `AssignVehicle` — o colaborador vem de `hr` pelo contrato (ADR-010).
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Fleet\Rivo.Fleet.Application\Rivo.Fleet.Application.csproj" />
+  </ItemGroup>
+
+</Project>

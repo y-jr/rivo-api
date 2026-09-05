@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
+using Rivo.Hr.Contracts;
 using Rivo.Procurement.Contracts;
 
 namespace Rivo.Finance.Application.UseCases;
@@ -694,23 +695,46 @@ public sealed class CreatePaymentRequest(
     IPayablesStore store,
     IPlanningStore planning,
     IPaymentApproval approval,
-    IAuditTrail audit)
+    IEmployeeDirectory employees,
+    IAuditTrail audit,
+    TimeProvider clock)
 {
     /// <param name="costCentreId">
     /// A que centro de custo a despesa é imputada. <strong>É o que faz o pedido
     /// consumir orçamento</strong> — sem imputação, BR-8 não tem contra que
     /// verificar, e uma política que a exija recusa a submissão.
     /// </param>
+    /// <param name="requestedByUserId">
+    /// A <strong>conta autenticada</strong>, não o colaborador — o colaborador
+    /// resolve-se aqui (ADR-057).
+    ///
+    /// <para>
+    /// Quem pede o pagamento é metade da segregação de funções: o BR-3 compara
+    /// esta pessoa com quem aprova e com quem executa. Deixá-la ser declarada
+    /// pelo corpo do pedido tornaria as três comparações inúteis.
+    /// </para>
+    /// </param>
     public async Task<CreatePaymentRequestResult> ExecuteAsync(
         Guid purchaseInvoiceId,
         decimal amount,
-        Guid requestedByEmployeeId,
+        Guid requestedByUserId,
         DateOnly requestedOn,
         Guid? costCentreId,
         string? notes,
         AuditContext context,
         CancellationToken cancellationToken)
     {
+        var colaborador = await employees.FindByUserIdAsync(
+            requestedByUserId, clock.GetUtcNow(), cancellationToken);
+
+        if (colaborador is null)
+        {
+            return CreatePaymentRequestResult.Rejected(
+                "Esta conta não está associada a nenhum colaborador, e só um colaborador pede pagamentos.");
+        }
+
+        var requestedByEmployeeId = colaborador.EmployeeId;
+
         // Sem governança não se cria. Um pedido que nunca pudesse ser aprovado
         // seria dívida a fingir que está a caminho.
         if (!approval.IsAvailable)

@@ -45,6 +45,23 @@ using Rivo.CustomerPortal.Api;
 using Rivo.Messaging.Api;
 using Rivo.Messaging.Infrastructure;
 
+// A cultura é fixada em invariante, e não herdada do ambiente (ADR-056).
+//
+// A trilha de auditoria monta JSON por interpolação de strings, e um decimal
+// interpolado usa a cultura corrente: em `pt-AO` ou `pt-PT`, 1234.56 sairia
+// "1234,56" e partiria o objecto em dois campos. Hoje funciona por o
+// contentor não definir `LANG` — ou seja, por acidente do ambiente, não por
+// decisão. Definir um `LANG` no compose bastava para corromper registos que o
+// BR-14 impede de reescrever.
+//
+// É seguro para tudo o resto: o que sai desta API é JSON, e o
+// `System.Text.Json` já serializa números e datas independentemente da
+// cultura. Nada aqui é formatado para leitura humana.
+System.Globalization.CultureInfo.DefaultThreadCurrentCulture =
+    System.Globalization.CultureInfo.InvariantCulture;
+System.Globalization.CultureInfo.DefaultThreadCurrentUICulture =
+    System.Globalization.CultureInfo.InvariantCulture;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi(options =>

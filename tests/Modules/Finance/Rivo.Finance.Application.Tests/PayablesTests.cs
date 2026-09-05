@@ -26,7 +26,10 @@ public class PayablesTests
         FakePayablesStore store,
         FakePaymentApproval approval,
         FakePlanningStore? planning = null) =>
-        new(store, planning ?? new FakePlanningStore(), approval, new FakeAuditTrail());
+        new(
+            store, planning ?? new FakePlanningStore(), approval,
+            new FakeEmployeeDirectory(), new FakeAuditTrail(),
+            new RelogioFixo(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)));
 
     // ---- Registar factura de compra: ligação ao Fornecedor ----
 

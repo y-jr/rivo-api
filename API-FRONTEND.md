@@ -264,10 +264,10 @@ dos casos de uso e não têm DTO HTTP nomeado.
 | `GET /finance/purchase-invoices/{purchaseInvoiceId}` | `finance.payables.read` | Sem corpo | `200` |
 | `GET /finance/purchase-invoices/{purchaseInvoiceId}/match` | `finance.payables.read` | Sem corpo | `200` |
 | `GET /finance/payment-requests` | `finance.payables.read` | query: `purchaseInvoiceId` | `200` |
-| `POST /finance/payment-requests` | `finance.payments.request` | { purchaseInvoiceId, amount, requestedByEmployeeId, requestedOn, costCentreId, notes } | `202` |
+| `POST /finance/payment-requests` | `finance.payments.request` | { purchaseInvoiceId, amount, requestedOn, costCentreId, notes } — **quem pede vem do token** (ADR-057) | `202` |
 | `GET /finance/payment-requests/{paymentRequestId}` | `finance.payables.read` | Sem corpo | `200` |
 | `POST /finance/payment-requests/{paymentRequestId}/cancellation` | `finance.payments.request` | { reason } | `204` |
-| `POST /finance/payment-requests/{paymentRequestId}/execution` | `finance.payments.execute` | { bankAccountId, executedByEmployeeId, method, reference } | `200` |
+| `POST /finance/payment-requests/{paymentRequestId}/execution` | `finance.payments.execute` | { bankAccountId, method, reference } — **quem paga vem do token** (ADR-057) | `200` |
 | `GET /finance/ledger/accounts` | `finance.ledger.read` | query: `includeInactive` | `200` |
 | `POST /finance/ledger/accounts` | `finance.ledger.write` | { code, name, category, parentCode } | `201` |
 | `POST /finance/ledger/accounts/{accountId}/deactivation` | `finance.ledger.write` | Sem corpo | `204` |
@@ -279,7 +279,7 @@ dos casos de uso e não têm DTO HTTP nomeado.
 | `POST /finance/ledger/entries/{entryId}/void` | `finance.ledger.write` | { reason } | `204` |
 | `GET /finance/ledger/periods` | `finance.ledger.read` | query: `fiscalYear` | `200` |
 | `POST /finance/ledger/periods` | `finance.ledger.write` | { fiscalYear, number } | `201` |
-| `POST /finance/ledger/periods/{fiscalYear}/{number}/closure` | `finance.ledger.close` | { closedByEmployeeId } | `204` |
+| `POST /finance/ledger/periods/{fiscalYear}/{number}/closure` | `finance.ledger.close` | Sem corpo — **quem fecha vem do token** (ADR-057) | `204` |
 | `POST /finance/ledger/periods/{fiscalYear}/{number}/reopening` | `finance.ledger.close` | { reason } | `204` |
 | `GET /finance/ledger/trial-balance` | `finance.ledger.read` | query: `fiscalYear, period` | `200` |
 | `GET /finance/ledger/posting-rules` | `finance.ledger.read` | query: `includeInactive` | `200` |
@@ -295,7 +295,7 @@ dos casos de uso e não têm DTO HTTP nomeado.
 | `GET /finance/planning/budgets` | `finance.planning.read` | query: `costCentreId, fiscalYear` | `200` |
 | `POST /finance/planning/budgets` | `finance.planning.write` | { costCentreId, fiscalYear, currency, monthlyCeilings } | `201` |
 | `POST /finance/planning/budgets/{budgetId}/revision` | `finance.planning.write` | { monthlyCeilings } | `204` |
-| `POST /finance/planning/budgets/{budgetId}/approval` | `finance.budgets.approve` | { approvedByEmployeeId } | `204` |
+| `POST /finance/planning/budgets/{budgetId}/approval` | `finance.budgets.approve` | Sem corpo — **quem aprova vem do token** (ADR-057) | `204` |
 | `GET /finance/planning/cost-forecasts` | `finance.planning.read` | query: `departmentId, fiscalYear` | `200` |
 | `POST /finance/planning/cost-forecasts` | `finance.planning.write` | { departmentId, fiscalYear, month, currency, operationalCosts, fixedCosts, submit } | `201` |
 
@@ -309,7 +309,7 @@ dos casos de uso e não têm DTO HTTP nomeado.
 | `POST /procurement/suppliers/{supplierId}/details` | `procurement.suppliers.write` | { name, iban, email, phone } | `204` |
 | `POST /procurement/suppliers/{supplierId}/status` | `procurement.suppliers.write` | { active } | `204` |
 | `GET /procurement/requisitions` | `procurement.requisitions.read` | query: `requestedByEmployeeId, status` | `200` |
-| `POST /procurement/requisitions` | `procurement.requisitions.write` | { requestedByEmployeeId, departmentId, justification, currency, requestedOn, lines } | `201` |
+| `POST /procurement/requisitions` | `procurement.requisitions.write` | { departmentId, justification, currency, requestedOn, lines } — **quem requisita vem do token** (ADR-057) | `201` |
 | `GET /procurement/requisitions/{requisitionId}` | `procurement.requisitions.read` | Sem corpo | `200` |
 | `POST /procurement/requisitions/{requisitionId}/submission` | `procurement.requisitions.write` | Sem corpo | `202` |
 | `POST /procurement/requisitions/{requisitionId}/approval-outcome` | `procurement.requisitions.read` | Sem corpo | `200/202` |
@@ -320,7 +320,7 @@ dos casos de uso e não têm DTO HTTP nomeado.
 | `POST /procurement/orders/{purchaseOrderId}/cancellation` | `procurement.orders.write` | { reason } | `204` |
 | `GET /procurement/receipts` | `procurement.receipts.read` | query: `purchaseOrderId` | `200` |
 | `GET /procurement/receipts/{goodsReceiptId}` | `procurement.receipts.read` | Sem corpo | `200` |
-| `POST /procurement/orders/{purchaseOrderId}/receipts` | `procurement.receipts.write` | { receivedByEmployeeId, receivedOn, deliveryNote, lines } | `201` |
+| `POST /procurement/orders/{purchaseOrderId}/receipts` | `procurement.receipts.write` | { receivedOn, deliveryNote, lines } — **quem recebe vem do token** (ADR-057) | `201` |
 | `POST /procurement/receipts/{goodsReceiptId}/cancellation` | `procurement.receipts.write` | { reason } | `204` |
 
 ## Salários
@@ -328,7 +328,7 @@ dos casos de uso e não têm DTO HTTP nomeado.
 | Método e rota | Permissão | Request | Sucesso |
 |---|---|---|---|
 | `GET /payroll/runs` | `payroll.runs.read` | Sem corpo | `200` |
-| `POST /payroll/runs` | `payroll.runs.write` | { year, month, openedByEmployeeId } | `201` |
+| `POST /payroll/runs` | `payroll.runs.write` | { year, month } — **quem abre vem do token** (ADR-057) | `201` |
 | `GET /payroll/runs/{runId}` | `payroll.runs.read` | Sem corpo | `200` |
 | `POST /payroll/runs/{runId}/items` | `payroll.runs.write` | { employeeId, grossSalary, foodAllowance, transportAllowance, vacationAllowance, christmasAllowance } | `201` |
 | `POST /payroll/runs/{runId}/submission` | `payroll.runs.write` | Sem corpo | `200` |

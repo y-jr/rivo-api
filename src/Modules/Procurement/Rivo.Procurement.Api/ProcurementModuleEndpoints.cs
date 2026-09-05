@@ -206,14 +206,33 @@ public static class ProcurementModuleEndpoints
             .Select(l => new NewRequisitionLine(l.Description, l.Quantity, l.EstimatedUnitPrice))
             .ToList() ?? [];
 
+        // Quem requisita vem do token (ADR-057).
+        if (request.RequestedByEmployeeId is not null)
+        {
+            return Results.BadRequest(new
+            {
+                erro = "A requisição já não aceita requestedByEmployeeId. Quem requisita é a "
+                     + "conta autenticada, e tem de estar associada a um colaborador.",
+            });
+        }
+
+        var contexto = BuildAuditContext(http);
+
+        if (contexto.ActorId is not { } quemRequisita)
+        {
+            return Results.Problem(
+                "Sessão sem identificador de utilizador.",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
         var resultado = await openRequisition.ExecuteAsync(
-            request.RequestedByEmployeeId,
+            quemRequisita,
             request.DepartmentId,
             request.Justification,
             request.Currency ?? "AOA",
             request.RequestedOn,
             linhas,
-            BuildAuditContext(http),
+            contexto,
             cancellationToken);
 
         return resultado.Outcome switch
@@ -432,13 +451,38 @@ public static class ProcurementModuleEndpoints
             .Select(l => new NewGoodsReceiptLine(l.PurchaseOrderLineId, l.QuantityReceived))
             .ToList() ?? [];
 
+        // Quem regista a recepção vem do token (ADR-057).
+        //
+        // Nota de âmbito: aqui era defensável manter o campo como *dado* — quem
+        // descarrega no armazém pode não ser quem digita. Mas a contagem é o
+        // que o 3-way match compara, e a responsabilidade por ela não se
+        // declara. Se um dia fizer falta registar também quem descarregou, é
+        // um campo novo e explícito, não este.
+        if (request.ReceivedByEmployeeId is not null)
+        {
+            return Results.BadRequest(new
+            {
+                erro = "A recepção já não aceita receivedByEmployeeId. Quem regista é a conta "
+                     + "autenticada, e tem de estar associada a um colaborador.",
+            });
+        }
+
+        var contexto = BuildAuditContext(http);
+
+        if (contexto.ActorId is not { } quemRecebe)
+        {
+            return Results.Problem(
+                "Sessão sem identificador de utilizador.",
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
         var resultado = await registerReceipt.ExecuteAsync(
             purchaseOrderId,
-            request.ReceivedByEmployeeId,
+            quemRecebe,
             request.ReceivedOn,
             request.DeliveryNote,
             linhas,
-            BuildAuditContext(http),
+            contexto,
             cancellationToken);
 
         return resultado.Outcome switch
@@ -527,7 +571,8 @@ public sealed record SetSupplierStatusRequest(bool Active);
 /// de aprovação aplicável.
 /// </param>
 public sealed record OpenRequisitionRequest(
-    Guid RequestedByEmployeeId,
+    /// <summary>⚠ Já não é aceite (ADR-057) — declarado só para ser recusado com 400.</summary>
+    Guid? RequestedByEmployeeId,
     Guid? DepartmentId,
     string Justification,
     string? Currency,
@@ -572,7 +617,8 @@ public sealed record CancelPurchaseOrderRequest(string Reason);
 /// dele, e o Rivo não lhe impõe formato.
 /// </param>
 public sealed record RegisterGoodsReceiptRequest(
-    Guid ReceivedByEmployeeId,
+    /// <summary>⚠ Já não é aceite (ADR-057) — declarado só para ser recusado com 400.</summary>
+    Guid? ReceivedByEmployeeId,
     DateOnly? ReceivedOn,
     string? DeliveryNote,
     IReadOnlyList<GoodsReceiptLineRequest>? Lines);

@@ -12,6 +12,16 @@
     <ProjectReference Include="..\Rivo.Finance.Domain\Rivo.Finance.Domain.csproj" />
     <ProjectReference Include="..\Rivo.Finance.Contracts\Rivo.Finance.Contracts.csproj" />
     <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
+    <!--
+      Desde o ADR-057: resolver o colaborador a partir da conta autenticada.
+
+      Sem isto, quem executa um pagamento fica declarado pelo corpo do pedido,
+      e o BR-3 verifica-se contra um valor que o próprio chamador escolhe.
+      Mesma dependência, e pela mesma razão, que `approval` passou a ter com o
+      ADR-050. Sem risco de ciclo: `Rivo.Hr.Contracts` não depende de nada
+      (ADR-017).
+    -->
+    <ProjectReference Include="..\..\Hr\Rivo.Hr.Contracts\Rivo.Hr.Contracts.csproj" />
     <ProjectReference Include="..\..\Fiscal\Rivo.Fiscal.Contracts\Rivo.Fiscal.Contracts.csproj" />
     <ProjectReference Include="..\..\Commercial\Rivo.Commercial.Contracts\Rivo.Commercial.Contracts.csproj" />
     <!-- ISupplierDirectory: é por aqui que a factura de compra liga ao

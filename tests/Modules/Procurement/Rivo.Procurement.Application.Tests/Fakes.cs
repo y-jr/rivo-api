@@ -152,8 +152,20 @@ internal sealed class FakeEmployeeDirectory : IEmployeeDirectory
             ? new EmployeeReference(employeeId, "Colaborador", EmployeeStatus.Active, null, null, null)
             : null);
 
+    /// <summary>
+    /// Desde o ADR-057 é por aqui que os casos de uso resolvem quem age: a
+    /// conta autenticada, não o colaborador declarado.
+    ///
+    /// <para>
+    /// Mapeia a conta no colaborador com o mesmo identificador, para os testes
+    /// escritos antes continuarem a dizer o que diziam — «este colaborador
+    /// recebe» passa a «esta conta recebe», e resolve-se no mesmo.
+    /// </para>
+    /// </summary>
     public Task<EmployeeReference?> FindByUserIdAsync(Guid userId, DateTimeOffset asOf, CancellationToken cancellationToken) =>
-        throw new NotSupportedException("O teste não previu uma chamada a FindByUserIdAsync.");
+        Task.FromResult(_existentes.Contains(userId)
+            ? new EmployeeReference(userId, "Colaborador", EmployeeStatus.Active, null, null, userId)
+            : null);
 
     public Task<IReadOnlyList<EmployeeReference>> FindByPositionAsync(Guid positionId, DateTimeOffset asOf, CancellationToken cancellationToken) =>
         throw new NotSupportedException("O teste não previu uma chamada a FindByPositionAsync.");
