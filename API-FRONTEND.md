@@ -303,7 +303,7 @@ dos casos de uso e não têm DTO HTTP nomeado.
 
 | Método e rota | Permissão | Request | Sucesso |
 |---|---|---|---|
-| `GET /procurement/suppliers` | `procurement.suppliers.read` | query: `includeInactive` | `200` |
+| `GET /procurement/suppliers` | `procurement.suppliers.read` | query: `includeInactive` — `status` vem como **"Active"/"Inactive"**, e não como número | `200` |
 | `POST /procurement/suppliers` | `procurement.suppliers.write` | { name, taxId, iban, email, phone } | `201` |
 | `GET /procurement/suppliers/{supplierId}` | `procurement.suppliers.read` | Sem corpo | `200` |
 | `POST /procurement/suppliers/{supplierId}/details` | `procurement.suppliers.write` | { name, iban, email, phone } | `204` |
@@ -362,7 +362,7 @@ dos casos de uso e não têm DTO HTTP nomeado.
 | `POST /inventory/items` | `inventory.items.write` | { sku, name, unit } | `201` |
 | `GET /inventory/items/{itemId}` | `inventory.items.read` | Sem corpo | `200` |
 | `POST /inventory/items/{itemId}/status` | `inventory.items.write` | { active } | `204` |
-| `POST /inventory/items/{itemId}/movements/receipts` | `inventory.items.write` | { series, receivedOn, method, notes, settlements } | `200` |
+| `POST /inventory/items/{itemId}/movements/receipts` | `inventory.items.write` | { warehouseId, quantity, unitCost, reason, occurredOn } | `200` |
 | `POST /inventory/items/{itemId}/movements/issues` | `inventory.items.write` | { warehouseId, quantity, reason, occurredOn } | `200` |
 | `POST /inventory/items/{itemId}/movements/adjustments` | `inventory.items.write` | { warehouseId, quantityDelta, reason, occurredOn } | `200` |
 | `POST /inventory/items/{itemId}/movements/transfers` | `inventory.items.write` | { fromWarehouseId, toWarehouseId, quantity, reason, occurredOn } | `201` |
