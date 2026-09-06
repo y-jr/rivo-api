@@ -303,7 +303,7 @@ dos casos de uso e não têm DTO HTTP nomeado.
 
 | Método e rota | Permissão | Request | Sucesso |
 |---|---|---|---|
-| `GET /procurement/suppliers` | `procurement.suppliers.read` | query: `includeInactive` | `200` |
+| `GET /procurement/suppliers` | `procurement.suppliers.read` | query: `includeInactive` — `status` vem como **"Active"/"Inactive"**, e não como número | `200` |
 | `POST /procurement/suppliers` | `procurement.suppliers.write` | { name, taxId, iban, email, phone } | `201` |
 | `GET /procurement/suppliers/{supplierId}` | `procurement.suppliers.read` | Sem corpo | `200` |
 | `POST /procurement/suppliers/{supplierId}/details` | `procurement.suppliers.write` | { name, iban, email, phone } | `204` |

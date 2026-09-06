@@ -42,7 +42,7 @@ public class PayablesTests
     public async Task SupplierIdIndicado_EEncontrado_LigaAFactura()
     {
         var fornecedor = new SupplierReference(
-            Guid.CreateVersion7(), "Sonangol Distribuidora", "5401234567", null, SupplierStatus.Active);
+            Guid.CreateVersion7(), "Sonangol Distribuidora", "5401234567", null, nameof(SupplierStatus.Active));
         var store = new FakePayablesStore();
 
         var resultado = await Registar(store, fornecedor).ExecuteAsync(
@@ -83,7 +83,7 @@ public class PayablesTests
     public async Task SemSupplierId_NifCoincideComFornecedorQualificado_LigaAutomaticamente()
     {
         var fornecedor = new SupplierReference(
-            Guid.CreateVersion7(), "Sonangol Distribuidora", "5401234567", null, SupplierStatus.Active);
+            Guid.CreateVersion7(), "Sonangol Distribuidora", "5401234567", null, nameof(SupplierStatus.Active));
         var store = new FakePayablesStore();
 
         var resultado = await Registar(store, fornecedor).ExecuteAsync(
@@ -132,7 +132,7 @@ public class PayablesTests
     public async Task PurchaseOrderIdIndicado_EDoMesmoFornecedor_LigaAOrdem()
     {
         var fornecedor = new SupplierReference(
-            Guid.CreateVersion7(), "Angoferragens", "5402123456", null, SupplierStatus.Active);
+            Guid.CreateVersion7(), "Angoferragens", "5402123456", null, nameof(SupplierStatus.Active));
         var ordem = Ordem(fornecedor.SupplierId, (10m, 10m, 9000m));
         var store = new FakePayablesStore();
 
@@ -191,7 +191,7 @@ public class PayablesTests
     public async Task PurchaseOrderIdIndicado_DeOutroFornecedor_ERecusado()
     {
         var fornecedor = new SupplierReference(
-            Guid.CreateVersion7(), "Angoferragens", "5402123456", null, SupplierStatus.Active);
+            Guid.CreateVersion7(), "Angoferragens", "5402123456", null, nameof(SupplierStatus.Active));
         var ordem = Ordem(Guid.CreateVersion7(), (10m, 10m, 9000m));
         var store = new FakePayablesStore();
 

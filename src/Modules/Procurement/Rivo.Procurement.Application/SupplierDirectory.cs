@@ -56,7 +56,7 @@ public sealed class SupplierDirectory(IProcurementStore store, RegisterSupplier 
     }
 
     internal static SupplierReference ToReference(Supplier supplier) =>
-        new(supplier.Id, supplier.Name, supplier.TaxId, supplier.Iban, ToContract(supplier.Status));
+        new(supplier.Id, supplier.Name, supplier.TaxId, supplier.Iban, ToContract(supplier.Status).ToString());
 
     /// <summary>
     /// Traduz o estado do domínio para o publicado. Os dois enumerados existem

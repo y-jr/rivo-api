@@ -85,13 +85,38 @@ public enum SupplierRegistrationOutcome
 /// Nulo quando o fornecedor ainda não tem conta registada. Quem paga tem de
 /// tratar a ausência — não se paga por transferência para lado nenhum.
 /// </param>
+/// <param name="Status">
+/// <c>"Active"</c> ou <c>"Inactive"</c>.
+///
+/// <para>
+/// <strong>É `string` e não o enum</strong>, ao contrário do que era até
+/// 2026-09-06. Não há conversor de enums configurado na aplicação, pelo que um
+/// enum publicado num contrato sai como **inteiro** no JSON: este era o único
+/// dos mais de vinte contratos de leitura do sistema que o fazia, e um cliente
+/// recebia <c>"status": 0</c> onde toda a restante API devolve palavras.
+/// </para>
+///
+/// <para>
+/// Publicar a posição de um valor num <c>enum</c> é frágil por outra razão
+/// ainda: acrescentar um estado no meio muda em silêncio o significado dos
+/// números que os clientes já guardaram.
+/// </para>
+/// </param>
 public sealed record SupplierReference(
     Guid SupplierId,
     string Name,
     string TaxId,
     string? Iban,
-    SupplierStatus Status);
+    string Status);
 
+/// <summary>
+/// Os valores que <see cref="SupplierReference.Status"/> pode tomar.
+///
+/// <para>
+/// Continua a existir como enum para o código interno o usar sem cadeias
+/// soltas; o que mudou foi o que atravessa a fronteira HTTP.
+/// </para>
+/// </summary>
 public enum SupplierStatus
 {
     Active,
