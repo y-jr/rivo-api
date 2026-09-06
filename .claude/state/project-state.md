@@ -359,10 +359,17 @@ código**:
 | **Logótipos exportados** (SVG ou PNG, quatro variantes) | Do cliente. Os PNG dourados saíram; a marca está desenhada com a própria Harabara, que é a letra do logótipo, mas o símbolo e o favicon precisam dos ficheiros |
 | **Revisão de `/estilo` e da entrada** | Do utilizador. A camada de identidade está montada e medida; falta o olho |
 | **Licenciamento das fontes** | Do cliente. `Harabara Mais **Demo**.otf` é versão de demonstração; o conjunto Helvetica é de origem não declarada. O front está montado para trocar um ficheiro numa linha |
-| **Remoto do repositório do frontend** | Do utilizador. `../front` não tem remoto configurado — todo o trabalho está só nesta máquina |
+| ~~Remoto do repositório do frontend~~ | **Resolvido a 2026-09-06.** `y-jr/rivo-front`, **privado**, com os 26 commits |
 
-⚠ **O último é o mais urgente e o menos visível.** Os **26 commits** do
-frontend existem apenas em disco local, sem cópia em lado nenhum.
+⚠ **`rivo-front` é privado e `rivo-api` é público**, e a diferença é
+deliberada: o repositório do frontend carrega o manual de identidade do
+cliente e dois ficheiros de fonte — `Harabara Mais **Demo**.otf` e um conjunto
+Helvetica de origem não declarada. Publicá-los não é o mesmo que os ter em
+disco, e privado → público desfaz-se numa linha enquanto o inverso não apaga o
+que ficou clonado.
+
+Torná-lo público **sem** tirar esses três ficheiros do histórico é uma decisão
+por tomar, não um esquecimento.
 
 ### Estado a 2026-09-04: o roteiro acabou
 
