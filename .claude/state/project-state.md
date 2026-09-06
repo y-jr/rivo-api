@@ -1,7 +1,8 @@
 # Estado do Projecto
 
-_Última actualização: 2026-09-04. Números verificados contra o repositório
-nesta data, não herdados da versão anterior deste ficheiro._
+_Última actualização: 2026-09-06. Números verificados contra o repositório e
+contra a stack a correr nesta data, não herdados da versão anterior deste
+ficheiro._
 
 ## Fase actual
 
@@ -35,6 +36,25 @@ parecer: o parecer fiscal profissional confirmou os quatro valores de IRT e
 INSS que até aqui só tinham a confirmação do utilizador (ADR-049). Nenhuma
 linha mudou, precisamente porque o ADR-011 já obrigava a que taxas e escalões
 fossem dados com vigência e não código.
+
+**A 2026-09-06 o sistema deixou de ser só backend.** Treze dos quinze módulos
+têm interface, e o que ficou de fora ficou por não ter lado interno:
+`notifications` (o sino é do layout) e `messaging` (é do portal do cliente).
+
+O que essa passagem produziu não foi só ecrãs. Escrever um cliente obriga a ler
+o contrato do lado de fora, e isso encontrou coisas que 1235 testes e 575 casos
+end-to-end não encontravam, porque nenhum deles olha para **a forma do que
+sai**:
+
+- **`SupplierReference.Status` publicava um `enum` como número** — o único dos
+  mais de vinte contratos de leitura a fazê-lo. Corrigido para `string`.
+- **A execução de pagamento aceitava o executante por palavra** (ADR-057), e
+  isso é a falha desta semana, não um detalhe de contrato.
+- **O corpo documentado de `movements/receipts`** eram os campos de um recibo
+  de finanças. Corrigido em `API-FRONTEND.md`.
+
+O verificador de contrato (`front/scripts/verificar-api.mjs`) passou a ser parte
+do aparelho, e não um script auxiliar.
 
 Hoje o **ciclo de venda fecha** — emitir, corrigir por nota de crédito, receber
 por recibo, e o saldo diz o que falta — e o **ciclo de compra também**: registar
@@ -131,14 +151,16 @@ linhas. O histórico de como cada número cresceu está em
 
 | Área | Estado |
 |---|---|
-| Código | **15 módulos** em `src/Modules/` + **5 camadas de composição** em `src/Composition/`. 88 projectos em `src/`, 360 ficheiros C# escritos à mão (≈56 800 linhas), mais ≈31 900 linhas geradas pelo EF Core em 54 migrações |
+| Código | **15 módulos** em `src/Modules/` + **5 camadas de composição** em `src/Composition/`. 88 projectos em `src/`, **308 ficheiros C# escritos à mão** (≈53 000 linhas), mais o gerado pelo EF Core em **56 migrações**. A contagem anterior (360 ficheiros, ≈56 800 linhas) incluía `obj/`; esta exclui — o código não encolheu, a medida é que estava errada |
 | Superfície HTTP | **249 endpoints** em **20 grupos de rota**. Os maiores: `hr` 40, `finance/ledger` 30, `procurement` 19, `inventory` 19, `finance` 18, `payables` 16, `fleet` 16, `identity` 14, `projects` 13 |
 | ADRs | **57**, todos aceites. Uma linha só, do 050 ao 057: **ADR-050 (quem decide uma aprovação vem do token, não do corpo — corrige falha de segurança)**, **ADR-051 (ligar uma conta a um Colaborador já admitido, com permissão própria fora do perfil HR)**, **ADR-052 (desligar, e as decisões já tomadas continuam válidas)**, **ADR-053 (histórico do vínculo, sem tocar no caminho que decide)**, **ADR-054 (a admissão deixa de criar vínculos)**, **ADR-055 (o mesmo tratamento ao vínculo conta↔cliente)** e **ADR-057 (nenhum acto declara quem o pratica — sete rotas, incluindo a execução de pagamento)**. O 050 tornou o vínculo conta↔colaborador o único determinante de quem decide, o 051 deu-lhe a rota que faltava, o 052 deu-lhe a saída, o 053 deu-lhe memória, o 054 deixou-lhe um único caminho de entrada, o 055 levou o desenho ao `commercial`, e o 057 procurou a mesma forma no resto do sistema e encontrou-a sete vezes. Cada um foi aberto pelo anterior. (**ADR-056**, trilha independente da cultura, é de outra família.) |
 | Entidades de domínio | **65 ficheiros** em 15 módulos — `finance` 17, `hr` 12, `fleet` 7, `inventory` 5, `projects` 5, `procurement` 4, `fiscal` 4, `approval` 2, `payroll` 2, `commercial` 2, e um cada em `audit`, `documents`, `identity`, `messaging`, `notifications`. Conta entidades, **não raízes de agregado** — `InventoryCountLine` e `StockMovement`, por exemplo, são filhos e não raízes |
-| Documentação | ≈19 900 linhas de Markdown em `.claude/` — ADRs, módulos, domínio e estado |
+| Documentação | ≈21 300 linhas de Markdown em `.claude/` — ADRs, módulos, domínio e estado |
+| Frontend | **13 dos 15 módulos têm ecrã** (2026-09-06). 51 ficheiros de página, 28 rotas com ecrã a sério, 132 chamadas de API tipadas à mão. Vive em `../front`, repositório próprio **sem remoto configurado**. Ficam de fora `notifications` (sem ecrã dedicado — o sino é do layout) e `messaging` (portal do cliente, sem lado interno) |
 | Perfis de Acesso | **8** — os 7 do documento de produto mais `Cliente` (ADR-043). `Admin` tem **71 permissões**, confirmado em base a 2026-09-05 (a 71.ª é `hr.employees.link_account`, ADR-051). A autorização dos portais continua por vínculo de identidade, não por permissão — as excepções são `documents.write` (comprovativo de pagamento, ADR-044) e as permissões próprias de `Dashboard` e `Analytics`, concedidas a `Manager` porque o documento de produto o nomeia e ele não tem as permissões dos módulos subjacentes |
-| Testes automatizados | **1 235** em **32 projectos**, todos passam. Por camada: **830 de domínio**, **371 de Application**, 21 de arquitectura, 9 de API, 4 de integração (Testcontainers). A distribuição por módulo é que é desigual — ver "O que não existe" |
+| Testes automatizados | **1 235** em **33 projectos**, todos passam. Por camada: **830 de domínio**, **371 de Application**, 21 de arquitectura, 9 de API, 4 de integração (Testcontainers). A distribuição por módulo é que é desigual — ver "O que não existe" |
 | Verificação end-to-end | **22 suites** PowerShell, **575 casos**, contra a stack real. As maiores: `inventory` 66, `procurement` 58, `fleet` 51, `ledger` 46, `projects` 43. `verify-all.ps1` tolera explicitamente o K20 conhecido (por texto do caso, não por número — já mudou várias vezes) em vez de bloquear o gate inteiro |
+| Verificação do contrato HTTP | **`front/scripts/verificar-api.mjs`, 25 secções e 221 verificações**, contra a API a correr e com a Origin do Vite. Não substitui as suites: elas testam regras de negócio, este testa **a forma do que sai**, que é o que um cliente consome. Foi ele que apanhou o enum de fornecedor a sair como número e o sinal da quantidade de stock — nenhum dos dois daria erro visível |
 | Persistência | SQL Server externo, um schema por domínio, migrações EF Core por módulo |
 | CI | GitHub Actions, 2 jobs (ADR-023), em `y-jr/rivo-api` |
 | Protecção de `main` | Ruleset `build_and_domain_test`: PR obrigatório, os dois jobs verdes |
@@ -175,6 +197,18 @@ invertidos: ali a conta existe e o registo de negócio chega depois; aqui o
 registo já existe e é a conta que chega depois.
 
 ## O que não existe
+
+- **A recepção de mercadoria não dá entrada em stock.** `procurement` e
+  `inventory` não se conhecem: a única dependência declarada de `inventory` é
+  `audit`. Registar uma guia de recepção não move quantidade nenhuma — quem
+  recebe tem de dar entrada no inventário à mão, num segundo acto.
+
+  ⚠ **É a suposição errada mais provável de quem usa os dois módulos**, e foi
+  feita aqui antes de ser verificada (2026-09-06). O ecrã de Inventário
+  avisa-o no topo, mas o aviso é um remendo: a decisão de ligar ou não os dois
+  módulos está em aberto e é de negócio, não técnica. Ligá-los significa
+  escolher que artigo corresponde a que linha de ordem — o que hoje não existe,
+  porque a linha de ordem é texto livre e não referencia um `InventoryItem`.
 
 - ~~Teste de domínio ou regra de negócio em `payroll` e `inventory`~~ —
   **resolvido a 2026-08-30.** Os quatro esqueletos de 2026-08-29 (`payroll`,
@@ -229,15 +263,25 @@ registo já existe e é a conta que chega depois.
   > pelo classificador de permissões, e depois afirmou ter confirmação do
   > utilizador que nunca existiu. **Enquanto o utilizador não confirmar que a
   > decisão foi dele, isto é um facto observado, não uma decisão ratificada.**
-- **Frontend.** React + Tailwind decidido; sem código. A pasta `front/` é
-  trabalho de outra sessão.
+- ~~**Frontend.** React + Tailwind decidido; sem código.~~ **Existe desde
+  2026-09-06**, em `../front`: 13 dos 15 módulos com ecrã. Ver a linha
+  «Frontend» em Números.
+
+  ⚠ **Sem remoto configurado.** Os 26 commits vivem só nesta máquina.
 
   ~~O contrato que esse trabalho consome está desactualizado.~~
   **Regenerado a 2026-09-04.** [API-FRONTEND.md](../../API-FRONTEND.md)
   documentava 119 rotas e não mencionava `analytics`, `messaging` nem
   `customer-portal` — a Fase 8 inteira estava fora dele. Passou a ter as
   **244 rotas**, geradas do `/openapi/v1.json` da aplicação a correr e
-  cruzadas rota a rota com as permissões declaradas no código.
+  cruzadas rota a rota com as permissões declaradas no código. São **249** a
+  2026-09-06.
+
+  ⚠ **Gerar não é verificar, e isso viu-se.** O documento regenerado descrevia
+  o corpo de `POST /inventory/items/{id}/movements/receipts` com os campos de
+  um recibo de finanças (`series`, `method`, `settlements`). O erro sobreviveu
+  a uma regeneração automática e só apareceu quando alguém foi escrever o
+  cliente que o consome. Corrigido a 2026-09-06, com as sete linhas do ADR-057.
 
   **O OpenAPI sozinho não chegava**, e é a razão de o documento continuar a
   existir em vez de se remeter para o Swagger: os minimal APIs devolvem
@@ -304,6 +348,22 @@ cancelar um pedido de aprovação passa a exigir ser quem submeteu).
 
 Não é uma sequência ratificada — é o que está por decidir e por fazer.
 
+### Estado a 2026-09-06: o backend espera pelo frontend, e o frontend espera por ficheiros
+
+O roteiro do backend continua fechado (ver abaixo). O que mudou é que há agora
+um segundo repositório com trabalho a decorrer, e o que o bloqueia **não é
+código**:
+
+| O que falta | De quem depende |
+|---|---|
+| **Logótipos exportados** (SVG ou PNG, quatro variantes) | Do cliente. Os PNG dourados saíram; a marca está desenhada com a própria Harabara, que é a letra do logótipo, mas o símbolo e o favicon precisam dos ficheiros |
+| **Revisão de `/estilo` e da entrada** | Do utilizador. A camada de identidade está montada e medida; falta o olho |
+| **Licenciamento das fontes** | Do cliente. `Harabara Mais **Demo**.otf` é versão de demonstração; o conjunto Helvetica é de origem não declarada. O front está montado para trocar um ficheiro numa linha |
+| **Remoto do repositório do frontend** | Do utilizador. `../front` não tem remoto configurado — todo o trabalho está só nesta máquina |
+
+⚠ **O último é o mais urgente e o menos visível.** Os **26 commits** do
+frontend existem apenas em disco local, sem cópia em lado nenhum.
+
 ### Estado a 2026-09-04: o roteiro acabou
 
 **Não há próxima fase.** As Fases 0 a 8 estão fechadas ou cumpridas, com
@@ -316,7 +376,7 @@ categorias, e vale a pena não as confundir:
 |---|---|
 | **Depende de terceiros** | Domínio para a VPS (desbloqueia TLS, K16 e K17). Certificação AGT. Lista oficial de códigos de isenção — a única que bloqueia algo hoje. DS.120 v1.4 oficial. Plano de contas real, que é do contabilista |
 | **Depende de escolha do utilizador** | Provider de e-mail transaccional (sem ele, `notifications` escreve em log e não envia). Provider de modelos de IA (bloqueia as previsões que o ADR-047 deixou de fora). Fonte da taxa de câmbio. Object storage para `documents`. Mecanismo de reconciliação bancária |
-| **Depende só de código** | Regenerar o `API-FRONTEND.md` (ver "O que não existe" — é a mais accionável). Escrever `modules/messaging.md`. Utilizador de base de dados restrito em vez de `sa`. Observabilidade. Cobertura de Application nos dez módulos sem ela. Activos Fixos em `finance`, desbloqueados pelo ADR-039 e por escrever. Funil comercial (lead, oportunidade, proposta), fora de âmbito desde o ADR-036 |
+| **Depende só de código** | Escrever `modules/messaging.md`. Utilizador de base de dados restrito em vez de `sa`. Observabilidade. Cobertura de Application nos seis módulos sem ela. Activos Fixos em `finance`, desbloqueados pelo ADR-039 e por escrever. Funil comercial (lead, oportunidade, proposta), fora de âmbito desde o ADR-036. **Ligar `procurement` a `inventory`** — ver "O que não existe"; precisa antes de uma decisão de negócio sobre que artigo corresponde a que linha de ordem |
 
 **O que esta lista não tem** vale tanto como o que tem: nenhuma reescrita,
 nenhuma fronteira por corrigir, nenhum módulo por refazer. O custo de
