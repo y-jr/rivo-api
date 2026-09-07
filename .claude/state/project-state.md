@@ -316,6 +316,19 @@ registo já existe e é a conta que chega depois.
   numa secção não o risca nas outras. Ao fechar alguma coisa, procurar o
   nome dela no ficheiro inteiro.
 
+## Arranque de uma instância vazia
+
+Ver [arranque-em-producao.md](arranque-em-producao.md) — a ordem em que as
+peças se ligam, escrita a partir da primeira tentativa real de usar o sistema
+em produção (2026-09-07).
+
+⚠ **Uma instância precisa de dois Admins para arrancar**, e isso não foi
+decidido — é consequência não intencional do cruzamento entre o ADR-051 (a
+ligação conta↔colaborador tem permissão própria e recusa auto-ligação), o
+ADR-054 (admitir não liga) e o ADR-057 (sem vínculo não se age). Nenhum dos
+três a considerou. As três saídas possíveis estão nesse ficheiro; a decisão é
+de ADR e está por tomar.
+
 ## Riscos principais
 
 1. **Cobertura desigual entre camadas.** Deixou de crescer em `finance`, que
