@@ -296,5 +296,17 @@ public static class FiscalPermissions
     /// </summary>
     public const string RatesWrite = "fiscal.rates.write";
 
-    public static readonly IReadOnlyList<string> All = [RatesRead, RatesWrite];
+    /// <summary>
+    /// Exportar o ficheiro SAF-T.
+    ///
+    /// <para>
+    /// <strong>Permissao propria, e nao `RatesRead`.</strong> Ler taxas e
+    /// consultar uma tabela; exportar SAF-T e extrair a contabilidade, os
+    /// clientes, os fornecedores e os documentos comerciais da empresa inteira
+    /// num ficheiro. Quem exporta leva tudo -- e isso e outra coisa.
+    /// </para>
+    /// </summary>
+    public const string SaftExport = "fiscal.saft.export";
+
+    public static readonly IReadOnlyList<string> All = [RatesRead, RatesWrite, SaftExport];
 }

@@ -167,6 +167,7 @@
   </Folder>
   <Folder Name="/tests/Fiscal/">
     <Project Path="tests/Modules/Fiscal/Rivo.Fiscal.Domain.Tests/Rivo.Fiscal.Domain.Tests.csproj" />
+    <Project Path="tests/Modules/Fiscal/Rivo.Fiscal.Infrastructure.Tests/Rivo.Fiscal.Infrastructure.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/Hr/">
     <Project Path="tests/Modules/Hr/Rivo.Hr.Domain.Tests/Rivo.Hr.Domain.Tests.csproj" />

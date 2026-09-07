@@ -9,6 +9,21 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      O XSD do SAF-T AO, vendorizado como recurso incorporado.
+
+      É a mesma cópia que está em `.claude/docs/schemas/`, e o contrato de
+      completude manda mantê-las idênticas — verificável pelo SHA256 que lá
+      está fixado. Aqui serve para **validar em runtime e nos testes** o
+      ficheiro gerado; lá serve de referência documental e de fixação de versão.
+
+      Incorporado e não copiado para o disco: assim viaja dentro do assembly e
+      não há como o deployment ficar sem ele.
+    -->
+    <EmbeddedResource Include="Schemas\SAFTAO1.01_01.xsd" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="EFCore.NamingConventions" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

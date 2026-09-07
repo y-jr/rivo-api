@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Rivo.Fiscal.Application;
 using Rivo.Fiscal.Application.Abstractions;
 using Rivo.Fiscal.Application.UseCases;
@@ -25,6 +26,28 @@ public static class FiscalModuleExtensions
                     // e vive noutra maquina (ADR-029).
                     .EnableRetryOnFailure(maxRetryCount: 6, maxRetryDelay: TimeSpan.FromSeconds(5), errorNumbersToAdd: null))
             .UseSnakeCaseNamingConvention());
+
+        /*
+         * A identidade da empresa, para o cabecalho do SAF-T (ADR-058).
+         *
+         * `ValidateOnStart` e a razao de isto ser opcoes e nao entidade: um
+         * `.env` incompleto rebenta ao levantar a aplicacao, com o nome do
+         * campo em falta. Uma tabela vazia rebentaria a meio de uma
+         * exportacao, meses depois, no dia em que alguem precisasse do
+         * ficheiro.
+         */
+        services.AddOptions<CompanyOptions>()
+            .Bind(configuration.GetSection(CompanyOptions.SectionName))
+            .Validate(
+                opcoes => opcoes.CamposEmFalta().Count == 0,
+                "Identidade da empresa incompleta. Sem `Company:Name` e "
+                + "`Company:TaxRegistrationNumber` nao ha como exportar SAF-T (ADR-058).")
+            .ValidateOnStart();
+
+        services.AddScoped(sp =>
+            sp.GetRequiredService<IOptions<CompanyOptions>>().Value);
+
+        services.AddScoped<ExportSaftFile>();
 
         services.AddScoped<ITaxRateStore, TaxRateStore>();
 

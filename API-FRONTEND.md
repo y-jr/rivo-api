@@ -205,6 +205,7 @@ dos casos de uso e não têm DTO HTTP nomeado.
 
 | Método e rota | Permissão | Request | Sucesso |
 |---|---|---|---|
+| `GET /fiscal/saft` | `fiscal.saft.export` | query: `fiscalYear` (obrigatório), `from`, `to` — sem janela, o ano civil. Devolve **XML**, não JSON. ⚠ `SoftwareValidationNumber` a `"0"`: sem validade legal | `200` |
 | `GET /fiscal/tax-rates` | `fiscal.rates.read` | Sem corpo | `200` |
 | `POST /fiscal/tax-rates` | `fiscal.rates.write` | { kind, code, description } | `201` |
 | `POST /fiscal/tax-rates/{scheduleId}/versions` | `fiscal.rates.write` | { percentage, effectiveFrom, effectiveTo, legalInstrument } | `201` |

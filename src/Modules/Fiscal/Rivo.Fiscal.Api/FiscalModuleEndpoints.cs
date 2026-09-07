@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Xml;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -30,6 +31,20 @@ public static class FiscalModuleEndpoints
         // exposto para se poder conferir o que a emissão vai receber.
         group.MapGet("/tax-rates/determination", DetermineAsync)
             .RequireAuthorization(FiscalPermissions.RatesRead);
+
+        /*
+         * A exportacao SAF-T.
+         *
+         * ⚠ Permissao propria (`fiscal.saft.export`) e nao `RatesRead`: quem
+         * exporta leva a contabilidade, os clientes, os fornecedores e os
+         * documentos comerciais da empresa inteira num ficheiro.
+         *
+         * ⚠ O ficheiro **nao tem validade legal** -- sai com
+         * `SoftwareValidationNumber` a "0", porque o Rivo nao esta certificado
+         * pela AGT (ADR-036). Valido na forma nao e aceite.
+         */
+        group.MapGet("/saft", ExportSaftAsync)
+            .RequireAuthorization(FiscalPermissions.SaftExport);
 
         group.MapGet("/income-tax-schedule", GetIncomeTaxScheduleAsync)
             .RequireAuthorization(FiscalPermissions.RatesRead);
@@ -286,6 +301,58 @@ public static class FiscalModuleEndpoints
 
             _ => Results.Problem("Resultado inesperado na determinação do limiar de isenção."),
         };
+    }
+
+    /// <summary>
+    /// Devolve o ficheiro SAF-T do período como descarga.
+    ///
+    /// <para>
+    /// <strong>Descarga e não JSON.</strong> O SAF-T é XML por definição do
+    /// esquema, e quem o pede quer um ficheiro para entregar — embrulhá-lo
+    /// numa resposta JSON obrigaria o cliente a desembrulhá-lo para gravar o
+    /// mesmo XML.
+    /// </para>
+    ///
+    /// <para>
+    /// A codificação é <c>windows-1252</c>, que é o que a declaração XML do
+    /// ficheiro anuncia. UTF-8 seria mais natural em 2026 e faria o documento
+    /// mentir sobre si próprio.
+    /// </para>
+    /// </summary>
+    private static IResult ExportSaftAsync(
+        int fiscalYear,
+        DateOnly? from,
+        DateOnly? to,
+        ExportSaftFile export)
+    {
+        // Sem janela, o ano civil inteiro — que é o pedido normal da AGT.
+        var inicio = from ?? new DateOnly(fiscalYear, 1, 1);
+        var fim = to ?? new DateOnly(fiscalYear, 12, 31);
+
+        var resultado = export.Execute(fiscalYear, inicio, fim);
+
+        if (resultado.Outcome is ExportSaftOutcome.Rejected)
+        {
+            return Results.ValidationProblem(
+                new Dictionary<string, string[]> { ["saft"] = [resultado.Error!] });
+        }
+
+        using var memoria = new MemoryStream();
+        using (var escritor = XmlWriter.Create(
+            memoria,
+            new XmlWriterSettings
+            {
+                Encoding = System.Text.Encoding.Latin1,
+                Indent = true,
+            }))
+        {
+            resultado.File!.Save(escritor);
+        }
+
+        return Results.File(
+            memoria.ToArray(),
+            "application/xml",
+            $"SAFT-AO-{fiscalYear}-{inicio:yyyyMMdd}-{fim:yyyyMMdd}.xml");
     }
 
     private static AuditContext BuildAuditContext(HttpContext http)

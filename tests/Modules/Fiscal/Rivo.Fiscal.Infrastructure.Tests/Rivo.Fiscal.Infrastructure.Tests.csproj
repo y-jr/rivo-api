@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    O ficheiro SAF-T gerado, validado contra o XSD.
+
+    Vive em Infrastructure.Tests e não em Application.Tests porque o esquema
+    está incorporado no assembly de Infrastructure — e é lá que o contrato de
+    completude manda que esteja. O gerador é de Application, e chega aqui por
+    transitividade.
+
+    Não precisa de base de dados: a exportação do cabeçalho lê configuração e
+    relógio, e mais nada.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Fiscal\Rivo.Fiscal.Infrastructure\Rivo.Fiscal.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\Rivo.TestSupport\Rivo.TestSupport.csproj" />
+  </ItemGroup>
+
+</Project>
