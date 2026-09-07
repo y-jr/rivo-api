@@ -246,3 +246,101 @@ public static class HrPermissions
         LifecycleWrite,
     ];
 }
+
+/// <summary>
+/// O que um colaborador pode ver **sobre si próprio** — assiduidade, férias e
+/// documentos pessoais.
+///
+/// <para>
+/// <strong>Existe para o Portal do Colaborador (ADR-042), e recebe sempre um
+/// <c>employeeId</c> já resolvido.</strong> Não resolve "o próprio": isso é
+/// trabalho da camada de composição, que parte da conta autenticada e usa
+/// <see cref="IEmployeeDirectory.FindByUserIdAsync"/>. Um contrato que
+/// aceitasse a conta faria `hr` conhecer identidades, que não é dele.
+/// </para>
+///
+/// <para>
+/// <strong>Porque é um contrato separado de <see cref="IEmployeeDirectory"/>.</strong>
+/// Aquele responde "quem é esta pessoa" e é consumido por sete módulos para
+/// verificar existência e ler o cargo. Este responde "o que aconteceu a esta
+/// pessoa", e só o portal precisa. Juntá-los daria a todos os consumidores
+/// acesso ao histórico de faltas e aos documentos pessoais de qualquer
+/// colaborador — que é exactamente o contrário do contrato estreito que o
+/// ADR-010 pede.
+/// </para>
+///
+/// <para>
+/// Nenhum destes métodos verifica permissões. Quem os chama já provou que o
+/// colaborador é o próprio: no portal, por vínculo de identidade; noutro
+/// consumidor futuro, seja lá como for. A verificação vive na fronteira HTTP.
+/// </para>
+/// </summary>
+public interface IEmployeeSelfService
+{
+    /// <summary>Marcações do colaborador num intervalo de dias, inclusive.</summary>
+    Task<IReadOnlyList<OwnAttendanceRecord>> ListAttendanceAsync(
+        Guid employeeId,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Pedidos de férias do colaborador, em qualquer estado.
+    ///
+    /// <para>
+    /// Inclui os recusados e os cancelados de propósito: quem consulta as
+    /// próprias férias quer saber o que pediu, e não só o que lhe foi
+    /// concedido.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<OwnLeaveRequest>> ListLeaveAsync(
+        Guid employeeId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Documentos ligados ao colaborador.
+    ///
+    /// <para>
+    /// ⚠ Devolve <strong>metadados</strong>, nunca conteúdo. Descarregar é de
+    /// `documents`, com a sua própria permissão — este contrato diz o que
+    /// existe, não entrega ficheiros.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<OwnDocument>> ListDocumentsAsync(
+        Guid employeeId,
+        CancellationToken cancellationToken);
+}
+
+/// <param name="ObservedHours">
+/// Horas entre entrada e saída, quando ambas existem. Nulo enquanto o dia
+/// estiver em curso ou se a saída não tiver sido marcada — não é zero.
+/// </param>
+public sealed record OwnAttendanceRecord(
+    Guid RecordId,
+    DateOnly Day,
+    DateTimeOffset? CheckedInAt,
+    DateTimeOffset? CheckedOutAt,
+    string Status,
+    string? Justification,
+    double? ObservedHours);
+
+/// <param name="ApprovalRequestId">
+/// O processo em `approval`. Nulo enquanto o pedido não tiver sido submetido.
+/// </param>
+public sealed record OwnLeaveRequest(
+    Guid LeaveId,
+    string Type,
+    DateOnly StartsOn,
+    DateOnly EndsOn,
+    int CalendarDays,
+    string Status,
+    string? Reason,
+    Guid? ApprovalRequestId);
+
+public sealed record OwnDocument(
+    Guid DocumentId,
+    string Category,
+    string FileName,
+    string ContentType,
+    long SizeInBytes,
+    DateTimeOffset AttachedAt);

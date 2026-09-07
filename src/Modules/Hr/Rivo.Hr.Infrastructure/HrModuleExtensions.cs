@@ -31,6 +31,12 @@ public static class HrModuleExtensions
         services.AddScoped<IHrStore, HrStore>();
         services.AddScoped<IEmployeeDirectory, EmployeeDirectory>();
 
+        // O que o proprio colaborador ve sobre si (ADR-042). Contrato separado
+        // do `IEmployeeDirectory` de proposito: aquele responde "quem e esta
+        // pessoa" e e consumido por sete modulos; este responde "o que lhe
+        // aconteceu", e so o Portal do Colaborador precisa.
+        services.AddScoped<IEmployeeSelfService, EmployeeSelfService>();
+
         services.AddScoped<ListEmployees>();
         services.AddScoped<HireEmployee>();
         services.AddScoped<LinkEmployeeAccount>();

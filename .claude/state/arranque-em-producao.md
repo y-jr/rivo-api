@@ -72,6 +72,7 @@ processo que vá usar:
 |---|---|
 | `procurement.purchase_requisition` | Ao submeter uma requisição |
 | `payroll.payroll_run` | Ao submeter a folha |
+| `hr.leave_request` | Ao pedir férias |
 | `finance.payment_request` | Ao pedir um pagamento |
 | `hr.position_assignment` | Ao atribuir um cargo com autoridade |
 
