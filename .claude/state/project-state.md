@@ -316,6 +316,17 @@ registo já existe e é a conta que chega depois.
   numa secção não o risca nas outras. Ao fechar alguma coisa, procurar o
   nome dela no ficheiro inteiro.
 
+## Fora de âmbito
+
+Ver [fora-de-ambito.md](fora-de-ambito.md). A 2026-09-07 o utilizador decidiu
+retirar **ESG**, **Helpdesk interno** e **Jurídico & Compliance** do painel de
+estado: não tinham ficha de módulo, ADR nem lugar no roteiro, e mostrá-los como
+«por desenhar» prometia um compromisso inexistente.
+
+Na mesma revisão confirmou-se que o **funil comercial fica cortado** (ADR-036).
+O `commercial` deixou de se marcar como «parcial» — que sugere trabalho a meio —
+e passou a «recorte deliberado».
+
 ## Arranque de uma instância vazia
 
 Ver [arranque-em-producao.md](arranque-em-producao.md) — a ordem em que as
