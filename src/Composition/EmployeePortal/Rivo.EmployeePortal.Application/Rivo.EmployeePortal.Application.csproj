@@ -8,6 +8,15 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\Modules\Hr\Rivo.Hr.Contracts\Rivo.Hr.Contracts.csproj" />
+
+    <!--
+      Os recibos do próprio (2026-09-07). É a segunda dependência do portal, e
+      a razão de ela existir é a mesma da primeira: "o próprio" resolve-se em
+      `hr`, e o que se mostra sobre ele vem do módulo que o possui.
+
+      Sem ciclo possível — os `Contracts` não dependem de nada (ADR-017).
+    -->
+    <ProjectReference Include="..\..\..\Modules\Payroll\Rivo.Payroll.Contracts\Rivo.Payroll.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

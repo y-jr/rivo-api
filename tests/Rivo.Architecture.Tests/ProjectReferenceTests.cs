@@ -178,7 +178,14 @@ public class ProjectReferenceTests
         // `Identity`: a conta autenticada chega já resolvida (o `sub` do
         // token), lida directamente do `HttpContext` na camada Api, não por
         // contrato.
-        ["EmployeePortal"] = ["Hr"],
+        //
+        // `Payroll` juntou-se a 2026-09-07, com os recibos do próprio. É o
+        // desenho a funcionar e não uma excepção: "o próprio" resolve-se
+        // sempre em `hr`, e o que se mostra sobre ele vem do módulo que o
+        // possui — a remuneração é de `payroll` e de mais ninguém. Quando o
+        // portal ganhar despesas ou viaturas atribuídas, esta lista cresce
+        // outra vez pela mesma razão.
+        ["EmployeePortal"] = ["Hr", "Payroll"],
 
         // Terceira camada de composição — o Dashboard Executivo, primeiro
         // consumidor de `IReceivablesOverview`/`IPayablesOverview`.

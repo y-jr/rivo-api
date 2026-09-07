@@ -24,6 +24,54 @@ public sealed class PayrollRunStore(PayrollDbContext context) : IPayrollRunStore
             .OrderByDescending(r => r.Year).ThenByDescending(r => r.Month)
             .ToListAsync(cancellationToken);
 
+    /// <summary>
+    /// Recibos aprovados de um colaborador, mais o documento de cada item.
+    ///
+    /// <para>
+    /// <strong>Duas consultas e não um `join`.</strong> Os itens e os
+    /// documentos vivem em tabelas diferentes e nem todos os itens têm
+    /// documento; um `left join` traria a mesma folha repetida por cada item e
+    /// obrigaria a desdobrar do lado do cliente. Duas consultas pequenas com o
+    /// filtro já aplicado são menos linhas na rede e mais fáceis de ler.
+    /// </para>
+    /// </summary>
+    public async Task<IReadOnlyList<(PayrollRun Run, PayrollItem Item, Guid? DocumentId)>>
+        ListApprovedPayslipsAsync(Guid employeeId, CancellationToken cancellationToken)
+    {
+        var folhas = await context.Runs
+            .AsNoTracking()
+            .Include(r => r.Items)
+            .Where(r => r.Status == PayrollRunStatus.Approved
+                && r.Items.Any(i => i.EmployeeId == employeeId))
+            .OrderByDescending(r => r.Year).ThenByDescending(r => r.Month)
+            .ToListAsync(cancellationToken);
+
+        if (folhas.Count == 0)
+        {
+            return [];
+        }
+
+        var itens = folhas
+            .Select(r => (Run: r, Item: r.Items.First(i => i.EmployeeId == employeeId)))
+            .ToList();
+
+        var ids = itens.Select(p => p.Item.Id).ToList();
+
+        var documentos = await context.ItemDocuments
+            .AsNoTracking()
+            .Where(d => ids.Contains(d.PayrollItemId))
+            .ToListAsync(cancellationToken);
+
+        var porItem = documentos
+            .GroupBy(d => d.PayrollItemId)
+            .ToDictionary(g => g.Key, g => g.First().DocumentId);
+
+        return
+        [
+            .. itens.Select(p => (p.Run, p.Item, (Guid?)porItem.GetValueOrDefault(p.Item.Id))),
+        ];
+    }
+
     public async Task AddAsync(PayrollRun run, CancellationToken cancellationToken) =>
         await context.Runs.AddAsync(run, cancellationToken);
 

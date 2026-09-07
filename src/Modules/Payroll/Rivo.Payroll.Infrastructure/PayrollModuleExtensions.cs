@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Rivo.Payroll.Application;
 using Rivo.Payroll.Application.Abstractions;
 using Rivo.Payroll.Application.UseCases;
 using Rivo.Payroll.Contracts;
@@ -34,6 +35,10 @@ public static class PayrollModuleExtensions
 
         services.AddScoped<ListPayrollRuns>();
         services.AddScoped<GetPayrollRun>();
+        // O que o proprio colaborador ve sobre a sua remuneracao (ADR-042).
+        // So folhas aprovadas -- o filtro vive no armazenamento.
+        services.AddScoped<IPayrollSelfService, PayrollSelfService>();
+
         services.AddScoped<OpenPayrollRun>();
         services.AddScoped<AddPayrollItem>();
         services.AddScoped<SubmitPayrollRun>();

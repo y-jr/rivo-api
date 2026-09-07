@@ -200,3 +200,84 @@ public class GetMyRecordsTests
         Assert.Empty(resultado.Records!);
     }
 }
+
+/// <summary>
+/// Os recibos do próprio.
+///
+/// <para>
+/// O filtro de "só folhas aprovadas" **não se testa aqui**: vive no
+/// armazenamento de `payroll`, e testá-lo com um duplo provaria só que o duplo
+/// devolve o que lhe puseram. O que este ficheiro prova é o que é desta
+/// camada — que se pergunta pela pessoa certa.
+/// </para>
+/// </summary>
+public class GetMyPayslipsTests
+{
+    private static Rivo.Hr.Contracts.EmployeeReference Colaborador(Guid employeeId, Guid userId) =>
+        new(employeeId, "Ana Silva", Rivo.Hr.Contracts.EmployeeStatus.Active, null, null, userId);
+
+    [Fact]
+    public async Task PedeAoPayrollOColaboradorDaConta()
+    {
+        var userId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var directory = new FakeEmployeeDirectory()
+            .WithEmployee(userId, Colaborador(employeeId, userId));
+        var payroll = new FakePayrollSelfService();
+
+        await new GetMyPayslips(directory, payroll).ExecuteAsync(
+            userId, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal(employeeId, payroll.EmployeeIdPedido);
+    }
+
+    [Fact]
+    public async Task DevolveOsRecibosComOLiquidoEODocumento()
+    {
+        var userId = Guid.NewGuid();
+        var directory = new FakeEmployeeDirectory()
+            .WithEmployee(userId, Colaborador(Guid.NewGuid(), userId));
+
+        var documentId = Guid.NewGuid();
+        var payroll = new FakePayrollSelfService
+        {
+            Payslips =
+            [
+                new Rivo.Payroll.Contracts.OwnPayslip(
+                    Guid.NewGuid(), Guid.NewGuid(), 2026, 8,
+                    250_000m, 30_000m, 15_000m, 0m, 0m,
+                    NetSalary: 238_500m, WithholdingTax: 21_500m,
+                    SocialSecurityContribution: 7_500m, DocumentId: documentId),
+                // Sem líquido calculado e sem documento — os dois nulos são
+                // "ainda não", e não zero. O ecrã tem de os distinguir.
+                new Rivo.Payroll.Contracts.OwnPayslip(
+                    Guid.NewGuid(), Guid.NewGuid(), 2026, 9,
+                    250_000m, 0m, 0m, 0m, 0m,
+                    NetSalary: null, WithholdingTax: null,
+                    SocialSecurityContribution: null, DocumentId: null),
+            ],
+        };
+
+        var resultado = await new GetMyPayslips(directory, payroll).ExecuteAsync(
+            userId, DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal(MyRecordsOutcome.Found, resultado.Outcome);
+        Assert.Equal(2, resultado.Records!.Count);
+        Assert.Equal(documentId, resultado.Records[0].DocumentId);
+        Assert.Null(resultado.Records[1].NetSalary);
+        Assert.Null(resultado.Records[1].DocumentId);
+    }
+
+    [Fact]
+    public async Task ContaSemVinculo_NaoLeNada()
+    {
+        var payroll = new FakePayrollSelfService();
+
+        var resultado = await new GetMyPayslips(
+            new FakeEmployeeDirectory(), payroll).ExecuteAsync(
+            Guid.NewGuid(), DateTimeOffset.UtcNow, CancellationToken.None);
+
+        Assert.Equal(MyRecordsOutcome.NotLinked, resultado.Outcome);
+        Assert.Null(payroll.EmployeeIdPedido);
+    }
+}

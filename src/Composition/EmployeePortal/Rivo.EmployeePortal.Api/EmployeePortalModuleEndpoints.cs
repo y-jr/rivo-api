@@ -20,6 +20,7 @@ public static class EmployeePortalModuleEndpoints
         services.AddScoped<GetMyAttendance>();
         services.AddScoped<GetMyLeave>();
         services.AddScoped<GetMyDocuments>();
+        services.AddScoped<GetMyPayslips>();
 
         return services;
     }
@@ -42,6 +43,7 @@ public static class EmployeePortalModuleEndpoints
         group.MapGet("/me/attendance", GetMyAttendanceAsync).RequireAuthorization();
         group.MapGet("/me/leave", GetMyLeaveAsync).RequireAuthorization();
         group.MapGet("/me/documents", GetMyDocumentsAsync).RequireAuthorization();
+        group.MapGet("/me/payslips", GetMyPayslipsAsync).RequireAuthorization();
 
         return endpoints;
     }
@@ -152,6 +154,20 @@ public static class EmployeePortalModuleEndpoints
         }
 
         return Traduzir(await getMyDocuments.ExecuteAsync(userId, clock.GetUtcNow(), cancellationToken));
+    }
+
+    private static async Task<IResult> GetMyPayslipsAsync(
+        HttpContext http,
+        GetMyPayslips getMyPayslips,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        if (QuemChama(http) is not { } userId)
+        {
+            return SessaoSemIdentificador();
+        }
+
+        return Traduzir(await getMyPayslips.ExecuteAsync(userId, clock.GetUtcNow(), cancellationToken));
     }
 
     private static async Task<IResult> GetMyProfileAsync(

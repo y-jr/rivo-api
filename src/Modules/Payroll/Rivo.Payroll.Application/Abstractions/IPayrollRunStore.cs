@@ -16,6 +16,24 @@ public interface IPayrollRunStore
 
     Task<IReadOnlyList<PayrollRun>> ListAsync(CancellationToken cancellationToken);
 
+    /// <summary>
+    /// As folhas **aprovadas** que contêm um item deste colaborador, mais o
+    /// documento de cada item quando existe.
+    ///
+    /// <para>
+    /// Filtra na base e não em memória: `ListAsync` traz a empresa inteira, e
+    /// atravessar tudo à procura de uma pessoa cresce com o número de folhas
+    /// e de colaboradores ao mesmo tempo.
+    /// </para>
+    ///
+    /// <para>
+    /// <strong>Só aprovadas</strong> — um item de folha em rascunho é um
+    /// número por confirmar.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<(PayrollRun Run, PayrollItem Item, Guid? DocumentId)>>
+        ListApprovedPayslipsAsync(Guid employeeId, CancellationToken cancellationToken);
+
     Task AddAsync(PayrollRun run, CancellationToken cancellationToken);
 
     Task AddPayrollItemDocumentAsync(PayrollItemDocument link, CancellationToken cancellationToken);

@@ -76,3 +76,18 @@ internal sealed class FakeEmployeeSelfService : IEmployeeSelfService
         return Task.FromResult(Documents);
     }
 }
+
+/// <summary>Duplo do contrato de recibos de `payroll`.</summary>
+internal sealed class FakePayrollSelfService : Rivo.Payroll.Contracts.IPayrollSelfService
+{
+    public Guid? EmployeeIdPedido { get; private set; }
+
+    public IReadOnlyList<Rivo.Payroll.Contracts.OwnPayslip> Payslips { get; init; } = [];
+
+    public Task<IReadOnlyList<Rivo.Payroll.Contracts.OwnPayslip>> ListPayslipsAsync(
+        Guid employeeId, CancellationToken cancellationToken)
+    {
+        EmployeeIdPedido = employeeId;
+        return Task.FromResult(Payslips);
+    }
+}

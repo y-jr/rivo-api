@@ -425,6 +425,7 @@ dos casos de uso e não têm DTO HTTP nomeado.
 | `GET /portal/me/attendance` | JWT | query: `from, to` — sem janela, o mês corrente | `200` |
 | `GET /portal/me/leave` | JWT | Sem corpo. Inclui recusados e cancelados | `200` |
 | `GET /portal/me/documents` | JWT | Sem corpo. **Metadados, nunca conteúdo** | `200` |
+| `GET /portal/me/payslips` | JWT | Sem corpo. **Só de folhas aprovadas** | `200` |
 
 ## Portal do Cliente
 

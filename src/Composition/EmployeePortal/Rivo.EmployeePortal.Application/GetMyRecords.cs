@@ -128,3 +128,36 @@ public enum MyRecordsOutcome
     /// <summary>Pedido mal formado — hoje, só a janela de datas invertida.</summary>
     Rejected,
 }
+
+/// <summary>
+/// Os recibos do próprio colaborador (ADR-042).
+///
+/// <para>
+/// Vive aqui e não em ficheiro próprio pela mesma razão dos três acima: é a
+/// mesma resolução de "o próprio", noutro contrato. O que o distingue é a
+/// dependência — este é o único caso de uso do portal que atravessa para
+/// `payroll`, e é o que fez a camada de composição passar a depender de dois
+/// módulos em vez de um.
+/// </para>
+/// </summary>
+public sealed class GetMyPayslips(
+    Rivo.Hr.Contracts.IEmployeeDirectory employees,
+    Rivo.Payroll.Contracts.IPayrollSelfService payroll)
+{
+    public async Task<MyRecordsResult<Rivo.Payroll.Contracts.OwnPayslip>> ExecuteAsync(
+        Guid userId,
+        DateTimeOffset asOf,
+        CancellationToken cancellationToken)
+    {
+        var colaborador = await employees.FindByUserIdAsync(userId, asOf, cancellationToken);
+
+        if (colaborador is null)
+        {
+            return MyRecordsResult<Rivo.Payroll.Contracts.OwnPayslip>.NotLinked();
+        }
+
+        var recibos = await payroll.ListPayslipsAsync(colaborador.EmployeeId, cancellationToken);
+
+        return MyRecordsResult<Rivo.Payroll.Contracts.OwnPayslip>.Found(recibos);
+    }
+}
