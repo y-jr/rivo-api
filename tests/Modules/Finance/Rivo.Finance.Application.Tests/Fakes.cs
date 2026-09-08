@@ -46,6 +46,30 @@ internal sealed class FakeSalesInvoiceStore : ISalesInvoiceStore
         return this;
     }
 
+    /// <summary>
+    /// A série a sério, para os testes da cadeia: precisam de lhe fechar o elo
+    /// com <c>Chain</c>, e <see cref="WithSeries"/> só abre séries vazias.
+    /// </summary>
+    public FakeSalesInvoiceStore With(DocumentSeries series)
+    {
+        _series[(series.Type, series.Code)] = series;
+        return this;
+    }
+
+    /// <summary>
+    /// Ordenada pela sequência, como a implementação real — a ordem é a
+    /// asserção da verificação da cadeia, e um duplo que a devolvesse por
+    /// ordem de inserção faria os testes passarem com a travessia partida.
+    /// </summary>
+    public Task<IReadOnlyList<SalesInvoice>> ListBySeriesAsync(
+        DocumentType type,
+        string seriesCode,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<SalesInvoice>>(
+            [.. _invoices.Values
+                .Where(i => i.Number.Type == type && i.Number.Series == seriesCode)
+                .OrderBy(i => i.Number.Sequence)]);
+
     public FakeSalesInvoiceStore With(CreditNote note)
     {
         _creditNotes.Add(note);

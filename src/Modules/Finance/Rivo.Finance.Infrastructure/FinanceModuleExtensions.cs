@@ -38,6 +38,9 @@ public static class FinanceModuleExtensions
         services.AddScoped<IssueSalesInvoice>();
         services.AddScoped<ListSalesInvoices>();
         services.AddScoped<GetSalesInvoice>();
+
+        // A verificação da cadeia de integridade (K7, ADR-060).
+        services.AddScoped<VerifyInvoiceChain>();
         services.AddScoped<CancelSalesInvoice>();
         services.AddScoped<ListDocumentSeries>();
         services.AddScoped<OpenDocumentSeries>();

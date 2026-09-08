@@ -36,6 +36,27 @@ public interface ISalesInvoiceStore
         DateOnly? to,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// As facturas de uma série, <strong>por ordem de sequência</strong> e sem
+    /// as linhas. Existe para a verificação da cadeia (ADR-060).
+    ///
+    /// <para>
+    /// <strong>A ordem é a asserção, não uma conveniência.</strong> Uma cadeia
+    /// só se verifica percorrendo-a pela ordem em que foi construída; ordenar
+    /// por data ou por identificador daria uma sequência diferente da que os
+    /// elos descrevem, e a verificação acusaria quebras que não existem.
+    /// </para>
+    ///
+    /// <para>
+    /// Sem as linhas porque o hash não depende delas directamente — cobre-as
+    /// através do total. Carregá-las multiplicaria a leitura por nada.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<SalesInvoice>> ListBySeriesAsync(
+        DocumentType type,
+        string seriesCode,
+        CancellationToken cancellationToken);
+
     Task AddAsync(SalesInvoice invoice, CancellationToken cancellationToken);
 
     /// <summary>

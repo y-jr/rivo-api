@@ -186,6 +186,7 @@ congelado na submissão.
 | POST | `/finance/series` | `finance.series.write` |
 | GET | `/finance/sales-invoices?customerId=&from=&to=` | `finance.invoices.read` |
 | GET | `/finance/sales-invoices/{invoiceId}` | `finance.invoices.read` |
+| GET | `/finance/sales-invoices/chain` | `finance.invoices.read` |
 | POST | `/finance/sales-invoices` | `finance.invoices.write` |
 | POST | `/finance/sales-invoices/{invoiceId}/cancellation` | `finance.invoices.cancel` |
 

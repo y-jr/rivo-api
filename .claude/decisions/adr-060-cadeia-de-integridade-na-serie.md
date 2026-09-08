@@ -106,6 +106,44 @@ testes que não são sobre a cadeia passam por um auxiliar
 
 - **Nota de crédito e guia de remessa** não têm cadeia. O SAF-T exige `Hash` em
   `MovementOfGoods` também.
-- **Nada verifica a cadeia periodicamente.** `HashMatches()` existe e ninguém o
-  chama fora dos testes. Uma verificação que só corre quando alguém se lembra
-  não é uma verificação — falta a rotina que percorre a série e reporta.
+- **Nada verifica a cadeia sozinho.** `GET /finance/sales-invoices/chain`
+  existe (ver a adenda), mas é preciso alguém pedi-lo. Falta a rotina agendada
+  que o corra e avise sem lho pedirem.
+
+## Adenda (2026-09-08) — a travessia
+
+`VerifyInvoiceChain` percorre cada série pela ordem de sequência e reporta três
+falhas distintas.
+
+**Só a primeira se apanha documento a documento.** `HashMatches()` diz se
+*aquele* documento foi alterado. Um documento **removido** não se apanha assim:
+cada um dos que ficam continua consistente consigo próprio, e só a ligação
+entre eles denuncia a falta. É por isso que isto é uma travessia.
+
+| Falha | Como se detecta |
+|---|---|
+| `DocumentAltered` | O conteúdo já não produz o `Hash` gravado |
+| `SequenceBroken` | O `PreviousHash` não é o `Hash` do documento anterior |
+| `SeriesTailMismatch` | O fim da cadeia não é o que a série guarda |
+
+A terceira existe porque as outras duas não chegam: **remover as últimas
+facturas de uma série deixa as que sobram perfeitamente encadeadas entre si.**
+É o elo guardado em `DocumentSeries.LastDocumentHash` que sabe que havia mais.
+
+### Uma quebra nomeia um documento, não uma série inteira
+
+Alterar o total de uma factura dá **uma** quebra, não uma cascata: o `Hash`
+gravado dela não mudou, só deixou de corresponder ao conteúdo, por isso a
+seguinte continua a apontar para o elo certo. Quem lê o relatório sabe onde ir.
+Alterar o `Hash` gravado, esse sim, dá as duas.
+
+### As facturas anteriores à cadeia contam-se, não se acusam
+
+`BeforeChain` no relatório. Dizer que 147 documentos legítimos estão
+adulterados é como uma verificação morre — o relatório passa a ser ignorado.
+
+### `200` mesmo com quebras
+
+A verificação correu e respondeu; o resultado é conteúdo, não estado do pedido.
+Um `409` faria um cliente HTTP tratar «encontrei adulteração» como «o pedido
+falhou», e é o contrário.

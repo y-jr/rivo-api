@@ -43,6 +43,19 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
             .Include(i => i.Lines)
             .FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 
+    public async Task<IReadOnlyList<SalesInvoice>> ListBySeriesAsync(
+        DocumentType type,
+        string seriesCode,
+        CancellationToken cancellationToken) =>
+        // Ordem de sequência, que é a ordem em que a cadeia foi construída —
+        // ver `ISalesInvoiceStore.ListBySeriesAsync`. Sem `Include(Lines)`:
+        // o hash não depende delas directamente.
+        await context.Invoices
+            .AsNoTracking()
+            .Where(i => i.Number.Type == type && i.Number.Series == seriesCode)
+            .OrderBy(i => i.Number.Sequence)
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<SalesInvoice>> ListAsync(
         Guid? customerId,
         DateOnly? from,

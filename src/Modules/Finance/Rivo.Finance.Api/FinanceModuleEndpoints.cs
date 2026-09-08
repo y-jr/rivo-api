@@ -30,6 +30,21 @@ public static class FinanceModuleEndpoints
         group.MapGet("/sales-invoices/{invoiceId:guid}", GetAsync)
             .RequireAuthorization(FinancePermissions.InvoicesRead);
 
+        /*
+         * Verificacao da cadeia de integridade (K7, ADR-060).
+         *
+         * ⚠ Antes de `{invoiceId:guid}`? Nao -- a rota literal e o `:guid`
+         * nao colidem, porque "chain" nao e um Guid e a restricao de rota
+         * recusa-o. Fica aqui por leitura, ao lado do que verifica.
+         *
+         * `InvoicesRead` e nao uma permissao propria: quem ja pode ler as
+         * facturas nao ganha acesso a nada de novo por saber se a cadeia
+         * fecha. Esconder o resultado de quem le os documentos seria proteger
+         * a informacao errada.
+         */
+        group.MapGet("/sales-invoices/chain", VerifyChainAsync)
+            .RequireAuthorization(FinancePermissions.InvoicesRead);
+
         group.MapPost("/sales-invoices", IssueAsync)
             .RequireAuthorization(FinancePermissions.InvoicesWrite);
 
@@ -393,6 +408,22 @@ public static class FinanceModuleEndpoints
             ? Results.NotFound(new { erro = "Factura não encontrada." })
             : Results.Ok(factura);
     }
+
+    /// <summary>
+    /// Percorre a cadeia de integridade de cada série (ADR-060).
+    ///
+    /// <para>
+    /// <strong><c>200</c> mesmo quando encontra quebras.</strong> A
+    /// verificação correu e respondeu — o resultado dela é conteúdo, não
+    /// estado do pedido. Devolver <c>409</c> faria um cliente HTTP tratar
+    /// «encontrei adulteração» como «o pedido falhou», e é o contrário: o
+    /// pedido correu exactamente como devia.
+    /// </para>
+    /// </summary>
+    private static async Task<IResult> VerifyChainAsync(
+        VerifyInvoiceChain verify,
+        CancellationToken cancellationToken) =>
+        Results.Ok(await verify.ExecuteAsync(cancellationToken));
 
     private static async Task<IResult> IssueAsync(
         IssueInvoiceRequest request,
