@@ -191,3 +191,61 @@ internal sealed class FakeTimeProvider(DateTimeOffset agora) : TimeProvider
 {
     public override DateTimeOffset GetUtcNow() => agora;
 }
+
+/// <summary>
+/// O comprimento do NIF.
+///
+/// <para>
+/// O XSD exige 10 a 15 caracteres (<c>SAFAOAngolaVatNumber</c>), e a
+/// verificação de arranque só confirmava que o campo não estava vazio. Um NIF
+/// de nove dígitos levantava a aplicação sem uma queixa e produzia depois um
+/// ficheiro que a AGT recusa — descoberto no dia da entrega, que é
+/// exactamente o que o ADR-058 dizia querer evitar.
+/// </para>
+/// </summary>
+public class NifCurtoTests
+{
+    private static CompanyOptions ComNif(string nif) => new()
+    {
+        Name = "Angotech, Lda.",
+        TaxRegistrationNumber = nif,
+    };
+
+    [Theory]
+    [InlineData("541700000")]      // 9 — um a menos do que o mínimo
+    [InlineData("1")]
+    [InlineData("5417000000000000")] // 16 — um a mais do que o máximo
+    public void NifForaDoComprimento_ERecusadoNoArranque(string nif)
+    {
+        var problemas = ComNif(nif).CamposEmFalta();
+
+        // ⚠ Sem a verificação de comprimento, isto vem vazio — e é esse o
+        // defeito. O caso existe para o fixar.
+        Assert.NotEmpty(problemas);
+        Assert.Contains(problemas, p => p.Contains("TaxRegistrationNumber"));
+    }
+
+    [Theory]
+    [InlineData("5417000000")]       // 10 — o mínimo exacto
+    [InlineData("541700000000000")]  // 15 — o máximo exacto
+    public void NifNosLimites_EAceite(string nif)
+    {
+        Assert.Empty(ComNif(nif).CamposEmFalta());
+    }
+
+    [Fact]
+    public void NifNoMinimo_ProduzFicheiroQueValida()
+    {
+        // As duas metades têm de concordar: o que a verificação aceita, o XSD
+        // também tem de aceitar. Um limite errado num dos lados seria pior do
+        // que não ter limite nenhum.
+        var resultado = new ExportSaftFile(
+            ComNif("5417000000"),
+            new FakeTimeProvider(new DateTimeOffset(2026, 9, 8, 0, 0, 0, TimeSpan.Zero)))
+            .Execute(2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31));
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+    }
+}

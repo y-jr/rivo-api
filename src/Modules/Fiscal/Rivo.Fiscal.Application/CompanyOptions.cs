@@ -74,31 +74,61 @@ public sealed class CompanyOptions
 
     public string? Website { get; init; }
 
+    /// <summary>O que o XSD exige de um <c>SAFAOAngolaVatNumber</c>.</summary>
+    private const int NifMinimo = 10;
+
+    private const int NifMaximo = 15;
+
     /// <summary>
-    /// As duas que não têm valor por omissão possível.
+    /// O que impede esta configuração de produzir um SAF-T válido.
     ///
     /// <para>
-    /// Verificadas no arranque e não na exportação: um `.env` incompleto
-    /// rebenta ao levantar a aplicação, com o nome do campo em falta. Uma
-    /// verificação na exportação rebentaria meses depois, no dia em que
-    /// alguém precisasse do ficheiro.
+    /// Verificado no arranque e não na exportação: um `.env` mal preenchido
+    /// rebenta ao levantar a aplicação, dizendo qual o campo. Uma verificação
+    /// só na exportação rebentaria meses depois, no dia em que alguém
+    /// precisasse do ficheiro.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠ <strong>Não basta não estar vazio.</strong> Até 2026-09-08 esta
+    /// verificação só testava ausência, e um NIF de nove dígitos levantava a
+    /// aplicação sem uma queixa para depois produzir um ficheiro que a AGT
+    /// recusa — o comprimento é do XSD (<c>SAFAOAngolaVatNumber</c>: 10 a 15),
+    /// e uma verificação de arranque que não o conheça não serve para o que
+    /// existe.
+    /// </para>
+    ///
+    /// <para>
+    /// As mensagens são frases e não nomes de campo: quem as lê está a olhar
+    /// para um `.env` e precisa de saber o que pôr, não só onde.
     /// </para>
     /// </summary>
     public IReadOnlyList<string> CamposEmFalta()
     {
-        List<string> faltam = [];
+        List<string> problemas = [];
 
         if (string.IsNullOrWhiteSpace(Name))
         {
-            faltam.Add($"{SectionName}:{nameof(Name)}");
+            problemas.Add(
+                $"{SectionName}:{nameof(Name)} está por preencher — é a razão social "
+                + "que sai no SAF-T.");
         }
 
         if (string.IsNullOrWhiteSpace(TaxRegistrationNumber))
         {
-            faltam.Add($"{SectionName}:{nameof(TaxRegistrationNumber)}");
+            problemas.Add(
+                $"{SectionName}:{nameof(TaxRegistrationNumber)} está por preencher — é o "
+                + "NIF da empresa.");
+        }
+        else if (TaxRegistrationNumber.Trim().Length is < NifMinimo or > NifMaximo)
+        {
+            problemas.Add(
+                $"{SectionName}:{nameof(TaxRegistrationNumber)} tem "
+                + $"{TaxRegistrationNumber.Trim().Length} caracteres; o SAF-T exige entre "
+                + $"{NifMinimo} e {NifMaximo}.");
         }
 
-        return faltam;
+        return problemas;
     }
 }
 

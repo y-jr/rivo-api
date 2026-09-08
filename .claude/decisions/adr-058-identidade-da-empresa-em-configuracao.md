@@ -75,6 +75,22 @@ A aplicação recusa arrancar sem `Company:Name` e `Company:TaxRegistrationNumbe
 As restantes são opcionais e saem do ficheiro quando ausentes — o XSD marca
 poucas como obrigatórias.
 
+⚠ **A primeira versão desta verificação não servia, e foi corrigida no mesmo
+dia.** Só testava se os campos estavam vazios. O XSD exige que o NIF tenha
+**10 a 15 caracteres** (`SAFAOAngolaVatNumber`), e um NIF de nove dígitos
+levantava a aplicação sem uma queixa para depois produzir um ficheiro que a
+AGT recusa — precisamente a falha tardia que esta decisão dizia querer evitar.
+Uma verificação de arranque que não conhece o formato do que verifica não faz
+o trabalho para que existe.
+
+A correcção obrigou a trocar o `.Validate(predicado, mensagem)` por um
+`IValidateOptions<CompanyOptions>`, porque o primeiro só aceita **mensagem
+constante** — e a mensagem constante dizia «sem `Company:Name` e
+`Company:TaxRegistrationNumber` não há como exportar», que passou a ser mentira
+para quem tivesse preenchido os dois com um NIF curto. Numa falha de arranque a
+mensagem é a única coisa que quem instala tem; apontar o campo errado manda
+procurar onde não está.
+
 ⚠ **Isto quebra instâncias existentes** que actualizem sem acrescentar as duas
 variáveis. É deliberado: uma instância sem identidade de empresa não pode
 exportar SAF-T, e descobri-lo no arranque é melhor do que descobri-lo no dia da

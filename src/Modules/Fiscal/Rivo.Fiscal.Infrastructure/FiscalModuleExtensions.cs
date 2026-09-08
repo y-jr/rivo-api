@@ -38,11 +38,22 @@ public static class FiscalModuleExtensions
          */
         services.AddOptions<CompanyOptions>()
             .Bind(configuration.GetSection(CompanyOptions.SectionName))
-            .Validate(
-                opcoes => opcoes.CamposEmFalta().Count == 0,
-                "Identidade da empresa incompleta. Sem `Company:Name` e "
-                + "`Company:TaxRegistrationNumber` nao ha como exportar SAF-T (ADR-058).")
             .ValidateOnStart();
+
+        /*
+         * A validacao vive num `IValidateOptions` e nao num `.Validate(pred,
+         * mensagem)` porque a mensagem tem de **dizer o que esta errado**.
+         *
+         * O `Validate` com mensagem fixa so aceita uma cadeia constante, e
+         * essa cadeia dizia "sem Company:Name e Company:TaxRegistrationNumber
+         * nao ha como exportar" -- que passou a ser mentira quando a
+         * verificacao ganhou o comprimento do NIF: alguem com nove digitos
+         * preencheu os dois campos e leria que os nao tinha preenchido.
+         *
+         * Uma mensagem de arranque que aponta para o campo errado e pior do
+         * que nenhuma: manda procurar onde nao esta.
+         */
+        services.AddSingleton<IValidateOptions<CompanyOptions>, ValidarCompanyOptions>();
 
         services.AddScoped(sp =>
             sp.GetRequiredService<IOptions<CompanyOptions>>().Value);
