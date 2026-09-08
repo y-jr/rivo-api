@@ -38,7 +38,7 @@ public class VerifyInvoiceChainTests
                 Guid.CreateVersion7(),
                 Cliente(),
                 "AOA",
-                [new NewInvoiceLine($"Consultoria {i}", 1, 100_000m + i, "NOR", 14m)],
+                [new NewInvoiceLine($"Consultoria {i}", 1, 100_000m + i, "NOR", 14m, "ART-TESTE", "UN")],
                 previousHash: serie.LastDocumentHash);
 
             serie.Chain(factura.Hash!);
@@ -195,7 +195,7 @@ public class VerifyInvoiceChainTests
             {
                 var factura = FacturaDeTeste.Emitir(
                     serie.Allocate(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
-                    [new NewInvoiceLine($"Antiga {i}", 1, 1_000m, "NOR", 14m)]);
+                    [new NewInvoiceLine($"Antiga {i}", 1, 1_000m, "NOR", 14m, "ART-TESTE", "UN")]);
 
                 Adulterar<string?>(factura, nameof(SalesInvoice.Hash), null);
                 Adulterar<string?>(factura, nameof(SalesInvoice.PreviousHash), null);

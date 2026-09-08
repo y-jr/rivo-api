@@ -64,7 +64,18 @@ public sealed class IssueCreditNote(
                         linha.Quantity,
                         linha.UnitPrice,
                         determinacao.Determination!.TaxCode,
-                        determinacao.Determination.Percentage));
+                        determinacao.Determination.Percentage,
+
+                        // A nota de crédito descreve os mesmos artigos da
+                        // factura que corrige, e por isso leva os mesmos
+                        // códigos. Vêm de quem chama e não são copiados da
+                        // factura de propósito: uma nota pode creditar só
+                        // parte das linhas, e adivinhar quais seria pior do
+                        // que pedi-las.
+                        linha.ProductCode,
+                        string.IsNullOrWhiteSpace(linha.UnitOfMeasure)
+                            ? "UN"
+                            : linha.UnitOfMeasure));
                     break;
 
                 case TaxDeterminationOutcome.NoRateInForce:

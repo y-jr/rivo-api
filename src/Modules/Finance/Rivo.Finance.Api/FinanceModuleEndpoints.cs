@@ -146,7 +146,8 @@ public static class FinanceModuleEndpoints
     {
         var linhas = (request.Lines ?? [])
             .Select(line => new InvoiceLineInput(
-                line.Description, line.Quantity, line.UnitPrice, line.TaxCode))
+                line.Description, line.Quantity, line.UnitPrice, line.TaxCode,
+                line.ProductCode, line.UnitOfMeasure))
             .ToList();
 
         var result = await issueNote.ExecuteAsync(
@@ -433,7 +434,8 @@ public static class FinanceModuleEndpoints
     {
         var linhas = (request.Lines ?? [])
             .Select(line => new InvoiceLineInput(
-                line.Description, line.Quantity, line.UnitPrice, line.TaxCode))
+                line.Description, line.Quantity, line.UnitPrice, line.TaxCode,
+                line.ProductCode, line.UnitOfMeasure))
             .ToList();
 
         var result = await issueInvoice.ExecuteAsync(
@@ -534,11 +536,19 @@ public sealed record IssueInvoiceRequest(
     string? Currency,
     IReadOnlyList<InvoiceLineRequest>? Lines);
 
+/// <param name="ProductCode">
+/// Código do artigo ou serviço. <strong>Obrigatório desde 2026-09-08</strong> —
+/// o SAF-T exige-o em cada linha, e o que não se captura na emissão não se
+/// reconstrói.
+/// </param>
+/// <param name="UnitOfMeasure">Nula vale <c>"UN"</c>.</param>
 public sealed record InvoiceLineRequest(
     string Description,
     decimal Quantity,
     decimal UnitPrice,
-    string TaxCode);
+    string TaxCode,
+    string ProductCode,
+    string? UnitOfMeasure);
 
 public sealed record CancelInvoiceRequest(string Reason);
 

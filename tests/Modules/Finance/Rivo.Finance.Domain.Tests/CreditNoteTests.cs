@@ -20,12 +20,12 @@ public class CreditNoteTests
             Guid.CreateVersion7(),
             new InvoicedParty("Kianda Lda", "5417000000", "Rua Rainha Ginga 12", "Luanda", "AO"),
             "AOA",
-            [new NewInvoiceLine("Consultoria", 2, 50_000m, "NOR", 14m)]);
+            [new NewInvoiceLine("Consultoria", 2, 50_000m, "NOR", 14m, "ART-TESTE", "UN")]);
 
     private static CreditNote Nota(SalesInvoice? factura = null, params NewInvoiceLine[] linhas) =>
         CreditNote.Issue(
             NumeroNc(), factura ?? Factura(), Hoje, "Servico nao prestado",
-            linhas.Length > 0 ? linhas : [new NewInvoiceLine("Consultoria", 1, 50_000m, "NOR", 14m)]);
+            linhas.Length > 0 ? linhas : [new NewInvoiceLine("Consultoria", 1, 50_000m, "NOR", 14m, "ART-TESTE", "UN")]);
 
     [Fact]
     public void NotaEmitida_NumeraSeEmSerieNc()
@@ -40,7 +40,7 @@ public class CreditNoteTests
 
         Assert.Throws<ArgumentException>(() =>
             CreditNote.Issue(numeroFt, Factura(), Hoje, "Motivo",
-                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
+                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m, "ART-TESTE", "UN")]));
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class CreditNoteTests
     [Fact]
     public void TotaisSaoASomaDasLinhas()
     {
-        var nota = Nota(null, new NewInvoiceLine("Consultoria", 1, 50_000m, "NOR", 14m));
+        var nota = Nota(null, new NewInvoiceLine("Consultoria", 1, 50_000m, "NOR", 14m, "ART-TESTE", "UN"));
 
         Assert.Equal(50_000m, nota.NetTotal);
         Assert.Equal(7_000m, nota.TaxTotal);
@@ -108,7 +108,7 @@ public class CreditNoteTests
     {
         Assert.Throws<ArgumentException>(() =>
             CreditNote.Issue(NumeroNc(), Factura(), Hoje, "   ",
-                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
+                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m, "ART-TESTE", "UN")]));
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class CreditNoteTests
     {
         // Nao corrige nada, e ficaria no historico a fingir que corrigiu.
         Assert.Throws<ArgumentException>(() =>
-            Nota(null, new NewInvoiceLine("Oferta", 1, 0m, "NOR", 0m)));
+            Nota(null, new NewInvoiceLine("Oferta", 1, 0m, "NOR", 0m, "ART-TESTE", "UN")));
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public class CreditNoteTests
 
         Assert.Throws<ArgumentException>(() =>
             CreditNote.Issue(NumeroNc(), factura, factura.IssuedOn.AddDays(-1), "Motivo",
-                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
+                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m, "ART-TESTE", "UN")]));
     }
 
     // ---- anulação ----

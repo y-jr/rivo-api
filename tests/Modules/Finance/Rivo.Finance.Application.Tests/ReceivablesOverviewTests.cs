@@ -36,13 +36,13 @@ public class ReceivablesOverviewTests
 
         return FacturaDeTeste.Emitir(
             SerieFt.Allocate(), emitidaEm, emitidaEm, clienteId, cliente, moeda,
-            [new NewInvoiceLine("Serviço", 1, liquido, "NOR", 0m)]);
+            [new NewInvoiceLine("Serviço", 1, liquido, "NOR", 0m, "ART-TESTE", "UN")]);
     }
 
     private static CreditNote Nota(SalesInvoice factura, DateOnly emitidaEm, decimal liquido) =>
         CreditNote.Issue(
             SerieNc.Allocate(), factura, emitidaEm, "Devolução parcial",
-            [new NewInvoiceLine("Devolução", 1, liquido, "NOR", 0m)]);
+            [new NewInvoiceLine("Devolução", 1, liquido, "NOR", 0m, "ART-TESTE", "UN")]);
 
     private static Receipt Recibo(DateOnly recebidoEm, decimal valor, Guid clienteId, SalesInvoice factura) =>
         Receipt.Register(

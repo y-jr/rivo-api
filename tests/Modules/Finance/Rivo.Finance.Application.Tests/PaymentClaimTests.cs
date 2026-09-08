@@ -36,7 +36,7 @@ public class PaymentClaimTests
             serie.Allocate(), Hoje, Hoje, clienteId,
             new InvoicedParty("Refriango", "5417654321", "Rua Rainha Ginga 12", "Luanda", "AO"),
             "AOA",
-            [new NewInvoiceLine("Serviço", 1m, decimal.Round(liquido, 2), "NOR", 14m)]);
+            [new NewInvoiceLine("Serviço", 1m, decimal.Round(liquido, 2), "NOR", 14m, "ART-TESTE", "UN")]);
     }
 
     // ---- submissão ----

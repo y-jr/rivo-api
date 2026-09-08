@@ -113,7 +113,15 @@ public sealed class IssueSalesInvoice(
                         linha.Quantity,
                         linha.UnitPrice,
                         determinacao.Determination!.TaxCode,
-                        determinacao.Determination.Percentage));
+                        determinacao.Determination.Percentage,
+                        linha.ProductCode,
+
+                        // "UN" por omissão — ver `InvoiceLineInput`. O agregado
+                        // recusa vazio, e recusar aqui daria a mesma mensagem
+                        // com menos contexto.
+                        string.IsNullOrWhiteSpace(linha.UnitOfMeasure)
+                            ? "UN"
+                            : linha.UnitOfMeasure));
                     break;
 
                 case TaxDeterminationOutcome.NoRateInForce:
@@ -231,11 +239,22 @@ public sealed class IssueSalesInvoice(
     }
 }
 
+/// <param name="ProductCode">
+/// Código do artigo ou serviço. Obrigatório desde 2026-09-08 — ver
+/// <see cref="NewInvoiceLine.ProductCode"/>.
+/// </param>
+/// <param name="UnitOfMeasure">
+/// Unidade de medida. Nula vale <c>"UN"</c>, que é o caso corrente de uma
+/// linha de venda — e é preenchimento de omissão, não invenção de dado: quem
+/// factura três consultorias factura três unidades.
+/// </param>
 public sealed record InvoiceLineInput(
     string Description,
     decimal Quantity,
     decimal UnitPrice,
-    string TaxCode);
+    string TaxCode,
+    string ProductCode,
+    string? UnitOfMeasure = null);
 
 public sealed record IssueInvoiceResult(
     IssueInvoiceOutcome Outcome,

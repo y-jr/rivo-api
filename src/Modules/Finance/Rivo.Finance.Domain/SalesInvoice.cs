@@ -526,12 +526,37 @@ public sealed class InvoicedParty
 /// congelada, como o cliente — para que a exportação reproduza o documento tal
 /// como foi emitido, mesmo que a taxa mude depois.
 /// </param>
+/// <param name="ProductCode">
+/// O código do artigo ou serviço facturado — <c>ProductCode</c> no SAF-T.
+///
+/// <para>
+/// <strong>Texto livre, e não uma referência a `inventory`.</strong> Uma
+/// factura pode ter linhas de serviço, e serviços não estão em `inventory` —
+/// o agregado de lá exige unidade de medida, quantidade em mão e movimentos
+/// entre armazéns. Obrigar a linha a apontar para um artigo de stock
+/// impediria facturar consultoria, que é o caso corrente.
+/// </para>
+///
+/// <para>
+/// ⚠ <strong>O SAF-T exige que este código apareça na tabela de produtos do
+/// ficheiro</strong> («documentos e transacções referenciam master data»). Só
+/// passa a importar quando <c>SourceDocuments</c> for emitido, e é lá que a
+/// junção tem de acontecer — não aqui.
+/// </para>
+/// </param>
+/// <param name="UnitOfMeasure">
+/// Unidade de medida da linha — <c>UnitOfMeasure</c> no SAF-T. Obrigatória e
+/// irreconstruível: meses depois ninguém sabe se as «3» de uma linha eram
+/// horas, quilos ou unidades.
+/// </param>
 public sealed record NewInvoiceLine(
     string Description,
     decimal Quantity,
     decimal UnitPrice,
     string TaxCode,
-    decimal TaxPercentage);
+    decimal TaxPercentage,
+    string ProductCode,
+    string UnitOfMeasure);
 
 /// <summary>
 /// Linha de factura. Imutável: criada com a factura e nunca alterada.
@@ -547,7 +572,9 @@ public sealed class SalesInvoiceLine
         string taxCode,
         decimal taxPercentage,
         decimal netAmount,
-        decimal taxAmount)
+        decimal taxAmount,
+        string productCode,
+        string unitOfMeasure)
     {
         Id = id;
         LineNumber = lineNumber;
@@ -558,6 +585,8 @@ public sealed class SalesInvoiceLine
         TaxPercentage = taxPercentage;
         NetAmount = netAmount;
         TaxAmount = taxAmount;
+        ProductCode = productCode;
+        UnitOfMeasure = unitOfMeasure;
     }
 
     /// <summary>Construtor sem parâmetros para materialização pelo ORM.</summary>
@@ -565,6 +594,8 @@ public sealed class SalesInvoiceLine
     {
         Description = string.Empty;
         TaxCode = string.Empty;
+        ProductCode = string.Empty;
+        UnitOfMeasure = string.Empty;
     }
 
     public Guid Id { get; private set; }
@@ -588,13 +619,23 @@ public sealed class SalesInvoiceLine
 
     public decimal TaxAmount { get; private set; }
 
+    /// <summary>
+    /// Código do artigo ou serviço — <c>ProductCode</c> no SAF-T. Ver
+    /// <see cref="NewInvoiceLine.ProductCode"/> para o porquê de ser texto e
+    /// não uma referência.
+    /// </summary>
+    public string ProductCode { get; private set; }
+
+    /// <summary>Unidade de medida — <c>UnitOfMeasure</c> no SAF-T.</summary>
+    public string UnitOfMeasure { get; private set; }
+
     internal static SalesInvoiceLine Create(int lineNumber, NewInvoiceLine line)
     {
         ArgumentNullException.ThrowIfNull(line);
 
         if (string.IsNullOrWhiteSpace(line.Description))
         {
-            throw new ArgumentException("Uma linha de factura precisa de descrição.", nameof(line));
+            throw new ArgumentException("Uma linha de factura precisa de descrição.");
         }
 
         if (line.Quantity <= 0)
@@ -612,13 +653,27 @@ public sealed class SalesInvoiceLine
         if (string.IsNullOrWhiteSpace(line.TaxCode))
         {
             throw new ArgumentException(
-                "Uma linha de factura precisa do código de imposto.", nameof(line));
+                "Uma linha de factura precisa do código de imposto.");
         }
 
         if (line.TaxPercentage is < 0 or > 100)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(line), line.TaxPercentage, "Uma taxa está entre 0 e 100 por cento.");
+        }
+
+        if (string.IsNullOrWhiteSpace(line.ProductCode))
+        {
+            throw new ArgumentException(
+                "Uma linha de factura precisa do código do artigo ou serviço — "
+                + "é o `ProductCode` do SAF-T.");
+        }
+
+        if (string.IsNullOrWhiteSpace(line.UnitOfMeasure))
+        {
+            throw new ArgumentException(
+                "Uma linha de factura precisa da unidade de medida. "
+                + "Sem ela, meses depois ninguém sabe se as quantidades eram horas, quilos ou unidades.");
         }
 
         // Arredondamento a duas casas, meio para cima. Explícito porque o valor
@@ -637,7 +692,17 @@ public sealed class SalesInvoiceLine
             line.TaxCode.Trim().ToUpperInvariant(),
             line.TaxPercentage,
             liquido,
-            imposto);
+            imposto,
+
+            // Em maiúsculas como o SKU de `inventory`, para que o mesmo artigo
+            // escrito "cim-42" e "CIM-42" não apareça como dois produtos no
+            // ficheiro — `ProductCodeConstraint` exige unicidade.
+            line.ProductCode.Trim().ToUpperInvariant(),
+
+            // A unidade fica como veio: "un" e "UN" são a mesma coisa para
+            // quem lê, e maiusculizar "kg" para "KG" mudaria o que o documento
+            // entregue ao cliente mostrava.
+            line.UnitOfMeasure.Trim());
     }
 
     private static decimal Round(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);

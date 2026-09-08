@@ -19,7 +19,7 @@ public class SalesInvoiceTests
     private static SalesInvoice Emitida(params NewInvoiceLine[] linhas) =>
         FacturaDeTeste.Emitir(
             Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
-            linhas.Length > 0 ? linhas : [new NewInvoiceLine("Consultoria", 1, 100_000m, "NOR", 14m)]);
+            linhas.Length > 0 ? linhas : [new NewInvoiceLine("Consultoria", 1, 100_000m, "NOR", 14m, "ART-TESTE", "UN")]);
 
     [Fact]
     public void FacturaEmitida_NasceNormal()
@@ -39,8 +39,8 @@ public class SalesInvoiceTests
     public void TotaisSaoASomaDasLinhas()
     {
         var factura = Emitida(
-            new NewInvoiceLine("Consultoria", 2, 50_000m, "NOR", 14m),
-            new NewInvoiceLine("Deslocacao", 1, 10_000m, "NOR", 14m));
+            new NewInvoiceLine("Consultoria", 2, 50_000m, "NOR", 14m, "ART-TESTE", "UN"),
+            new NewInvoiceLine("Deslocacao", 1, 10_000m, "NOR", 14m, "ART-TESTE", "UN"));
 
         Assert.Equal(110_000m, factura.NetTotal);
         Assert.Equal(15_400m, factura.TaxTotal);
@@ -55,7 +55,7 @@ public class SalesInvoiceTests
     [Fact]
     public void ArredondamentoEPorLinha_ADuasCasas()
     {
-        var factura = Emitida(new NewInvoiceLine("Servico", 3, 33.333m, "NOR", 14m));
+        var factura = Emitida(new NewInvoiceLine("Servico", 3, 33.333m, "NOR", 14m, "ART-TESTE", "UN"));
 
         // 3 x 33,333 = 99,999 -> 100,00 ; 100,00 x 14% = 14,00
         Assert.Equal(100.00m, factura.NetTotal);
@@ -65,7 +65,7 @@ public class SalesInvoiceTests
     [Fact]
     public void LinhaIsentaNaoLiquidaImposto()
     {
-        var factura = Emitida(new NewInvoiceLine("Servico isento", 1, 50_000m, "ISE", 0m));
+        var factura = Emitida(new NewInvoiceLine("Servico isento", 1, 50_000m, "ISE", 0m, "ART-TESTE", "UN"));
 
         Assert.Equal(50_000m, factura.NetTotal);
         Assert.Equal(0m, factura.TaxTotal);
@@ -76,8 +76,8 @@ public class SalesInvoiceTests
     public void LinhasSaoNumeradasAPartirDeUm()
     {
         var factura = Emitida(
-            new NewInvoiceLine("A", 1, 10m, "NOR", 14m),
-            new NewInvoiceLine("B", 1, 10m, "NOR", 14m));
+            new NewInvoiceLine("A", 1, 10m, "NOR", 14m, "ART-TESTE", "UN"),
+            new NewInvoiceLine("B", 1, 10m, "NOR", 14m, "ART-TESTE", "UN"));
 
         Assert.Equal([1, 2], factura.Lines.Select(l => l.LineNumber));
     }
@@ -97,7 +97,7 @@ public class SalesInvoiceTests
         Assert.Throws<ArgumentException>(() =>
             FacturaDeTeste.Emitir(
                 Numero(), Hoje, Hoje, Guid.Empty, Cliente(), "AOA",
-                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
+                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m, "ART-TESTE", "UN")]));
     }
 
     [Theory]
@@ -108,7 +108,7 @@ public class SalesInvoiceTests
         Assert.Throws<ArgumentException>(() =>
             FacturaDeTeste.Emitir(
                 Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), moeda,
-                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
+                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m, "ART-TESTE", "UN")]));
     }
 
     /// <summary>
@@ -121,7 +121,7 @@ public class SalesInvoiceTests
         Assert.Throws<ArgumentException>(() =>
             FacturaDeTeste.Emitir(
                 Numero(), Hoje, Hoje.AddDays(1), Guid.CreateVersion7(), Cliente(), "AOA",
-                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
+                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m, "ART-TESTE", "UN")]));
     }
 
     [Fact]
@@ -129,7 +129,7 @@ public class SalesInvoiceTests
     {
         var factura = FacturaDeTeste.Emitir(
             Numero(), Hoje, Hoje.AddMonths(-1), Guid.CreateVersion7(), Cliente(), "AOA",
-            [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]);
+            [new NewInvoiceLine("X", 1, 10m, "NOR", 14m, "ART-TESTE", "UN")]);
 
         Assert.Equal(Hoje.AddMonths(-1), factura.TaxPointDate);
     }
@@ -140,33 +140,88 @@ public class SalesInvoiceTests
     public void QuantidadeNaoPositiva_ERecusada(decimal quantidade)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            Emitida(new NewInvoiceLine("X", quantidade, 10m, "NOR", 14m)));
+            Emitida(new NewInvoiceLine("X", quantidade, 10m, "NOR", 14m, "ART-TESTE", "UN")));
     }
 
     [Fact]
     public void PrecoNegativo_ERecusado()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>
-            Emitida(new NewInvoiceLine("X", 1, -10m, "NOR", 14m)));
+            Emitida(new NewInvoiceLine("X", 1, -10m, "NOR", 14m, "ART-TESTE", "UN")));
     }
 
     [Fact]
     public void PrecoZero_EAceite()
     {
         // Uma linha de oferta tem preço zero e continua a ser linha do documento.
-        Assert.Equal(0m, Emitida(new NewInvoiceLine("Oferta", 1, 0m, "NOR", 14m)).NetTotal);
+        Assert.Equal(0m, Emitida(new NewInvoiceLine("Oferta", 1, 0m, "NOR", 14m, "ART-TESTE", "UN")).NetTotal);
     }
 
     [Fact]
     public void LinhaSemDescricao_ERecusada()
     {
-        Assert.Throws<ArgumentException>(() => Emitida(new NewInvoiceLine(" ", 1, 10m, "NOR", 14m)));
+        Assert.Throws<ArgumentException>(() => Emitida(new NewInvoiceLine(" ", 1, 10m, "NOR", 14m, "ART-TESTE", "UN")));
     }
 
     [Fact]
     public void LinhaSemCodigoDeImposto_ERecusada()
     {
-        Assert.Throws<ArgumentException>(() => Emitida(new NewInvoiceLine("X", 1, 10m, "", 14m)));
+        Assert.Throws<ArgumentException>(() => Emitida(new NewInvoiceLine("X", 1, 10m, "", 14m, "ART-TESTE", "UN")));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void LinhaSemCodigoDeArtigo_ERecusada(string codigo)
+    {
+        // `ProductCode` é obrigatório em cada linha do SAF-T, e não se
+        // reconstrói a partir da descrição em texto livre.
+        Assert.Throws<ArgumentException>(() =>
+            Emitida(new NewInvoiceLine("X", 1, 10m, "NOR", 14m, codigo, "UN")));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void LinhaSemUnidadeDeMedida_ERecusada(string unidade)
+    {
+        // Sem ela, meses depois ninguém sabe se as "3" eram horas, quilos ou
+        // unidades — e o documento entregue ao cliente dizia-o.
+        Assert.Throws<ArgumentException>(() =>
+            Emitida(new NewInvoiceLine("X", 1, 10m, "NOR", 14m, "ART-TESTE", unidade)));
+    }
+
+    [Fact]
+    public void OCodigoDoArtigo_ENormalizadoParaMaiusculas()
+    {
+        // O mesmo artigo escrito "cim-42" e "CIM-42" apareceria como dois
+        // produtos no ficheiro, e `ProductCodeConstraint` exige unicidade.
+        var factura = Emitida(new NewInvoiceLine("Cimento", 1, 10m, "NOR", 14m, " cim-42 ", "sc"));
+
+        Assert.Equal("CIM-42", factura.Lines[0].ProductCode);
+    }
+
+    [Fact]
+    public void AUnidadeDeMedida_NaoENormalizada()
+    {
+        // Ao contrário do código: "kg" e "KG" são a mesma coisa para quem lê,
+        // e maiusculizar mudaria o que o documento entregue ao cliente mostrava.
+        var factura = Emitida(new NewInvoiceLine("Cimento", 1, 10m, "NOR", 14m, "CIM-42", " kg "));
+
+        Assert.Equal("kg", factura.Lines[0].UnitOfMeasure);
+    }
+
+    [Fact]
+    public void OCodigoDoArtigoNaoEntraNoHash()
+    {
+        // ⚠ Deliberado, e vale a pena fixá-lo: o hash cobre as linhas através
+        // do total (ADR-060). Se um dia passar a cobri-las uma a uma, este
+        // caso falha e obriga a decidir de propósito em vez de por acidente —
+        // a cadeia de todas as facturas emitidas mudaria de valor.
+        var comUm = Emitida(new NewInvoiceLine("X", 1, 10m, "NOR", 14m, "ART-A", "UN"));
+        var comOutro = Emitida(new NewInvoiceLine("X", 1, 10m, "NOR", 14m, "ART-B", "UN"));
+
+        Assert.Equal(comUm.Hash, comOutro.Hash);
     }
 
     // ---- cliente congelado ----
@@ -243,7 +298,7 @@ public class SalesInvoiceTests
     [Fact]
     public void FacturaAnulada_MantemLinhasETotais()
     {
-        var factura = Emitida(new NewInvoiceLine("Consultoria", 1, 100_000m, "NOR", 14m));
+        var factura = Emitida(new NewInvoiceLine("Consultoria", 1, 100_000m, "NOR", 14m, "ART-TESTE", "UN"));
         factura.Cancel("Engano", DateTimeOffset.UtcNow);
 
         Assert.Single(factura.Lines);
@@ -257,7 +312,7 @@ public class SalesInvoiceTests
             Numero(), Hoje, Hoje, null,
             InvoicedParty.FinalConsumer("CONSUMIDORFINAL", "Consumidor final"),
             "AOA",
-            [new NewInvoiceLine("Servico", 1, 5_000m, "NOR", 14m)]);
+            [new NewInvoiceLine("Servico", 1, 5_000m, "NOR", 14m, "ART-TESTE", "UN")]);
 
     [Fact]
     public void ConsumidorFinal_NaoTemClienteRegistado()
@@ -303,7 +358,7 @@ public class SalesInvoiceTests
             FacturaDeTeste.Emitir(
                 Numero(), Hoje, Hoje, Guid.CreateVersion7(),
                 InvoicedParty.FinalConsumer("CONSUMIDORFINAL", "Consumidor final"),
-                "AOA", [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
+                "AOA", [new NewInvoiceLine("X", 1, 10m, "NOR", 14m, "ART-TESTE", "UN")]));
     }
 
     [Fact]
@@ -312,7 +367,7 @@ public class SalesInvoiceTests
         Assert.Throws<ArgumentException>(() =>
             FacturaDeTeste.Emitir(
                 Numero(), Hoje, Hoje, null, Cliente(), "AOA",
-                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
+                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m, "ART-TESTE", "UN")]));
     }
 
     [Fact]
@@ -322,7 +377,7 @@ public class SalesInvoiceTests
         Assert.Throws<ArgumentException>(() =>
             FacturaDeTeste.Emitir(
                 Numero(), Hoje, Hoje, Guid.Empty, Cliente(), "AOA",
-                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
+                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m, "ART-TESTE", "UN")]));
     }
 
     // ---- menção de não-validade fiscal ----
@@ -334,7 +389,7 @@ public class SalesInvoiceTests
 
         var factura = FacturaDeTeste.Emitir(
             Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
-            [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)], mencao);
+            [new NewInvoiceLine("X", 1, 10m, "NOR", 14m, "ART-TESTE", "UN")], mencao);
 
         Assert.Equal(mencao, factura.FiscalNotice);
     }
@@ -349,7 +404,7 @@ public class SalesInvoiceTests
     {
         var factura = FacturaDeTeste.Emitir(
             Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
-            [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)], "Sem validade fiscal.");
+            [new NewInvoiceLine("X", 1, 10m, "NOR", 14m, "ART-TESTE", "UN")], "Sem validade fiscal.");
 
         factura.Cancel("Engano", DateTimeOffset.UtcNow);
 
@@ -371,7 +426,7 @@ public class SalesInvoiceTests
     {
         var factura = FacturaDeTeste.Emitir(
             Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
-            [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)], mencao);
+            [new NewInvoiceLine("X", 1, 10m, "NOR", 14m, "ART-TESTE", "UN")], mencao);
 
         Assert.Null(factura.FiscalNotice);
     }
@@ -410,12 +465,12 @@ public class SalesInvoiceTests
         // não se notaria.
         var primeira = FacturaDeTeste.Emitir(
             Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
-            [new NewInvoiceLine("Consultoria", 1, 100_000m, "NOR", 14m)],
+            [new NewInvoiceLine("Consultoria", 1, 100_000m, "NOR", 14m, "ART-TESTE", "UN")],
             previousHash: null);
 
         var segunda = FacturaDeTeste.Emitir(
             Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
-            [new NewInvoiceLine("Consultoria", 1, 100_000m, "NOR", 14m)],
+            [new NewInvoiceLine("Consultoria", 1, 100_000m, "NOR", 14m, "ART-TESTE", "UN")],
             previousHash: primeira.Hash);
 
         Assert.NotEqual(primeira.Hash, segunda.Hash);
@@ -477,7 +532,7 @@ public class SalesInvoiceTests
         Assert.Throws<ArgumentException>(() =>
             FacturaDeTeste.Emitir(
                 Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
-                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)],
+                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m, "ART-TESTE", "UN")],
                 issuedByUserId: Guid.Empty));
     }
 }

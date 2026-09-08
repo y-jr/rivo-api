@@ -160,6 +160,10 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
             line.Property(l => l.NetAmount).HasPrecision(18, 2);
             line.Property(l => l.TaxAmount).HasPrecision(18, 2);
 
+            // Os máximos são os do XSD: `ProductCode` 60, `UnitOfMeasure` 20.
+            line.Property(l => l.ProductCode).HasMaxLength(60).IsRequired();
+            line.Property(l => l.UnitOfMeasure).HasMaxLength(20).IsRequired();
+
             line.HasIndex(l => new { l.SalesInvoiceId, l.LineNumber }).IsUnique();
         });
 

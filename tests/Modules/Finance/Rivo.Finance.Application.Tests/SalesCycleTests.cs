@@ -38,7 +38,7 @@ public class SalesCycleTests
             new BillingAddress("Rua Rainha Ginga 12", "Luanda", "AO"));
 
     private static IReadOnlyList<InvoiceLineInput> UmaLinha(decimal preco = 100_000m) =>
-        [new InvoiceLineInput("Serviço de consultoria", 1m, preco, "NOR")];
+        [new InvoiceLineInput("Serviço de consultoria", 1m, preco, "NOR", "ART-TESTE")];
 
     private static IssueSalesInvoice Emissao(
         FakeSalesInvoiceStore store,
@@ -58,7 +58,7 @@ public class SalesCycleTests
             serie.Allocate(), Hoje, Hoje, ClienteId,
             new InvoicedParty("Refriango", "5417654321", "Rua Rainha Ginga 12", "Luanda", "AO"),
             "AOA",
-            [new NewInvoiceLine("Serviço", 1m, decimal.Round(liquido, 2), "NOR", 14m)]);
+            [new NewInvoiceLine("Serviço", 1m, decimal.Round(liquido, 2), "NOR", 14m, "ART-TESTE", "UN")]);
     }
 
     // ---- emissão ----
@@ -176,7 +176,7 @@ public class SalesCycleTests
                 Cliente())
             .ExecuteAsync(
                 ClienteId, "S001", Hoje, null, "AOA",
-                [new InvoiceLineInput("Serviço isento", 1m, 1_000m, TaxCodes.Exempt)],
+                [new InvoiceLineInput("Serviço isento", 1m, 1_000m, TaxCodes.Exempt, "ART-TESTE")],
                 Contexto, CancellationToken.None);
 
         Assert.Equal(IssueInvoiceOutcome.ExemptionUnavailable, resultado.Outcome);
@@ -325,14 +325,14 @@ public class SalesCycleTests
         var factura = FacturaDeTeste.Emitir(
             serie.Allocate(), new DateOnly(2026, 3, 20), facto, ClienteId,
             new InvoicedParty("Refriango", "5417654321", "Rua", "Luanda", "AO"),
-            "AOA", [new NewInvoiceLine("Serviço", 1m, 100_000m, "NOR", 14m)]);
+            "AOA", [new NewInvoiceLine("Serviço", 1m, 100_000m, "NOR", 14m, "ART-TESTE", "UN")]);
 
         var store = new FakeSalesInvoiceStore().WithSeries(DocumentType.NC).With(factura);
         var impostos = new FakeTaxDetermination();
 
         await Credito(store, impostos).ExecuteAsync(
             factura.Id, "S001", Hoje, "Devolução parcial",
-            [new InvoiceLineInput("Serviço", 1m, 10_000m, "NOR")],
+            [new InvoiceLineInput("Serviço", 1m, 10_000m, "NOR", "ART-TESTE")],
             Contexto, CancellationToken.None);
 
         // Perguntou-se pela data da factura corrigida, não por hoje.
@@ -352,7 +352,7 @@ public class SalesCycleTests
 
         var resultado = await Credito(store, new FakeTaxDetermination()).ExecuteAsync(
             factura.Id, "S001", Hoje, "Devolução total e mais um pouco",
-            [new InvoiceLineInput("Serviço", 1m, 200_000m, "NOR")],
+            [new InvoiceLineInput("Serviço", 1m, 200_000m, "NOR", "ART-TESTE")],
             Contexto, CancellationToken.None);
 
         Assert.Equal(IssueCreditNoteOutcome.ExceedsOutstanding, resultado.Outcome);
@@ -373,7 +373,7 @@ public class SalesCycleTests
 
         var credito = await Credito(store, new FakeTaxDetermination()).ExecuteAsync(
             factura.Id, "S001", Hoje, "Devolução parcial",
-            [new InvoiceLineInput("Serviço", 1m, 50_000m, "NOR")],
+            [new InvoiceLineInput("Serviço", 1m, 50_000m, "NOR", "ART-TESTE")],
             Contexto, CancellationToken.None);
 
         Assert.Equal(IssueCreditNoteOutcome.Issued, credito.Outcome);
