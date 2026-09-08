@@ -9,10 +9,56 @@ public class SupplierTests
     // tem de dar resto 1 módulo 97.
     private const string IbanValido = "AO71000600000109131234151";
 
+    private static SupplierAddress Morada() =>
+        new("Rua Rainha Ginga, 12", "Luanda", "AO");
+
+    [Fact]
+    public void Register_SemMorada_ERecusado()
+    {
+        // Obrigatória porque o SAF-T a exige em `Supplier.BillingAddress`, sem
+        // `minOccurs="0"`. O que não se captura no registo não se reconstrói
+        // no dia da entrega à AGT.
+        Assert.Throws<ArgumentNullException>(
+            () => Supplier.Register("Angoferragens", "5417123456", null!));
+    }
+
+    [Theory]
+    [InlineData("", "Luanda", "AO")]
+    [InlineData("   ", "Luanda", "AO")]
+    [InlineData("Rua A", "", "AO")]
+    [InlineData("Rua A", "Luanda", "")]
+    [InlineData("Rua A", "Luanda", "Angola")]
+    [InlineData("Rua A", "Luanda", "A")]
+    public void MoradaIncompleta_ERecusada(string detalhe, string cidade, string pais)
+    {
+        Assert.Throws<ArgumentException>(() => new SupplierAddress(detalhe, cidade, pais));
+    }
+
+    [Fact]
+    public void OPaisENormalizadoParaMaiusculas()
+    {
+        // O XSD tem lista fechada de países em maiúsculas
+        // (`SupplierCountry`); `ao` não passaria.
+        var morada = new SupplierAddress("Rua A", "Luanda", "ao");
+
+        Assert.Equal("AO", morada.Country);
+    }
+
+    [Fact]
+    public void MudarAMorada_SubstituiInteira()
+    {
+        // Objecto de valor: substitui-se, não se edita campo a campo.
+        var fornecedor = Supplier.Register("Angoferragens", "5417123456", Morada());
+
+        fornecedor.ChangeBillingAddress(new SupplierAddress("Rua Nova, 3", "Benguela", "AO"));
+
+        Assert.Equal("Benguela", fornecedor.BillingAddress.City);
+    }
+
     [Fact]
     public void Register_WithNameAndTaxId_StartsActive()
     {
-        var fornecedor = Supplier.Register("Angoferragens, Lda.", "5417123456");
+        var fornecedor = Supplier.Register("Angoferragens, Lda.", "5417123456", Morada());
 
         Assert.Equal(SupplierStatus.Active, fornecedor.Status);
         Assert.NotEqual(Guid.Empty, fornecedor.Id);
@@ -23,7 +69,7 @@ public class SupplierTests
     public void Register_NormalizesTaxId()
     {
         // O NIF vem da factura, e na factura vem com espaços.
-        var fornecedor = Supplier.Register("Angoferragens", " 5417 123 456 ");
+        var fornecedor = Supplier.Register("Angoferragens", " 5417 123 456 ", Morada());
 
         Assert.Equal("5417123456", fornecedor.TaxId);
     }
@@ -33,7 +79,7 @@ public class SupplierTests
     [InlineData("   ")]
     public void Register_WithoutName_Throws(string name)
     {
-        Assert.Throws<ArgumentException>(() => Supplier.Register(name, "5417123456"));
+        Assert.Throws<ArgumentException>(() => Supplier.Register(name, "5417123456", Morada()));
     }
 
     [Theory]
@@ -42,13 +88,13 @@ public class SupplierTests
     public void Register_WithoutTaxId_Throws(string taxId)
     {
         // Sem NIF não há como identificar o fornecedor na factura de compra.
-        Assert.Throws<ArgumentException>(() => Supplier.Register("Angoferragens", taxId));
+        Assert.Throws<ArgumentException>(() => Supplier.Register("Angoferragens", taxId, Morada()));
     }
 
     [Fact]
     public void SetIban_WithValidIban_Normalizes()
     {
-        var fornecedor = Supplier.Register("Angoferragens", "5417123456");
+        var fornecedor = Supplier.Register("Angoferragens", "5417123456", Morada());
 
         // Os IBAN vêm quase sempre agrupados de quatro em quatro.
         fornecedor.SetIban("AO71 0006 0000 0109 1312 3415 1");
@@ -59,7 +105,7 @@ public class SupplierTests
     [Fact]
     public void SetIban_WithWrongCheckDigits_Throws()
     {
-        var fornecedor = Supplier.Register("Angoferragens", "5417123456");
+        var fornecedor = Supplier.Register("Angoferragens", "5417123456", Morada());
 
         // Último dígito trocado — exactamente o erro de quem copia à mão, e a
         // razão de o mod-97 existir. Um IBAN errado paga a outra pessoa, e esse
@@ -70,7 +116,7 @@ public class SupplierTests
     [Fact]
     public void SetIban_WithRejectedIban_KeepsThePreviousOne()
     {
-        var fornecedor = Supplier.Register("Angoferragens", "5417123456");
+        var fornecedor = Supplier.Register("Angoferragens", "5417123456", Morada());
         fornecedor.SetIban(IbanValido);
 
         Assert.Throws<ArgumentException>(() => fornecedor.SetIban("AO71000600000109131234152"));
@@ -88,7 +134,7 @@ public class SupplierTests
     [InlineData("AO71")]                          // abaixo do mínimo da norma
     public void SetIban_WithMalformedIban_Throws(string iban)
     {
-        var fornecedor = Supplier.Register("Angoferragens", "5417123456");
+        var fornecedor = Supplier.Register("Angoferragens", "5417123456", Morada());
 
         Assert.Throws<ArgumentException>(() => fornecedor.SetIban(iban));
     }
@@ -99,7 +145,7 @@ public class SupplierTests
     [InlineData("   ")]
     public void SetIban_WithNothing_ClearsIt(string? iban)
     {
-        var fornecedor = Supplier.Register("Angoferragens", "5417123456");
+        var fornecedor = Supplier.Register("Angoferragens", "5417123456", Morada());
         fornecedor.SetIban(IbanValido);
 
         fornecedor.SetIban(iban);
@@ -116,7 +162,7 @@ public class SupplierTests
         // A verificação é da norma, não de Angola — e o comprimento por país
         // não é verificado de propósito. Um fornecedor estrangeiro tem de
         // caber, e o IBAN do Reino Unido tem 22 caracteres contra os 25 de cá.
-        var fornecedor = Supplier.Register("Fornecedor estrangeiro", "5417123456");
+        var fornecedor = Supplier.Register("Fornecedor estrangeiro", "5417123456", Morada());
 
         fornecedor.SetIban(iban);
 
@@ -126,7 +172,7 @@ public class SupplierTests
     [Fact]
     public void Deactivate_ThenReactivate_RoundTrips()
     {
-        var fornecedor = Supplier.Register("Angoferragens", "5417123456");
+        var fornecedor = Supplier.Register("Angoferragens", "5417123456", Morada());
 
         fornecedor.Deactivate();
         Assert.Equal(SupplierStatus.Inactive, fornecedor.Status);
@@ -138,7 +184,7 @@ public class SupplierTests
     [Fact]
     public void Deactivate_IsIdempotent()
     {
-        var fornecedor = Supplier.Register("Angoferragens", "5417123456");
+        var fornecedor = Supplier.Register("Angoferragens", "5417123456", Morada());
 
         fornecedor.Deactivate();
         fornecedor.Deactivate();
@@ -149,7 +195,7 @@ public class SupplierTests
     [Fact]
     public void ChangeContacts_WithBlanks_StoresNull()
     {
-        var fornecedor = Supplier.Register("Angoferragens", "5417123456");
+        var fornecedor = Supplier.Register("Angoferragens", "5417123456", Morada());
 
         fornecedor.ChangeContacts("  ", "  ");
 
@@ -162,7 +208,7 @@ public class SupplierTests
     [Fact]
     public void CorrectTaxId_NormalizesToo()
     {
-        var fornecedor = Supplier.Register("Angoferragens", "5417123456");
+        var fornecedor = Supplier.Register("Angoferragens", "5417123456", Morada());
 
         fornecedor.CorrectTaxId(" 5999 888 777 ");
 
@@ -172,7 +218,7 @@ public class SupplierTests
     [Fact]
     public void Version_IsNeverTouchedByTheDomain()
     {
-        var fornecedor = Supplier.Register("Angoferragens", "5417123456");
+        var fornecedor = Supplier.Register("Angoferragens", "5417123456", Morada());
 
         fornecedor.Rename("Angoferragens SU, Lda.");
         fornecedor.Deactivate();

@@ -81,7 +81,7 @@ internal sealed class FakeProcurementStore : ProcurementStoreParcial
 
     public Supplier Fornecedor(bool activo = true)
     {
-        var fornecedor = Supplier.Register($"Fornecedor {_fornecedores.Count}", $"NIF{_fornecedores.Count:D9}");
+        var fornecedor = Supplier.Register($"Fornecedor {_fornecedores.Count}", $"NIF{_fornecedores.Count:D9}", new SupplierAddress("Rua A", "Luanda", "AO"));
         if (!activo) fornecedor.Deactivate();
         _fornecedores.Add(fornecedor);
         return fornecedor;

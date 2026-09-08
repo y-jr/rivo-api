@@ -30,6 +30,12 @@ public interface ISaftMasterData
     /// clientes registados exporta um <c>MasterFiles</c> sem eles.
     /// </summary>
     Task<IReadOnlyList<SaftCustomer>> ListCustomersAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A tabela de fornecedores. Vazia é resposta legítima, pela mesma razão
+    /// dos clientes.
+    /// </summary>
+    Task<IReadOnlyList<SaftSupplier>> ListSuppliersAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -55,6 +61,23 @@ public interface ISaftMasterData
 /// <param name="Name">Razão social, tal como sai no documento fiscal.</param>
 public sealed record SaftCustomer(
     string CustomerId,
+    string TaxId,
+    string Name,
+    SaftAddress BillingAddress);
+
+/// <summary>
+/// Um fornecedor, reduzido ao que o elemento <c>Supplier</c> do SAF-T pede.
+///
+/// <para>
+/// Gémeo de <see cref="SaftCustomer"/> e separado dele de propósito: os dois
+/// elementos coincidem hoje, mas são estruturas distintas no XSD — a morada do
+/// fornecedor é <c>SupplierAddressStructure</c>, cujo <c>Country</c> tem uma
+/// lista fechada de países, e a do cliente é <c>AddressStructure</c>, que não
+/// a tem. Um tipo partilhado esconderia essa diferença até ela morder.
+/// </para>
+/// </summary>
+public sealed record SaftSupplier(
+    string SupplierId,
     string TaxId,
     string Name,
     SaftAddress BillingAddress);

@@ -10,9 +10,9 @@ public class ImportSuppliersFromCsvTests
         var suppliers = new FakeSupplierDirectory();
         var import = new ImportSuppliersFromCsv(suppliers);
         const string csv = """
-            Nome,NIF,IBAN,Email,Telefone
-            Fornecedor A,111222333,AO0600000000,geral@a.ao,923000000
-            Fornecedor B,444555666,,,
+            Nome,NIF,Morada,Cidade,Pais,IBAN,Email,Telefone
+            Fornecedor A,111222333,Rua Che Guevara 88,Luanda,AO,AO0600000000,geral@a.ao,923000000
+            Fornecedor B,444555666,Rua Amilcar Cabral 3,Benguela,AO,,,
             """;
 
         var result = await import.ExecuteAsync(csv, ActorId, CancellationToken.None);
@@ -29,9 +29,9 @@ public class ImportSuppliersFromCsvTests
         var suppliers = new FakeSupplierDirectory();
         var import = new ImportSuppliersFromCsv(suppliers);
         const string csv = """
-            Nome,NIF
-            Fornecedor A,111222333
-            Fornecedor A outra vez,111222333
+            Nome,NIF,Morada,Cidade,Pais
+            Fornecedor A,111222333,Rua A,Luanda,AO
+            Fornecedor A outra vez,111222333,Rua B,Luanda,AO
             """;
 
         var result = await import.ExecuteAsync(csv, ActorId, CancellationToken.None);
@@ -52,6 +52,28 @@ public class ImportSuppliersFromCsvTests
         var result = await import.ExecuteAsync(csv, ActorId, CancellationToken.None);
 
         Assert.Equal(CsvImportOutcome.InvalidHeader, result.Outcome);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_FicheiroAntigoSemMorada_Recusa()
+    {
+        // ⚠ Quebra deliberada. Os ficheiros que funcionavam antes de
+        // 2026-09-08 param aqui, e é isso que se quer: importá-los criaria
+        // fornecedores sem morada, que a exportação SAF-T não consegue emitir
+        // — e nessa altura já ninguém sabe a morada de cada um.
+        var import = new ImportSuppliersFromCsv(new FakeSupplierDirectory());
+        const string csv = """
+            Nome,NIF,IBAN
+            Fornecedor A,111222333,
+            """;
+
+        var result = await import.ExecuteAsync(csv, ActorId, CancellationToken.None);
+
+        Assert.Equal(CsvImportOutcome.InvalidHeader, result.Outcome);
+
+        // A mensagem tem de nomear as colunas em falta: "cabeçalho inválido"
+        // sozinho não diz a quem prepara o ficheiro o que acrescentar.
+        Assert.Contains("Morada", result.Error);
     }
 
     [Fact]

@@ -33,6 +33,9 @@ public sealed class RegisterSupplier(IProcurementStore store, IAuditTrail audit)
     public async Task<RegisterSupplierResult> ExecuteAsync(
         string name,
         string taxId,
+        string addressDetail,
+        string city,
+        string country,
         string? iban,
         string? email,
         string? phone,
@@ -43,7 +46,8 @@ public sealed class RegisterSupplier(IProcurementStore store, IAuditTrail audit)
 
         try
         {
-            fornecedor = Supplier.Register(name, taxId);
+            fornecedor = Supplier.Register(
+                name, taxId, new Domain.SupplierAddress(addressDetail, city, country));
             fornecedor.SetIban(iban);
         }
         catch (Exception error) when (error is ArgumentException or ArgumentNullException)

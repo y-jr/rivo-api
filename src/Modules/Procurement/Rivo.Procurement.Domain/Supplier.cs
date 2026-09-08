@@ -23,11 +23,12 @@ namespace Rivo.Procurement.Domain;
 /// </summary>
 public sealed class Supplier
 {
-    private Supplier(Guid id, string name, string taxId)
+    private Supplier(Guid id, string name, string taxId, SupplierAddress billingAddress)
     {
         Id = id;
         Name = name;
         TaxId = taxId;
+        BillingAddress = billingAddress;
         Status = SupplierStatus.Active;
     }
 
@@ -36,6 +37,7 @@ public sealed class Supplier
     {
         Name = string.Empty;
         TaxId = string.Empty;
+        BillingAddress = null!;
     }
 
     public Guid Id { get; private set; }
@@ -67,6 +69,26 @@ public sealed class Supplier
     /// </summary>
     public string? Iban { get; private set; }
 
+    /// <summary>
+    /// Morada de facturação.
+    ///
+    /// <para>
+    /// <strong>Obrigatória, e é o SAF-T que a obriga.</strong>
+    /// <c>Supplier.BillingAddress</c> não tem <c>minOccurs="0"</c> no XSD — um
+    /// fornecedor sem ela não pode ir no ficheiro, e é a mesma razão por que
+    /// <c>Customer</c> tem a dele desde o início.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠ <strong>Chegou depois do agregado</strong> (2026-09-08). Os
+    /// fornecedores registados antes ficaram com uma morada por preencher —
+    /// ver a migração. É a diferença que o contrato de completude descreve:
+    /// «o que não for capturado no momento da transacção não se reconstrói
+    /// depois».
+    /// </para>
+    /// </summary>
+    public SupplierAddress BillingAddress { get; private set; }
+
     public string? Email { get; private set; }
 
     public string? Phone { get; private set; }
@@ -79,7 +101,7 @@ public sealed class Supplier
     /// </summary>
     public int Version { get; private set; }
 
-    public static Supplier Register(string name, string taxId)
+    public static Supplier Register(string name, string taxId, SupplierAddress billingAddress)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -93,7 +115,17 @@ public sealed class Supplier
                 nameof(taxId));
         }
 
-        return new Supplier(Guid.CreateVersion7(), name.Trim(), NormalizeTaxId(taxId));
+        ArgumentNullException.ThrowIfNull(billingAddress);
+
+        return new Supplier(
+            Guid.CreateVersion7(), name.Trim(), NormalizeTaxId(taxId), billingAddress);
+    }
+
+    public void ChangeBillingAddress(SupplierAddress billingAddress)
+    {
+        ArgumentNullException.ThrowIfNull(billingAddress);
+
+        BillingAddress = billingAddress;
     }
 
     public void Rename(string name)
@@ -244,4 +276,67 @@ public enum SupplierStatus
 {
     Active,
     Inactive,
+}
+
+/// <summary>
+/// Morada de facturação do fornecedor. Objecto de valor — substitui-se
+/// inteira, não se edita campo a campo.
+///
+/// <para>
+/// Os três campos são os que o SAF-T exige em
+/// <c>SupplierAddressStructure</c>. Gémea de
+/// <c>Rivo.Commercial.Domain.BillingAddress</c>, e duplicada de propósito: são
+/// módulos distintos, e um tipo partilhado entre eles seria acoplamento sem
+/// justificação — a regra fundamental do `CLAUDE.md`. O SharedKernel também
+/// não é sítio para isto (ver `domain/shared-concepts.md`).
+/// </para>
+///
+/// <para>
+/// ⚠ <strong><see cref="Detail"/> admite <c>"Desconhecido"</c></strong>, e só
+/// por causa da migração: os fornecedores registados antes de 2026-09-08 não
+/// tinham morada, e o XSD prevê esse valor. Um fornecedor novo não passa por
+/// aí — o registo exige a morada a sério.
+/// </para>
+/// </summary>
+public sealed class SupplierAddress
+{
+    public SupplierAddress(string detail, string city, string country)
+    {
+        if (string.IsNullOrWhiteSpace(detail))
+        {
+            throw new ArgumentException(
+                "A morada de facturação precisa de detalhe.");
+        }
+
+        if (string.IsNullOrWhiteSpace(city))
+        {
+            throw new ArgumentException(
+                "A morada de facturação precisa de cidade.");
+        }
+
+        if (string.IsNullOrWhiteSpace(country) || country.Trim().Length != 2)
+        {
+            throw new ArgumentException(
+                "O país é o código ISO 3166-1 alpha-2, com duas letras (`AO` para Angola).");
+        }
+
+        Detail = detail.Trim();
+        City = city.Trim();
+        Country = country.Trim().ToUpperInvariant();
+    }
+
+    /// <summary>Construtor sem parâmetros para materialização pelo ORM.</summary>
+    private SupplierAddress()
+    {
+        Detail = string.Empty;
+        City = string.Empty;
+        Country = string.Empty;
+    }
+
+    public string Detail { get; private set; }
+
+    public string City { get; private set; }
+
+    /// <summary>ISO 3166-1 alpha-2.</summary>
+    public string Country { get; private set; }
 }

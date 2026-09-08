@@ -118,6 +118,20 @@ public sealed class ExportSaftFile(
                 + "O SAF-T exige que seja único no ficheiro.");
         }
 
+        var fornecedores = await masterData.ListSuppliersAsync(cancellationToken);
+
+        var fornecedorRepetido = fornecedores
+            .GroupBy(f => f.SupplierId, StringComparer.Ordinal)
+            .FirstOrDefault(g => g.Count() > 1);
+
+        if (fornecedorRepetido is not null)
+        {
+            // `SupplierIDConstraint`, gémeo do dos clientes.
+            return ExportSaftResult.Rejected(
+                $"Há mais do que um fornecedor com o identificador '{fornecedorRepetido.Key}'. "
+                + "O SAF-T exige que seja único no ficheiro.");
+        }
+
         var series = await taxRates.ListAsync(cancellationToken);
 
         var entradas = new List<XElement>();
@@ -156,6 +170,7 @@ public sealed class ExportSaftFile(
                 new XElement(
                     Ns + "MasterFiles",
                     clientes.Select(Cliente),
+                    fornecedores.Select(Fornecedor),
 
                     // ⚠ Ausente e não vazio quando não há entradas — ao
                     // contrário de `MasterFiles`. `TaxTable` exige
@@ -254,6 +269,28 @@ public sealed class ExportSaftFile(
 
         return new XElement(Ns + "Customer", elementos);
     }
+
+    /// <summary>
+    /// Um elemento <c>Supplier</c>.
+    ///
+    /// <para>
+    /// Quase igual a <see cref="Cliente"/> — os nomes dos dois primeiros
+    /// elementos mudam, e a morada é <c>ShipFromAddress</c> em vez de
+    /// <c>ShipToAddress</c> nos opcionais que não emitimos. Não se factorizou
+    /// com o cliente porque o XSD os declara em separado, e o dia em que um
+    /// deles ganhar um campo o outro não tem seria o dia em que a
+    /// factorização passaria a mentir.
+    /// </para>
+    /// </summary>
+    private XElement Fornecedor(SaftSupplier fornecedor) =>
+        new(
+            Ns + "Supplier",
+            new XElement(Ns + "SupplierID", fornecedor.SupplierId),
+            new XElement(Ns + "AccountID", ContaDesconhecida),
+            new XElement(Ns + "SupplierTaxID", fornecedor.TaxId),
+            new XElement(Ns + "CompanyName", fornecedor.Name),
+            Morada(Ns + "BillingAddress", fornecedor.BillingAddress),
+            new XElement(Ns + "SelfBillingIndicator", SemAutofacturacao));
 
     /// <summary>
     /// Uma morada de terceiro, na forma <c>AddressStructure</c> do XSD.

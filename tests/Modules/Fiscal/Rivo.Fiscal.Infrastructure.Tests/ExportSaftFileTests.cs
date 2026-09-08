@@ -168,6 +168,95 @@ public class ExportSaftFileTests
     }
 
     [Fact]
+    public async Task ComFornecedores_ValidaContraOXsd()
+    {
+        var resultado = await new ExportSaftFile(
+            Empresa(),
+            new MasterDataFalso(
+                [Cliente()],
+                [
+                    new SaftSupplier("FOR-1", "5417100001", "Angoferragens, Lda.",
+                        new SaftAddress("Rua Che Guevara, 88", "Luanda", "AO")),
+                    new SaftSupplier("FOR-2", "5417100002", "Global Parts BV",
+                        new SaftAddress("Keizersgracht 5", "Amesterdão", "NL")),
+                ]),
+            new TaxRateStoreFalso([]),
+            new FakeTimeProvider(Agora))
+            .ExecuteAsync(
+                2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), CancellationToken.None);
+
+        Assert.Equal(ExportSaftOutcome.Generated, resultado.Outcome);
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+
+        // ⚠ `Customer` antes de `Supplier`: o XSD usa `xs:sequence` dentro de
+        // `MasterFiles`, tal como dentro de cada elemento. Emitir os
+        // fornecedores primeiro invalidaria o ficheiro.
+        var ordem = resultado.File!
+            .Descendants(ExportSaftFile.Ns + "MasterFiles")
+            .Single()
+            .Elements()
+            .Select(e => e.Name.LocalName)
+            .Distinct()
+            .ToList();
+
+        Assert.Equal(["Customer", "Supplier"], ordem);
+    }
+
+    [Fact]
+    public async Task FornecedorEstrangeiro_SaiComOPaisDele()
+    {
+        // A morada do fornecedor é `SupplierAddressStructure`, cujo `Country`
+        // tem lista fechada de países no XSD — ao contrário da do cliente.
+        // Fixar `AO` aqui teria passado nos testes e mentido no ficheiro.
+        var resultado = await new ExportSaftFile(
+            Empresa(),
+            new MasterDataFalso(
+                [],
+                [
+                    new SaftSupplier("FOR-2", "5417100002", "Global Parts BV",
+                        new SaftAddress("Keizersgracht 5", "Amesterdão", "NL")),
+                ]),
+            new TaxRateStoreFalso([]),
+            new FakeTimeProvider(Agora))
+            .ExecuteAsync(
+                2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), CancellationToken.None);
+
+        var pais = resultado.File!
+            .Descendants(ExportSaftFile.Ns + "Supplier")
+            .Single()
+            .Element(ExportSaftFile.Ns + "BillingAddress")!
+            .Element(ExportSaftFile.Ns + "Country")!.Value;
+
+        Assert.Equal("NL", pais);
+    }
+
+    [Fact]
+    public async Task FornecedoresComOMesmoIdentificador_ERecusado()
+    {
+        var resultado = await new ExportSaftFile(
+            Empresa(),
+            new MasterDataFalso(
+                [],
+                [
+                    new SaftSupplier("FOR-1", "5417100001", "Angoferragens",
+                        new SaftAddress("Rua A", "Luanda", "AO")),
+                    new SaftSupplier("FOR-1", "5417100002", "Outra",
+                        new SaftAddress("Rua B", "Luanda", "AO")),
+                ]),
+            new TaxRateStoreFalso([]),
+            new FakeTimeProvider(Agora))
+            .ExecuteAsync(
+                2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), CancellationToken.None);
+
+        // `SupplierIDConstraint`, gémeo do dos clientes.
+        Assert.Equal(ExportSaftOutcome.Rejected, resultado.Outcome);
+        Assert.Contains("FOR-1", resultado.Error);
+    }
+
+    [Fact]
     public async Task ComTabelaDeImpostos_ValidaContraOXsd()
     {
         var resultado = await Exportar(
@@ -468,7 +557,9 @@ internal sealed class FakeTimeProvider(DateTimeOffset agora) : TimeProvider
 /// pedir a carteira de clientes antes de saber que o pedido é válido.
 /// </para>
 /// </summary>
-internal sealed class MasterDataFalso(IReadOnlyList<SaftCustomer> clientes) : ISaftMasterData
+internal sealed class MasterDataFalso(
+    IReadOnlyList<SaftCustomer> clientes,
+    IReadOnlyList<SaftSupplier>? fornecedores = null) : ISaftMasterData
 {
     public int Chamadas { get; private set; }
 
@@ -477,6 +568,13 @@ internal sealed class MasterDataFalso(IReadOnlyList<SaftCustomer> clientes) : IS
         Chamadas++;
 
         return Task.FromResult(clientes);
+    }
+
+    public Task<IReadOnlyList<SaftSupplier>> ListSuppliersAsync(CancellationToken cancellationToken)
+    {
+        Chamadas++;
+
+        return Task.FromResult<IReadOnlyList<SaftSupplier>>(fornecedores ?? []);
     }
 }
 

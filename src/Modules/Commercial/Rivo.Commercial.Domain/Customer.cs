@@ -227,19 +227,18 @@ public sealed class BillingAddress
     {
         if (string.IsNullOrWhiteSpace(detail))
         {
-            throw new ArgumentException("A morada de facturação precisa de detalhe.", nameof(detail));
+            throw new ArgumentException("A morada de facturação precisa de detalhe.");
         }
 
         if (string.IsNullOrWhiteSpace(city))
         {
-            throw new ArgumentException("A morada de facturação precisa de cidade.", nameof(city));
+            throw new ArgumentException("A morada de facturação precisa de cidade.");
         }
 
         if (string.IsNullOrWhiteSpace(country) || country.Trim().Length != 2)
         {
             throw new ArgumentException(
-                "O país é o código ISO 3166-1 alpha-2, com duas letras (`AO` para Angola).",
-                nameof(country));
+                "O país é o código ISO 3166-1 alpha-2, com duas letras (`AO` para Angola).");
         }
 
         Detail = detail.Trim();

@@ -53,11 +53,28 @@ public interface ISupplierDirectory
     Task<SupplierRegistrationResult> RegisterAsync(
         string name,
         string taxId,
+        string addressDetail,
+        string city,
+        string country,
         string? iban,
         string? email,
         string? phone,
         Guid actorId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Todos os fornecedores, para quem tem de os enumerar. Primeiro
+    /// consumidor: a secção <c>Supplier</c> do SAF-T AO.
+    ///
+    /// <para>
+    /// <strong>Inclui os inactivos</strong>, pela mesma razão de
+    /// <c>ICustomerDirectory.ListAllAsync</c>: um fornecedor desactivado hoje
+    /// pode ter facturado em Março, e o XSD exige que os documentos
+    /// referenciem master data presente no ficheiro. Desactivar existe
+    /// precisamente porque BR-14 proíbe eliminar quem tem documentos.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<SupplierReference>> ListAllAsync(CancellationToken cancellationToken);
 }
 
 public sealed record SupplierRegistrationResult(SupplierRegistrationOutcome Outcome, Guid? SupplierId, string? Error)
@@ -102,12 +119,20 @@ public enum SupplierRegistrationOutcome
 /// números que os clientes já guardaram.
 /// </para>
 /// </param>
+/// <param name="BillingAddress">
+/// Morada de facturação. Obrigatória desde 2026-09-08 — o SAF-T exige-a em
+/// <c>Supplier.BillingAddress</c>, sem <c>minOccurs="0"</c>.
+/// </param>
 public sealed record SupplierReference(
     Guid SupplierId,
     string Name,
     string TaxId,
     string? Iban,
-    string Status);
+    string Status,
+    SupplierAddress BillingAddress);
+
+/// <param name="Country">ISO 3166-1 alpha-2. `AO` para Angola.</param>
+public sealed record SupplierAddress(string Detail, string City, string Country);
 
 /// <summary>
 /// Os valores que <see cref="SupplierReference.Status"/> pode tomar.

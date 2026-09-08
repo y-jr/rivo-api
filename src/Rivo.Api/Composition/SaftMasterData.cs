@@ -1,4 +1,5 @@
 using Rivo.Commercial.Contracts;
+using Rivo.Procurement.Contracts;
 using Rivo.Fiscal.Application.Abstractions;
 
 namespace Rivo.Api.Composition;
@@ -22,8 +23,25 @@ namespace Rivo.Api.Composition;
 /// sítio onde essa lista vive, e é de propósito que seja um sítio só.
 /// </para>
 /// </summary>
-public sealed class SaftMasterData(ICustomerDirectory customers) : ISaftMasterData
+public sealed class SaftMasterData(
+    ICustomerDirectory customers,
+    ISupplierDirectory suppliers) : ISaftMasterData
 {
+    public async Task<IReadOnlyList<SaftSupplier>> ListSuppliersAsync(
+        CancellationToken cancellationToken)
+    {
+        var fornecedores = await suppliers.ListAllAsync(cancellationToken);
+
+        return [.. fornecedores.Select(f => new SaftSupplier(
+            Identificador(f.SupplierId),
+            f.TaxId,
+            f.Name,
+            new SaftAddress(
+                f.BillingAddress.Detail,
+                f.BillingAddress.City,
+                f.BillingAddress.Country)))];
+    }
+
     public async Task<IReadOnlyList<SaftCustomer>> ListCustomersAsync(
         CancellationToken cancellationToken)
     {

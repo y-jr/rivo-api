@@ -603,8 +603,12 @@ internal sealed class FakeSupplierDirectory(SupplierReference? supplier = null) 
                 ? supplier
                 : null);
 
+    public Task<IReadOnlyList<SupplierReference>> ListAllAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<SupplierReference>>(supplier is null ? [] : [supplier]);
+
     public Task<SupplierRegistrationResult> RegisterAsync(
-        string name, string taxId, string? iban, string? email, string? phone,
+        string name, string taxId, string addressDetail, string city, string country,
+        string? iban, string? email, string? phone,
         Guid actorId, CancellationToken cancellationToken) =>
         Task.FromResult(SupplierRegistrationResult.Success(Guid.CreateVersion7()));
 }

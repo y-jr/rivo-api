@@ -129,13 +129,19 @@ internal sealed class FakeSupplierDirectory : ISupplierDirectory
     public Task<SupplierReference?> FindByTaxIdAsync(string taxId, CancellationToken cancellationToken) =>
         Task.FromResult<SupplierReference?>(null);
 
+    public Task<IReadOnlyList<SupplierReference>> ListAllAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<SupplierReference>>([]);
+
     public Task<SupplierRegistrationResult> RegisterAsync(
-        string name, string taxId, string? iban, string? email, string? phone,
+        string name, string taxId, string addressDetail, string city, string country,
+        string? iban, string? email, string? phone,
         Guid actorId, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(taxId))
+        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(taxId)
+            || string.IsNullOrWhiteSpace(addressDetail) || string.IsNullOrWhiteSpace(city))
         {
-            return Task.FromResult(SupplierRegistrationResult.Rejected("Nome e NIF são obrigatórios."));
+            return Task.FromResult(
+                SupplierRegistrationResult.Rejected("Nome, NIF e morada são obrigatórios."));
         }
 
         if (_byTaxId.TryGetValue(taxId, out var existingId))

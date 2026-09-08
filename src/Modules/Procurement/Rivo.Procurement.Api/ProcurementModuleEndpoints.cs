@@ -110,6 +110,14 @@ public static class ProcurementModuleEndpoints
         var resultado = await registerSupplier.ExecuteAsync(
             request.Name,
             request.TaxId,
+            request.AddressDetail,
+            request.City,
+
+            // `AO` por omissão: a esmagadora maioria dos fornecedores de uma
+            // PME angolana é angolana, e o campo é obrigatório no SAF-T. Quem
+            // tem fornecedor estrangeiro indica-o; quem não indica nada teria
+            // ficado sem morada, que é pior.
+            request.Country ?? "AO",
             request.Iban,
             request.Email,
             request.Phone,
@@ -546,9 +554,18 @@ public static class ProcurementModuleEndpoints
 /// Opcional. Verificado pela norma ISO 13616 — um IBAN com um dígito trocado é
 /// recusado com `400`, e não guardado à espera de pagar a outra pessoa.
 /// </param>
+/// <param name="AddressDetail">
+/// Morada de facturação. <strong>Obrigatória desde 2026-09-08</strong> — o
+/// SAF-T exige-a no fornecedor, e o que não se captura no registo não se
+/// reconstrói no dia da entrega à AGT.
+/// </param>
+/// <param name="Country">ISO 3166-1 alpha-2. Nulo vale `AO`.</param>
 public sealed record RegisterSupplierRequest(
     string Name,
     string TaxId,
+    string AddressDetail,
+    string City,
+    string? Country,
     string? Iban,
     string? Email,
     string? Phone);

@@ -46,6 +46,16 @@ public sealed class ProcurementDbContext(DbContextOptions<ProcurementDbContext> 
             supplier.HasIndex(s => s.TaxId).IsUnique();
 
             supplier.HasIndex(s => s.Name);
+
+            // Morada como propriedade owned: colunas na mesma tabela, e não
+            // uma linha à parte. É objecto de valor — não tem identidade nem
+            // ciclo de vida próprio. Mesmo desenho de `commercial.customer`.
+            supplier.OwnsOne(s => s.BillingAddress, address =>
+            {
+                address.Property(a => a.Detail).HasColumnName("billing_detail").HasMaxLength(300).IsRequired();
+                address.Property(a => a.City).HasColumnName("billing_city").HasMaxLength(100).IsRequired();
+                address.Property(a => a.Country).HasColumnName("billing_country").HasMaxLength(2).IsRequired();
+            });
         });
 
         builder.Entity<PurchaseRequisition>(requisition =>

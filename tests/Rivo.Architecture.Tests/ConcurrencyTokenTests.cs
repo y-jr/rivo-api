@@ -121,6 +121,12 @@ public class ConcurrencyTokenTests
             "Objecto de valor, não agregado: substitui-se inteira e não tem identidade nem ciclo de " +
             "vida próprio. As colunas vivem na tabela de `Customer`, que tem o contador.",
 
+        ["SupplierAddress"] =
+            "Mesma razão de `BillingAddress`, no fornecedor: objecto de valor, colunas na tabela de " +
+            "`Supplier`, que tem o contador. Existe em duplicado e não partilhado porque são módulos " +
+            "distintos — e porque o SAF-T lhes dá estruturas diferentes, com lista fechada de países " +
+            "só do lado do fornecedor.",
+
         ["JournalEntryLine"] =
             "Imutável: criada com o lançamento e nunca alterada. Um lançamento lança-se inteiro " +
             "ou não equilibra, e corrigir faz-se com outro lançamento — de regularização ou de " +

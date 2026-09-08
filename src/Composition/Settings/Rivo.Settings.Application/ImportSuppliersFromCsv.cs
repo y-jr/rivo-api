@@ -8,13 +8,21 @@ namespace Rivo.Settings.Application;
 /// validação e mesma verificação de NIF duplicado do formulário normal.
 ///
 /// <para>
-/// Colunas obrigatórias: <c>Nome</c>, <c>NIF</c>. Opcionais: <c>IBAN</c>,
-/// <c>Email</c>, <c>Telefone</c>.
+/// Colunas obrigatórias: <c>Nome</c>, <c>NIF</c>, <c>Morada</c>,
+/// <c>Cidade</c>, <c>Pais</c>. Opcionais: <c>IBAN</c>, <c>Email</c>,
+/// <c>Telefone</c>.
+/// </para>
+///
+/// <para>
+/// ⚠ <strong>A morada passou a obrigatória a 2026-09-08</strong>, quando o
+/// Fornecedor ganhou morada de facturação por exigência do SAF-T. Ficheiros
+/// antigos, sem essas colunas, passam a ser recusados no cabeçalho — em vez de
+/// importarem fornecedores que a exportação depois não consegue emitir.
 /// </para>
 /// </summary>
 public sealed class ImportSuppliersFromCsv(ISupplierDirectory suppliers)
 {
-    private static readonly string[] RequiredColumns = ["Nome", "NIF"];
+    private static readonly string[] RequiredColumns = ["Nome", "NIF", "Morada", "Cidade", "Pais"];
 
     public async Task<CsvImportResult> ExecuteAsync(string csvContent, Guid actorId, CancellationToken cancellationToken)
     {
@@ -48,6 +56,9 @@ public sealed class ImportSuppliersFromCsv(ISupplierDirectory suppliers)
             var result = await suppliers.RegisterAsync(
                 Get("Nome"),
                 Get("NIF"),
+                Get("Morada"),
+                Get("Cidade"),
+                Get("Pais"),
                 OrNull(Get("IBAN")),
                 OrNull(Get("Email")),
                 OrNull(Get("Telefone")),

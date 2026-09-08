@@ -19,9 +19,20 @@ public sealed class SupplierDirectory(IProcurementStore store, RegisterSupplier 
         return fornecedor is null ? null : ToReference(fornecedor);
     }
 
+    public async Task<IReadOnlyList<SupplierReference>> ListAllAsync(CancellationToken cancellationToken)
+    {
+        // Inclui os inactivos — ver `ISupplierDirectory.ListAllAsync`.
+        var fornecedores = await store.ListSuppliersAsync(includeInactive: true, cancellationToken);
+
+        return [.. fornecedores.Select(ToReference)];
+    }
+
     public async Task<SupplierRegistrationResult> RegisterAsync(
         string name,
         string taxId,
+        string addressDetail,
+        string city,
+        string country,
         string? iban,
         string? email,
         string? phone,
@@ -29,7 +40,8 @@ public sealed class SupplierDirectory(IProcurementStore store, RegisterSupplier 
         CancellationToken cancellationToken)
     {
         var result = await register.ExecuteAsync(
-            name, taxId, iban, email, phone, new AuditContext(actorId, null, null), cancellationToken);
+            name, taxId, addressDetail, city, country, iban, email, phone,
+            new AuditContext(actorId, null, null), cancellationToken);
 
         return result.Outcome switch
         {
@@ -56,7 +68,16 @@ public sealed class SupplierDirectory(IProcurementStore store, RegisterSupplier 
     }
 
     internal static SupplierReference ToReference(Supplier supplier) =>
-        new(supplier.Id, supplier.Name, supplier.TaxId, supplier.Iban, ToContract(supplier.Status).ToString());
+        new(
+            supplier.Id,
+            supplier.Name,
+            supplier.TaxId,
+            supplier.Iban,
+            ToContract(supplier.Status).ToString(),
+            new Contracts.SupplierAddress(
+                supplier.BillingAddress.Detail,
+                supplier.BillingAddress.City,
+                supplier.BillingAddress.Country));
 
     /// <summary>
     /// Traduz o estado do domínio para o publicado. Os dois enumerados existem
