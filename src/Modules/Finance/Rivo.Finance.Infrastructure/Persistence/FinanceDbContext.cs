@@ -223,6 +223,10 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
 
             line.Property(l => l.Description).HasMaxLength(300).IsRequired();
             line.Property(l => l.TaxCode).HasMaxLength(10).IsRequired();
+
+            // Os máximos são os do XSD, como na linha de factura.
+            line.Property(l => l.ProductCode).HasMaxLength(60).IsRequired();
+            line.Property(l => l.UnitOfMeasure).HasMaxLength(20).IsRequired();
             line.Property(l => l.Quantity).HasPrecision(18, 4);
             line.Property(l => l.UnitPrice).HasPrecision(18, 4);
             line.Property(l => l.TaxPercentage).HasPrecision(5, 2);

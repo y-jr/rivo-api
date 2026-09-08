@@ -22,6 +22,74 @@ public sealed class SalesInvoiceReporting(ISalesInvoiceStore store) : ISalesInvo
         return [.. facturas.Select(Traduzir)];
     }
 
+    public async Task<IReadOnlyList<ReportedCreditNote>> ListCreditNotesForPeriodAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken)
+    {
+        // `salesInvoiceId: null` — todas as do período. O `ListCreditNotesAsync`
+        // filtra pela factura corrigida, não por data, por isso a janela
+        // aplica-se aqui.
+        var notas = await store.ListCreditNotesAsync(null, cancellationToken);
+
+        return
+        [
+            .. notas
+                .Where(n => n.IssuedOn >= from && n.IssuedOn <= to)
+                .Select(n => new ReportedCreditNote(n.CorrectedInvoiceNumber, Traduzir(n))),
+        ];
+    }
+
+    /// <summary>
+    /// A nota de crédito na mesma forma da factura.
+    ///
+    /// <para>
+    /// <strong>Sem <c>Hash</c> nem <c>SourceID</c>, e é honesto que assim
+    /// seja:</strong> a cadeia de integridade do ADR-060 cobre a factura de
+    /// venda e mais nada. Devolver aqui um elo inventado seria pior do que
+    /// devolver nulo — quem exporta escreve <c>"0"</c>, que diz a verdade.
+    /// </para>
+    /// </summary>
+    private static ReportedInvoice Traduzir(CreditNote nota) =>
+        new(
+            nota.Number.Formatted,
+            nota.Number.Type.ToString(),
+            nota.IssuedOn,
+            nota.TaxPointDate,
+
+            // A nota não guarda instante de registo. A data do documento à
+            // meia-noite é o que o XSD prescreve quando é desconhecido — o
+            // mesmo que a migração das facturas antigas usou.
+            new DateTimeOffset(nota.IssuedOn.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
+            nota.CancelledAt
+                ?? new DateTimeOffset(nota.IssuedOn.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
+            nota.Status is InvoiceStatus.Cancelled,
+            nota.CancellationReason,
+            nota.CustomerId,
+            nota.Customer.Name,
+            nota.Customer.TaxId,
+            nota.Customer.AddressDetail,
+            nota.Customer.City,
+            nota.Customer.Country,
+            IssuedByUserId: null,
+            Hash: null,
+            nota.Currency,
+            nota.NetTotal,
+            nota.TaxTotal,
+            nota.GrossTotal,
+            [.. nota.Lines
+                .OrderBy(l => l.LineNumber)
+                .Select(l => new ReportedInvoiceLine(
+                    l.LineNumber,
+                    l.ProductCode,
+                    l.Description,
+                    l.Quantity,
+                    l.UnitOfMeasure,
+                    l.UnitPrice,
+                    l.NetAmount,
+                    l.TaxCode,
+                    l.TaxPercentage))]);
+
     private static ReportedInvoice Traduzir(SalesInvoice factura) =>
         new(
             factura.Number.Formatted,

@@ -51,6 +51,16 @@ public interface ISaftMasterData
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// As notas de crédito do período. Vivem na mesma secção das facturas no
+    /// ficheiro, e <strong>debitam em vez de creditar</strong> — omiti-las
+    /// sobredeclara a receita.
+    /// </summary>
+    Task<IReadOnlyList<SaftCreditNote>> ListCreditNotesAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -160,6 +170,12 @@ public sealed record SaftInvoice(
     decimal TaxTotal,
     decimal GrossTotal,
     IReadOnlyList<SaftInvoiceLine> Lines);
+
+/// <param name="CorrectedInvoiceNumber">
+/// A factura que esta nota corrige. Vai a <c>References</c> — o SAF-T
+/// exige-o quando o tipo é <c>NC</c>.
+/// </param>
+public sealed record SaftCreditNote(string CorrectedInvoiceNumber, SaftInvoice Document);
 
 public sealed record SaftInvoiceLine(
     int LineNumber,

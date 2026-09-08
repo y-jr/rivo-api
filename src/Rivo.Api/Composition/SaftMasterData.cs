@@ -32,6 +32,17 @@ public sealed class SaftMasterData(
     IInventoryCatalogue catalogue,
     ISalesInvoiceReporting invoices) : ISaftMasterData
 {
+    public async Task<IReadOnlyList<SaftCreditNote>> ListCreditNotesAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken)
+    {
+        var notas = await invoices.ListCreditNotesForPeriodAsync(from, to, cancellationToken);
+
+        return [.. notas.Select(n => new SaftCreditNote(
+            n.CorrectedInvoiceNumber, Traduzir(n.Invoice)))];
+    }
+
     public async Task<IReadOnlyList<SaftInvoice>> ListInvoicesAsync(
         DateOnly from,
         DateOnly to,
@@ -39,7 +50,15 @@ public sealed class SaftMasterData(
     {
         var facturas = await invoices.ListForPeriodAsync(from, to, cancellationToken);
 
-        return [.. facturas.Select(f => new SaftInvoice(
+        return [.. facturas.Select(Traduzir)];
+    }
+
+    /// <summary>
+    /// Um documento de venda no vocabulario do ficheiro. Serve facturas e notas
+    /// de credito: os dois partilham a forma, e o que muda e o sinal.
+    /// </summary>
+    private static SaftInvoice Traduzir(ReportedInvoice f) =>
+        new SaftInvoice(
             f.Number,
             f.Type,
             f.IssuedOn,
@@ -81,8 +100,7 @@ public sealed class SaftMasterData(
                 l.UnitPrice,
                 l.NetAmount,
                 l.TaxCode,
-                l.TaxPercentage))]))];
-    }
+                l.TaxPercentage))]);
 
     public async Task<IReadOnlyList<SaftProduct>> ListProductsAsync(
         CancellationToken cancellationToken)

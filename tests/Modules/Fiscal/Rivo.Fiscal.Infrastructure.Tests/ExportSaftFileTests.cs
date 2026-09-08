@@ -564,6 +564,62 @@ public class ExportSaftFileTests
     }
 
     [Fact]
+    public async Task NotaDeCredito_DebitaEReferenciaAFacturaQueCorrige()
+    {
+        // ⚠ Apanhado no ciclo completo pela API, não em teste: a nota de
+        // crédito emitida não aparecia no ficheiro. Isso **sobredeclara a
+        // receita** — a nota reduz o que a factura pede, e um ficheiro que a
+        // esconde diz à AGT que se recebeu mais do que se recebeu.
+        var factura = Factura("FT S001/1", liquido: 100_000m);
+
+        var nota = new SaftCreditNote(
+            "FT S001/1",
+            Factura("NC S001/1", liquido: 20_000m) with { Type = "NC" });
+
+        var resultado = await new ExportSaftFile(
+            Empresa(),
+            new MasterDataFalso(
+                [Cliente()],
+                [],
+                [new SaftProduct("CIM-42", "Cimento Portland 50 kg")],
+                [factura],
+                [nota]),
+            new TaxRateStoreFalso([Taxa("NOR", 14m)]),
+            new FakeTimeProvider(Agora))
+            .ExecuteAsync(
+                2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), CancellationToken.None);
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+
+        var vendas = resultado.File!.Descendants(ExportSaftFile.Ns + "SalesInvoices").Single();
+
+        Assert.Equal("2", vendas.Element(ExportSaftFile.Ns + "NumberOfEntries")!.Value);
+
+        // ⚠ **Os dois totais não são simétricos.** A factura credita, a nota
+        // debita. Somar a nota ao crédito sobredeclararia a receita pelo dobro
+        // do valor creditado — e é por isso que o XSD tem os dois campos.
+        Assert.Equal("100000.00", vendas.Element(ExportSaftFile.Ns + "TotalCredit")!.Value);
+        Assert.Equal("20000.00", vendas.Element(ExportSaftFile.Ns + "TotalDebit")!.Value);
+
+        var linhaDaNota = resultado.File!
+            .Descendants(ExportSaftFile.Ns + "Invoice")
+            .Single(i => i.Element(ExportSaftFile.Ns + "InvoiceType")!.Value == "NC")
+            .Element(ExportSaftFile.Ns + "Line")!;
+
+        Assert.Null(linhaDaNota.Element(ExportSaftFile.Ns + "CreditAmount"));
+        Assert.Equal("20000.00", linhaDaNota.Element(ExportSaftFile.Ns + "DebitAmount")!.Value);
+
+        // O SAF-T exige a referência à factura corrigida quando o tipo é `NC`.
+        Assert.Equal(
+            "FT S001/1",
+            linhaDaNota
+                .Element(ExportSaftFile.Ns + "References")!
+                .Element(ExportSaftFile.Ns + "Reference")!.Value);
+    }
+
+    [Fact]
     public async Task SemFacturas_ASeccaoNaoAparece()
     {
         // Mesma regra do `TaxTable`: `SalesInvoices` exige `NumberOfEntries` e
@@ -882,8 +938,19 @@ internal sealed class MasterDataFalso(
     IReadOnlyList<SaftCustomer> clientes,
     IReadOnlyList<SaftSupplier>? fornecedores = null,
     IReadOnlyList<SaftProduct>? artigos = null,
-    IReadOnlyList<SaftInvoice>? facturas = null) : ISaftMasterData
+    IReadOnlyList<SaftInvoice>? facturas = null,
+    IReadOnlyList<SaftCreditNote>? notas = null) : ISaftMasterData
 {
+    public Task<IReadOnlyList<SaftCreditNote>> ListCreditNotesAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken)
+    {
+        Chamadas++;
+
+        return Task.FromResult<IReadOnlyList<SaftCreditNote>>(notas ?? []);
+    }
+
     public Task<IReadOnlyList<SaftInvoice>> ListInvoicesAsync(
         DateOnly from,
         DateOnly to,

@@ -231,7 +231,9 @@ public sealed class CreditNoteLine
         string taxCode,
         decimal taxPercentage,
         decimal netAmount,
-        decimal taxAmount)
+        decimal taxAmount,
+        string productCode,
+        string unitOfMeasure)
     {
         Id = id;
         LineNumber = lineNumber;
@@ -242,6 +244,8 @@ public sealed class CreditNoteLine
         TaxPercentage = taxPercentage;
         NetAmount = netAmount;
         TaxAmount = taxAmount;
+        ProductCode = productCode;
+        UnitOfMeasure = unitOfMeasure;
     }
 
     /// <summary>Construtor sem parâmetros para materialização pelo ORM.</summary>
@@ -249,6 +253,8 @@ public sealed class CreditNoteLine
     {
         Description = string.Empty;
         TaxCode = string.Empty;
+        ProductCode = string.Empty;
+        UnitOfMeasure = string.Empty;
     }
 
     public Guid Id { get; private set; }
@@ -270,6 +276,12 @@ public sealed class CreditNoteLine
     public decimal NetAmount { get; private set; }
 
     public decimal TaxAmount { get; private set; }
+
+    /// <summary>Código do artigo — `ProductCode` no SAF-T.</summary>
+    public string ProductCode { get; private set; }
+
+    /// <summary>Unidade de medida — `UnitOfMeasure` no SAF-T.</summary>
+    public string UnitOfMeasure { get; private set; }
 
     internal static CreditNoteLine Create(int lineNumber, NewInvoiceLine line)
     {
@@ -312,6 +324,11 @@ public sealed class CreditNoteLine
             (line.TaxCode ?? string.Empty).Trim().ToUpperInvariant(),
             line.TaxPercentage,
             liquido,
-            imposto);
+            imposto,
+
+            // Os mesmos da linha que se corrige — a nota descreve o mesmo
+            // artigo, e o SAF-T exige-os em cada linha de documento.
+            line.ProductCode.Trim().ToUpperInvariant(),
+            line.UnitOfMeasure.Trim());
     }
 }

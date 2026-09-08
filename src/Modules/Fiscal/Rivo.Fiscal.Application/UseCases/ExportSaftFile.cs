@@ -269,7 +269,13 @@ public sealed class ExportSaftFile(
          * honesta — emiti-lo produziria um ficheiro que a AGT rejeita, e
          * omiti-lo produziria um ficheiro incompleto que também rejeita.
          */
-        var linhaComCodigoInvalido = facturas
+        var notas = await masterData.ListCreditNotesAsync(from, to, cancellationToken);
+
+        // Os documentos todos, para as verificações que não distinguem
+        // factura de nota: código de imposto, artigo, cliente.
+        var documentos = facturas.Concat(notas.Select(n => n.Document)).ToList();
+
+        var linhaComCodigoInvalido = documentos
             .SelectMany(f => f.Lines.Select(l => (Factura: f, Linha: l)))
             .FirstOrDefault(x => !TaxCodes.IsSaftTaxCode(x.Linha.TaxCode));
 
@@ -294,7 +300,7 @@ public sealed class ExportSaftFile(
             .Select(c => c.CustomerId)
             .ToHashSet(StringComparer.Ordinal);
 
-        var clientesDeFactura = facturas
+        var clientesDeFactura = documentos
             .Select(f => f.Customer)
             .Where(c => !clientesDeclarados.Contains(c.CustomerId))
             .GroupBy(c => c.CustomerId, StringComparer.Ordinal)
@@ -306,7 +312,7 @@ public sealed class ExportSaftFile(
             .Select(a => a.Code)
             .ToHashSet(StringComparer.Ordinal);
 
-        var acrescentados = facturas
+        var acrescentados = documentos
             .SelectMany(f => f.Lines)
             .Where(l => !codigosNoCatalogo.Contains(l.ProductCode))
             .GroupBy(l => l.ProductCode, StringComparer.Ordinal)
@@ -346,8 +352,8 @@ public sealed class ExportSaftFile(
 
                 // Mesma regra do `TaxTable`: ausente quando não há documentos,
                 // porque `SalesInvoices` exige `NumberOfEntries` e os totais.
-                facturas.Count > 0
-                    ? new XElement(Ns + "SourceDocuments", Vendas(facturas))
+                documentos.Count > 0
+                    ? new XElement(Ns + "SourceDocuments", Vendas(facturas, notas))
                     : null));
 
         return ExportSaftResult.Generated(documento);
@@ -501,19 +507,39 @@ public sealed class ExportSaftFile(
     /// mudam isto.
     /// </para>
     /// </summary>
-    private XElement Vendas(IReadOnlyList<SaftInvoice> facturas)
+    private XElement Vendas(
+        IReadOnlyList<SaftInvoice> facturas,
+        IReadOnlyList<SaftCreditNote> notas)
     {
-        var vivas = facturas.Where(f => !f.Cancelled).ToList();
-
         return new XElement(
             Ns + "SalesInvoices",
-            new XElement(Ns + "NumberOfEntries", facturas.Count),
-            new XElement(Ns + "TotalDebit", Montante(0m)),
-            new XElement(Ns + "TotalCredit", Montante(vivas.Sum(f => f.NetTotal))),
-            facturas.Select(Factura));
+            new XElement(Ns + "NumberOfEntries", facturas.Count + notas.Count),
+
+            // ⚠ **Os dois totais não são simétricos por acaso.** Uma factura
+            // credita e uma nota de crédito debita — é essa a diferença entre
+            // os dois documentos, e é por isso que o XSD tem os dois campos.
+            // Somar as notas ao crédito sobredeclararia a receita pelo dobro
+            // do valor creditado.
+            new XElement(
+                Ns + "TotalDebit",
+                Montante(notas
+                    .Where(n => !n.Document.Cancelled)
+                    .Sum(n => n.Document.NetTotal))),
+            new XElement(
+                Ns + "TotalCredit",
+                Montante(facturas.Where(f => !f.Cancelled).Sum(f => f.NetTotal))),
+
+            facturas.Select(f => Factura(f, null)),
+            notas.Select(n => Factura(n.Document, n.CorrectedInvoiceNumber)));
     }
 
-    private XElement Factura(SaftInvoice factura)
+    /// <param name="facturaCorrigida">
+    /// Preenchido só nas notas de crédito. Muda duas coisas: as linhas saem
+    /// como <c>DebitAmount</c> em vez de <c>CreditAmount</c>, e cada uma leva
+    /// a referência à factura que corrige — que o SAF-T exige quando o tipo é
+    /// <c>NC</c>.
+    /// </param>
+    private XElement Factura(SaftInvoice factura, string? facturaCorrigida)
     {
         var elementos = new List<XObject>
         {
@@ -556,7 +582,8 @@ public sealed class ExportSaftFile(
             new XElement(Ns + "CustomerID", factura.Customer.CustomerId),
         };
 
-        elementos.AddRange(factura.Lines.Select(l => Linha(l, factura.TaxPointDate)));
+        elementos.AddRange(
+            factura.Lines.Select(l => Linha(l, factura.TaxPointDate, facturaCorrigida)));
 
         elementos.Add(new XElement(
             Ns + "DocumentTotals",
@@ -583,7 +610,8 @@ public sealed class ExportSaftFile(
     /// <c>CreditAmount</c> e não <c>DebitAmount</c>: uma venda credita.
     /// </para>
     /// </summary>
-    private XElement Linha(SaftInvoiceLine linha, DateOnly taxPointDate) =>
+    private XElement Linha(
+        SaftInvoiceLine linha, DateOnly taxPointDate, string? facturaCorrigida) =>
         new(
             Ns + "Line",
             new XElement(Ns + "LineNumber", linha.LineNumber),
@@ -593,8 +621,22 @@ public sealed class ExportSaftFile(
             new XElement(Ns + "UnitOfMeasure", linha.UnitOfMeasure),
             new XElement(Ns + "UnitPrice", Montante(linha.UnitPrice)),
             new XElement(Ns + "TaxPointDate", Data(taxPointDate)),
+
+            // `References` antes de `Description`: `xs:sequence`. O XSD marca-o
+            // opcional, mas a documentacao diz que "o preenchimento e
+            // obrigatorio quando o campo 4.1.4.8 for preenchido com NC".
+            facturaCorrigida is null
+                ? null
+                : new XElement(
+                    Ns + "References",
+                    new XElement(Ns + "Reference", facturaCorrigida)),
+
             new XElement(Ns + "Description", linha.Description),
-            new XElement(Ns + "CreditAmount", Montante(linha.NetAmount)),
+
+            // Uma nota de credito debita; uma factura credita.
+            facturaCorrigida is null
+                ? new XElement(Ns + "CreditAmount", Montante(linha.NetAmount))
+                : new XElement(Ns + "DebitAmount", Montante(linha.NetAmount)),
             new XElement(
                 Ns + "Tax",
                 new XElement(

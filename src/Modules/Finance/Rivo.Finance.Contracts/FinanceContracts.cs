@@ -334,7 +334,41 @@ public interface ISalesInvoiceReporting
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// As notas de crédito emitidas no período, incluindo as anuladas.
+    ///
+    /// <para>
+    /// <strong>Separadas das facturas porque somam ao contrário.</strong> No
+    /// SAF-T as duas vivem na mesma secção <c>SalesInvoices</c>, mas uma
+    /// factura credita e uma nota debita — <c>TotalCredit</c> e
+    /// <c>TotalDebit</c> existem exactamente por isso. Misturá-las numa lista
+    /// só obrigaria quem lê a descobrir de que lado está cada uma.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠ <strong>Omiti-las sobredeclara a receita.</strong> Uma nota de
+    /// crédito reduz o que a factura pede, e um ficheiro que a esconde diz à
+    /// AGT que se recebeu mais do que se recebeu.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<ReportedCreditNote>> ListCreditNotesForPeriodAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken);
 }
+
+/// <param name="CorrectedInvoiceNumber">
+/// O número da factura que esta nota corrige. Vai a <c>References</c> no
+/// ficheiro — o SAF-T exige-o quando o tipo de documento é <c>NC</c>.
+/// </param>
+/// <param name="Invoice">
+/// O resto, na mesma forma da factura: os dois documentos partilham quase
+/// tudo, e o que muda é o sinal.
+/// </param>
+public sealed record ReportedCreditNote(
+    string CorrectedInvoiceNumber,
+    ReportedInvoice Invoice);
 
 /// <param name="CustomerId">Nulo numa venda a consumidor final.</param>
 /// <param name="Cancelled">
