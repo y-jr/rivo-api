@@ -32,6 +32,36 @@ public sealed class SaftMasterData(
     IInventoryCatalogue catalogue,
     ISalesInvoiceReporting invoices) : ISaftMasterData
 {
+    public async Task<IReadOnlyList<SaftPayment>> ListPaymentsAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken)
+    {
+        var recibos = await invoices.ListReceiptsForPeriodAsync(from, to, cancellationToken);
+
+        return [.. recibos.Select(r => new SaftPayment(
+            r.Number,
+            r.ReceivedOn,
+            r.StatusDate,
+            r.Cancelled,
+            r.CancellationReason,
+
+            // A mesma conversão de sempre, pela mesma razão: o `CustomerID` do
+            // recibo tem de existir na tabela de clientes do ficheiro.
+            new SaftCustomer(
+                r.CustomerId is { } cliente
+                    ? Identificador(cliente)
+                    : ExportSaftFile.ConsumidorFinal,
+                r.CustomerTaxId,
+                r.CustomerName,
+                new SaftAddress(
+                    r.CustomerAddressDetail, r.CustomerCity, r.CustomerCountry)),
+            r.Method,
+            r.Total,
+            [.. r.Lines.Select(l => new SaftSettlement(
+                l.LineNumber, l.InvoiceNumber, l.InvoiceDate, l.Amount))]))];
+    }
+
     public async Task<IReadOnlyList<SaftCreditNote>> ListCreditNotesAsync(
         DateOnly from,
         DateOnly to,

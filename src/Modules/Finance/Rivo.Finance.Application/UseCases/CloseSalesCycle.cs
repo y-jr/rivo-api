@@ -250,7 +250,15 @@ public sealed class RegisterReceipt(
     {
         if (settlements is null || settlements.Count == 0)
         {
-            return RegisterReceiptResult.Rejected("Um recibo diz sempre a que factura o dinheiro foi.");
+            // ⚠ A mensagem nomeia o campo, e é de propósito. Um recibo pode
+            // liquidar várias facturas de uma vez, por isso o corpo leva
+            // `settlements` e não um `salesInvoiceId` no topo como a nota de
+            // crédito. Sem isto dito, quem manda o identificador solto lê
+            // "diz sempre a que factura" logo depois de o ter dito.
+            return RegisterReceiptResult.Rejected(
+                "Um recibo diz sempre a que factura o dinheiro foi: indique-as em "
+                + "`settlements`, cada uma com `salesInvoiceId` e `amount`. "
+                + "Um recibo pode liquidar mais do que uma.");
         }
 
         var liquidacoes = new List<NewSettlement>(settlements.Count);

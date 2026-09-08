@@ -40,6 +40,61 @@ public sealed class SalesInvoiceReporting(ISalesInvoiceStore store) : ISalesInvo
         ];
     }
 
+    public async Task<IReadOnlyList<ReportedReceipt>> ListReceiptsForPeriodAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken)
+    {
+        var recibos = await store.ListReceiptsAsync(null, from, to, cancellationToken);
+
+        // A data de cada factura liquidada, resolvida uma vez por factura.
+        //
+        // ⚠ **É uma consulta por factura distinta, e é o custo conhecido
+        // desta secção.** A alternativa era copiar a data para a linha do
+        // recibo no momento do registo — a cópia que BR-18 proíbe. Num ano com
+        // muitos recibos isto pesa; quando pesar, a resposta é uma leitura em
+        // lote no store, não a cópia.
+        var datas = new Dictionary<Guid, DateOnly>();
+
+        foreach (var id in recibos.SelectMany(r => r.Lines).Select(s => s.SalesInvoiceId).Distinct())
+        {
+            if (await store.FindAsync(id, cancellationToken) is { } factura)
+            {
+                datas[id] = factura.IssuedOn;
+            }
+        }
+
+        return
+        [
+            .. recibos.Select(r => new ReportedReceipt(
+                r.Number.Formatted,
+                r.ReceivedOn,
+                r.CancelledAt
+                    ?? new DateTimeOffset(r.ReceivedOn.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
+                r.Status is InvoiceStatus.Cancelled,
+                r.CancellationReason,
+                r.CustomerId,
+                r.Customer.Name,
+                r.Customer.TaxId,
+                r.Customer.AddressDetail,
+                r.Customer.City,
+                r.Customer.Country,
+                r.Method.ToString(),
+                r.Total,
+                [.. r.Lines
+                    .OrderBy(s => s.LineNumber)
+                    .Select(s => new ReportedSettlement(
+                        s.LineNumber,
+                        s.InvoiceNumber,
+
+                        // A do recibo quando a factura não se encontra — não
+                        // deve acontecer, e inventar uma data seria pior do
+                        // que uma data conservadora e visível.
+                        datas.TryGetValue(s.SalesInvoiceId, out var data) ? data : r.ReceivedOn,
+                        s.Amount))]))
+        ];
+    }
+
     /// <summary>
     /// A nota de crédito na mesma forma da factura.
     ///

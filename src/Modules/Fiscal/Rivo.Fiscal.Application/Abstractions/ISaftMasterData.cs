@@ -61,6 +61,12 @@ public interface ISaftMasterData
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken);
+
+    /// <summary>Os recibos do período, para a secção `Payments`.</summary>
+    Task<IReadOnlyList<SaftPayment>> ListPaymentsAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -187,6 +193,30 @@ public sealed record SaftInvoiceLine(
     decimal NetAmount,
     string TaxCode,
     decimal TaxPercentage);
+
+/// <summary>
+/// Um recibo, no vocabulário do ficheiro.
+/// </summary>
+/// <param name="Method">
+/// Meio de pagamento no código do SAF-T — `NU`, `TB`, `MB`… Não é rótulo
+/// escolhido aqui.
+/// </param>
+public sealed record SaftPayment(
+    string Number,
+    DateOnly ReceivedOn,
+    DateTimeOffset StatusDate,
+    bool Cancelled,
+    string? CancellationReason,
+    SaftCustomer Customer,
+    string Method,
+    decimal Total,
+    IReadOnlyList<SaftSettlement> Lines);
+
+public sealed record SaftSettlement(
+    int LineNumber,
+    string InvoiceNumber,
+    DateOnly InvoiceDate,
+    decimal Amount);
 
 /// <param name="Country">ISO 3166-1 alpha-2.</param>
 public sealed record SaftAddress(string Detail, string City, string Country);

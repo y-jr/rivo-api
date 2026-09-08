@@ -356,7 +356,48 @@ public interface ISalesInvoiceReporting
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Os recibos emitidos no período, incluindo os estornados. Vão à secção
+    /// <c>Payments</c> do SAF-T.
+    /// </summary>
+    Task<IReadOnlyList<ReportedReceipt>> ListReceiptsForPeriodAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken);
 }
+
+/// <param name="Method">
+/// Meio de pagamento <strong>no código do SAF-T</strong> — <c>NU</c>, <c>TB</c>,
+/// <c>MB</c>… Não é rótulo escolhido aqui, e mudá-lo partiria o ficheiro.
+/// </param>
+/// <param name="Cancelled">Estornado. Continua no ficheiro, com estado <c>A</c>.</param>
+public sealed record ReportedReceipt(
+    string Number,
+    DateOnly ReceivedOn,
+    DateTimeOffset StatusDate,
+    bool Cancelled,
+    string? CancellationReason,
+    Guid? CustomerId,
+    string CustomerName,
+    string CustomerTaxId,
+    string CustomerAddressDetail,
+    string CustomerCity,
+    string CustomerCountry,
+    string Method,
+    decimal Total,
+    IReadOnlyList<ReportedSettlement> Lines);
+
+/// <param name="InvoiceDate">
+/// A data da factura liquidada. <strong>Vem resolvida</strong> e não guardada na
+/// linha: o SAF-T exige-a em <c>SourceDocumentID</c>, e copiá-la para a linha
+/// do recibo seria a cópia que fica obsoleta em silêncio (BR-18).
+/// </param>
+public sealed record ReportedSettlement(
+    int LineNumber,
+    string InvoiceNumber,
+    DateOnly InvoiceDate,
+    decimal Amount);
 
 /// <param name="CorrectedInvoiceNumber">
 /// O número da factura que esta nota corrige. Vai a <c>References</c> no

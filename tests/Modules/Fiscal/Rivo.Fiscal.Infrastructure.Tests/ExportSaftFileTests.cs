@@ -620,6 +620,91 @@ public class ExportSaftFileTests
     }
 
     [Fact]
+    public async Task ComRecibos_ValidaContraOXsd()
+    {
+        var recibo = new SaftPayment(
+            "RG S001/1",
+            new DateOnly(2026, 3, 20),
+            new DateTimeOffset(2026, 3, 20, 0, 0, 0, TimeSpan.Zero),
+            Cancelled: false,
+            CancellationReason: null,
+            new SaftCustomer(
+                "CLI-1", "5417000001", "Padaria Kilamba, Lda.",
+                new SaftAddress("Rua 21 de Janeiro, 4", "Luanda", "AO")),
+            "MB",
+            114_000m,
+            [new SaftSettlement(1, "FT S001/1", new DateOnly(2026, 3, 15), 114_000m)]);
+
+        var resultado = await new ExportSaftFile(
+            Empresa(),
+            new MasterDataFalso(
+                [Cliente()], [], [new SaftProduct("CIM-42", "Cimento")], [], [], [recibo]),
+            new TaxRateStoreFalso([Taxa("NOR", 14m)]),
+            new FakeTimeProvider(Agora))
+            .ExecuteAsync(
+                2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), CancellationToken.None);
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+
+        var pagamento = Assert.Single(resultado.File!.Descendants(ExportSaftFile.Ns + "Payment"));
+
+        Assert.Equal("RG S001/1", pagamento.Element(ExportSaftFile.Ns + "PaymentRefNo")!.Value);
+        Assert.Equal("RG", pagamento.Element(ExportSaftFile.Ns + "PaymentType")!.Value);
+
+        // ⚠ A referência à factura liquidada, com a **data dela** — não a do
+        // recibo. Copiar a data para a linha do recibo no registo seria a
+        // cópia que BR-18 proíbe; resolve-se na leitura.
+        var origem = pagamento
+            .Descendants(ExportSaftFile.Ns + "SourceDocumentID")
+            .Single();
+
+        Assert.Equal("FT S001/1", origem.Element(ExportSaftFile.Ns + "OriginatingON")!.Value);
+        Assert.Equal("2026-03-15", origem.Element(ExportSaftFile.Ns + "InvoiceDate")!.Value);
+    }
+
+    [Fact]
+    public async Task ReciboEstornado_NaoContaParaOTotal()
+    {
+        var estornado = new SaftPayment(
+            "RG S001/2",
+            new DateOnly(2026, 3, 20),
+            new DateTimeOffset(2026, 3, 25, 0, 0, 0, TimeSpan.Zero),
+            Cancelled: true,
+            "Estornado por engano no montante",
+            new SaftCustomer(
+                "CLI-1", "5417000001", "Padaria Kilamba, Lda.",
+                new SaftAddress("Rua 21 de Janeiro, 4", "Luanda", "AO")),
+            "MB",
+            50_000m,
+            [new SaftSettlement(1, "FT S001/1", new DateOnly(2026, 3, 15), 50_000m)]);
+
+        var resultado = await new ExportSaftFile(
+            Empresa(),
+            new MasterDataFalso(
+                [Cliente()], [], [new SaftProduct("CIM-42", "Cimento")], [], [], [estornado]),
+            new TaxRateStoreFalso([Taxa("NOR", 14m)]),
+            new FakeTimeProvider(Agora))
+            .ExecuteAsync(
+                2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), CancellationToken.None);
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+
+        var pagamentos = resultado.File!.Descendants(ExportSaftFile.Ns + "Payments").Single();
+
+        // Continua no ficheiro — BR-14 — e com estado `A`. O que não faz é
+        // somar: mesma regra das facturas anuladas.
+        Assert.Equal("1", pagamentos.Element(ExportSaftFile.Ns + "NumberOfEntries")!.Value);
+        Assert.Equal("0.00", pagamentos.Element(ExportSaftFile.Ns + "TotalCredit")!.Value);
+        Assert.Equal(
+            "A",
+            resultado.File!.Descendants(ExportSaftFile.Ns + "PaymentStatus").Single().Value);
+    }
+
+    [Fact]
     public async Task SemFacturas_ASeccaoNaoAparece()
     {
         // Mesma regra do `TaxTable`: `SalesInvoices` exige `NumberOfEntries` e
@@ -939,8 +1024,19 @@ internal sealed class MasterDataFalso(
     IReadOnlyList<SaftSupplier>? fornecedores = null,
     IReadOnlyList<SaftProduct>? artigos = null,
     IReadOnlyList<SaftInvoice>? facturas = null,
-    IReadOnlyList<SaftCreditNote>? notas = null) : ISaftMasterData
+    IReadOnlyList<SaftCreditNote>? notas = null,
+    IReadOnlyList<SaftPayment>? recibos = null) : ISaftMasterData
 {
+    public Task<IReadOnlyList<SaftPayment>> ListPaymentsAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken)
+    {
+        Chamadas++;
+
+        return Task.FromResult<IReadOnlyList<SaftPayment>>(recibos ?? []);
+    }
+
     public Task<IReadOnlyList<SaftCreditNote>> ListCreditNotesAsync(
         DateOnly from,
         DateOnly to,

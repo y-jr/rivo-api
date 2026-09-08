@@ -18,10 +18,17 @@ namespace Rivo.Fiscal.Application.UseCases;
 ///
 /// <para>
 /// <strong>Estado: `Header`, todo o `MasterFiles` menos o plano de contas, e
-/// as facturas de venda em `SourceDocuments`.</strong> Falta
-/// `GeneralLedgerAccounts` (de `finance`, depende do PGC angolano que o
-/// ADR-037 recusou inventar), `GeneralLedgerEntries`, `MovementOfGoods`,
-/// `Payments` e `PurchaseInvoices`.
+/// em `SourceDocuments` as facturas de venda, as notas de crédito e os
+/// recibos.</strong> Falta `GeneralLedgerAccounts` (de `finance`, depende do
+/// PGC angolano que o ADR-037 recusou inventar), `GeneralLedgerEntries`,
+/// `MovementOfGoods` e `PurchaseInvoices`.
+/// </para>
+///
+/// <para>
+/// ⚠ <strong>`MovementOfGoods` não é uma secção a mais.</strong> O
+/// `StockMovement` de `inventory` é um lançamento interno — sem número de
+/// documento, sem série, sem cadeia e sem destinatário. A secção exige guias
+/// numeradas e assinadas, que é capacidade nova e não mapeamento.
 /// </para>
 ///
 /// <para>
@@ -270,6 +277,7 @@ public sealed class ExportSaftFile(
          * omiti-lo produziria um ficheiro incompleto que também rejeita.
          */
         var notas = await masterData.ListCreditNotesAsync(from, to, cancellationToken);
+        var recibos = await masterData.ListPaymentsAsync(from, to, cancellationToken);
 
         // Os documentos todos, para as verificações que não distinguem
         // factura de nota: código de imposto, artigo, cliente.
@@ -302,6 +310,7 @@ public sealed class ExportSaftFile(
 
         var clientesDeFactura = documentos
             .Select(f => f.Customer)
+            .Concat(recibos.Select(r => r.Customer))
             .Where(c => !clientesDeclarados.Contains(c.CustomerId))
             .GroupBy(c => c.CustomerId, StringComparer.Ordinal)
             .Select(g => g.First())
@@ -352,8 +361,11 @@ public sealed class ExportSaftFile(
 
                 // Mesma regra do `TaxTable`: ausente quando não há documentos,
                 // porque `SalesInvoices` exige `NumberOfEntries` e os totais.
-                documentos.Count > 0
-                    ? new XElement(Ns + "SourceDocuments", Vendas(facturas, notas))
+                documentos.Count > 0 || recibos.Count > 0
+                    ? new XElement(
+                        Ns + "SourceDocuments",
+                        documentos.Count > 0 ? Vendas(facturas, notas) : null,
+                        recibos.Count > 0 ? Pagamentos(recibos) : null)
                     : null));
 
         return ExportSaftResult.Generated(documento);
@@ -532,6 +544,92 @@ public sealed class ExportSaftFile(
             facturas.Select(f => Factura(f, null)),
             notas.Select(n => Factura(n.Document, n.CorrectedInvoiceNumber)));
     }
+
+    /// <summary>
+    /// A secção <c>Payments</c> — os recibos.
+    ///
+    /// <para>
+    /// ⚠ <strong>O lado do movimento é uma escolha por verificar.</strong> Um
+    /// recibo liquida uma dívida do cliente, e a conta corrente dele é
+    /// creditada — daí <c>CreditAmount</c>. O XSD diz o que os totais somam e
+    /// não diz que lado usar; a convenção contabilística angolana para este
+    /// campo não está verificada em fonte primária neste repositório.
+    /// <strong>Tem de ser confirmada antes de qualquer entrega à AGT</strong>,
+    /// e está registada como tal em vez de passar por facto.
+    /// </para>
+    /// </summary>
+    private XElement Pagamentos(IReadOnlyList<SaftPayment> recibos) =>
+        new(
+            Ns + "Payments",
+            new XElement(Ns + "NumberOfEntries", recibos.Count),
+            new XElement(Ns + "TotalDebit", Montante(0m)),
+            new XElement(
+                Ns + "TotalCredit",
+                Montante(recibos.Where(r => !r.Cancelled).Sum(r => r.Total))),
+            recibos.Select(Recibo));
+
+    private XElement Recibo(SaftPayment recibo)
+    {
+        var elementos = new List<XObject>
+        {
+            new XElement(Ns + "PaymentRefNo", recibo.Number),
+            new XElement(Ns + "TransactionDate", Data(recibo.ReceivedOn)),
+
+            // `RG` — "outros recibos emitidos". O tipo vem da série, e a série
+            // de recibos do Rivo é `RG`. `RC` é o recibo de factura-recibo, que
+            // é outro documento.
+            new XElement(Ns + "PaymentType", "RG"),
+
+            new XElement(
+                Ns + "DocumentStatus",
+                new XElement(Ns + "PaymentStatus", recibo.Cancelled ? "A" : "N"),
+                new XElement(Ns + "PaymentStatusDate", Instante(recibo.StatusDate)),
+                recibo.Cancelled && !string.IsNullOrWhiteSpace(recibo.CancellationReason)
+                    ? new XElement(Ns + "Reason", recibo.CancellationReason)
+                    : null,
+
+                // O recibo não guarda quem o registou — ao contrário da
+                // factura, que ganhou `SourceID` com o ADR-060. "0" diz que
+                // não há, em vez de inventar um.
+                new XElement(Ns + "SourceID", SemValor),
+                new XElement(Ns + "SourcePayment", ProduzidoNaAplicacao)),
+
+            new XElement(
+                Ns + "PaymentMethod",
+                new XElement(Ns + "PaymentMechanism", recibo.Method),
+                new XElement(Ns + "PaymentAmount", Montante(recibo.Total)),
+                new XElement(Ns + "PaymentDate", Data(recibo.ReceivedOn))),
+
+            new XElement(Ns + "SourceID", SemValor),
+
+            // O recibo não guarda instante de registo. Data do documento à
+            // meia-noite, que é o que o XSD prescreve quando é desconhecido.
+            new XElement(Ns + "SystemEntryDate", Instante(recibo.StatusDate)),
+            new XElement(Ns + "CustomerID", recibo.Customer.CustomerId),
+        };
+
+        elementos.AddRange(recibo.Lines.Select(Liquidacao));
+
+        elementos.Add(new XElement(
+            Ns + "DocumentTotals",
+            new XElement(Ns + "TaxPayable", Montante(0m)),
+            new XElement(Ns + "NetTotal", Montante(recibo.Total)),
+            new XElement(Ns + "GrossTotal", Montante(recibo.Total))));
+
+        return new XElement(Ns + "Payment", elementos);
+    }
+
+    private XElement Liquidacao(SaftSettlement linha) =>
+        new(
+            Ns + "Line",
+            new XElement(Ns + "LineNumber", linha.LineNumber),
+            new XElement(
+                Ns + "SourceDocumentID",
+                new XElement(Ns + "OriginatingON", linha.InvoiceNumber),
+                new XElement(Ns + "InvoiceDate", Data(linha.InvoiceDate))),
+
+            // Ver o resumo de `Pagamentos`: o lado é escolha por verificar.
+            new XElement(Ns + "CreditAmount", Montante(linha.Amount)));
 
     /// <param name="facturaCorrigida">
     /// Preenchido só nas notas de crédito. Muda duas coisas: as linhas saem
