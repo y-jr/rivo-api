@@ -159,10 +159,25 @@ public sealed class IssueSalesInvoice(
                 parte,
                 currency,
                 resolvidas,
+
+                // O instante de registo e quem registou — `SystemEntryDate` e
+                // `SourceID` no SAF-T. Nenhum dos dois se reconstrói depois.
+                clock.GetUtcNow(),
+                context.ActorId!.Value,
+
+                // O elo anterior vem da série, que é onde a ordem se decide
+                // (K7). A mesma linha que serializa a numeração serializa a
+                // cadeia — ver `DocumentSeries.LastDocumentHash`.
+                serie.LastDocumentHash,
+
                 // Congelada na emissão. Vazia em configuração significa sistema
                 // certificado, e as facturas anteriores mantêm a que lhes foi
                 // gravada.
                 _options.FiscalNotice);
+
+            // Fecha o elo. Tem de ser depois de a factura existir: o hash é
+            // calculado sobre ela, incluindo os totais.
+            serie.Chain(factura.Hash!);
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException)
         {

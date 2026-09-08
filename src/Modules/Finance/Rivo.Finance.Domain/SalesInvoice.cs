@@ -1,3 +1,7 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+
 namespace Rivo.Finance.Domain;
 
 /// <summary>
@@ -13,8 +17,17 @@ namespace Rivo.Finance.Domain;
 ///
 /// <para>
 /// <strong>Não é documento fiscal válido em Angola</strong> — falta a
-/// certificação da AGT e a cadeia <c>Hash</c>/<c>HashControl</c>, adiadas pelo
-/// ADR-036. Tem a forma, não tem a conformidade.
+/// certificação da AGT (ADR-036). Tem a forma, não tem a conformidade.
+/// </para>
+///
+/// <para>
+/// <strong>2026-09-08 — a cadeia de integridade (K7).</strong>
+/// <see cref="Hash"/> encadeia cada factura na anterior da mesma série, e
+/// <see cref="HashMatches"/> verifica-a. Isto <em>não</em> é a assinatura da
+/// AGT: o <c>HashControl</c> do ficheiro continua a ir a <c>"0"</c>, que é o
+/// que o XSD manda usar para software não validado. O que a cadeia dá é
+/// detecção de adulteração de documentos já emitidos — que é o que o K7
+/// pedia, e é independente de certificação.
 /// </para>
 /// </summary>
 public sealed class SalesInvoice
@@ -132,6 +145,60 @@ public sealed class SalesInvoice
     /// </summary>
     public string? FiscalNotice { get; private set; }
 
+    /// <summary>
+    /// Quando o documento entrou no sistema — <c>SystemEntryDate</c> no SAF-T.
+    ///
+    /// <para>
+    /// <strong>Distinto de <see cref="IssuedOn"/>, e não por acaso.</strong>
+    /// A data do documento é a que se declara; esta é a que a máquina
+    /// observou. Numa recuperação de dados antigos as duas afastam-se, e é a
+    /// diferença entre elas que a auditoria lê.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠ <strong>Não se reconstrói.</strong> Se não for capturada na emissão,
+    /// a única coisa que resta é copiar <see cref="IssuedOn"/> — que é dizer
+    /// que os dois momentos coincidiram quando não se sabe.
+    /// </para>
+    /// </summary>
+    public DateTimeOffset SystemEntryDate { get; private set; }
+
+    /// <summary>
+    /// Quem emitiu — <c>SourceID</c> no SAF-T. A conta de `identity`, guardada
+    /// como identificador sem chave estrangeira entre schemas (ADR-010).
+    ///
+    /// <para>
+    /// Nulo só nos documentos anteriores a esta cadeia existir; a emissão
+    /// exige-o.
+    /// </para>
+    /// </summary>
+    public Guid? IssuedByUserId { get; private set; }
+
+    /// <summary>
+    /// O elo desta factura na cadeia de integridade da série (K7).
+    ///
+    /// <para>
+    /// <strong>Não é a assinatura da AGT.</strong> O Rivo não está certificado
+    /// (ADR-036), e por isso o <c>HashControl</c> do ficheiro vai a <c>"0"</c>
+    /// — que é o que o XSD manda usar «caso o documento seja gerado por um
+    /// programa não validado», e é verdade. O que isto é: uma cadeia que
+    /// detecta adulteração de facturas já emitidas, que é o que o K7 pedia.
+    /// </para>
+    ///
+    /// <para>
+    /// Nulo nos documentos emitidos antes de a cadeia existir. Fabricar-lhes um
+    /// hash seria pior do que não ter: um elo calculado à posteriori valida
+    /// exactamente aquilo que a cadeia devia impedir.
+    /// </para>
+    /// </summary>
+    public string? Hash { get; private set; }
+
+    /// <summary>
+    /// O elo anterior. Nulo na primeira factura da série — e também nas
+    /// anteriores à cadeia, que é o que torna visível onde ela começa.
+    /// </summary>
+    public string? PreviousHash { get; private set; }
+
     public DateTimeOffset? CancelledAt { get; private set; }
 
     public string? CancellationReason { get; private set; }
@@ -151,6 +218,14 @@ public sealed class SalesInvoice
     /// Menção de não-validade fiscal, congelada na emissão. Nula só quando o
     /// sistema estiver certificado.
     /// </param>
+    /// <param name="systemEntryDate">
+    /// O instante em que o documento entra no sistema. Vem de quem chama — um
+    /// <c>UtcNow</c> aqui dentro tornaria o hash irreproduzível em teste, e um
+    /// hash que não se consegue recalcular não serve para verificar nada.
+    /// </param>
+    /// <param name="previousHash">
+    /// O elo anterior da série, ou <c>null</c> na primeira factura dela.
+    /// </param>
     public static SalesInvoice Issue(
         DocumentNumber number,
         DateOnly issuedOn,
@@ -159,6 +234,9 @@ public sealed class SalesInvoice
         InvoicedParty customer,
         string currency,
         IReadOnlyList<NewInvoiceLine> lines,
+        DateTimeOffset systemEntryDate,
+        Guid issuedByUserId,
+        string? previousHash,
         string? fiscalNotice = null)
     {
         ArgumentNullException.ThrowIfNull(number);
@@ -223,8 +301,73 @@ public sealed class SalesInvoice
         factura.TaxTotal = factura._lines.Sum(line => line.TaxAmount);
         factura.GrossTotal = factura.NetTotal + factura.TaxTotal;
 
+        if (issuedByUserId == Guid.Empty)
+        {
+            throw new ArgumentException(
+                "Uma factura tem de saber quem a emitiu — é o `SourceID` do SAF-T.",
+                nameof(issuedByUserId));
+        }
+
+        factura.SystemEntryDate = systemEntryDate;
+        factura.IssuedByUserId = issuedByUserId;
+        factura.PreviousHash = previousHash;
+
+        // Por último, e é obrigatório que seja: o hash cobre os totais, que só
+        // existem depois de as linhas estarem somadas.
+        factura.Hash = CalcularHash(factura);
+
         return factura;
     }
+
+    /// <summary>
+    /// O elo desta factura na cadeia (K7).
+    ///
+    /// <para>
+    /// <strong>O que entra no hash é o que não pode mudar sem se notar:</strong>
+    /// o número, as duas datas, o total ilíquido e o elo anterior. Mudar
+    /// qualquer um deles numa factura já gravada dá outro hash, e a partir daí
+    /// toda a cadeia da série deixa de fechar — que é a propriedade que se
+    /// quer.
+    /// </para>
+    ///
+    /// <para>
+    /// <strong>As linhas não entram directamente</strong>, e entram através do
+    /// total: <see cref="GrossTotal"/> é a soma delas. Enfiar cada linha na
+    /// cadeia tornaria o hash dependente da ordem de iteração, que é decisão de
+    /// persistência e não do documento.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠ <strong>Não é a assinatura da AGT.</strong> Ver <see cref="Hash"/>.
+    /// </para>
+    /// </summary>
+    private static string CalcularHash(SalesInvoice factura)
+    {
+        // Formato invariante em tudo: uma cadeia que dependesse da cultura do
+        // servidor mudaria de valor ao mudar de máquina, e a verificação
+        // passaria a acusar adulteração onde não houve.
+        var conteudo = string.Join(
+            '|',
+            factura.Number.Formatted,
+            factura.IssuedOn.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            factura.SystemEntryDate.ToString("O", CultureInfo.InvariantCulture),
+            factura.GrossTotal.ToString("F2", CultureInfo.InvariantCulture),
+            factura.PreviousHash ?? string.Empty);
+
+        return Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(conteudo)));
+    }
+
+    /// <summary>
+    /// Recalcula o hash e compara com o gravado — a verificação que dá sentido
+    /// à cadeia.
+    ///
+    /// <para>
+    /// Devolve <c>false</c> também para as facturas sem hash. Não é o mesmo
+    /// que adulterada, e quem chama tem de distinguir: <see cref="Hash"/> nulo
+    /// quer dizer «emitida antes da cadeia existir».
+    /// </para>
+    /// </summary>
+    public bool HashMatches() => Hash is not null && Hash == CalcularHash(this);
 
     /// <summary>
     /// Anula a factura.

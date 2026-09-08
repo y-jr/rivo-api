@@ -66,6 +66,10 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
             series.Property(s => s.Code).HasMaxLength(20).IsRequired();
 
             series.HasIndex(s => new { s.Type, s.Code }).IsUnique();
+
+            // O último elo da cadeia (K7). 172 é o máximo que o `Hash` do SAF-T
+            // admite; o Base64 de um SHA-256 tem 44.
+            series.Property(s => s.LastDocumentHash).HasMaxLength(172);
         });
 
         builder.Entity<SalesInvoice>(invoice =>
@@ -81,6 +85,12 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
             // Menção de não-validade fiscal, congelada na emissão (ADR-036).
             // Anulável: nulo é o estado de um sistema certificado.
             invoice.Property(i => i.FiscalNotice).HasMaxLength(300);
+
+            // A cadeia de integridade (K7). Anuláveis porque as facturas
+            // emitidas antes de 2026-09-08 não têm elo — e fabricar-lhes um
+            // seria validar exactamente o que a cadeia devia impedir.
+            invoice.Property(i => i.Hash).HasMaxLength(172);
+            invoice.Property(i => i.PreviousHash).HasMaxLength(172);
 
             // Precisão fixada. Sem isto o SQL Server escolhe a omissão e o
             // total gravado deixa de ser exactamente o que o documento mostra.

@@ -34,7 +34,7 @@ public class ReceivablesOverviewTests
         // agregado impõe ao emitir.
         var cliente = clienteId is null ? InvoicedParty.FinalConsumer("CONSUMIDORFINAL", "Consumidor final") : Retrato();
 
-        return SalesInvoice.Issue(
+        return FacturaDeTeste.Emitir(
             SerieFt.Allocate(), emitidaEm, emitidaEm, clienteId, cliente, moeda,
             [new NewInvoiceLine("Serviço", 1, liquido, "NOR", 0m)]);
     }

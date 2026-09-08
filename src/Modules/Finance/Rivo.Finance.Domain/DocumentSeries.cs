@@ -59,6 +59,28 @@ public sealed class DocumentSeries
     /// </summary>
     public int Version { get; private set; }
 
+    /// <summary>
+    /// O <c>Hash</c> do último documento emitido nesta série, ou <c>null</c>
+    /// enquanto não houver nenhum (K7).
+    ///
+    /// <para>
+    /// <strong>Vive aqui e não na factura, e a razão é a concorrência.</strong>
+    /// Uma cadeia precisa de um ponto onde a ordem se decide, e a série já é
+    /// esse ponto — é o <see cref="Version"/> dela que impede duas emissões
+    /// simultâneas de receberem o mesmo número. Pendurar a cadeia no mesmo
+    /// objecto faz o encadeamento herdar essa garantia em vez de precisar de
+    /// outra. O ADR-036 avisou exactamente para isto: «sinal de alerta: emissão
+    /// concorrente sobre a mesma série».
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠ <strong>Uma cadeia por série, não uma global.</strong> Duas séries são
+    /// duas sequências independentes; encadeá-las juntas faria a ordem de
+    /// emissão entre séries passar a importar, e não importa.
+    /// </para>
+    /// </summary>
+    public string? LastDocumentHash { get; private set; }
+
     public static DocumentSeries Open(DocumentType type, string code)
     {
         if (string.IsNullOrWhiteSpace(code))
@@ -99,6 +121,34 @@ public sealed class DocumentSeries
         NextSequence++;
 
         return numero;
+    }
+
+    /// <summary>
+    /// Regista o <c>Hash</c> do documento que acabou de ser emitido, passando-o
+    /// a elo anterior do próximo (K7).
+    ///
+    /// <para>
+    /// <strong>Separado de <see cref="Allocate"/> de propósito.</strong> O
+    /// número atribui-se antes de a factura existir; o hash só se conhece
+    /// depois de ela estar completa, porque é calculado sobre o conteúdo dela.
+    /// Juntar os dois obrigaria a série a construir a factura.
+    /// </para>
+    ///
+    /// <para>
+    /// Os dois acontecem na mesma transacção e sobre a mesma linha, por isso a
+    /// concorrência optimista cobre-os aos dois — uma emissão que perca a
+    /// corrida não avança nem o número nem a cadeia.
+    /// </para>
+    /// </summary>
+    public void Chain(string documentHash)
+    {
+        if (string.IsNullOrWhiteSpace(documentHash))
+        {
+            throw new ArgumentException(
+                "Um elo da cadeia não pode ser vazio.", nameof(documentHash));
+        }
+
+        LastDocumentHash = documentHash;
     }
 
     /// <summary>

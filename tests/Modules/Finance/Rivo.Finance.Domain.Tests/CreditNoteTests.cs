@@ -14,7 +14,7 @@ public class CreditNoteTests
         DocumentSeries.Open(DocumentType.NC, "S001").Allocate();
 
     private static SalesInvoice Factura() =>
-        SalesInvoice.Issue(
+        FacturaDeTeste.Emitir(
             DocumentSeries.Open(DocumentType.FT, "S001").Allocate(),
             Hoje.AddDays(-10), Hoje.AddDays(-10),
             Guid.CreateVersion7(),

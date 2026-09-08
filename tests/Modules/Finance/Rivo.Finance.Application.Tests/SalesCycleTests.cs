@@ -54,7 +54,7 @@ public class SalesCycleTests
         var serie = DocumentSeries.Open(DocumentType.FT, "S001");
         var liquido = bruto / 1.14m;
 
-        return SalesInvoice.Issue(
+        return FacturaDeTeste.Emitir(
             serie.Allocate(), Hoje, Hoje, ClienteId,
             new InvoicedParty("Refriango", "5417654321", "Rua Rainha Ginga 12", "Luanda", "AO"),
             "AOA",
@@ -322,7 +322,7 @@ public class SalesCycleTests
         var serie = DocumentSeries.Open(DocumentType.FT, "S001");
         var facto = new DateOnly(2026, 3, 15);
 
-        var factura = SalesInvoice.Issue(
+        var factura = FacturaDeTeste.Emitir(
             serie.Allocate(), new DateOnly(2026, 3, 20), facto, ClienteId,
             new InvoicedParty("Refriango", "5417654321", "Rua", "Luanda", "AO"),
             "AOA", [new NewInvoiceLine("Serviço", 1m, 100_000m, "NOR", 14m)]);

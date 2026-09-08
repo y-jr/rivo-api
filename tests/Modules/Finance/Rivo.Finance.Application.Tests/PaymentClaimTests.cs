@@ -32,7 +32,7 @@ public class PaymentClaimTests
         var serie = DocumentSeries.Open(DocumentType.FT, "S001");
         var liquido = bruto / 1.14m;
 
-        return SalesInvoice.Issue(
+        return FacturaDeTeste.Emitir(
             serie.Allocate(), Hoje, Hoje, clienteId,
             new InvoicedParty("Refriango", "5417654321", "Rua Rainha Ginga 12", "Luanda", "AO"),
             "AOA",

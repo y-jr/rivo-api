@@ -17,7 +17,7 @@ public class SalesInvoiceTests
     private static DocumentNumber Numero() => DocumentSeries.Open(DocumentType.FT, "S001").Allocate();
 
     private static SalesInvoice Emitida(params NewInvoiceLine[] linhas) =>
-        SalesInvoice.Issue(
+        FacturaDeTeste.Emitir(
             Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
             linhas.Length > 0 ? linhas : [new NewInvoiceLine("Consultoria", 1, 100_000m, "NOR", 14m)]);
 
@@ -88,14 +88,14 @@ public class SalesInvoiceTests
     public void FacturaSemLinhas_ERecusada()
     {
         Assert.Throws<ArgumentException>(() =>
-            SalesInvoice.Issue(Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA", []));
+            FacturaDeTeste.Emitir(Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA", []));
     }
 
     [Fact]
     public void FacturaSemCliente_ERecusada()
     {
         Assert.Throws<ArgumentException>(() =>
-            SalesInvoice.Issue(
+            FacturaDeTeste.Emitir(
                 Numero(), Hoje, Hoje, Guid.Empty, Cliente(), "AOA",
                 [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
     }
@@ -106,7 +106,7 @@ public class SalesInvoiceTests
     public void MoedaQueNaoEIso4217_ERecusada(string moeda)
     {
         Assert.Throws<ArgumentException>(() =>
-            SalesInvoice.Issue(
+            FacturaDeTeste.Emitir(
                 Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), moeda,
                 [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
     }
@@ -119,7 +119,7 @@ public class SalesInvoiceTests
     public void FactoGeradorPosteriorAoDocumento_ERecusado()
     {
         Assert.Throws<ArgumentException>(() =>
-            SalesInvoice.Issue(
+            FacturaDeTeste.Emitir(
                 Numero(), Hoje, Hoje.AddDays(1), Guid.CreateVersion7(), Cliente(), "AOA",
                 [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
     }
@@ -127,7 +127,7 @@ public class SalesInvoiceTests
     [Fact]
     public void FactoGeradorAnteriorAoDocumento_EAceite()
     {
-        var factura = SalesInvoice.Issue(
+        var factura = FacturaDeTeste.Emitir(
             Numero(), Hoje, Hoje.AddMonths(-1), Guid.CreateVersion7(), Cliente(), "AOA",
             [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]);
 
@@ -253,7 +253,7 @@ public class SalesInvoiceTests
     // ---- consumidor final ----
 
     private static SalesInvoice EmitidaAConsumidorFinal() =>
-        SalesInvoice.Issue(
+        FacturaDeTeste.Emitir(
             Numero(), Hoje, Hoje, null,
             InvoicedParty.FinalConsumer("CONSUMIDORFINAL", "Consumidor final"),
             "AOA",
@@ -300,7 +300,7 @@ public class SalesInvoiceTests
     public void ConsumidorFinal_ComIdentificadorDeCliente_ERecusado()
     {
         Assert.Throws<ArgumentException>(() =>
-            SalesInvoice.Issue(
+            FacturaDeTeste.Emitir(
                 Numero(), Hoje, Hoje, Guid.CreateVersion7(),
                 InvoicedParty.FinalConsumer("CONSUMIDORFINAL", "Consumidor final"),
                 "AOA", [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
@@ -310,7 +310,7 @@ public class SalesInvoiceTests
     public void ClienteRegistado_SemIdentificador_ERecusado()
     {
         Assert.Throws<ArgumentException>(() =>
-            SalesInvoice.Issue(
+            FacturaDeTeste.Emitir(
                 Numero(), Hoje, Hoje, null, Cliente(), "AOA",
                 [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
     }
@@ -320,7 +320,7 @@ public class SalesInvoiceTests
     {
         // Guid.Empty é engano de quem chama; ausência escreve-se `null`.
         Assert.Throws<ArgumentException>(() =>
-            SalesInvoice.Issue(
+            FacturaDeTeste.Emitir(
                 Numero(), Hoje, Hoje, Guid.Empty, Cliente(), "AOA",
                 [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)]));
     }
@@ -332,7 +332,7 @@ public class SalesInvoiceTests
     {
         const string mencao = "Documento sem validade fiscal.";
 
-        var factura = SalesInvoice.Issue(
+        var factura = FacturaDeTeste.Emitir(
             Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
             [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)], mencao);
 
@@ -347,7 +347,7 @@ public class SalesInvoiceTests
     [Fact]
     public void MencaoFiscal_SobreviveAoCancelamento()
     {
-        var factura = SalesInvoice.Issue(
+        var factura = FacturaDeTeste.Emitir(
             Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
             [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)], "Sem validade fiscal.");
 
@@ -369,7 +369,7 @@ public class SalesInvoiceTests
     [InlineData("")]
     public void MencaoEmBranco_GuardaSeComoAusente(string mencao)
     {
-        var factura = SalesInvoice.Issue(
+        var factura = FacturaDeTeste.Emitir(
             Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
             [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)], mencao);
 
@@ -383,5 +383,101 @@ public class SalesInvoiceTests
         factura.Cancel("Engano", DateTimeOffset.UtcNow);
 
         Assert.Equal(0, factura.Version);
+    }
+
+    // --- A cadeia de integridade (K7) ---
+
+    [Fact]
+    public void FacturaEmitida_TemHashEVerifica()
+    {
+        var factura = Emitida();
+
+        Assert.NotNull(factura.Hash);
+        Assert.True(factura.HashMatches());
+    }
+
+    [Fact]
+    public void PrimeiraDaSerie_NaoTemEloAnterior()
+    {
+        Assert.Null(Emitida().PreviousHash);
+    }
+
+    [Fact]
+    public void FacturasIguaisEmTudoMenosNoElo_TemHashesDiferentes()
+    {
+        // ⚠ É isto que faz a cadeia ser cadeia. Sem o elo anterior a entrar no
+        // cálculo, dois documentos iguais dariam o mesmo hash e reordená-los
+        // não se notaria.
+        var primeira = FacturaDeTeste.Emitir(
+            Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
+            [new NewInvoiceLine("Consultoria", 1, 100_000m, "NOR", 14m)],
+            previousHash: null);
+
+        var segunda = FacturaDeTeste.Emitir(
+            Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
+            [new NewInvoiceLine("Consultoria", 1, 100_000m, "NOR", 14m)],
+            previousHash: primeira.Hash);
+
+        Assert.NotEqual(primeira.Hash, segunda.Hash);
+    }
+
+    [Fact]
+    public void AlterarOTotalDepoisDeEmitida_QuebraOHash()
+    {
+        // ⚠ O caso que dá sentido a tudo o resto. Sem ele, `HashMatches` podia
+        // devolver `true` sempre e todos os outros passariam.
+        //
+        // A adulteração é por reflexão porque o agregado não a permite — o que
+        // é o ponto: quem adultera não passa pelo agregado, mexe na base de
+        // dados. É esse ataque que a cadeia deteta.
+        var factura = Emitida();
+
+        Assert.True(factura.HashMatches());
+
+        typeof(SalesInvoice)
+            .GetProperty(nameof(SalesInvoice.GrossTotal))!
+            .SetValue(factura, 1m);
+
+        Assert.False(factura.HashMatches());
+    }
+
+    [Fact]
+    public void AlterarADataDepoisDeEmitida_QuebraOHash()
+    {
+        var factura = Emitida();
+
+        typeof(SalesInvoice)
+            .GetProperty(nameof(SalesInvoice.IssuedOn))!
+            .SetValue(factura, Hoje.AddDays(-30));
+
+        Assert.False(factura.HashMatches());
+    }
+
+    [Fact]
+    public void FacturaSemHash_NaoVerifica()
+    {
+        // Uma factura anterior à cadeia. `false` não quer dizer adulterada —
+        // quem chama distingue pelo `Hash` nulo, e é por isso que o resumo de
+        // `HashMatches` o diz.
+        var factura = Emitida();
+
+        typeof(SalesInvoice)
+            .GetProperty(nameof(SalesInvoice.Hash))!
+            .SetValue(factura, null);
+
+        Assert.False(factura.HashMatches());
+        Assert.Null(factura.Hash);
+    }
+
+    [Fact]
+    public void SemQuemEmitiu_ERecusada()
+    {
+        // `SourceID` é obrigatório no SAF-T e não se reconstrói: meses depois
+        // ninguém sabe quem emitiu a factura.
+        Assert.Throws<ArgumentException>(() =>
+            FacturaDeTeste.Emitir(
+                Numero(), Hoje, Hoje, Guid.CreateVersion7(), Cliente(), "AOA",
+                [new NewInvoiceLine("X", 1, 10m, "NOR", 14m)],
+                issuedByUserId: Guid.Empty));
     }
 }
