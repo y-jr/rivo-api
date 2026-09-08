@@ -59,6 +59,10 @@ public static class FinanceModuleExtensions
         // primeiro consumidor previsto, o Dashboard Executivo.
         services.AddScoped<IReceivablesOverview, ReceivablesOverview>();
 
+        // O relato fiscal das facturas de venda. Consumido pela porta de
+        // `fiscal` através do composition root (ADR-059).
+        services.AddScoped<ISalesInvoiceReporting, SalesInvoiceReporting>();
+
         // Pedidos de confirmação de pagamento (ADR-044).
         services.AddScoped<SubmitPaymentClaim>();
         services.AddScoped<ConfirmPaymentClaim>();

@@ -17,12 +17,11 @@ namespace Rivo.Fiscal.Application.UseCases;
 /// </para>
 ///
 /// <para>
-/// <strong>Estado: `Header` e todo o `MasterFiles` menos o plano de
-/// contas.</strong> Clientes, fornecedores, produtos e tabela de impostos.
-/// Falta `GeneralLedgerAccounts`, que é de `finance` e depende do PGC
-/// angolano — que o ADR-037 recusou inventar. Os que vêm de outros módulos
-/// entram pela porta <see cref="ISaftMasterData"/>; a tabela de impostos não,
-/// porque é de `fiscal` e lê-se do seu próprio armazenamento.
+/// <strong>Estado: `Header`, todo o `MasterFiles` menos o plano de contas, e
+/// as facturas de venda em `SourceDocuments`.</strong> Falta
+/// `GeneralLedgerAccounts` (de `finance`, depende do PGC angolano que o
+/// ADR-037 recusou inventar), `GeneralLedgerEntries`, `MovementOfGoods`,
+/// `Payments` e `PurchaseInvoices`.
 /// </para>
 ///
 /// <para>
@@ -34,9 +33,10 @@ namespace Rivo.Fiscal.Application.UseCases;
 /// </para>
 ///
 /// <para>
-/// <strong>Sem cadeia de assinatura</strong> (K7). <c>Hash</c> e
-/// <c>HashControl</c> só existem nos documentos de <c>SourceDocuments</c>, que
-/// esta versão não emite — quando emitir, a cadeia tem de existir primeiro.
+/// <strong>A cadeia de assinatura existe</strong> (K7, ADR-060), e sai em
+/// <c>Hash</c>. <c>HashControl</c> vai a <c>"0"</c> — o que o XSD manda usar
+/// para software não validado. As duas coisas juntas são a afirmação correcta:
+/// há chave de integridade, não há certificação.
 /// </para>
 /// </summary>
 public sealed class ExportSaftFile(
@@ -90,6 +90,65 @@ public sealed class ExportSaftFile(
     /// </para>
     /// </summary>
     private const string ProdutoFisico = "P";
+
+    /// <summary>
+    /// <c>O</c> — Outros. O tipo dos artigos que aparecem numa factura e não
+    /// estão no catálogo de `inventory`.
+    ///
+    /// <para>
+    /// <strong>Existem porque o ficheiro tem de fechar sobre si próprio.</strong>
+    /// O SAF-T exige que cada <c>ProductCode</c> de uma linha apareça na tabela
+    /// de produtos. As linhas de serviço não têm artigo em stock — e as
+    /// anteriores a 2026-09-08 nem código tinham, ficaram com
+    /// <c>"Desconhecido"</c>. Omiti-las deixaria facturas a apontar para
+    /// produtos que o ficheiro não declara.
+    /// </para>
+    ///
+    /// <para>
+    /// <c>O</c> e não <c>S</c>: o XSD descreve <c>O</c> como «outros (ex.:
+    /// portes debitados, adiantamentos recebidos ou alienação de activos)», que
+    /// é a categoria dos itens facturados que não são artigo nem serviço
+    /// declarado. Chamar-lhes <c>S</c> afirmaria que são serviços, e não se
+    /// sabe. Quando existir catálogo de serviços, virão de lá com <c>S</c>.
+    /// </para>
+    /// </summary>
+    private const string ProdutoNaoCatalogado = "O";
+
+    /// <summary>
+    /// <c>P</c> — documento produzido nesta aplicação. Os outros valores
+    /// (<c>I</c> integrado de outra, <c>M</c> recuperação ou emissão manual)
+    /// não se aplicam: o Rivo não importa documentos.
+    /// </summary>
+    private const string ProduzidoNaAplicacao = "P";
+
+    /// <summary>
+    /// O que vai em <c>Hash</c> e <c>SourceID</c> quando não há valor.
+    ///
+    /// <para>
+    /// Os dois são obrigatórios no XSD, com <c>minLength</c> de 1, e as
+    /// facturas anteriores à cadeia não têm nenhum (ADR-060). <c>"0"</c> é o
+    /// que o XSD manda pôr em <c>HashControl</c> para software não validado, e
+    /// diz aqui a mesma coisa: não há chave para este documento.
+    /// </para>
+    /// </summary>
+    private const string SemValor = "0";
+
+    /// <summary>
+    /// O <c>CustomerID</c> das vendas a consumidor final.
+    ///
+    /// <para>
+    /// Não há registo em `commercial` — a pessoa não se identificou — e o
+    /// <c>CustomerID</c> é obrigatório em cada factura. Um identificador fixo
+    /// junta todas essas vendas ao mesmo cliente do ficheiro, que é o que elas
+    /// são: vendas a quem não se identificou.
+    /// </para>
+    ///
+    /// <para>
+    /// Público porque quem implementa a porta precisa dele — é lá que se sabe
+    /// que uma factura não tem cliente registado.
+    /// </para>
+    /// </summary>
+    public const string ConsumidorFinal = "CONSUMIDOR-FINAL";
 
     public async Task<ExportSaftResult> ExecuteAsync(
         int fiscalYear,
@@ -194,6 +253,71 @@ public sealed class ExportSaftFile(
                     .Select(v => Imposto(serie, v)));
         }
 
+        var facturas = await masterData.ListInvoicesAsync(from, to, cancellationToken);
+
+        /*
+         * ⚠ **Um documento emitido não se corrige, e isto não tem saída.**
+         *
+         * Desde 2026-09-08 uma série de IVA só se abre com um código que o
+         * SAF-T aceita, e há `PATCH /fiscal/tax-rates/{id}/code` para as
+         * anteriores. Mas a linha da factura **congela o código no momento da
+         * emissão** — e tem de congelar, senão corrigir uma série reescreveria
+         * o passado.
+         *
+         * A consequência é esta: um documento emitido com um código que a AGT
+         * não aceita fica assim para sempre. Recusar é a única resposta
+         * honesta — emiti-lo produziria um ficheiro que a AGT rejeita, e
+         * omiti-lo produziria um ficheiro incompleto que também rejeita.
+         */
+        var linhaComCodigoInvalido = facturas
+            .SelectMany(f => f.Lines.Select(l => (Factura: f, Linha: l)))
+            .FirstOrDefault(x => !TaxCodes.IsSaftTaxCode(x.Linha.TaxCode));
+
+        if (linhaComCodigoInvalido.Factura is not null)
+        {
+            return ExportSaftResult.Rejected(
+                $"A factura {linhaComCodigoInvalido.Factura.Number} tem uma linha com o código "
+                + $"de imposto '{linhaComCodigoInvalido.Linha.TaxCode}', que o SAF-T não aceita. "
+                + "O código de uma linha fica congelado na emissão e não se corrige — "
+                + "documentos emitidos antes da verificação de códigos não são exportáveis.");
+        }
+
+        // ⚠ **O ficheiro tem de fechar sobre si próprio.** Cada `ProductCode`
+        // usado numa linha tem de existir na tabela de produtos, e as linhas de
+        // serviço — mais as anteriores a haver código — não estão no catálogo
+        // de `inventory`. Acrescentam-se aqui, com o tipo `O`.
+        // O mesmo laço nos clientes: uma venda a consumidor final não tem
+        // registo em `commercial`, e uma factura a apontar para um cliente que
+        // o ficheiro não declara é uma referência pendurada. O cliente sai da
+        // própria factura, onde ficou congelado na emissão.
+        var clientesDeclarados = clientes
+            .Select(c => c.CustomerId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var clientesDeFactura = facturas
+            .Select(f => f.Customer)
+            .Where(c => !clientesDeclarados.Contains(c.CustomerId))
+            .GroupBy(c => c.CustomerId, StringComparer.Ordinal)
+            .Select(g => g.First())
+            .OrderBy(c => c.CustomerId, StringComparer.Ordinal)
+            .ToList();
+
+        var codigosNoCatalogo = artigos
+            .Select(a => a.Code)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var acrescentados = facturas
+            .SelectMany(f => f.Lines)
+            .Where(l => !codigosNoCatalogo.Contains(l.ProductCode))
+            .GroupBy(l => l.ProductCode, StringComparer.Ordinal)
+
+            // A descrição da primeira linha que usou o código. Arbitrária
+            // quando há várias, e é o melhor que há: o código não tem nome
+            // próprio em lado nenhum.
+            .Select(g => new SaftProduct(g.Key, g.First().Description))
+            .OrderBy(p => p.Code, StringComparer.Ordinal)
+            .ToList();
+
         var documento = new XDocument(
             new XDeclaration("1.0", "windows-1252", null),
             new XElement(
@@ -207,8 +331,10 @@ public sealed class ExportSaftFile(
                 new XElement(
                     Ns + "MasterFiles",
                     clientes.Select(Cliente),
+                    clientesDeFactura.Select(Cliente),
                     fornecedores.Select(Fornecedor),
-                    artigos.Select(Artigo),
+                    artigos.Select(a => Artigo(a, ProdutoFisico)),
+                    acrescentados.Select(a => Artigo(a, ProdutoNaoCatalogado)),
 
                     // ⚠ Ausente e não vazio quando não há entradas — ao
                     // contrário de `MasterFiles`. `TaxTable` exige
@@ -216,7 +342,13 @@ public sealed class ExportSaftFile(
                     // `<TaxTable/>` vazio torna o ficheiro inválido.
                     entradas.Count > 0
                         ? new XElement(Ns + "TaxTable", entradas)
-                        : null)));
+                        : null),
+
+                // Mesma regra do `TaxTable`: ausente quando não há documentos,
+                // porque `SalesInvoices` exige `NumberOfEntries` e os totais.
+                facturas.Count > 0
+                    ? new XElement(Ns + "SourceDocuments", Vendas(facturas))
+                    : null));
 
         return ExportSaftResult.Generated(documento);
     }
@@ -345,13 +477,154 @@ public sealed class ExportSaftFile(
     /// artigo. Emitir uma inventada seria pior do que não emitir.
     /// </para>
     /// </summary>
-    private XElement Artigo(SaftProduct artigo) =>
+    private XElement Artigo(SaftProduct artigo, string tipo) =>
         new(
             Ns + "Product",
-            new XElement(Ns + "ProductType", ProdutoFisico),
+            new XElement(Ns + "ProductType", tipo),
             new XElement(Ns + "ProductCode", artigo.Code),
             new XElement(Ns + "ProductDescription", artigo.Description),
             new XElement(Ns + "ProductNumberCode", artigo.Code));
+
+    /// <summary>
+    /// A secção <c>SalesInvoices</c>.
+    ///
+    /// <para>
+    /// <strong>Os totais contam só as facturas não anuladas</strong>, e é o
+    /// XSD que o manda: «deve conter a soma dos elementos DebitAmount dos
+    /// documentos cujo o elemento InvoiceStatus seja igual a N». As anuladas
+    /// continuam no ficheiro — o que não contam é para os totais.
+    /// </para>
+    ///
+    /// <para>
+    /// <c>TotalDebit</c> vai a zero porque uma factura de venda credita: cada
+    /// linha sai como <c>CreditAmount</c>. Notas de débito, quando existirem,
+    /// mudam isto.
+    /// </para>
+    /// </summary>
+    private XElement Vendas(IReadOnlyList<SaftInvoice> facturas)
+    {
+        var vivas = facturas.Where(f => !f.Cancelled).ToList();
+
+        return new XElement(
+            Ns + "SalesInvoices",
+            new XElement(Ns + "NumberOfEntries", facturas.Count),
+            new XElement(Ns + "TotalDebit", Montante(0m)),
+            new XElement(Ns + "TotalCredit", Montante(vivas.Sum(f => f.NetTotal))),
+            facturas.Select(Factura));
+    }
+
+    private XElement Factura(SaftInvoice factura)
+    {
+        var elementos = new List<XObject>
+        {
+            new XElement(Ns + "InvoiceNo", factura.Number),
+
+            new XElement(
+                Ns + "DocumentStatus",
+                new XElement(Ns + "InvoiceStatus", factura.Cancelled ? "A" : "N"),
+                new XElement(Ns + "InvoiceStatusDate", Instante(factura.StatusDate)),
+
+                // `Reason` só quando há uma. Escrever "—" numa factura viva
+                // seria dizer que houve motivo para o estado dela.
+                factura.Cancelled && !string.IsNullOrWhiteSpace(factura.CancellationReason)
+                    ? new XElement(Ns + "Reason", factura.CancellationReason)
+                    : null,
+                new XElement(Ns + "SourceID", factura.IssuedBy ?? SemValor),
+                new XElement(Ns + "SourceBilling", ProduzidoNaAplicacao)),
+
+            // ⚠ O hash é o da cadeia do Rivo, e `HashControl` diz que não vem
+            // de software validado (ADR-060). As duas coisas juntas são a
+            // afirmação correcta: há chave de integridade, não há certificação.
+            new XElement(Ns + "Hash", factura.Hash ?? SemValor),
+            new XElement(Ns + "HashControl", SemValor),
+
+            new XElement(Ns + "InvoiceDate", Data(factura.IssuedOn)),
+            new XElement(Ns + "InvoiceType", factura.Type),
+
+            // Nenhum dos três regimes se aplica ao Rivo: sem autofacturação,
+            // sem regime de IVA de caixa, sem facturação por conta de
+            // terceiros. A estrutura é obrigatória e os três valores são
+            // verdade.
+            new XElement(
+                Ns + "SpecialRegimes",
+                new XElement(Ns + "SelfBillingIndicator", SemAutofacturacao),
+                new XElement(Ns + "CashVATSchemeIndicator", SemAutofacturacao),
+                new XElement(Ns + "ThirdPartiesBillingIndicator", SemAutofacturacao)),
+
+            new XElement(Ns + "SourceID", factura.IssuedBy ?? SemValor),
+            new XElement(Ns + "SystemEntryDate", Instante(factura.SystemEntryDate)),
+            new XElement(Ns + "CustomerID", factura.Customer.CustomerId),
+        };
+
+        elementos.AddRange(factura.Lines.Select(l => Linha(l, factura.TaxPointDate)));
+
+        elementos.Add(new XElement(
+            Ns + "DocumentTotals",
+            new XElement(Ns + "TaxPayable", Montante(factura.TaxTotal)),
+            new XElement(Ns + "NetTotal", Montante(factura.NetTotal)),
+            new XElement(Ns + "GrossTotal", Montante(factura.GrossTotal))));
+
+        return new XElement(Ns + "Invoice", elementos);
+    }
+
+    /// <summary>
+    /// Uma linha de documento.
+    ///
+    /// <para>
+    /// <strong><c>ProductDescription</c> e <c>Description</c> levam o mesmo
+    /// texto</strong>, e os dois são obrigatórios. O XSD quer a descrição do
+    /// produto no primeiro e, no segundo, a que «consta do documento entregue
+    /// ao cliente» — o Rivo só guarda uma, que é precisamente a do documento.
+    /// Inventar uma descrição de produto diferente da que o cliente viu seria
+    /// pior do que repetir.
+    /// </para>
+    ///
+    /// <para>
+    /// <c>CreditAmount</c> e não <c>DebitAmount</c>: uma venda credita.
+    /// </para>
+    /// </summary>
+    private XElement Linha(SaftInvoiceLine linha, DateOnly taxPointDate) =>
+        new(
+            Ns + "Line",
+            new XElement(Ns + "LineNumber", linha.LineNumber),
+            new XElement(Ns + "ProductCode", linha.ProductCode),
+            new XElement(Ns + "ProductDescription", linha.Description),
+            new XElement(Ns + "Quantity", Quantidade(linha.Quantity)),
+            new XElement(Ns + "UnitOfMeasure", linha.UnitOfMeasure),
+            new XElement(Ns + "UnitPrice", Montante(linha.UnitPrice)),
+            new XElement(Ns + "TaxPointDate", Data(taxPointDate)),
+            new XElement(Ns + "Description", linha.Description),
+            new XElement(Ns + "CreditAmount", Montante(linha.NetAmount)),
+            new XElement(
+                Ns + "Tax",
+                new XElement(
+                    Ns + "TaxType",
+                    string.Equals(linha.TaxCode, TaxCodes.NotSubject, StringComparison.OrdinalIgnoreCase)
+                        ? "NS"
+                        : "IVA"),
+                new XElement(Ns + "TaxCode", linha.TaxCode),
+                new XElement(Ns + "TaxPercentage", Percentagem(linha.TaxPercentage))));
+
+    private static string Data(DateOnly data) =>
+        data.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// <c>SAFdateTimeType</c> é <c>xs:dateTime</c>, e o "O" do .NET junta-lhe
+    /// sete casas de fracção de segundo mais o deslocamento — válido, mas
+    /// ilegível num ficheiro de auditoria. Segundos inteiros chegam.
+    /// </summary>
+    private static string Instante(DateTimeOffset instante) =>
+        instante.UtcDateTime.ToString(
+            "yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string Montante(decimal valor) =>
+        valor.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string Quantidade(decimal valor) =>
+        valor.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string Percentagem(decimal valor) =>
+        valor.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Uma morada de terceiro, na forma <c>AddressStructure</c> do XSD.
@@ -365,9 +638,29 @@ public sealed class ExportSaftFile(
     private XElement Morada(XName nome, SaftAddress morada) =>
         new(
             nome,
-            new XElement(Ns + "AddressDetail", morada.Detail),
-            new XElement(Ns + "City", morada.City),
-            new XElement(Ns + "Country", morada.Country));
+
+            // ⚠ **Os campos vazios viram "Desconhecido", e o país "AO".**
+            // Não é laxismo: uma factura a consumidor final não tem morada de
+            // propósito — `InvoicedParty` deixa-a vazia em vez de a inventar,
+            // porque quem não se identifica também não dá morada. Mas o XSD
+            // exige os três com `minLength` 1, e um ficheiro com
+            // `<City/>` vazio é inválido.
+            //
+            // O domínio guarda a verdade; a exportação escolhe como a
+            // escrever. "Desconhecido" é o termo que o XSD usa noutros campos
+            // para o mesmo efeito.
+            new XElement(Ns + "AddressDetail", OuDesconhecido(morada.Detail)),
+            new XElement(Ns + "City", OuDesconhecido(morada.City)),
+
+            // `Country` tem lista fechada e não admite "Desconhecido". `AO` é
+            // a suposição declarada — a mesma que a migração dos fornecedores
+            // fez, e pela mesma razão.
+            new XElement(
+                Ns + "Country",
+                string.IsNullOrWhiteSpace(morada.Country) ? "AO" : morada.Country));
+
+    private static string OuDesconhecido(string valor) =>
+        string.IsNullOrWhiteSpace(valor) ? ContaDesconhecida : valor;
 
     private XElement Header(int fiscalYear, DateOnly from, DateOnly to)
     {

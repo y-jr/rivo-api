@@ -1,6 +1,8 @@
 using Rivo.Commercial.Contracts;
 using Rivo.Procurement.Contracts;
 using Rivo.Inventory.Contracts;
+using Rivo.Finance.Contracts;
+using Rivo.Fiscal.Application.UseCases;
 using Rivo.Fiscal.Application.Abstractions;
 
 namespace Rivo.Api.Composition;
@@ -27,8 +29,61 @@ namespace Rivo.Api.Composition;
 public sealed class SaftMasterData(
     ICustomerDirectory customers,
     ISupplierDirectory suppliers,
-    IInventoryCatalogue catalogue) : ISaftMasterData
+    IInventoryCatalogue catalogue,
+    ISalesInvoiceReporting invoices) : ISaftMasterData
 {
+    public async Task<IReadOnlyList<SaftInvoice>> ListInvoicesAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken)
+    {
+        var facturas = await invoices.ListForPeriodAsync(from, to, cancellationToken);
+
+        return [.. facturas.Select(f => new SaftInvoice(
+            f.Number,
+            f.Type,
+            f.IssuedOn,
+            f.TaxPointDate,
+            f.SystemEntryDate,
+            f.StatusDate,
+            f.Cancelled,
+            f.CancellationReason,
+
+            // ⚠ **A mesma conversão da tabela de clientes, e é obrigatório
+            // que seja.** O SAF-T exige que o `CustomerID` de uma factura
+            // exista em `MasterFiles`; duas conversões em dois sítios divergem
+            // no dia em que uma delas mudar, e o ficheiro passa a ter facturas
+            // a apontar para clientes que não declara. É por isso que isto
+            // vive aqui, ao lado de `ListCustomersAsync`.
+            //
+            // Sem `CustomerId` é venda a consumidor final: não há registo em
+            // `commercial` e o identificador é fixo. A exportação declara-o na
+            // tabela a partir daqui.
+            new SaftCustomer(
+                f.CustomerId is { } cliente
+                    ? Identificador(cliente)
+                    : ExportSaftFile.ConsumidorFinal,
+                f.CustomerTaxId,
+                f.CustomerName,
+                new SaftAddress(
+                    f.CustomerAddressDetail, f.CustomerCity, f.CustomerCountry)),
+            f.IssuedByUserId is { } emissor ? Identificador(emissor) : null,
+            f.Hash,
+            f.NetTotal,
+            f.TaxTotal,
+            f.GrossTotal,
+            [.. f.Lines.Select(l => new SaftInvoiceLine(
+                l.LineNumber,
+                l.ProductCode,
+                l.Description,
+                l.Quantity,
+                l.UnitOfMeasure,
+                l.UnitPrice,
+                l.NetAmount,
+                l.TaxCode,
+                l.TaxPercentage))]))];
+    }
+
     public async Task<IReadOnlyList<SaftProduct>> ListProductsAsync(
         CancellationToken cancellationToken)
     {

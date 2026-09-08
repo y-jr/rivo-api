@@ -306,6 +306,88 @@ public sealed record PaymentClaimView(
 /// internamente: são dois contextos distintos, e juntá-los daria um
 /// contrato que ninguém consegue implementar sem conhecer os dois.
 /// </summary>
+/// <summary>
+/// As facturas de venda de um período, para relato fiscal. Primeiro (e por
+/// agora único) consumidor: a secção <c>SalesInvoices</c> do SAF-T AO.
+///
+/// <para>
+/// <strong>Separado de <see cref="IReceivablesOverview"/> de propósito.</strong>
+/// Aquele dá números agregados — o que falta receber, quanto se facturou. Este
+/// dá os documentos, linha a linha, porque um ficheiro de auditoria não é um
+/// resumo.
+/// </para>
+/// </summary>
+public interface ISalesInvoiceReporting
+{
+    /// <summary>
+    /// Todas as facturas emitidas no período, <strong>incluindo as
+    /// anuladas</strong>.
+    ///
+    /// <para>
+    /// As anuladas vão com <c>InvoiceStatus</c> <c>A</c> e não desaparecem: é
+    /// isso que BR-14 significa no ficheiro fiscal, e é como a AGT vê que um
+    /// número foi emitido e depois anulado, em vez de ver um buraco na
+    /// sequência.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<ReportedInvoice>> ListForPeriodAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken);
+}
+
+/// <param name="CustomerId">Nulo numa venda a consumidor final.</param>
+/// <param name="Cancelled">
+/// <c>true</c> quando anulada. Quem lê traduz para <c>N</c>/<c>A</c> — o
+/// contrato não publica o enumerado interno (ADR-010).
+/// </param>
+/// <param name="StatusDate">
+/// Quando o estado actual foi fixado: a anulação, se houve; o registo, se não.
+/// </param>
+/// <param name="Hash">
+/// O elo da cadeia de integridade (ADR-060). <strong>Nulo nas facturas
+/// emitidas antes de a cadeia existir</strong> — quem exporta decide o que
+/// escrever, e não é aqui que se inventa um.
+/// </param>
+/// <param name="IssuedByUserId">Nulo pela mesma razão que <paramref name="Hash"/>.</param>
+public sealed record ReportedInvoice(
+    string Number,
+    string Type,
+    DateOnly IssuedOn,
+    DateOnly TaxPointDate,
+    DateTimeOffset SystemEntryDate,
+    DateTimeOffset StatusDate,
+    bool Cancelled,
+    string? CancellationReason,
+    Guid? CustomerId,
+
+    // O cliente congelado na emissão, e não o de hoje. Vem inteiro porque há
+    // clientes sem registo em `commercial` — uma venda a consumidor final —, e
+    // é a única fonte do que o ficheiro fiscal tem de declarar sobre eles.
+    string CustomerName,
+    string CustomerTaxId,
+    string CustomerAddressDetail,
+    string CustomerCity,
+    string CustomerCountry,
+    Guid? IssuedByUserId,
+    string? Hash,
+    string Currency,
+    decimal NetTotal,
+    decimal TaxTotal,
+    decimal GrossTotal,
+    IReadOnlyList<ReportedInvoiceLine> Lines);
+
+public sealed record ReportedInvoiceLine(
+    int LineNumber,
+    string ProductCode,
+    string Description,
+    decimal Quantity,
+    string UnitOfMeasure,
+    decimal UnitPrice,
+    decimal NetAmount,
+    string TaxCode,
+    decimal TaxPercentage);
+
 public interface IPayablesOverview
 {
     /// <summary>

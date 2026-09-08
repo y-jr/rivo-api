@@ -41,6 +41,16 @@ public interface ISaftMasterData
     /// A tabela de produtos e serviços. Vazia é resposta legítima.
     /// </summary>
     Task<IReadOnlyList<SaftProduct>> ListProductsAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// As facturas de venda do período, para <c>SourceDocuments</c>. Inclui as
+    /// anuladas — no SAF-T elas aparecem com estado <c>A</c>, e não
+    /// desaparecem (BR-14).
+    /// </summary>
+    Task<IReadOnlyList<SaftInvoice>> ListInvoicesAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -105,6 +115,62 @@ public sealed record SaftSupplier(
 /// modela EAN.
 /// </param>
 public sealed record SaftProduct(string Code, string Description);
+
+/// <summary>
+/// Uma factura de venda, no vocabulário do ficheiro.
+/// </summary>
+/// <param name="Customer">
+/// O cliente <strong>tal como ficou congelado na factura</strong>, e com o
+/// identificador já na forma que a tabela de clientes usa.
+///
+/// <para>
+/// Tem de ser exactamente o mesmo texto: o SAF-T exige que os documentos
+/// referenciem master data presente no ficheiro, e uma conversão feita em dois
+/// sítios diverge no dia em que uma delas mudar. Quem implementa a porta
+/// converte uma vez.
+/// </para>
+///
+/// <para>
+/// <strong>Vem inteiro e não só o identificador</strong> porque há clientes
+/// que a tabela não traz: uma venda a consumidor final não tem registo em
+/// `commercial`. É a partir daqui que a exportação fecha esse buraco.
+/// </para>
+/// </param>
+/// <param name="IssuedBy">
+/// <c>SourceID</c> — quem emitiu, já convertido. Nulo nas facturas anteriores
+/// à cadeia (ADR-060).
+/// </param>
+/// <param name="Hash">
+/// O elo de integridade. Nulo nas anteriores à cadeia — quem escreve o
+/// ficheiro decide o que pôr, e não é a porta que inventa.
+/// </param>
+public sealed record SaftInvoice(
+    string Number,
+    string Type,
+    DateOnly IssuedOn,
+    DateOnly TaxPointDate,
+    DateTimeOffset SystemEntryDate,
+    DateTimeOffset StatusDate,
+    bool Cancelled,
+    string? CancellationReason,
+    SaftCustomer Customer,
+    string? IssuedBy,
+    string? Hash,
+    decimal NetTotal,
+    decimal TaxTotal,
+    decimal GrossTotal,
+    IReadOnlyList<SaftInvoiceLine> Lines);
+
+public sealed record SaftInvoiceLine(
+    int LineNumber,
+    string ProductCode,
+    string Description,
+    decimal Quantity,
+    string UnitOfMeasure,
+    decimal UnitPrice,
+    decimal NetAmount,
+    string TaxCode,
+    decimal TaxPercentage);
 
 /// <param name="Country">ISO 3166-1 alpha-2.</param>
 public sealed record SaftAddress(string Detail, string City, string Country);

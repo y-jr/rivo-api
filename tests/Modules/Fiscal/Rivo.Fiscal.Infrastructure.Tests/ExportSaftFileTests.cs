@@ -347,6 +347,236 @@ public class ExportSaftFileTests
         Assert.Equal(["Customer", "Supplier", "Product", "TaxTable"], ordem);
     }
 
+    private static SaftInvoice Factura(
+        string numero = "FT S001/1",
+        bool anulada = false,
+        string clienteId = "CLI-1",
+        string codigoDeArtigo = "CIM-42",
+        string? hash = "elo-1",
+        decimal liquido = 100_000m) =>
+        new(
+            numero,
+            "FT",
+            new DateOnly(2026, 3, 15),
+            new DateOnly(2026, 3, 15),
+            new DateTimeOffset(2026, 3, 15, 9, 30, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 3, 15, 9, 30, 0, TimeSpan.Zero),
+            anulada,
+            anulada ? "Emitida ao cliente errado" : null,
+            new SaftCustomer(
+                clienteId, "5417000001", "Padaria Kilamba, Lda.",
+                new SaftAddress("Rua 21 de Janeiro, 4", "Luanda", "AO")),
+            "UTIL-1",
+            hash,
+            liquido,
+            liquido * 0.14m,
+            liquido * 1.14m,
+            [
+                new SaftInvoiceLine(
+                    1, codigoDeArtigo, "Cimento Portland 50 kg", 4, "sc",
+                    liquido / 4, liquido, "NOR", 14m),
+            ]);
+
+    private static Task<ExportSaftResult> ExportarComFacturas(
+        IReadOnlyList<SaftInvoice> facturas,
+        IReadOnlyList<SaftCustomer>? clientes = null,
+        IReadOnlyList<SaftProduct>? artigos = null) =>
+        new ExportSaftFile(
+            Empresa(),
+            new MasterDataFalso(
+                clientes ?? [Cliente()],
+                [],
+                artigos ?? [new SaftProduct("CIM-42", "Cimento Portland 50 kg")],
+                facturas),
+            new TaxRateStoreFalso([Taxa("NOR", 14m)]),
+            new FakeTimeProvider(Agora))
+            .ExecuteAsync(
+                2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), CancellationToken.None);
+
+    [Fact]
+    public async Task ComFacturas_ValidaContraOXsd()
+    {
+        var resultado = await ExportarComFacturas([Factura()]);
+
+        Assert.Equal(ExportSaftOutcome.Generated, resultado.Outcome);
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+    }
+
+    [Fact]
+    public async Task OsTotaisContamSoAsFacturasNaoAnuladas()
+    {
+        // O XSD é explícito: «deve conter a soma dos elementos DebitAmount dos
+        // documentos cujo o elemento InvoiceStatus seja igual a N». A anulada
+        // continua no ficheiro; o que não faz é somar.
+        var resultado = await ExportarComFacturas(
+            [
+                Factura("FT S001/1", liquido: 100_000m),
+                Factura("FT S001/2", anulada: true, liquido: 500_000m),
+            ]);
+
+        var vendas = resultado.File!.Descendants(ExportSaftFile.Ns + "SalesInvoices").Single();
+
+        // As duas entram na contagem — e só uma no total.
+        Assert.Equal("2", vendas.Element(ExportSaftFile.Ns + "NumberOfEntries")!.Value);
+        Assert.Equal("100000.00", vendas.Element(ExportSaftFile.Ns + "TotalCredit")!.Value);
+
+        Assert.Equal(
+            ["N", "A"],
+            resultado.File!
+                .Descendants(ExportSaftFile.Ns + "InvoiceStatus")
+                .Select(e => e.Value));
+    }
+
+    [Fact]
+    public async Task ArtigoFacturadoQueNaoEstaNoCatalogo_EntraNaTabelaDeProdutos()
+    {
+        // ⚠ Sem isto o ficheiro tem uma referência pendurada: a linha aponta
+        // para um `ProductCode` que a tabela de produtos não declara. Acontece
+        // com qualquer linha de serviço — serviços não estão em `inventory`.
+        var resultado = await ExportarComFacturas(
+            [Factura(codigoDeArtigo: "CONSULTORIA")],
+            artigos: [new SaftProduct("CIM-42", "Cimento Portland 50 kg")]);
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+
+        var artigos = resultado.File!
+            .Descendants(ExportSaftFile.Ns + "Product")
+            .ToDictionary(
+                p => p.Element(ExportSaftFile.Ns + "ProductCode")!.Value,
+                p => p.Element(ExportSaftFile.Ns + "ProductType")!.Value);
+
+        Assert.Equal("P", artigos["CIM-42"]);
+
+        // `O` — Outros. Não `S`: afirmar que é serviço seria dizer o que não
+        // se sabe.
+        Assert.Equal("O", artigos["CONSULTORIA"]);
+    }
+
+    [Fact]
+    public async Task ConsumidorFinal_EntraNaTabelaDeClientes()
+    {
+        // Uma venda a quem não se identificou não tem registo em `commercial`,
+        // e o `CustomerID` é obrigatório na factura. O cliente sai da própria
+        // factura, onde ficou congelado na emissão.
+        var resultado = await ExportarComFacturas(
+            [Factura(clienteId: ExportSaftFile.ConsumidorFinal)],
+            clientes: []);
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+
+        var declarado = Assert.Single(
+            resultado.File!.Descendants(ExportSaftFile.Ns + "Customer"));
+
+        Assert.Equal(
+            ExportSaftFile.ConsumidorFinal,
+            declarado.Element(ExportSaftFile.Ns + "CustomerID")!.Value);
+    }
+
+    [Fact]
+    public async Task ClienteJaNaTabela_NaoEDuplicado()
+    {
+        // ⚠ `CustomerIDConstraint`. Se o laço acrescentasse o cliente da
+        // factura sem verificar, o ficheiro ficava com dois iguais e inválido.
+        var resultado = await ExportarComFacturas(
+            [Factura(clienteId: "CLI-1")],
+            clientes: [Cliente("CLI-1")]);
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+
+        Assert.Single(resultado.File!.Descendants(ExportSaftFile.Ns + "Customer"));
+    }
+
+    [Fact]
+    public async Task FacturaAnteriorACadeia_SaiComHashZero()
+    {
+        // `Hash` é obrigatório com `minLength` 1, e as facturas anteriores à
+        // cadeia não têm nenhum (ADR-060). "0" diz o mesmo que `HashControl`
+        // já diz do ficheiro inteiro: não há chave para este documento.
+        var resultado = await ExportarComFacturas([Factura(hash: null)]);
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+
+        Assert.Equal("0", resultado.File!.Descendants(ExportSaftFile.Ns + "Hash").Single().Value);
+    }
+
+    [Fact]
+    public async Task ConsumidorFinalSemMorada_SaiComoDesconhecido()
+    {
+        // ⚠ Apanhado contra dados reais, não em teste. `InvoicedParty` deixa a
+        // morada do consumidor final **vazia**, de propósito — quem não se
+        // identifica também não dá morada. O XSD exige os três campos com
+        // `minLength` 1, e o ficheiro saía inválido.
+        var semMorada = Factura(clienteId: ExportSaftFile.ConsumidorFinal) with
+        {
+            Customer = new SaftCustomer(
+                ExportSaftFile.ConsumidorFinal, "999999999", "Consumidor Final",
+                new SaftAddress(string.Empty, string.Empty, string.Empty)),
+        };
+
+        var resultado = await ExportarComFacturas([semMorada], clientes: []);
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+
+        var morada = resultado.File!
+            .Descendants(ExportSaftFile.Ns + "Customer")
+            .Single()
+            .Element(ExportSaftFile.Ns + "BillingAddress")!;
+
+        Assert.Equal("Desconhecido", morada.Element(ExportSaftFile.Ns + "City")!.Value);
+        Assert.Equal("AO", morada.Element(ExportSaftFile.Ns + "Country")!.Value);
+    }
+
+    [Fact]
+    public async Task FacturaComCodigoDeImpostoQueOXsdNaoAceita_ERecusada()
+    {
+        // ⚠ Apanhado contra dados reais. Corrigir o código de uma série **não**
+        // corrige as facturas já emitidas com ele — a linha congela-o na
+        // emissão, e tem de congelar. Recusar é a única resposta honesta:
+        // emitir daria um ficheiro que a AGT rejeita, omitir daria um
+        // incompleto que também rejeita.
+        var comCodigoAntigo = Factura() with
+        {
+            Lines =
+            [
+                new SaftInvoiceLine(
+                    1, "CIM-42", "Cimento", 1, "sc", 100m, 100m, "F561883", 14m),
+            ],
+        };
+
+        var resultado = await ExportarComFacturas([comCodigoAntigo]);
+
+        Assert.Equal(ExportSaftOutcome.Rejected, resultado.Outcome);
+        Assert.Contains("F561883", resultado.Error);
+        Assert.Contains("FT S001/1", resultado.Error);
+    }
+
+    [Fact]
+    public async Task SemFacturas_ASeccaoNaoAparece()
+    {
+        // Mesma regra do `TaxTable`: `SalesInvoices` exige `NumberOfEntries` e
+        // os totais, por isso um elemento vazio invalidaria o ficheiro.
+        var resultado = await ExportarComFacturas([]);
+
+        Assert.Empty(resultado.File!.Descendants(ExportSaftFile.Ns + "SourceDocuments"));
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+    }
+
     [Fact]
     public async Task ComTabelaDeImpostos_ValidaContraOXsd()
     {
@@ -651,8 +881,19 @@ internal sealed class FakeTimeProvider(DateTimeOffset agora) : TimeProvider
 internal sealed class MasterDataFalso(
     IReadOnlyList<SaftCustomer> clientes,
     IReadOnlyList<SaftSupplier>? fornecedores = null,
-    IReadOnlyList<SaftProduct>? artigos = null) : ISaftMasterData
+    IReadOnlyList<SaftProduct>? artigos = null,
+    IReadOnlyList<SaftInvoice>? facturas = null) : ISaftMasterData
 {
+    public Task<IReadOnlyList<SaftInvoice>> ListInvoicesAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken)
+    {
+        Chamadas++;
+
+        return Task.FromResult<IReadOnlyList<SaftInvoice>>(facturas ?? []);
+    }
+
     public Task<IReadOnlyList<SaftProduct>> ListProductsAsync(CancellationToken cancellationToken)
     {
         Chamadas++;
