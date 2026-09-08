@@ -365,7 +365,48 @@ public interface ISalesInvoiceReporting
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// As facturas de compra registadas no período.
+    ///
+    /// <para>
+    /// ⚠ <strong>Sem as anuladas, ao contrário das de venda.</strong> A secção
+    /// <c>PurchaseInvoices</c> do SAF-T <strong>não tem
+    /// <c>DocumentStatus</c></strong> — não há onde escrever <c>A</c>. Incluir
+    /// uma factura anulada sem poder dizer que o está sobredeclararia a
+    /// compra; excluí-la é a única coisa que a secção sabe exprimir.
+    /// </para>
+    ///
+    /// <para>
+    /// A assimetria é do formato, não uma decisão nossa, e é por isso que fica
+    /// escrita aqui: quem ler o ficheiro e contar documentos vai encontrar
+    /// menos compras do que o Rivo mostra.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<ReportedPurchase>> ListPurchasesForPeriodAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken);
 }
+
+/// <param name="Number">
+/// O número que o <strong>fornecedor</strong> deu à factura — não um número
+/// nosso. É o que vai a <c>InvoiceNo</c>.
+/// </param>
+/// <param name="SupplierId">
+/// Nulo quando a factura foi registada sem se ligar a um fornecedor do
+/// cadastro. O nome e o NIF ficam na mesma, e é a partir deles que o ficheiro
+/// declara o fornecedor.
+/// </param>
+public sealed record ReportedPurchase(
+    string Number,
+    DateOnly IssuedOn,
+    Guid? SupplierId,
+    string SupplierName,
+    string SupplierTaxId,
+    decimal NetTotal,
+    decimal TaxTotal,
+    decimal GrossTotal);
 
 /// <param name="Method">
 /// Meio de pagamento <strong>no código do SAF-T</strong> — <c>NU</c>, <c>TB</c>,

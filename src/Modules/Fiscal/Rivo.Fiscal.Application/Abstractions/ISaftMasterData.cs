@@ -67,6 +67,16 @@ public interface ISaftMasterData
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// As facturas de compra do período, para `PurchaseInvoices`.
+    /// <strong>Sem as anuladas</strong> — a secção não tem onde dizer que o
+    /// estão.
+    /// </summary>
+    Task<IReadOnlyList<SaftPurchase>> ListPurchasesAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -217,6 +227,21 @@ public sealed record SaftSettlement(
     string InvoiceNumber,
     DateOnly InvoiceDate,
     decimal Amount);
+
+/// <summary>Uma factura de compra, no vocabulário do ficheiro.</summary>
+/// <param name="Number">O número que o fornecedor deu à factura.</param>
+/// <param name="Supplier">
+/// O fornecedor, com o identificador já na forma que a tabela usa — e vindo
+/// inteiro pela mesma razão dos clientes na factura de venda: pode não estar
+/// no cadastro.
+/// </param>
+public sealed record SaftPurchase(
+    string Number,
+    DateOnly IssuedOn,
+    SaftSupplier Supplier,
+    decimal NetTotal,
+    decimal TaxTotal,
+    decimal GrossTotal);
 
 /// <param name="Country">ISO 3166-1 alpha-2.</param>
 public sealed record SaftAddress(string Detail, string City, string Country);

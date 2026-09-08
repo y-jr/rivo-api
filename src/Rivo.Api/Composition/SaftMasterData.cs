@@ -32,6 +32,36 @@ public sealed class SaftMasterData(
     IInventoryCatalogue catalogue,
     ISalesInvoiceReporting invoices) : ISaftMasterData
 {
+    public async Task<IReadOnlyList<SaftPurchase>> ListPurchasesAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken)
+    {
+        var compras = await invoices.ListPurchasesForPeriodAsync(from, to, cancellationToken);
+
+        return [.. compras.Select(c => new SaftPurchase(
+            c.Number,
+            c.IssuedOn,
+            new SaftSupplier(
+                // Ligado ao cadastro: a mesma conversão da tabela de
+                // fornecedores. Sem ligação: o NIF, que é o que identifica o
+                // fornecedor na factura que ele emitiu, e cabe nos 30
+                // caracteres do campo.
+                c.SupplierId is { } fornecedor
+                    ? Identificador(fornecedor)
+                    : c.SupplierTaxId,
+                c.SupplierTaxId,
+                c.SupplierName,
+
+                // Uma factura de compra não guarda a morada de quem a emitiu.
+                // Vazia, e a exportação escreve "Desconhecido" — a mesma
+                // decisão do consumidor final.
+                new SaftAddress(string.Empty, string.Empty, string.Empty)),
+            c.NetTotal,
+            c.TaxTotal,
+            c.GrossTotal))];
+    }
+
     public async Task<IReadOnlyList<SaftPayment>> ListPaymentsAsync(
         DateOnly from,
         DateOnly to,

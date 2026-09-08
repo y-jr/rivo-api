@@ -705,6 +705,127 @@ public class ExportSaftFileTests
     }
 
     [Fact]
+    public async Task ComComprasESemFornecedorNoCadastro_ValidaEDeclaraOFornecedor()
+    {
+        // ⚠ Uma factura de compra pode ser registada sem se ligar ao cadastro:
+        // o nome e o NIF ficam em texto. O `SupplierID` dela tem na mesma de
+        // existir na tabela de fornecedores do ficheiro — mesmo laço do
+        // consumidor final.
+        var compra = new SaftPurchase(
+            "FAC-2026-4417",
+            new DateOnly(2026, 4, 2),
+            new SaftSupplier(
+                "5417900001", "5417900001", "Angoferragens sem cadastro",
+                new SaftAddress(string.Empty, string.Empty, string.Empty)),
+            80_000m,
+            11_200m,
+            91_200m);
+
+        var resultado = await new ExportSaftFile(
+            Empresa(),
+            new MasterDataFalso(
+                [Cliente()], [], [new SaftProduct("CIM-42", "Cimento")], [], [], [], [compra]),
+            new TaxRateStoreFalso([Taxa("NOR", 14m)]),
+            new FakeTimeProvider(Agora))
+            .ExecuteAsync(
+                2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), CancellationToken.None);
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+
+        var declarado = Assert.Single(resultado.File!.Descendants(ExportSaftFile.Ns + "Supplier"));
+
+        Assert.Equal(
+            "5417900001",
+            declarado.Element(ExportSaftFile.Ns + "SupplierID")!.Value);
+
+        // A factura de compra não guarda a morada de quem a emitiu. Vazia dá
+        // ficheiro inválido; "Desconhecido" é a mesma decisão do consumidor
+        // final.
+        Assert.Equal(
+            "Desconhecido",
+            declarado
+                .Element(ExportSaftFile.Ns + "BillingAddress")!
+                .Element(ExportSaftFile.Ns + "City")!.Value);
+
+        var compraNoFicheiro = resultado.File!
+            .Descendants(ExportSaftFile.Ns + "PurchaseInvoices")
+            .Single();
+
+        Assert.Equal("1", compraNoFicheiro.Element(ExportSaftFile.Ns + "NumberOfEntries")!.Value);
+
+        // O XSD sanciona o "0" aqui por palavras suas: «caso não haja
+        // obrigatoriedade de validação». Numa factura recebida não há.
+        Assert.Equal(
+            "0",
+            compraNoFicheiro
+                .Element(ExportSaftFile.Ns + "Invoice")!
+                .Element(ExportSaftFile.Ns + "Hash")!.Value);
+    }
+
+    [Fact]
+    public async Task AOrdemDoSourceDocumentsRespeitaOXsd()
+    {
+        // ⚠ `xs:sequence` também aqui: SalesInvoices, PurchaseInvoices,
+        // Payments. Trocar qualquer par invalida o ficheiro, e nenhum teste de
+        // secção isolada apanharia isso — só um com as três ao mesmo tempo.
+        var recibo = new SaftPayment(
+            "RG S001/1",
+            new DateOnly(2026, 3, 20),
+            new DateTimeOffset(2026, 3, 20, 0, 0, 0, TimeSpan.Zero),
+            Cancelled: false,
+            CancellationReason: null,
+            new SaftCustomer(
+                "CLI-1", "5417000001", "Padaria Kilamba, Lda.",
+                new SaftAddress("Rua 21 de Janeiro, 4", "Luanda", "AO")),
+            "MB",
+            114_000m,
+            [new SaftSettlement(1, "FT S001/1", new DateOnly(2026, 3, 15), 114_000m)]);
+
+        var compra = new SaftPurchase(
+            "FAC-2026-4417",
+            new DateOnly(2026, 4, 2),
+            new SaftSupplier(
+                "5417900001", "5417900001", "Angoferragens",
+                new SaftAddress("Rua A", "Luanda", "AO")),
+            80_000m,
+            11_200m,
+            91_200m);
+
+        var resultado = await new ExportSaftFile(
+            Empresa(),
+            new MasterDataFalso(
+                [Cliente()],
+                [],
+                [new SaftProduct("CIM-42", "Cimento Portland 50 kg")],
+                [Factura()],
+                [],
+                [recibo],
+                [compra]),
+            new TaxRateStoreFalso([Taxa("NOR", 14m)]),
+            new FakeTimeProvider(Agora))
+            .ExecuteAsync(
+                2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), CancellationToken.None);
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+
+        var ordem = resultado.File!
+            .Descendants(ExportSaftFile.Ns + "SourceDocuments")
+            .Single()
+            .Elements()
+            .Select(e => e.Name.LocalName)
+            .ToList();
+
+        // ⚠ Este caso ja pagou por si: eu tinha emitido `PurchaseInvoices`
+        // antes de `Payments`, e o XSD ordena ao contrario. Nenhum teste de
+        // seccao isolada apanharia isso.
+        Assert.Equal(["SalesInvoices", "Payments", "PurchaseInvoices"], ordem);
+    }
+
+    [Fact]
     public async Task SemFacturas_ASeccaoNaoAparece()
     {
         // Mesma regra do `TaxTable`: `SalesInvoices` exige `NumberOfEntries` e
@@ -1025,8 +1146,19 @@ internal sealed class MasterDataFalso(
     IReadOnlyList<SaftProduct>? artigos = null,
     IReadOnlyList<SaftInvoice>? facturas = null,
     IReadOnlyList<SaftCreditNote>? notas = null,
-    IReadOnlyList<SaftPayment>? recibos = null) : ISaftMasterData
+    IReadOnlyList<SaftPayment>? recibos = null,
+    IReadOnlyList<SaftPurchase>? compras = null) : ISaftMasterData
 {
+    public Task<IReadOnlyList<SaftPurchase>> ListPurchasesAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken)
+    {
+        Chamadas++;
+
+        return Task.FromResult<IReadOnlyList<SaftPurchase>>(compras ?? []);
+    }
+
     public Task<IReadOnlyList<SaftPayment>> ListPaymentsAsync(
         DateOnly from,
         DateOnly to,

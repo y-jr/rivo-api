@@ -8,8 +8,39 @@ namespace Rivo.Finance.Application;
 /// Traduz as facturas de venda para o contrato de relato — mesmo desenho de
 /// <see cref="ReceivablesOverview"/>: o modelo interno não sai (ADR-010).
 /// </summary>
-public sealed class SalesInvoiceReporting(ISalesInvoiceStore store) : ISalesInvoiceReporting
+public sealed class SalesInvoiceReporting(
+    ISalesInvoiceStore store,
+    IPayablesStore payables) : ISalesInvoiceReporting
 {
+    public async Task<IReadOnlyList<ReportedPurchase>> ListPurchasesForPeriodAsync(
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken)
+    {
+        // `dueBefore: null` — todas; a janela é sobre a data do documento e
+        // não sobre o vencimento.
+        var compras = await payables.ListPurchaseInvoicesAsync(null, cancellationToken);
+
+        return
+        [
+            .. compras
+                .Where(c => c.IssuedOn >= from && c.IssuedOn <= to)
+
+                // Sem as anuladas — ver `ISalesInvoiceReporting`. A secção do
+                // SAF-T não tem onde dizer que o estão.
+                .Where(c => c.Status is not InvoiceStatus.Cancelled)
+                .Select(c => new ReportedPurchase(
+                    c.SupplierInvoiceNumber,
+                    c.IssuedOn,
+                    c.SupplierId,
+                    c.SupplierName,
+                    c.SupplierTaxId,
+                    c.NetTotal,
+                    c.TaxTotal,
+                    c.GrossTotal)),
+        ];
+    }
+
     public async Task<IReadOnlyList<ReportedInvoice>> ListForPeriodAsync(
         DateOnly from,
         DateOnly to,

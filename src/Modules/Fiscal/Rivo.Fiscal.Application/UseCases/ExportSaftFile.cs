@@ -18,10 +18,10 @@ namespace Rivo.Fiscal.Application.UseCases;
 ///
 /// <para>
 /// <strong>Estado: `Header`, todo o `MasterFiles` menos o plano de contas, e
-/// em `SourceDocuments` as facturas de venda, as notas de crédito e os
-/// recibos.</strong> Falta `GeneralLedgerAccounts` (de `finance`, depende do
-/// PGC angolano que o ADR-037 recusou inventar), `GeneralLedgerEntries`,
-/// `MovementOfGoods` e `PurchaseInvoices`.
+/// em `SourceDocuments` as facturas de venda, as notas de crédito, os recibos
+/// e as facturas de compra.</strong> Falta `GeneralLedgerAccounts` (de
+/// `finance`, depende do PGC angolano que o ADR-037 recusou inventar),
+/// `GeneralLedgerEntries`, `MovementOfGoods` e `WorkingDocuments`.
 /// </para>
 ///
 /// <para>
@@ -278,6 +278,7 @@ public sealed class ExportSaftFile(
          */
         var notas = await masterData.ListCreditNotesAsync(from, to, cancellationToken);
         var recibos = await masterData.ListPaymentsAsync(from, to, cancellationToken);
+        var compras = await masterData.ListPurchasesAsync(from, to, cancellationToken);
 
         // Os documentos todos, para as verificações que não distinguem
         // factura de nota: código de imposto, artigo, cliente.
@@ -307,6 +308,21 @@ public sealed class ExportSaftFile(
         var clientesDeclarados = clientes
             .Select(c => c.CustomerId)
             .ToHashSet(StringComparer.Ordinal);
+
+        // O mesmo laco nos fornecedores: uma factura de compra pode ter sido
+        // registada sem ligacao ao cadastro, e o `SupplierID` dela tem de
+        // existir na tabela do ficheiro.
+        var fornecedoresDeclarados = fornecedores
+            .Select(f => f.SupplierId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var fornecedoresDeCompra = compras
+            .Select(c => c.Supplier)
+            .Where(f => !fornecedoresDeclarados.Contains(f.SupplierId))
+            .GroupBy(f => f.SupplierId, StringComparer.Ordinal)
+            .Select(g => g.First())
+            .OrderBy(f => f.SupplierId, StringComparer.Ordinal)
+            .ToList();
 
         var clientesDeFactura = documentos
             .Select(f => f.Customer)
@@ -348,6 +364,7 @@ public sealed class ExportSaftFile(
                     clientes.Select(Cliente),
                     clientesDeFactura.Select(Cliente),
                     fornecedores.Select(Fornecedor),
+                    fornecedoresDeCompra.Select(Fornecedor),
                     artigos.Select(a => Artigo(a, ProdutoFisico)),
                     acrescentados.Select(a => Artigo(a, ProdutoNaoCatalogado)),
 
@@ -361,11 +378,18 @@ public sealed class ExportSaftFile(
 
                 // Mesma regra do `TaxTable`: ausente quando não há documentos,
                 // porque `SalesInvoices` exige `NumberOfEntries` e os totais.
-                documentos.Count > 0 || recibos.Count > 0
+                documentos.Count > 0 || recibos.Count > 0 || compras.Count > 0
                     ? new XElement(
                         Ns + "SourceDocuments",
                         documentos.Count > 0 ? Vendas(facturas, notas) : null,
-                        recibos.Count > 0 ? Pagamentos(recibos) : null)
+
+                        // ⚠ **`Payments` antes de `PurchaseInvoices`**, e nao
+                        // o contrario. Assumi a ordem inversa e o teste
+                        // `AOrdemDoSourceDocumentsRespeitaOXsd` apanhou-a: o
+                        // XSD ordena SalesInvoices, MovementOfGoods,
+                        // WorkingDocuments, Payments, PurchaseInvoices.
+                        recibos.Count > 0 ? Pagamentos(recibos) : null,
+                        compras.Count > 0 ? Compras(compras) : null)
                     : null));
 
         return ExportSaftResult.Generated(documento);
@@ -544,6 +568,53 @@ public sealed class ExportSaftFile(
             facturas.Select(f => Factura(f, null)),
             notas.Select(n => Factura(n.Document, n.CorrectedInvoiceNumber)));
     }
+
+    /// <summary>
+    /// A secção <c>PurchaseInvoices</c> — as facturas dos fornecedores.
+    ///
+    /// <para>
+    /// <strong>É a secção mais simples do ficheiro, e por uma razão que vale a
+    /// pena dizer:</strong> não tem linhas nem estado. O SAF-T quer saber
+    /// quanto se comprou a quem, não o detalhe da factura que o fornecedor
+    /// emitiu — esse é documento dele, não nosso.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠ <strong>Sem <c>DocumentStatus</c>, e é isso que força a exclusão das
+    /// anuladas.</strong> Não há onde escrever <c>A</c>. Incluir uma factura
+    /// anulada sem poder dizer que o está sobredeclararia a compra.
+    /// </para>
+    ///
+    /// <para>
+    /// <c>Hash</c> a <c>"0"</c> — e aqui o XSD di-lo por palavras suas: «o
+    /// campo deve ser preenchido com "0" (zero), caso não haja obrigatoriedade
+    /// de validação». Numa factura recebida não há.
+    /// </para>
+    /// </summary>
+    private XElement Compras(IReadOnlyList<SaftPurchase> compras) =>
+        new(
+            Ns + "PurchaseInvoices",
+            new XElement(Ns + "NumberOfEntries", compras.Count),
+            compras.Select(Compra));
+
+    private XElement Compra(SaftPurchase compra) =>
+        new(
+            Ns + "Invoice",
+            new XElement(Ns + "InvoiceNo", compra.Number),
+            new XElement(Ns + "Hash", SemValor),
+            new XElement(Ns + "SourceID", SemValor),
+            new XElement(Ns + "InvoiceDate", Data(compra.IssuedOn)),
+
+            // `FT` — factura. É o que uma factura de compra é; os outros
+            // valores da lista (`FR`, `NL`, `RC`…) descrevem documentos que o
+            // Rivo não distingue no registo de compras.
+            new XElement(Ns + "PurchaseType", "FT"),
+            new XElement(Ns + "SupplierID", compra.Supplier.SupplierId),
+            new XElement(
+                Ns + "DocumentTotals",
+                new XElement(Ns + "TaxPayable", Montante(compra.TaxTotal)),
+                new XElement(Ns + "NetTotal", Montante(compra.NetTotal)),
+                new XElement(Ns + "GrossTotal", Montante(compra.GrossTotal))));
 
     /// <summary>
     /// A secção <c>Payments</c> — os recibos.
