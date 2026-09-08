@@ -44,6 +44,7 @@ using Rivo.Analytics.Api;
 using Rivo.CustomerPortal.Api;
 using Rivo.Messaging.Api;
 using Rivo.Messaging.Infrastructure;
+using Rivo.Fiscal.Application.Abstractions;
 
 // A cultura é fixada em invariante, e não herdada do ambiente (ADR-056).
 //
@@ -157,6 +158,12 @@ builder.Services.AddScoped<IProcurementApprovalSubmission, ProcurementApprovalSu
 // E `payroll`, mesmo desenho — ver Composition/PayrollApprovalSubmission.
 // Esqueleto: sem cálculo de IRT/INSS, a folha submete-se pelo total bruto.
 builder.Services.AddScoped<IPayrollApprovalSubmission, PayrollApprovalSubmission>();
+
+// A direcção de relato: `fiscal` lê os módulos transaccionais para produzir o
+// SAF-T. Invertida pela mesma razão que as de cima — `commercial` vai depender
+// de `fiscal` para o imposto da venda, e as duas direcções não podem ser ambas
+// referências de projecto. Ver Composition/SaftMasterData.
+builder.Services.AddScoped<ISaftMasterData, SaftMasterData>();
 
 var app = builder.Build();
 

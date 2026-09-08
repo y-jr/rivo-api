@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using Rivo.Fiscal.Application.Abstractions;
 
 namespace Rivo.Fiscal.Application.UseCases;
 
@@ -11,7 +12,14 @@ namespace Rivo.Fiscal.Application.UseCases;
 /// (<c>minOccurs="1"</c>); <c>MasterFiles</c>, <c>GeneralLedgerEntries</c> e
 /// <c>SourceDocuments</c> são todos opcionais. Isso não é uma folga a
 /// explorar — é o que permite entregar isto por partes sem nunca produzir um
-/// ficheiro inválido, e é a razão de esta primeira versão ser só o cabeçalho.
+/// ficheiro inválido.
+/// </para>
+///
+/// <para>
+/// <strong>Estado: <c>Header</c> e a tabela de clientes.</strong> Faltam
+/// fornecedores (`procurement`), produtos (`inventory`), plano de contas e
+/// tabela de taxas. Cada um entra pela mesma porta
+/// (<see cref="ISaftMasterData"/>) e é validado contra o XSD ao entrar.
 /// </para>
 ///
 /// <para>
@@ -28,14 +36,43 @@ namespace Rivo.Fiscal.Application.UseCases;
 /// esta versão não emite — quando emitir, a cadeia tem de existir primeiro.
 /// </para>
 /// </summary>
-public sealed class ExportSaftFile(CompanyOptions company, TimeProvider clock)
+public sealed class ExportSaftFile(
+    CompanyOptions company,
+    ISaftMasterData masterData,
+    TimeProvider clock)
 {
     /// <summary>O espaço de nomes do SAF-T AO 1.01_01, tal como o XSD o fixa.</summary>
     public static readonly XNamespace Ns = "urn:OECD:StandardAuditFile-Tax:AO_1.01_01";
 
     public const string AuditFileVersion = "1.01_01";
 
-    public ExportSaftResult Execute(int fiscalYear, DateOnly from, DateOnly to)
+    /// <summary>
+    /// O que vai em <c>AccountID</c> enquanto o plano de contas não existir.
+    ///
+    /// <para>
+    /// <strong>É o valor que o XSD prevê para este caso</strong>, e não uma
+    /// improvisação: a documentação do elemento diz «deve ser indicada a
+    /// respectiva conta-corrente do cliente no plano de contas da
+    /// contabilidade, <em>caso esteja definida. Caso contrário deve ser
+    /// preenchido com a designação "Desconhecido"</em>», e o padrão do tipo
+    /// admite-o explicitamente. O ADR-037 recusou inventar o PGC angolano —
+    /// dizer "desconhecido" é o que resta, e é verdade.
+    /// </para>
+    /// </summary>
+    private const string ContaDesconhecida = "Desconhecido";
+
+    /// <summary>
+    /// <c>0</c> — sem autofacturação. O Rivo não a faz: não há caso de uso em
+    /// que o cliente emita a factura em nome da empresa. Quando houver, deixa
+    /// de ser constante e passa a ser facto de `commercial`.
+    /// </summary>
+    private const string SemAutofacturacao = "0";
+
+    public async Task<ExportSaftResult> ExecuteAsync(
+        int fiscalYear,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken)
     {
         if (from > to)
         {
@@ -62,20 +99,76 @@ public sealed class ExportSaftFile(CompanyOptions company, TimeProvider clock)
                 $"Identidade da empresa incompleta: {string.Join(", ", faltam)}.");
         }
 
+        var clientes = await masterData.ListCustomersAsync(cancellationToken);
+
+        var repetido = clientes
+            .GroupBy(c => c.CustomerId, StringComparer.Ordinal)
+            .FirstOrDefault(g => g.Count() > 1);
+
+        if (repetido is not null)
+        {
+            // `CustomerIDConstraint` no XSD. O validador apanharia isto, mas
+            // com uma mensagem sobre chaves duplicadas que não diz a quem
+            // exporta o que fazer. Recusar aqui nomeia o cliente.
+            return ExportSaftResult.Rejected(
+                $"Há mais do que um cliente com o identificador '{repetido.Key}'. "
+                + "O SAF-T exige que seja único no ficheiro.");
+        }
+
         var documento = new XDocument(
             new XDeclaration("1.0", "windows-1252", null),
             new XElement(
                 Ns + "AuditFile",
                 Header(fiscalYear, from, to),
 
-                // Vazio e presente, e não ausente: o XSD declara `MasterFiles`
-                // com `minOccurs` implícito de 1 e todos os filhos opcionais.
-                // Um elemento vazio é o que diz "não há dados de referência
-                // neste período", que é diferente de não dizer nada.
-                new XElement(Ns + "MasterFiles")));
+                // Presente mesmo quando não tem filhos: o XSD declara
+                // `MasterFiles` com `minOccurs` implícito de 1 e todos os
+                // filhos opcionais. Um elemento vazio é o que diz "não há
+                // dados de referência", que é diferente de não dizer nada.
+                new XElement(Ns + "MasterFiles", clientes.Select(Cliente))));
 
         return ExportSaftResult.Generated(documento);
     }
+
+    /// <summary>
+    /// Um elemento <c>Customer</c>.
+    ///
+    /// <para>
+    /// A ordem dos filhos não é estética: o XSD usa <c>xs:sequence</c>, e um
+    /// ficheiro com os mesmos campos por outra ordem é inválido. É por isso
+    /// que os testes validam contra o esquema em vez de conferirem campos.
+    /// </para>
+    /// </summary>
+    private XElement Cliente(SaftCustomer cliente)
+    {
+        var elementos = new List<XObject>
+        {
+            new XElement(Ns + "CustomerID", cliente.CustomerId),
+            new XElement(Ns + "AccountID", ContaDesconhecida),
+            new XElement(Ns + "CustomerTaxID", cliente.TaxId),
+            new XElement(Ns + "CompanyName", cliente.Name),
+            Morada(Ns + "BillingAddress", cliente.BillingAddress),
+            new XElement(Ns + "SelfBillingIndicator", SemAutofacturacao),
+        };
+
+        return new XElement(Ns + "Customer", elementos);
+    }
+
+    /// <summary>
+    /// Uma morada de terceiro, na forma <c>AddressStructure</c> do XSD.
+    ///
+    /// <para>
+    /// Distinta de <see cref="Morada()"/>, que é a da própria empresa: aquela
+    /// lê da configuração e fixa o país em <c>AO</c>; esta recebe o país,
+    /// porque um cliente pode não ser angolano.
+    /// </para>
+    /// </summary>
+    private XElement Morada(XName nome, SaftAddress morada) =>
+        new(
+            nome,
+            new XElement(Ns + "AddressDetail", morada.Detail),
+            new XElement(Ns + "City", morada.City),
+            new XElement(Ns + "Country", morada.Country));
 
     private XElement Header(int fiscalYear, DateOnly from, DateOnly to)
     {

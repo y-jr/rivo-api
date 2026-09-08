@@ -68,6 +68,9 @@ internal sealed class FakeCustomerDirectory : ICustomerDirectory
     public Task<CustomerReference?> FindAsync(Guid customerId, CancellationToken cancellationToken) =>
         Task.FromResult(_byId.GetValueOrDefault(customerId));
 
+    public Task<IReadOnlyList<CustomerReference>> ListAllAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<CustomerReference>>([.. _byId.Values]);
+
     public Task<CustomerReference?> FindByUserIdAsync(Guid userId, CancellationToken cancellationToken) =>
         throw new NotSupportedException("Não usado por messaging — a composição já resolve o cliente.");
 

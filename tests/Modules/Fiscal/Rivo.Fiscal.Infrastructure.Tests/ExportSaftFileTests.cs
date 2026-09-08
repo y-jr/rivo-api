@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using Rivo.Fiscal.Application;
+using Rivo.Fiscal.Application.Abstractions;
 using Rivo.Fiscal.Application.UseCases;
 
 namespace Rivo.Fiscal.Infrastructure.Tests;
@@ -37,13 +38,29 @@ public class ExportSaftFileTests
         },
     };
 
-    private static ExportSaftFile Exportador(CompanyOptions? empresa = null) =>
-        new(empresa ?? Empresa(), new FakeTimeProvider(Agora));
+    private static Task<ExportSaftResult> Exportar(
+        int fiscalYear,
+        DateOnly from,
+        DateOnly to,
+        CompanyOptions? empresa = null,
+        params SaftCustomer[] clientes) =>
+        new ExportSaftFile(
+            empresa ?? Empresa(),
+            new MasterDataFalso(clientes),
+            new FakeTimeProvider(Agora))
+            .ExecuteAsync(fiscalYear, from, to, CancellationToken.None);
+
+    /// <summary>Um cliente completo, para os casos que não são sobre o cliente.</summary>
+    internal static SaftCustomer Cliente(
+        string id = "CLI-1",
+        string nif = "5417000001",
+        string nome = "Padaria Kilamba, Lda.") =>
+        new(id, nif, nome, new SaftAddress("Rua 21 de Janeiro, 4", "Luanda", "AO"));
 
     [Fact]
-    public void FicheiroGerado_ValidaContraOXsd()
+    public async Task FicheiroGerado_ValidaContraOXsd()
     {
-        var resultado = Exportador().Execute(
+        var resultado = await Exportar(
             2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31));
 
         Assert.Equal(ExportSaftOutcome.Generated, resultado.Outcome);
@@ -56,7 +73,68 @@ public class ExportSaftFileTests
     }
 
     [Fact]
-    public void FicheiroGerado_ComMoradaMinima_ValidaNaMesma()
+    public async Task ComClientes_ValidaContraOXsd()
+    {
+        var resultado = await Exportar(
+            2026,
+            new DateOnly(2026, 1, 1),
+            new DateOnly(2026, 12, 31),
+            empresa: null,
+            Cliente("CLI-1", "5417000001", "Padaria Kilamba, Lda."),
+            Cliente("CLI-2", "5417000002", "Farmácia Talatona"));
+
+        Assert.Equal(ExportSaftOutcome.Generated, resultado.Outcome);
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+
+        var emitidos = resultado.File!
+            .Descendants(ExportSaftFile.Ns + "Customer")
+            .Select(c => c.Element(ExportSaftFile.Ns + "CustomerID")!.Value)
+            .ToList();
+
+        Assert.Equal(["CLI-1", "CLI-2"], emitidos);
+    }
+
+    [Fact]
+    public async Task ClienteSemContaCorrente_VaiComoDesconhecido()
+    {
+        var resultado = await Exportar(
+            2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31),
+            empresa: null,
+            Cliente());
+
+        var conta = resultado.File!
+            .Descendants(ExportSaftFile.Ns + "Customer")
+            .Single()
+            .Element(ExportSaftFile.Ns + "AccountID")!.Value;
+
+        // O XSD obriga a `AccountID` e prevê literalmente "Desconhecido" para
+        // quem não tem plano de contas. O ADR-037 recusou inventar o PGC
+        // angolano — este caso fixa que a saída é a prevista e não um código
+        // improvisado que pareceria uma conta a sério.
+        Assert.Equal("Desconhecido", conta);
+    }
+
+    [Fact]
+    public async Task ClientesComOMesmoIdentificador_ERecusado()
+    {
+        var resultado = await Exportar(
+            2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31),
+            empresa: null,
+            Cliente("CLI-1", "5417000001", "Padaria Kilamba, Lda."),
+            Cliente("CLI-1", "5417000002", "Farmácia Talatona"));
+
+        // `CustomerIDConstraint` no XSD. Recusa-se aqui para a mensagem
+        // nomear o cliente, em vez de sair um erro de chave duplicada que não
+        // diz a quem exporta o que corrigir.
+        Assert.Equal(ExportSaftOutcome.Rejected, resultado.Outcome);
+        Assert.Contains("CLI-1", resultado.Error);
+    }
+
+    [Fact]
+    public async Task FicheiroGerado_ComMoradaMinima_ValidaNaMesma()
     {
         // Sem rua nem número: `AddressDetail` cai em "Desconhecido", que é o
         // que impede o ficheiro de ser inválido por falta de um campo
@@ -67,8 +145,8 @@ public class ExportSaftFileTests
             TaxRegistrationNumber = "5417000000",
         };
 
-        var resultado = Exportador(empresa).Execute(
-            2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 31));
+        var resultado = await Exportar(
+            2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 31), empresa);
 
         var erros = SaftSchema.Validar(resultado.File!);
 
@@ -76,7 +154,7 @@ public class ExportSaftFileTests
     }
 
     [Fact]
-    public void FicheiroGerado_ComTodosOsOpcionais_ValidaNaMesma()
+    public async Task FicheiroGerado_ComTodosOsOpcionais_ValidaNaMesma()
     {
         var empresa = new CompanyOptions
         {
@@ -96,9 +174,10 @@ public class ExportSaftFileTests
             },
         };
 
-        var erros = SaftSchema.Validar(
-            Exportador(empresa).Execute(
-                2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31)).File!);
+        var resultado = await Exportar(
+            2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), empresa);
+
+        var erros = SaftSchema.Validar(resultado.File!);
 
         Assert.True(erros.Count == 0, string.Join("\n", erros));
     }
@@ -120,10 +199,10 @@ public class ExportSaftFileTests
     }
 
     [Fact]
-    public void SoftwareValidationNumber_VaiAZero_PorqueNaoHaCertificacao()
+    public async Task SoftwareValidationNumber_VaiAZero_PorqueNaoHaCertificacao()
     {
-        var ficheiro = Exportador().Execute(
-            2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31)).File!;
+        var ficheiro = (await Exportar(
+            2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31))).File!;
 
         var numero = ficheiro
             .Descendants(ExportSaftFile.Ns + "SoftwareValidationNumber")
@@ -137,10 +216,10 @@ public class ExportSaftFileTests
     }
 
     [Fact]
-    public void DataDeCriacao_EADeHoje_ENaoADoPeriodo()
+    public async Task DataDeCriacao_EADeHoje_ENaoADoPeriodo()
     {
-        var ficheiro = Exportador().Execute(
-            2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 31)).File!;
+        var ficheiro = (await Exportar(
+            2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 31))).File!;
 
         var criado = ficheiro.Descendants(ExportSaftFile.Ns + "DateCreated").Single().Value;
 
@@ -150,9 +229,9 @@ public class ExportSaftFileTests
     }
 
     [Fact]
-    public void PeriodoInvertido_ERecusado()
+    public async Task PeriodoInvertido_ERecusado()
     {
-        var resultado = Exportador().Execute(
+        var resultado = await Exportar(
             2026, new DateOnly(2026, 12, 31), new DateOnly(2026, 1, 1));
 
         Assert.Equal(ExportSaftOutcome.Rejected, resultado.Outcome);
@@ -160,22 +239,40 @@ public class ExportSaftFileTests
     }
 
     [Fact]
-    public void PeriodoQueAtravessaOAnoDeclarado_ERecusado()
+    public async Task PeriodoQueAtravessaOAnoDeclarado_ERecusado()
     {
         // O XSD não o impede, mas um ficheiro que anuncia `FiscalYear` 2026 e
         // traz documentos de 2025 é incoerente consigo próprio.
-        var resultado = Exportador().Execute(
+        var resultado = await Exportar(
             2026, new DateOnly(2025, 12, 1), new DateOnly(2026, 1, 31));
 
         Assert.Equal(ExportSaftOutcome.Rejected, resultado.Outcome);
     }
 
     [Fact]
-    public void SemIdentidadeDaEmpresa_ERecusadoComOsCamposEmFalta()
+    public async Task PeriodoInvalido_NemChegaAPedirOsClientes()
     {
-        var resultado = new ExportSaftFile(
-            new CompanyOptions(), new FakeTimeProvider(Agora)).Execute(
-            2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31));
+        // Ordem, não estética: ler a carteira inteira para depois recusar por
+        // datas invertidas é trabalho deitado fora — e num SAF-T a carteira
+        // pode ser grande.
+        var fonte = new MasterDataFalso([]);
+
+        await new ExportSaftFile(Empresa(), fonte, new FakeTimeProvider(Agora))
+            .ExecuteAsync(
+                2026,
+                new DateOnly(2026, 12, 31),
+                new DateOnly(2026, 1, 1),
+                CancellationToken.None);
+
+        Assert.Equal(0, fonte.Chamadas);
+    }
+
+    [Fact]
+    public async Task SemIdentidadeDaEmpresa_ERecusadoComOsCamposEmFalta()
+    {
+        var resultado = await Exportar(
+            2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31),
+            empresa: new CompanyOptions());
 
         Assert.Equal(ExportSaftOutcome.Rejected, resultado.Outcome);
 
@@ -190,6 +287,26 @@ public class ExportSaftFileTests
 internal sealed class FakeTimeProvider(DateTimeOffset agora) : TimeProvider
 {
     public override DateTimeOffset GetUtcNow() => agora;
+}
+
+/// <summary>
+/// A porta de relato, escrita à mão — ADR-022.
+///
+/// <para>
+/// Conta as chamadas porque uma delas é uma asserção: a exportação não deve
+/// pedir a carteira de clientes antes de saber que o pedido é válido.
+/// </para>
+/// </summary>
+internal sealed class MasterDataFalso(IReadOnlyList<SaftCustomer> clientes) : ISaftMasterData
+{
+    public int Chamadas { get; private set; }
+
+    public Task<IReadOnlyList<SaftCustomer>> ListCustomersAsync(CancellationToken cancellationToken)
+    {
+        Chamadas++;
+
+        return Task.FromResult(clientes);
+    }
 }
 
 /// <summary>
@@ -234,15 +351,20 @@ public class NifCurtoTests
     }
 
     [Fact]
-    public void NifNoMinimo_ProduzFicheiroQueValida()
+    public async Task NifNoMinimo_ProduzFicheiroQueValida()
     {
         // As duas metades têm de concordar: o que a verificação aceita, o XSD
         // também tem de aceitar. Um limite errado num dos lados seria pior do
         // que não ter limite nenhum.
-        var resultado = new ExportSaftFile(
+        var resultado = await new ExportSaftFile(
             ComNif("5417000000"),
+            new MasterDataFalso([]),
             new FakeTimeProvider(new DateTimeOffset(2026, 9, 8, 0, 0, 0, TimeSpan.Zero)))
-            .Execute(2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31));
+            .ExecuteAsync(
+                2026,
+                new DateOnly(2026, 1, 1),
+                new DateOnly(2026, 12, 31),
+                CancellationToken.None);
 
         var erros = SaftSchema.Validar(resultado.File!);
 

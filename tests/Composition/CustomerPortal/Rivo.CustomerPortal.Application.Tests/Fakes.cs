@@ -17,6 +17,9 @@ internal sealed class FakeCustomerDirectory : ICustomerDirectory
     public Task<CustomerReference?> FindAsync(Guid customerId, CancellationToken cancellationToken) =>
         Task.FromResult(_byUserId.Values.FirstOrDefault(c => c.CustomerId == customerId));
 
+    public Task<IReadOnlyList<CustomerReference>> ListAllAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<CustomerReference>>([.. _byUserId.Values]);
+
     public Task<CustomerReference?> FindByUserIdAsync(Guid userId, CancellationToken cancellationToken) =>
         Task.FromResult(_byUserId.GetValueOrDefault(userId));
 

@@ -319,17 +319,18 @@ public static class FiscalModuleEndpoints
     /// mentir sobre si próprio.
     /// </para>
     /// </summary>
-    private static IResult ExportSaftAsync(
+    private static async Task<IResult> ExportSaftAsync(
         int fiscalYear,
         DateOnly? from,
         DateOnly? to,
-        ExportSaftFile export)
+        ExportSaftFile export,
+        CancellationToken cancellationToken)
     {
         // Sem janela, o ano civil inteiro — que é o pedido normal da AGT.
         var inicio = from ?? new DateOnly(fiscalYear, 1, 1);
         var fim = to ?? new DateOnly(fiscalYear, 12, 31);
 
-        var resultado = export.Execute(fiscalYear, inicio, fim);
+        var resultado = await export.ExecuteAsync(fiscalYear, inicio, fim, cancellationToken);
 
         if (resultado.Outcome is ExportSaftOutcome.Rejected)
         {

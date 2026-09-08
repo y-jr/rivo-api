@@ -34,6 +34,30 @@ public interface ICustomerDirectory
     Task<CustomerReference?> FindByUserIdAsync(Guid userId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Todos os clientes, para quem tem de os enumerar em vez de os procurar um
+    /// a um. Primeiro consumidor: a secção <c>Customer</c> do SAF-T AO.
+    ///
+    /// <para>
+    /// <strong>Inclui os inactivos, e não é opção.</strong> Um cliente
+    /// desactivado hoje pode ter sido facturado em Março, e o XSD exige que
+    /// todo o documento referencie master data presente no ficheiro
+    /// (<c>CustomerIDConstraint</c>). Deixar de fora quem já não vende seria
+    /// produzir um ficheiro com referências penduradas — e a desactivação
+    /// existe exactamente porque BR-14 proíbe eliminar quem tem documentos
+    /// emitidos.
+    /// </para>
+    ///
+    /// <para>
+    /// Sem paginação, de propósito: quem exporta um SAF-T precisa do conjunto
+    /// inteiro, e um ficheiro parcial não é um ficheiro válido. Se a carteira
+    /// crescer ao ponto de isto não caber em memória, a resposta é
+    /// <em>streaming</em> na exportação, não uma página que quem chama tem de
+    /// se lembrar de percorrer até ao fim.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<CustomerReference>> ListAllAsync(CancellationToken cancellationToken);
+
+    /// <summary>
     /// Regista um cliente — escrita através do contrato, mesmo padrão de
     /// <c>ICustomerMessaging</c>/<c>ICustomerPayments</c> (ADR-044/ADR-045).
     /// Primeiro consumidor: a importação em massa via CSV de

@@ -26,6 +26,14 @@ public sealed class CustomerDirectory(ICustomerStore store, RegisterCustomer reg
         return cliente is null ? null : ToReference(cliente);
     }
 
+    public async Task<IReadOnlyList<CustomerReference>> ListAllAsync(CancellationToken cancellationToken)
+    {
+        // `includeInactive: true` — ver `ICustomerDirectory.ListAllAsync`.
+        var clientes = await store.ListAsync(includeInactive: true, cancellationToken);
+
+        return [.. clientes.Select(ToReference)];
+    }
+
     public async Task<CustomerRegistrationResult> RegisterAsync(
         string name,
         string taxId,
