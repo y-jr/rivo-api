@@ -249,6 +249,7 @@ utilizador, não fiscalista nem Anexo I da lei; ver "Perguntas em aberto".
 | GET | `/fiscal/tax-rates` | `fiscal.rates.read` |
 | POST | `/fiscal/tax-rates` | `fiscal.rates.write` |
 | POST | `/fiscal/tax-rates/{scheduleId}/versions` | `fiscal.rates.write` |
+| PATCH | `/fiscal/tax-rates/{scheduleId}/code` | `fiscal.rates.write` |
 | GET | `/fiscal/tax-rates/determination?taxCode=&taxPointDate=&kind=` | `fiscal.rates.read` |
 | GET | `/fiscal/income-tax-schedule` | `fiscal.rates.read` |
 | POST | `/fiscal/income-tax-schedule/versions` | `fiscal.rates.write` |

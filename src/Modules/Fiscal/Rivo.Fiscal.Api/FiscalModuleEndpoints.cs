@@ -27,6 +27,17 @@ public static class FiscalModuleEndpoints
         group.MapPost("/tax-rates/{scheduleId:guid}/versions", IntroduceAsync)
             .RequireAuthorization(FiscalPermissions.RatesWrite);
 
+        /*
+         * Correccao do codigo do SAF-T de uma serie.
+         *
+         * Existe para desfazer um beco: uma serie de IVA aberta com um codigo
+         * que a AGT nao aceita bloqueia a exportacao para sempre -- nada se
+         * elimina (BR-14) e o codigo nao se alterava. Desde 2026-09-08 a
+         * abertura ja o recusa, mas as series anteriores continuam la.
+         */
+        group.MapPatch("/tax-rates/{scheduleId:guid}/code", CorrectCodeAsync)
+            .RequireAuthorization(FiscalPermissions.RatesWrite);
+
         // Determinação: o que `commercial` e `finance` fazem por contrato, aqui
         // exposto para se poder conferir o que a emissão vai receber.
         group.MapGet("/tax-rates/determination", DetermineAsync)
@@ -131,6 +142,32 @@ public static class FiscalModuleEndpoints
                 Results.ValidationProblem(new Dictionary<string, string[]> { ["taxa"] = [result.Error!] }),
 
             _ => Results.Problem("Resultado inesperado ao introduzir a taxa."),
+        };
+    }
+
+    private static async Task<IResult> CorrectCodeAsync(
+        Guid scheduleId,
+        CorrectCodeRequest request,
+        CorrectTaxRateCode correctCode,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await correctCode.ExecuteAsync(
+            scheduleId, request.Code, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            CorrectCodeOutcome.Corrected => Results.Ok(new { code = result.Code }),
+
+            CorrectCodeOutcome.ScheduleNotFound =>
+                Results.NotFound(new { erro = "Série de taxa não encontrada." }),
+
+            // 400: o código não é aceite pelo SAF-T, ou já existe outra série
+            // com ele. Nos dois casos corrige-se no pedido.
+            CorrectCodeOutcome.Rejected =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["codigo"] = [result.Error!] }),
+
+            _ => Results.Problem("Resultado inesperado ao corrigir o código."),
         };
     }
 
@@ -369,6 +406,8 @@ public static class FiscalModuleEndpoints
 }
 
 public sealed record OpenScheduleRequest(TaxKind? Kind, string Code, string Description);
+
+public sealed record CorrectCodeRequest(string Code);
 
 public sealed record IntroduceRateRequest(
     decimal Percentage,

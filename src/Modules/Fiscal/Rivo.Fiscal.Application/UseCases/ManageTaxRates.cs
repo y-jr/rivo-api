@@ -130,6 +130,98 @@ public sealed record OpenScheduleResult(bool Succeeded, Guid? ScheduleId, string
 }
 
 /// <summary>
+/// Corrige o código do SAF-T de uma série de taxa.
+///
+/// <para>
+/// <strong>Existe para desfazer um beco.</strong> Desde 2026-09-08 uma série
+/// de IVA só se abre com um código que o SAF-T aceita — mas as abertas antes
+/// disso podem ter qualquer coisa, e a exportação recusa-se a produzir um
+/// ficheiro que a AGT rejeitaria. Sem esta correcção, essas instâncias ficavam
+/// sem exportação possível: nada se elimina (BR-14) e o código não se alterava.
+/// </para>
+///
+/// <para>
+/// Não é operação de rotina. Vale <c>fiscal.rates.write</c> — a mesma
+/// permissão de introduzir uma taxa — e fica na trilha.
+/// </para>
+/// </summary>
+public sealed class CorrectTaxRateCode(ITaxRateStore store, IAuditTrail audit)
+{
+    public async Task<CorrectCodeResult> ExecuteAsync(
+        Guid scheduleId,
+        string code,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        var serie = await store.FindByIdAsync(scheduleId, cancellationToken);
+
+        if (serie is null)
+        {
+            return CorrectCodeResult.NotFound();
+        }
+
+        var normalizado = (code ?? string.Empty).Trim().ToUpperInvariant();
+        var anterior = serie.Code;
+
+        if (string.Equals(anterior, normalizado, StringComparison.Ordinal))
+        {
+            // Sem alteração não há registo de auditoria: uma trilha cheia de
+            // "mudou de NOR para NOR" é ruído que esconde as correcções a sério.
+            return CorrectCodeResult.Success(normalizado);
+        }
+
+        // Mesma razão de `OpenTaxRateSchedule`: duas séries com o mesmo imposto
+        // e código tornam a determinação ambígua, e o agregado não vê o conjunto.
+        if (await store.FindAsync(serie.Kind, normalizado, cancellationToken) is not null)
+        {
+            return CorrectCodeResult.Failure($"Já existe uma série para o código '{normalizado}'.");
+        }
+
+        try
+        {
+            serie.CorrectCode(normalizado);
+        }
+        catch (ArgumentException error)
+        {
+            return CorrectCodeResult.Failure(error.Message);
+        }
+
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                FiscalAuditActions.ScheduleCodeCorrected,
+                FiscalAuditEntityTypes.TaxRateSchedule,
+                serie.Id.ToString(),
+                context,
+                PreviousValue: $$"""{"code":"{{anterior}}"}""",
+                NewValue: $$"""{"code":"{{serie.Code}}"}"""),
+            cancellationToken);
+
+        return CorrectCodeResult.Success(serie.Code);
+    }
+}
+
+public sealed record CorrectCodeResult(CorrectCodeOutcome Outcome, string? Code, string? Error)
+{
+    public static CorrectCodeResult Success(string code) =>
+        new(CorrectCodeOutcome.Corrected, code, null);
+
+    public static CorrectCodeResult NotFound() =>
+        new(CorrectCodeOutcome.ScheduleNotFound, null, null);
+
+    public static CorrectCodeResult Failure(string error) =>
+        new(CorrectCodeOutcome.Rejected, null, error);
+}
+
+public enum CorrectCodeOutcome
+{
+    Corrected,
+    ScheduleNotFound,
+    Rejected,
+}
+
+/// <summary>
 /// Acrescenta uma versão de taxa a uma série.
 ///
 /// <para>
@@ -234,6 +326,8 @@ internal static class ManageTaxRatesMapping
 public static class FiscalAuditActions
 {
     public const string ScheduleOpened = "fiscal.tax_rate.schedule_opened";
+
+    public const string ScheduleCodeCorrected = "fiscal.tax_rate.schedule_code_corrected";
 
     public const string RateIntroduced = "fiscal.tax_rate.introduced";
 

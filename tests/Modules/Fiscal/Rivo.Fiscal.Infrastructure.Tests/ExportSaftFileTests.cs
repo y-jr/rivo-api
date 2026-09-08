@@ -2,6 +2,7 @@ using System.Xml.Linq;
 using Rivo.Fiscal.Application;
 using Rivo.Fiscal.Application.Abstractions;
 using Rivo.Fiscal.Application.UseCases;
+using Rivo.Fiscal.Domain;
 
 namespace Rivo.Fiscal.Infrastructure.Tests;
 
@@ -44,11 +45,44 @@ public class ExportSaftFileTests
         DateOnly to,
         CompanyOptions? empresa = null,
         params SaftCustomer[] clientes) =>
+        Exportar(fiscalYear, from, to, [], empresa, clientes);
+
+    private static Task<ExportSaftResult> Exportar(
+        int fiscalYear,
+        DateOnly from,
+        DateOnly to,
+        IReadOnlyList<TaxRateSchedule> taxas,
+        CompanyOptions? empresa = null,
+        params SaftCustomer[] clientes) =>
         new ExportSaftFile(
             empresa ?? Empresa(),
             new MasterDataFalso(clientes),
+            new TaxRateStoreFalso(taxas),
             new FakeTimeProvider(Agora))
             .ExecuteAsync(fiscalYear, from, to, CancellationToken.None);
+
+    /// <summary>
+    /// Uma série de IVA com uma versão. Usa o agregado a sério e não um duplo:
+    /// as invariantes de vigência são dele, e um duplo do agregado permitiria
+    /// construir estados que a aplicação nunca produz.
+    /// </summary>
+    internal static TaxRateSchedule Taxa(
+        string codigo = "NOR",
+        decimal percentagem = 14m,
+        DateOnly? de = null,
+        DateOnly? ate = null,
+        TaxKind tipo = TaxKind.ValueAdded)
+    {
+        var serie = TaxRateSchedule.Open(tipo, codigo, $"Descrição de {codigo}");
+
+        serie.Introduce(
+            percentagem,
+            de ?? new DateOnly(2026, 1, 1),
+            ate,
+            "Lei n.º 7/19");
+
+        return serie;
+    }
 
     /// <summary>Um cliente completo, para os casos que não são sobre o cliente.</summary>
     internal static SaftCustomer Cliente(
@@ -131,6 +165,143 @@ public class ExportSaftFileTests
         // diz a quem exporta o que corrigir.
         Assert.Equal(ExportSaftOutcome.Rejected, resultado.Outcome);
         Assert.Contains("CLI-1", resultado.Error);
+    }
+
+    [Fact]
+    public async Task ComTabelaDeImpostos_ValidaContraOXsd()
+    {
+        var resultado = await Exportar(
+            2026,
+            new DateOnly(2026, 1, 1),
+            new DateOnly(2026, 12, 31),
+            [Taxa("NOR", 14m), Taxa("ISE", 0m)]);
+
+        Assert.Equal(ExportSaftOutcome.Generated, resultado.Outcome);
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+
+        var codigos = resultado.File!
+            .Descendants(ExportSaftFile.Ns + "TaxTableEntry")
+            .Select(e => e.Element(ExportSaftFile.Ns + "TaxCode")!.Value)
+            .ToList();
+
+        Assert.Equal(["NOR", "ISE"], codigos);
+    }
+
+    [Fact]
+    public async Task SemTaxas_ATabelaNaoAparece()
+    {
+        // ⚠ Ausente, não vazia. `TaxTable` exige `minOccurs="1"` em
+        // `TaxTableEntry` — o inverso de `MasterFiles`, que sai vazio. Um
+        // `<TaxTable/>` sem filhos invalida o ficheiro.
+        var resultado = await Exportar(
+            2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), []);
+
+        Assert.Empty(resultado.File!.Descendants(ExportSaftFile.Ns + "TaxTable"));
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+    }
+
+    [Fact]
+    public async Task InssNaoEntraNaTabelaDeImpostos()
+    {
+        // `TaxType` só admite IVA, IS e NS. O INSS é contribuição social, e o
+        // próprio `TaxCodes.SocialSecurity` diz que o código não vem do SAF-T.
+        // Declará-lo aqui seria dizer à AGT que é IVA.
+        var resultado = await Exportar(
+            2026,
+            new DateOnly(2026, 1, 1),
+            new DateOnly(2026, 12, 31),
+            [
+                Taxa("NOR", 14m),
+                Taxa("INSS", 3m, tipo: TaxKind.EmployeeSocialSecurity),
+            ]);
+
+        var codigos = resultado.File!
+            .Descendants(ExportSaftFile.Ns + "TaxCode")
+            .Select(e => e.Value)
+            .ToList();
+
+        Assert.Equal(["NOR"], codigos);
+    }
+
+    [Fact]
+    public async Task TaxaQueVigorouENoMeioDoPeriodo_EntraNaTabela()
+    {
+        // Substituída em Junho. Tem de estar no ficheiro anual: as facturas de
+        // Março referenciam-na, e a tabela é o que lhes dá significado.
+        var resultado = await Exportar(
+            2026,
+            new DateOnly(2026, 1, 1),
+            new DateOnly(2026, 12, 31),
+            [Taxa("NOR", 14m, de: new DateOnly(2025, 1, 1), ate: new DateOnly(2026, 5, 31))]);
+
+        var entrada = Assert.Single(
+            resultado.File!.Descendants(ExportSaftFile.Ns + "TaxTableEntry"));
+
+        Assert.Equal(
+            "2026-05-31",
+            entrada.Element(ExportSaftFile.Ns + "TaxExpirationDate")!.Value);
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+    }
+
+    [Fact]
+    public async Task TaxaQueCaducouAntesDoPeriodo_FicaDeFora()
+    {
+        var resultado = await Exportar(
+            2026,
+            new DateOnly(2026, 1, 1),
+            new DateOnly(2026, 12, 31),
+            [Taxa("NOR", 10m, de: new DateOnly(2024, 1, 1), ate: new DateOnly(2025, 12, 31))]);
+
+        Assert.Empty(resultado.File!.Descendants(ExportSaftFile.Ns + "TaxTableEntry"));
+    }
+
+    [Fact]
+    public async Task CodigoDeImpostoQueOXsdNaoAceita_ERecusado()
+    {
+        // ⚠ A série tem de ser adulterada por reflexão porque
+        // `TaxRateSchedule.Open` já a recusa — e é esse o ponto. A verificação
+        // na exportação continua a existir para as linhas gravadas **antes**
+        // dessa regra, que o EF materializa pelo construtor privado sem passar
+        // pela fábrica. Sem elas o beco não existiria; com elas, existe.
+        var legado = Taxa("NOR", 14m);
+
+        typeof(TaxRateSchedule)
+            .GetProperty(nameof(TaxRateSchedule.Code))!
+            .SetValue(legado, "NORMAL");
+
+        var resultado = await Exportar(
+            2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), [legado]);
+
+        // Recusar nomeando o código é melhor do que omitir a série em silêncio
+        // e deixar as facturas a apontar para uma taxa que a tabela não declara.
+        Assert.Equal(ExportSaftOutcome.Rejected, resultado.Outcome);
+        Assert.Contains("NORMAL", resultado.Error);
+    }
+
+    [Fact]
+    public async Task NaoSujeito_VaiComTaxTypeNs_ENaoIva()
+    {
+        // Uma operação não sujeita não é IVA a 0%. `IVA`/`NS` diria que houve
+        // imposto e foi zero — que é outra afirmação.
+        var resultado = await Exportar(
+            2026,
+            new DateOnly(2026, 1, 1),
+            new DateOnly(2026, 12, 31),
+            [Taxa("NS", 0m)]);
+
+        var entrada = Assert.Single(
+            resultado.File!.Descendants(ExportSaftFile.Ns + "TaxTableEntry"));
+
+        Assert.Equal("NS", entrada.Element(ExportSaftFile.Ns + "TaxType")!.Value);
     }
 
     [Fact]
@@ -257,7 +428,7 @@ public class ExportSaftFileTests
         // pode ser grande.
         var fonte = new MasterDataFalso([]);
 
-        await new ExportSaftFile(Empresa(), fonte, new FakeTimeProvider(Agora))
+        await new ExportSaftFile(Empresa(), fonte, new TaxRateStoreFalso([]), new FakeTimeProvider(Agora))
             .ExecuteAsync(
                 2026,
                 new DateOnly(2026, 12, 31),
@@ -310,6 +481,34 @@ internal sealed class MasterDataFalso(IReadOnlyList<SaftCustomer> clientes) : IS
 }
 
 /// <summary>
+/// O armazenamento de taxas, escrito à mão — ADR-022.
+///
+/// <para>
+/// Só <c>ListAsync</c> tem comportamento. Os outros métodos rebentam em vez de
+/// devolverem nulo: se a exportação alguma vez os chamar, quero saber, e um
+/// <c>null</c> silencioso faria o teste passar com a exportação a fazer outra
+/// coisa.
+/// </para>
+/// </summary>
+internal sealed class TaxRateStoreFalso(IReadOnlyList<TaxRateSchedule> series) : ITaxRateStore
+{
+    public Task<IReadOnlyList<TaxRateSchedule>> ListAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(series);
+
+    public Task<TaxRateSchedule?> FindAsync(TaxKind kind, string code, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("A exportação não procura séries uma a uma.");
+
+    public Task<TaxRateSchedule?> FindByIdAsync(Guid scheduleId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("A exportação não procura séries uma a uma.");
+
+    public Task AddAsync(TaxRateSchedule schedule, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("A exportação não escreve.");
+
+    public Task SaveChangesAsync(CancellationToken cancellationToken) =>
+        throw new NotSupportedException("A exportação não escreve.");
+}
+
+/// <summary>
 /// O comprimento do NIF.
 ///
 /// <para>
@@ -359,6 +558,7 @@ public class NifCurtoTests
         var resultado = await new ExportSaftFile(
             ComNif("5417000000"),
             new MasterDataFalso([]),
+            new TaxRateStoreFalso([]),
             new FakeTimeProvider(new DateTimeOffset(2026, 9, 8, 0, 0, 0, TimeSpan.Zero)))
             .ExecuteAsync(
                 2026,

@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace Rivo.Fiscal.Domain;
 
 /// <summary>
@@ -40,7 +42,7 @@ public enum TaxKind
 /// introduz os dados fornece — não constantes que o domínio finge conhecer.
 /// </para>
 /// </summary>
-public static class TaxCodes
+public static partial class TaxCodes
 {
     /// <summary>Isento.</summary>
     public const string Exempt = "ISE";
@@ -68,4 +70,28 @@ public static class TaxCodes
     public static bool RequiresExemptionCode(string taxCode) =>
         string.Equals(taxCode, Exempt, StringComparison.OrdinalIgnoreCase)
         || string.Equals(taxCode, NotSubject, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Se o código é aceite pelo SAF-T na tabela de impostos.
+    ///
+    /// <para>
+    /// <strong>Isto não contradiz o ADR-037.</strong> Não se está a inventar
+    /// vocabulário: o padrão é copiado do XSD oficial fixado em
+    /// `docs/schemas/`, que é fonte primária —
+    /// <c>RED|INT|NOR|ISE|OUT|([0-9.])*|NS|NA</c>. O que continua por
+    /// verificar, e por isso continua livre, é <em>qual</em> destes códigos se
+    /// aplica a que operação.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠ <strong>Só vale para o IVA.</strong> <see cref="SocialSecurity"/> não
+    /// passa aqui, e é suposto não passar — o INSS não é imposto para a tabela
+    /// do SAF-T e não entra na exportação.
+    /// </para>
+    /// </summary>
+    public static bool IsSaftTaxCode(string taxCode) =>
+        CodigoAceite().IsMatch(taxCode);
+
+    [GeneratedRegex(@"^(RED|INT|NOR|ISE|OUT|[0-9.]*|NS|NA)$")]
+    private static partial Regex CodigoAceite();
 }

@@ -67,6 +67,7 @@ public static class FiscalModuleExtensions
 
         services.AddScoped<ListTaxRates>();
         services.AddScoped<OpenTaxRateSchedule>();
+        services.AddScoped<CorrectTaxRateCode>();
         services.AddScoped<IntroduceTaxRate>();
 
         services.AddScoped<IIncomeTaxScheduleStore, IncomeTaxScheduleStore>();

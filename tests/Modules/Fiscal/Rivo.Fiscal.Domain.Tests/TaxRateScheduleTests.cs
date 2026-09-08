@@ -176,4 +176,88 @@ public class TaxRateScheduleTests
         // domínio e o contador passa a subir duas vezes por escrita.
         Assert.Equal(0, serie.Version);
     }
+
+    [Theory]
+    [InlineData("NOR")]
+    [InlineData("RED")]
+    [InlineData("INT")]
+    [InlineData("ISE")]
+    [InlineData("OUT")]
+    [InlineData("NS")]
+    [InlineData("NA")]
+    [InlineData("14")]
+    [InlineData("14.5")]
+    public void CodigosQueOSaftAceita_AbremSerie(string codigo)
+    {
+        var serie = TaxRateSchedule.Open(TaxKind.ValueAdded, codigo, "IVA");
+
+        Assert.Equal(codigo, serie.Code);
+    }
+
+    [Theory]
+    [InlineData("NORMAL")]
+    [InlineData("IVA14")]
+    [InlineData("TAXA-NORMAL")]
+    public void CodigoDeIvaQueOSaftNaoAceita_ERecusadoAoAbrir(string codigo)
+    {
+        // Falha aqui e não no dia da entrega à AGT — a mesma lição do ADR-058
+        // sobre o comprimento do NIF. Quem escreve o código está a olhar para
+        // ele; meses depois, ninguém sabe o que quis dizer.
+        var erro = Assert.Throws<ArgumentException>(
+            () => TaxRateSchedule.Open(TaxKind.ValueAdded, codigo, "IVA"));
+
+        Assert.Contains(codigo, erro.Message);
+    }
+
+    [Fact]
+    public void OInssNaoESujeitoARegraDoSaft()
+    {
+        // `INSS` não passa no padrão do SAF-T, e é suposto não passar: não é
+        // código de imposto da tabela, e as séries de INSS não entram na
+        // exportação. Aplicar-lhes a regra impediria `payroll` de existir.
+        var serie = TaxRateSchedule.Open(
+            TaxKind.EmployeeSocialSecurity, TaxCodes.SocialSecurity, "INSS do trabalhador");
+
+        Assert.Equal("INSS", serie.Code);
+    }
+
+    [Fact]
+    public void CorrigirOCodigo_MudaOCodigo()
+    {
+        // A saída do beco: séries abertas antes da regra bloqueavam a
+        // exportação para sempre, porque nada se elimina (BR-14).
+        var serie = Normal();
+
+        serie.CorrectCode("red");
+
+        Assert.Equal("RED", serie.Code);
+    }
+
+    [Fact]
+    public void CorrigirParaUmCodigoInvalido_ERecusado()
+    {
+        var serie = Normal();
+
+        Assert.Throws<ArgumentException>(() => serie.CorrectCode("NORMAL"));
+
+        // E não deixou a série a meio: o código anterior continua lá.
+        Assert.Equal("NOR", serie.Code);
+    }
+
+    [Fact]
+    public void CorrigirOCodigo_NaoTocaNasVersoes()
+    {
+        // As versões são o histórico de taxas, e a correcção é da etiqueta e
+        // não do que vigorou. Documentos já emitidos guardam a taxa que
+        // vigorava — mesma razão de `Customer.CorrectTaxId`.
+        var serie = Normal();
+        serie.Introduce(14m, Jan2026, null, "Lei n.º 14/23");
+
+        serie.CorrectCode("RED");
+
+        var versao = Assert.Single(serie.Versions);
+
+        Assert.Equal(14m, versao.Percentage);
+        Assert.Equal(Jan2026, versao.EffectiveFrom);
+    }
 }

@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using Rivo.Fiscal.Application.Abstractions;
+using Rivo.Fiscal.Domain;
 
 namespace Rivo.Fiscal.Application.UseCases;
 
@@ -16,10 +17,11 @@ namespace Rivo.Fiscal.Application.UseCases;
 /// </para>
 ///
 /// <para>
-/// <strong>Estado: <c>Header</c> e a tabela de clientes.</strong> Faltam
-/// fornecedores (`procurement`), produtos (`inventory`), plano de contas e
-/// tabela de taxas. Cada um entra pela mesma porta
-/// (<see cref="ISaftMasterData"/>) e é validado contra o XSD ao entrar.
+/// <strong>Estado: <c>Header</c>, a tabela de clientes e a de impostos.</strong>
+/// Faltam fornecedores (`procurement`), produtos (`inventory`) e o plano de
+/// contas (`finance`). Os que vêm de outros módulos entram pela porta
+/// <see cref="ISaftMasterData"/>; a tabela de impostos não, porque é de
+/// `fiscal` e lê-se do seu próprio armazenamento.
 /// </para>
 ///
 /// <para>
@@ -39,6 +41,7 @@ namespace Rivo.Fiscal.Application.UseCases;
 public sealed class ExportSaftFile(
     CompanyOptions company,
     ISaftMasterData masterData,
+    ITaxRateStore taxRates,
     TimeProvider clock)
 {
     /// <summary>O espaço de nomes do SAF-T AO 1.01_01, tal como o XSD o fixa.</summary>
@@ -115,6 +118,31 @@ public sealed class ExportSaftFile(
                 + "O SAF-T exige que seja único no ficheiro.");
         }
 
+        var series = await taxRates.ListAsync(cancellationToken);
+
+        var entradas = new List<XElement>();
+
+        foreach (var serie in series.Where(EntraNaTabela))
+        {
+            if (!TaxCodes.IsSaftTaxCode(serie.Code))
+            {
+                // Recusar e não omitir. Uma série omitida sai do ficheiro em
+                // silêncio, e as facturas que a referenciam passam a apontar
+                // para um código que a tabela não declara — erro que só
+                // aparece na AGT. A mensagem nomeia o código para quem o
+                // corrigir saber qual é.
+                return ExportSaftResult.Rejected(
+                    $"O código de imposto '{serie.Code}' não é aceite pelo SAF-T. "
+                    + "Os admitidos são NOR, RED, INT, ISE, OUT, NS, NA ou um número.");
+            }
+
+            entradas.AddRange(
+                serie.Versions
+                    .Where(v => Vigora(v, from, to))
+                    .OrderBy(v => v.EffectiveFrom)
+                    .Select(v => Imposto(serie, v)));
+        }
+
         var documento = new XDocument(
             new XDeclaration("1.0", "windows-1252", null),
             new XElement(
@@ -125,9 +153,82 @@ public sealed class ExportSaftFile(
                 // `MasterFiles` com `minOccurs` implícito de 1 e todos os
                 // filhos opcionais. Um elemento vazio é o que diz "não há
                 // dados de referência", que é diferente de não dizer nada.
-                new XElement(Ns + "MasterFiles", clientes.Select(Cliente))));
+                new XElement(
+                    Ns + "MasterFiles",
+                    clientes.Select(Cliente),
+
+                    // ⚠ Ausente e não vazio quando não há entradas — ao
+                    // contrário de `MasterFiles`. `TaxTable` exige
+                    // `minOccurs="1"` em `TaxTableEntry`, por isso um
+                    // `<TaxTable/>` vazio torna o ficheiro inválido.
+                    entradas.Count > 0
+                        ? new XElement(Ns + "TaxTable", entradas)
+                        : null)));
 
         return ExportSaftResult.Generated(documento);
+    }
+
+    /// <summary>
+    /// Que séries entram na tabela de impostos do SAF-T.
+    ///
+    /// <para>
+    /// <strong>Só o IVA.</strong> <c>TaxType</c> admite <c>IVA</c>, <c>IS</c>
+    /// (imposto de selo) e <c>NS</c>, e mais nada. As séries de INSS que
+    /// `payroll` usa não são imposto para este efeito — o próprio
+    /// <see cref="TaxCodes.SocialSecurity"/> já o diz: «não vem do SAF-T».
+    /// Enfiá-las na tabela seria declarar à AGT uma contribuição social como
+    /// se fosse IVA.
+    /// </para>
+    /// </summary>
+    private static bool EntraNaTabela(TaxRateSchedule serie) =>
+        serie.Kind is TaxKind.ValueAdded;
+
+    /// <summary>
+    /// Se a versão da taxa esteve em vigor em algum momento do período.
+    ///
+    /// <para>
+    /// Sobreposição de intervalos, e não "em vigor à data final": uma taxa que
+    /// vigorou em Março e foi substituída em Junho tem de estar na tabela de
+    /// um ficheiro anual, senão as facturas de Março referenciam-na sem ela lá
+    /// estar. <c>EffectiveTo</c> é inclusivo e nulo na versão corrente.
+    /// </para>
+    /// </summary>
+    private static bool Vigora(TaxRateVersion versao, DateOnly from, DateOnly to) =>
+        versao.EffectiveFrom <= to && (versao.EffectiveTo is null || versao.EffectiveTo >= from);
+
+    private XElement Imposto(TaxRateSchedule serie, TaxRateVersion versao)
+    {
+        var elementos = new List<XObject>
+        {
+            // `NS` é simultaneamente tipo e código no XSD: uma operação não
+            // sujeita não é IVA a 0%, é outra coisa. Declarar `IVA`/`NS`
+            // diria que houve imposto e foi zero.
+            new XElement(
+                Ns + "TaxType",
+                string.Equals(serie.Code, TaxCodes.NotSubject, StringComparison.OrdinalIgnoreCase)
+                    ? "NS"
+                    : "IVA"),
+
+            // Sem `TaxCountryRegion`: é opcional, e o valor que interessaria
+            // distinguir — `AO-CAB`, o espaço fiscal de Cabinda — não existe
+            // no modelo. Escrever `AO` a todas as séries seria afirmar que
+            // nenhuma é de Cabinda, e isso não se sabe.
+            new XElement(Ns + "TaxCode", serie.Code),
+            new XElement(Ns + "Description", serie.Description),
+        };
+
+        if (versao.EffectiveTo is { } fim)
+        {
+            elementos.Add(new XElement(Ns + "TaxExpirationDate", fim.ToString("yyyy-MM-dd")));
+        }
+
+        // `TaxPercentage` e não `TaxAmount`: o XSD deixa escolher, e o Rivo só
+        // modela percentagens (`TaxRateVersion.Percentage`).
+        elementos.Add(new XElement(
+            Ns + "TaxPercentage",
+            versao.Percentage.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)));
+
+        return new XElement(Ns + "TaxTableEntry", elementos);
     }
 
     /// <summary>

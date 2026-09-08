@@ -85,7 +85,76 @@ public sealed class TaxRateSchedule
                 nameof(description));
         }
 
-        return new TaxRateSchedule(Guid.CreateVersion7(), kind, code.Trim().ToUpperInvariant(), description.Trim());
+        var normalizado = code.Trim().ToUpperInvariant();
+
+        GarantirCodigoExportavel(kind, normalizado);
+
+        return new TaxRateSchedule(Guid.CreateVersion7(), kind, normalizado, description.Trim());
+    }
+
+    /// <summary>
+    /// Corrige o código do SAF-T desta série.
+    ///
+    /// <para>
+    /// <strong>Existe porque a alternativa era um beco.</strong> A verificação
+    /// acima só apanha séries novas; as que já foram abertas com um código que
+    /// a AGT não aceita bloqueariam a exportação para sempre — nada se elimina
+    /// (BR-14) e não havia como alterar o código.
+    /// </para>
+    ///
+    /// <para>
+    /// Corrigir aqui é seguro pela mesma razão que <c>Customer.CorrectTaxId</c>
+    /// o é: os documentos já emitidos guardam a taxa que vigorava, e não este
+    /// registo. Não se está a mudar o passado — está-se a corrigir a etiqueta
+    /// com que o futuro o descreve.
+    /// </para>
+    /// </summary>
+    public void CorrectCode(string code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            throw new ArgumentException(
+                "Uma série de taxa precisa do código do SAF-T que a identifica.", nameof(code));
+        }
+
+        var normalizado = code.Trim().ToUpperInvariant();
+
+        GarantirCodigoExportavel(Kind, normalizado);
+
+        Code = normalizado;
+    }
+
+    /// <summary>
+    /// Recusa códigos de IVA que o SAF-T não aceita.
+    ///
+    /// <para>
+    /// <strong>Aqui e não na exportação.</strong> Um código inválido descoberto
+    /// no dia da entrega à AGT é a mesma falha tardia que o ADR-058 fechou no
+    /// NIF: quem o escreveu já não se lembra do que quis dizer, e a série pode
+    /// já ter facturas atrás. A exportação continua a verificar — é rede, e
+    /// serve os registos anteriores a esta regra.
+    /// </para>
+    ///
+    /// <para>
+    /// Só para <see cref="TaxKind.ValueAdded"/>: as séries de INSS usam
+    /// <see cref="TaxCodes.SocialSecurity"/>, que não é código do SAF-T e não
+    /// entra na exportação.
+    /// </para>
+    /// </summary>
+    private static void GarantirCodigoExportavel(TaxKind kind, string code)
+    {
+        if (kind is not TaxKind.ValueAdded || TaxCodes.IsSaftTaxCode(code))
+        {
+            return;
+        }
+
+        // Sem `nameof(code)`: as camadas acima devolvem esta mensagem tal e
+        // qual a quem chama a API, e o `ArgumentException` cola-lhe
+        // " (Parameter 'code')" ao fim quando o nome é dado. Quem lê o erro no
+        // ecrã não sabe o que é um parâmetro chamado `code`.
+        throw new ArgumentException(
+            $"O código '{code}' não é aceite pelo SAF-T. Os admitidos são NOR, RED, INT, "
+            + "ISE, OUT, NS, NA ou um número.");
     }
 
     /// <summary>
