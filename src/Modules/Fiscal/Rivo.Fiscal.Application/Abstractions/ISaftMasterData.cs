@@ -36,6 +36,11 @@ public interface ISaftMasterData
     /// dos clientes.
     /// </summary>
     Task<IReadOnlyList<SaftSupplier>> ListSuppliersAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A tabela de produtos e serviços. Vazia é resposta legítima.
+    /// </summary>
+    Task<IReadOnlyList<SaftProduct>> ListProductsAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -81,6 +86,25 @@ public sealed record SaftSupplier(
     string TaxId,
     string Name,
     SaftAddress BillingAddress);
+
+/// <summary>
+/// Um artigo, reduzido ao que o elemento <c>Product</c> do SAF-T pede.
+///
+/// <para>
+/// <strong>Não traz <c>ProductType</c>, e é deliberado.</strong> O XSD
+/// exige-o, com a lista fechada <c>P</c>/<c>S</c>/<c>O</c>/<c>E</c>/<c>I</c>,
+/// e quem o preenche é <c>ExportSaftFile</c> — ver a constante lá. A razão é
+/// que hoje o tipo não é facto de `inventory`: tudo o que lá está é produto
+/// físico por construção.
+/// </para>
+/// </summary>
+/// <param name="Code">
+/// A referência do artigo. Vai a <c>ProductCode</c> e também a
+/// <c>ProductNumberCode</c> — o XSD manda usar o código EAN e, «quando este
+/// não existir, preencher com o valor do elemento ProductCode». O Rivo não
+/// modela EAN.
+/// </param>
+public sealed record SaftProduct(string Code, string Description);
 
 /// <param name="Country">ISO 3166-1 alpha-2.</param>
 public sealed record SaftAddress(string Detail, string City, string Country);

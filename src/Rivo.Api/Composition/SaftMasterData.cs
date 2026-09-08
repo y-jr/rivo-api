@@ -1,5 +1,6 @@
 using Rivo.Commercial.Contracts;
 using Rivo.Procurement.Contracts;
+using Rivo.Inventory.Contracts;
 using Rivo.Fiscal.Application.Abstractions;
 
 namespace Rivo.Api.Composition;
@@ -25,8 +26,20 @@ namespace Rivo.Api.Composition;
 /// </summary>
 public sealed class SaftMasterData(
     ICustomerDirectory customers,
-    ISupplierDirectory suppliers) : ISaftMasterData
+    ISupplierDirectory suppliers,
+    IInventoryCatalogue catalogue) : ISaftMasterData
 {
+    public async Task<IReadOnlyList<SaftProduct>> ListProductsAsync(
+        CancellationToken cancellationToken)
+    {
+        var artigos = await catalogue.ListAllAsync(cancellationToken);
+
+        // O SKU vai directo, sem a conversão que clientes e fornecedores
+        // levam: já é texto escolhido por gente, com 50 caracteres no máximo,
+        // e `ProductCode` admite 60.
+        return [.. artigos.Select(a => new SaftProduct(a.Sku, a.Name))];
+    }
+
     public async Task<IReadOnlyList<SaftSupplier>> ListSuppliersAsync(
         CancellationToken cancellationToken)
     {

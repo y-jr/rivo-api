@@ -17,6 +17,33 @@ public static class InventoryPermissions
 }
 
 /// <summary>
+/// O catálogo de artigos, publicado. Primeiro consumidor: a secção
+/// <c>Product</c> do SAF-T AO.
+/// </summary>
+public interface IInventoryCatalogue
+{
+    /// <summary>
+    /// Todos os artigos, activos e inactivos.
+    ///
+    /// <para>
+    /// <strong>Inclui os inactivos</strong>, pela mesma razão de
+    /// <c>ICustomerDirectory.ListAllAsync</c>: um artigo desactivado hoje pode
+    /// ter sido facturado em Março, e o XSD exige que os documentos
+    /// referenciem master data presente no ficheiro
+    /// (<c>ProductCodeConstraint</c>).
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<CatalogueItem>> ListAllAsync(CancellationToken cancellationToken);
+}
+
+/// <param name="Sku">Referência do artigo, única e em maiúsculas.</param>
+/// <param name="Unit">
+/// Unidade de medida. Não vai no SAF-T — <c>Product</c> não tem campo para
+/// ela —, mas faz parte da identidade do artigo para quem lê o contrato.
+/// </param>
+public sealed record CatalogueItem(Guid ItemId, string Sku, string Name, string Unit);
+
+/// <summary>
 /// Leitura agregada de valorização de stock para composição (Analytics &amp;
 /// IA, módulo 10) — valor corrente e valorização por período, para todo o
 /// inventário, não por item.

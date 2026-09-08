@@ -257,6 +257,97 @@ public class ExportSaftFileTests
     }
 
     [Fact]
+    public async Task ComArtigos_ValidaContraOXsd()
+    {
+        var resultado = await new ExportSaftFile(
+            Empresa(),
+            new MasterDataFalso(
+                [Cliente()],
+                [],
+                [
+                    new SaftProduct("CIM-42", "Cimento Portland 50 kg"),
+                    new SaftProduct("VAR-10", "Vergalhão 10 mm"),
+                ]),
+            new TaxRateStoreFalso([]),
+            new FakeTimeProvider(Agora))
+            .ExecuteAsync(
+                2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), CancellationToken.None);
+
+        Assert.Equal(ExportSaftOutcome.Generated, resultado.Outcome);
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+
+        var artigo = resultado.File!
+            .Descendants(ExportSaftFile.Ns + "Product")
+            .First();
+
+        // Sem EAN no modelo, `ProductNumberCode` repete `ProductCode` — é o
+        // que o XSD manda fazer nesse caso, e não um valor a inventar.
+        Assert.Equal("CIM-42", artigo.Element(ExportSaftFile.Ns + "ProductCode")!.Value);
+        Assert.Equal("CIM-42", artigo.Element(ExportSaftFile.Ns + "ProductNumberCode")!.Value);
+        Assert.Equal("P", artigo.Element(ExportSaftFile.Ns + "ProductType")!.Value);
+    }
+
+    [Fact]
+    public async Task ArtigosComOMesmoCodigo_ERecusado()
+    {
+        var resultado = await new ExportSaftFile(
+            Empresa(),
+            new MasterDataFalso(
+                [],
+                [],
+                [
+                    new SaftProduct("CIM-42", "Cimento Portland 50 kg"),
+                    new SaftProduct("CIM-42", "Cimento, outra vez"),
+                ]),
+            new TaxRateStoreFalso([]),
+            new FakeTimeProvider(Agora))
+            .ExecuteAsync(
+                2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), CancellationToken.None);
+
+        // `ProductCodeConstraint`. O SKU já tem índice único na base de dados,
+        // mas a exportação não vê índices.
+        Assert.Equal(ExportSaftOutcome.Rejected, resultado.Outcome);
+        Assert.Contains("CIM-42", resultado.Error);
+    }
+
+    [Fact]
+    public async Task AOrdemDoMasterFilesRespeitaOXsd()
+    {
+        // ⚠ `xs:sequence`: Customer, Supplier, Product, TaxTable. Trocar
+        // qualquer par invalida o ficheiro, e nenhum teste de secção isolada
+        // apanharia isso — só um com as quatro ao mesmo tempo.
+        var resultado = await new ExportSaftFile(
+            Empresa(),
+            new MasterDataFalso(
+                [Cliente()],
+                [
+                    new SaftSupplier("FOR-1", "5417100001", "Angoferragens",
+                        new SaftAddress("Rua A", "Luanda", "AO")),
+                ],
+                [new SaftProduct("CIM-42", "Cimento Portland 50 kg")]),
+            new TaxRateStoreFalso([Taxa("NOR", 14m)]),
+            new FakeTimeProvider(Agora))
+            .ExecuteAsync(
+                2026, new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), CancellationToken.None);
+
+        var erros = SaftSchema.Validar(resultado.File!);
+
+        Assert.True(erros.Count == 0, string.Join("\n", erros));
+
+        var ordem = resultado.File!
+            .Descendants(ExportSaftFile.Ns + "MasterFiles")
+            .Single()
+            .Elements()
+            .Select(e => e.Name.LocalName)
+            .ToList();
+
+        Assert.Equal(["Customer", "Supplier", "Product", "TaxTable"], ordem);
+    }
+
+    [Fact]
     public async Task ComTabelaDeImpostos_ValidaContraOXsd()
     {
         var resultado = await Exportar(
@@ -559,8 +650,16 @@ internal sealed class FakeTimeProvider(DateTimeOffset agora) : TimeProvider
 /// </summary>
 internal sealed class MasterDataFalso(
     IReadOnlyList<SaftCustomer> clientes,
-    IReadOnlyList<SaftSupplier>? fornecedores = null) : ISaftMasterData
+    IReadOnlyList<SaftSupplier>? fornecedores = null,
+    IReadOnlyList<SaftProduct>? artigos = null) : ISaftMasterData
 {
+    public Task<IReadOnlyList<SaftProduct>> ListProductsAsync(CancellationToken cancellationToken)
+    {
+        Chamadas++;
+
+        return Task.FromResult<IReadOnlyList<SaftProduct>>(artigos ?? []);
+    }
+
     public int Chamadas { get; private set; }
 
     public Task<IReadOnlyList<SaftCustomer>> ListCustomersAsync(CancellationToken cancellationToken)

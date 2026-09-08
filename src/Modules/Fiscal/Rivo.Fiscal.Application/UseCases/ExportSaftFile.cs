@@ -17,11 +17,12 @@ namespace Rivo.Fiscal.Application.UseCases;
 /// </para>
 ///
 /// <para>
-/// <strong>Estado: <c>Header</c>, a tabela de clientes e a de impostos.</strong>
-/// Faltam fornecedores (`procurement`), produtos (`inventory`) e o plano de
-/// contas (`finance`). Os que vêm de outros módulos entram pela porta
-/// <see cref="ISaftMasterData"/>; a tabela de impostos não, porque é de
-/// `fiscal` e lê-se do seu próprio armazenamento.
+/// <strong>Estado: `Header` e todo o `MasterFiles` menos o plano de
+/// contas.</strong> Clientes, fornecedores, produtos e tabela de impostos.
+/// Falta `GeneralLedgerAccounts`, que é de `finance` e depende do PGC
+/// angolano — que o ADR-037 recusou inventar. Os que vêm de outros módulos
+/// entram pela porta <see cref="ISaftMasterData"/>; a tabela de impostos não,
+/// porque é de `fiscal` e lê-se do seu próprio armazenamento.
 /// </para>
 ///
 /// <para>
@@ -70,6 +71,25 @@ public sealed class ExportSaftFile(
     /// de ser constante e passa a ser facto de `commercial`.
     /// </summary>
     private const string SemAutofacturacao = "0";
+
+    /// <summary>
+    /// <c>P</c> — Produtos. É o que todo o artigo de `inventory` é.
+    ///
+    /// <para>
+    /// <strong>Não é uma omissão preguiçosa, é uma propriedade do
+    /// agregado.</strong> <c>InventoryItem</c> exige unidade de medida, tem
+    /// quantidade em mão, recebe-se, expede-se e transfere-se entre armazéns.
+    /// Um serviço não faz nada disso — não há como registar um em `inventory`.
+    /// </para>
+    ///
+    /// <para>
+    /// Os outros valores da lista (<c>S</c> serviços, <c>O</c> outros, <c>E</c>
+    /// impostos especiais de consumo, <c>I</c> outros impostos) chegam quando
+    /// existir catálogo de serviços — que será outra fonte, não esta. Fixar
+    /// aqui é honesto <em>enquanto</em> `inventory` for a única.
+    /// </para>
+    /// </summary>
+    private const string ProdutoFisico = "P";
 
     public async Task<ExportSaftResult> ExecuteAsync(
         int fiscalYear,
@@ -132,6 +152,23 @@ public sealed class ExportSaftFile(
                 + "O SAF-T exige que seja único no ficheiro.");
         }
 
+        var artigos = await masterData.ListProductsAsync(cancellationToken);
+
+        var artigoRepetido = artigos
+            .GroupBy(a => a.Code, StringComparer.Ordinal)
+            .FirstOrDefault(g => g.Count() > 1);
+
+        if (artigoRepetido is not null)
+        {
+            // `ProductCodeConstraint`. A base de dados já tem índice único
+            // sobre o SKU, mas a exportação não vê índices — e o dia em que a
+            // fonte deixar de ser `inventory` esta verificação continua a ser
+            // a que impede um ficheiro com dois artigos iguais.
+            return ExportSaftResult.Rejected(
+                $"Há mais do que um artigo com o código '{artigoRepetido.Key}'. "
+                + "O SAF-T exige que seja único no ficheiro.");
+        }
+
         var series = await taxRates.ListAsync(cancellationToken);
 
         var entradas = new List<XElement>();
@@ -171,6 +208,7 @@ public sealed class ExportSaftFile(
                     Ns + "MasterFiles",
                     clientes.Select(Cliente),
                     fornecedores.Select(Fornecedor),
+                    artigos.Select(Artigo),
 
                     // ⚠ Ausente e não vazio quando não há entradas — ao
                     // contrário de `MasterFiles`. `TaxTable` exige
@@ -291,6 +329,29 @@ public sealed class ExportSaftFile(
             new XElement(Ns + "CompanyName", fornecedor.Name),
             Morada(Ns + "BillingAddress", fornecedor.BillingAddress),
             new XElement(Ns + "SelfBillingIndicator", SemAutofacturacao));
+
+    /// <summary>
+    /// Um elemento <c>Product</c>.
+    ///
+    /// <para>
+    /// <c>ProductNumberCode</c> repete <c>ProductCode</c>, e não é descuido: o
+    /// XSD diz «deve ser usado o código EAN do produto. Quando este não
+    /// existir, preencher com o valor do elemento <c>ProductCode</c>». O Rivo
+    /// não modela EAN.
+    /// </para>
+    ///
+    /// <para>
+    /// Sem <c>ProductGroup</c> — é opcional, e `inventory` não tem famílias de
+    /// artigo. Emitir uma inventada seria pior do que não emitir.
+    /// </para>
+    /// </summary>
+    private XElement Artigo(SaftProduct artigo) =>
+        new(
+            Ns + "Product",
+            new XElement(Ns + "ProductType", ProdutoFisico),
+            new XElement(Ns + "ProductCode", artigo.Code),
+            new XElement(Ns + "ProductDescription", artigo.Description),
+            new XElement(Ns + "ProductNumberCode", artigo.Code));
 
     /// <summary>
     /// Uma morada de terceiro, na forma <c>AddressStructure</c> do XSD.

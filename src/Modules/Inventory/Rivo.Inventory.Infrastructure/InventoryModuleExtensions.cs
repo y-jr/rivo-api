@@ -57,6 +57,10 @@ public static class InventoryModuleExtensions
         // (módulo 10).
         services.AddScoped<IInventoryValuationOverview, InventoryValuationOverview>();
 
+        // O catálogo publicado. Primeiro consumidor: a secção `Product` do
+        // SAF-T, através da porta de relato de `fiscal` (ADR-059).
+        services.AddScoped<IInventoryCatalogue, InventoryCatalogue>();
+
         services.AddAuthorization(options =>
         {
             foreach (var permission in InventoryPermissions.All)
