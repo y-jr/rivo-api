@@ -10,7 +10,8 @@ Este ficheiro regista duas coisas distintas, e a distinção importa:
   satisfaz um requisito. Seis módulos estão em produção de desenvolvimento,
   logo há defeitos de código a registar.
 
-  Fechados: K8, K9, K14, K15. Abertos: K10, K11, K12, K13, K16, K17, K18.
+  Fechados: K8, K9, K14, K15, K16, K18, K19, K21.
+  Abertos: K10, K11, K12, K13, K17, K20.
 
 Os anti-padrões do protótipo ficam listados à parte, porque a tentação de os
 repetir é real.
@@ -241,7 +242,25 @@ Deixou atrás de si o K15, que é a metade que faltava.
 - Seguimento: <o que tem de acontecer>
 ```
 
-### K16 — Sem TLS no acesso à API publicada
+### ~~K16 — Sem TLS no acesso à API publicada~~
+
+**Fechado a 2026-09-12.** O domínio `syyt.tech` entrou, e com ele o
+certificado do Let's Encrypt que o Caddy pede e renova sozinho. Verificado de
+fora, e não só pela configuração:
+
+- `https://syyt.tech/health` responde `200` com cadeia válida (`CN=syyt.tech`,
+  emitido 03·09, válido até 02·12·2026)
+- `http://` devolve `308` para `https://` — **e o IP antigo também**, portanto
+  não sobrou nenhum caminho a servir em claro
+- `Strict-Transport-Security: max-age=31536000`, que fecha a janela da
+  primeira visita. Sem `includeSubDomains` nem `preload`, e o Caddyfile
+  explica porquê
+
+Era o único defeito deste ficheiro marcado como impeditivo de produção.
+
+A configuração do proxy passou a estar versionada em
+[`deploy/proxy/`](../../deploy/proxy/) — a cópia na VPS continua a ser a que
+corre, mas deixou de ser a única que existe.
 
 **Detectado em 2026-08-23**, na configuração do reverse proxy da VPS.
 

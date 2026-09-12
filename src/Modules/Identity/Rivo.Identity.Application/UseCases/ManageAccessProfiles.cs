@@ -5,13 +5,19 @@ using Rivo.Notifications.Contracts;
 
 namespace Rivo.Identity.Application.UseCases;
 
-/// <summary>Lista os Perfis de Acesso definidos e as permissões de cada um.</summary>
+/// <summary>Lista os Perfis de Acesso atribuíveis e as permissões de cada um.</summary>
 public sealed class ListAccessProfiles
 {
     // O catálogo é a fonte de verdade e vive em código; não se lê da base de
     // dados, que guarda apenas as atribuições.
+    //
+    // `AssignableProfiles` e não `Catalogue.Keys`: `SuperAdmin` existe no
+    // catálogo (para o seed lhe dar permissões) mas nunca deve aparecer aqui
+    // — é conta de bootstrap, não perfil de negócio a mostrar ou atribuir
+    // pelo ecrã de administração (ADR-058).
     public IReadOnlyList<AccessProfileView> Execute() =>
-        [.. AccessProfiles.Catalogue.Select(entry => new AccessProfileView(entry.Key, entry.Value))];
+        [.. AccessProfiles.AssignableProfiles
+            .Select(profile => new AccessProfileView(profile, AccessProfiles.Catalogue[profile]))];
 }
 
 public sealed record AccessProfileView(string Name, IReadOnlyList<string> Permissions);

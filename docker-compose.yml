@@ -55,6 +55,18 @@ services:
       # Vazio significa que só um cliente no mesmo domínio consegue chamar.
       Cors__AllowedOrigins: ${CORS_ALLOWED_ORIGINS:-}
 
+      # Tecto de pedidos nas três rotas públicas de `identity`, por endereço de
+      # origem e por minuto. Segunda metade do travão à força bruta: o bloqueio
+      # por tentativas fecha o ataque a uma conta, isto fecha o varrimento de
+      # muitas.
+      #
+      # **O valor por omissão é o de produção.** `0` desliga, e é o que o
+      # ambiente de verificação usa — as suites autenticam dezenas de vezes por
+      # minuto a partir de um endereço só, que não é a forma de nenhum cliente
+      # real.
+      RateLimiting__AuthenticationPermitLimit: ${AUTH_RATE_LIMIT:-20}
+      RateLimiting__AuthenticationWindowSeconds: ${AUTH_RATE_WINDOW_SECONDS:-60}
+
       # Login com Google (ADR-032). Opcional: sem ClientId, o endpoint
       # /identity/login/google responde 501 e o resto da aplicação não muda.
       # Não é segredo — viaja no frontend — mas é ele que fixa a audiência
@@ -76,6 +88,20 @@ services:
       Bootstrap__Users__1__Email: ${BOOTSTRAP_DECIDER_EMAIL:?defina BOOTSTRAP_DECIDER_EMAIL no .env}
       Bootstrap__Users__1__Password: ${BOOTSTRAP_DECIDER_PASSWORD:?defina BOOTSTRAP_DECIDER_PASSWORD no .env}
       Bootstrap__Users__1__Profiles__0: Finance
+
+      # Conta de operação, nunca de negócio (ADR-058). Resolve o arranque
+      # circular de BR-20: o primeiro Cargo com autoridade de aprovação não
+      # tem quem o aprove. Não se atribui a ninguém da empresa — só esta
+      # conta tem `hr.positions.assign_direct`.
+      #
+      # **Opcional, e é deliberado** (`:-` e não `:?`, ao contrário das duas
+      # de cima). Um ambiente que não a queira — o `.env` efémero do CI, uma
+      # máquina já povoada — arranca na mesma: vazio significa não semear
+      # ninguém, e o `BootstrapUserSeeder` salta a entrada. Exigi-las aqui
+      # partia todo o `.env` escrito antes desta linha existir.
+      Bootstrap__Users__2__Email: ${BOOTSTRAP_SUPERADMIN_EMAIL:-}
+      Bootstrap__Users__2__Password: ${BOOTSTRAP_SUPERADMIN_PASSWORD:-}
+      Bootstrap__Users__2__Profiles__0: SuperAdmin
 
       # Raiz do armazenamento de documentos, num volume. Sem serviço de
       # objectos nesta fase — trocar por S3 ou Blob Storage é implementar

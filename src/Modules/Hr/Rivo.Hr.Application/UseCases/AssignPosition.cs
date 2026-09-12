@@ -130,6 +130,59 @@ public sealed class AssignPosition(
 
         return AssignPositionResult.Assigned(assignment.Id);
     }
+
+    /// <summary>
+    /// Atribui um Cargo com efeito imediato, ignorando BR-20 mesmo quando o
+    /// Cargo confere autoridade de aprovação (ADR-058).
+    ///
+    /// <para>
+    /// <strong>Não é a operação normal.</strong> Só chega aqui quem tem
+    /// <see cref="HrPermissions.PositionsAssignDirect"/> — a conta de
+    /// operação <c>SuperAdmin</c> — porque é o único caminho para resolver o
+    /// arranque circular do motor de aprovação: nenhum Cargo aprovador existe
+    /// ainda para decidir a atribuição do primeiro. Audita-se com uma acção
+    /// própria para ficar visível na trilha que esta atribuição saltou a
+    /// aprovação.
+    /// </para>
+    /// </summary>
+    public async Task<AssignPositionResult> ExecuteDirectAsync(
+        Guid employeeId,
+        Guid positionId,
+        DateTimeOffset effectiveFrom,
+        DateTimeOffset? effectiveTo,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        var employee = await store.FindEmployeeAsync(employeeId, cancellationToken);
+
+        if (employee is null)
+        {
+            return AssignPositionResult.EmployeeNotFound();
+        }
+
+        var position = await store.FindPositionAsync(positionId, cancellationToken);
+
+        if (position is null)
+        {
+            return AssignPositionResult.PositionNotFound();
+        }
+
+        var assignment = PositionAssignment.CreateEffective(employeeId, positionId, effectiveFrom, effectiveTo);
+
+        await store.AddAssignmentAsync(assignment, cancellationToken);
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                HrAuditActions.PositionAssignedDirectly,
+                HrAuditEntityTypes.Employee,
+                employeeId.ToString(),
+                context,
+                NewValue: $$"""{"positionId":"{{positionId}}","position":"{{position.Name}}","status":"Effective","grantsApprovalAuthority":{{(position.GrantsApprovalAuthority ? "true" : "false")}},"bypassedApproval":true}"""),
+            cancellationToken);
+
+        return AssignPositionResult.Assigned(assignment.Id);
+    }
 }
 
 public sealed record AssignPositionResult(

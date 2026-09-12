@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Rivo.Audit.Contracts;
 using Rivo.Identity.Api.Contracts;
@@ -18,13 +19,38 @@ public static class IdentityModuleEndpoints
     /// Namespace de rotas do módulo. Cada módulo expõe a sua superfície sob o
     /// seu próprio prefixo; o host não agrega endpoints de módulos.
     /// </summary>
-    public static IEndpointRouteBuilder MapIdentityModule(this IEndpointRouteBuilder endpoints)
+    /// <param name="rateLimitPolicy">
+    /// Política de tecto de pedidos a aplicar às três rotas públicas — as
+    /// únicas que se alcançam sem token, e portanto as únicas onde um
+    /// desconhecido pode insistir.
+    ///
+    /// <para>
+    /// <strong>Vem por parâmetro, e não de uma constante deste módulo.</strong>
+    /// O tecto é infraestrutura do host: é ele que sabe que há um reverse proxy
+    /// à frente e que o endereço do cliente é de confiar. Um módulo de negócio
+    /// não tem como saber isso, e invocar aqui um nome definido no host
+    /// inverteria a direcção da dependência que o ADR-018 fixa. Nulo deixa as
+    /// rotas sem tecto, que é o que qualquer teste que monte o módulo sozinho
+    /// precisa.
+    /// </para>
+    /// </param>
+    public static IEndpointRouteBuilder MapIdentityModule(
+        this IEndpointRouteBuilder endpoints,
+        string? rateLimitPolicy = null)
     {
         var group = endpoints.MapGroup("/identity");
 
-        group.MapPost("/register", RegisterAsync);
-        group.MapPost("/login", LogInAsync);
-        group.MapPost("/login/google", LogInWithGoogleAsync);
+        var registar = group.MapPost("/register", RegisterAsync);
+        var entrar = group.MapPost("/login", LogInAsync);
+        var entrarComGoogle = group.MapPost("/login/google", LogInWithGoogleAsync);
+
+        if (!string.IsNullOrWhiteSpace(rateLimitPolicy))
+        {
+            registar.RequireRateLimiting(rateLimitPolicy);
+            entrar.RequireRateLimiting(rateLimitPolicy);
+            entrarComGoogle.RequireRateLimiting(rateLimitPolicy);
+        }
+
         group.MapPost("/logout", LogOutAsync).RequireAuthorization();
         group.MapGet("/me", GetCurrentUser).RequireAuthorization();
 
@@ -98,7 +124,7 @@ public static class IdentityModuleEndpoints
                     ["profile"] =
                     [
                         $"'{request.Profile}' não é um Perfil de Acesso. " +
-                        $"Válidos: {string.Join(", ", AccessProfiles.Catalogue.Keys)}.",
+                        $"Válidos: {string.Join(", ", AccessProfiles.AssignableProfiles)}.",
                     ],
                 }),
 

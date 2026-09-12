@@ -66,6 +66,14 @@ public static class HrModuleEndpoints
         group.MapPost("/employees/{employeeId:guid}/positions", AssignPositionAsync)
             .RequireAuthorization(HrPermissions.PositionsAssign);
 
+        // Atribuição directa, ignorando BR-20 mesmo quando o Cargo confere
+        // autoridade de aprovação (ADR-058). Rota e permissão à parte da
+        // atribuição normal, de propósito: existe só para a conta de operação
+        // `SuperAdmin` resolver o arranque circular do motor de aprovação, e
+        // nenhum outro perfil — nem `Admin` — a tem.
+        group.MapPost("/employees/{employeeId:guid}/positions/direct", AssignPositionDirectAsync)
+            .RequireAuthorization(HrPermissions.PositionsAssignDirect);
+
         // Aplica a decisão já tomada em governança a uma atribuição pendente.
         //
         // É `hr` que pergunta: `approval` não pode modificar dados de negócio
@@ -415,6 +423,34 @@ public static class HrModuleEndpoints
                 Results.Conflict(new { erro = result.Message }),
 
             _ => Results.Problem("Resultado inesperado ao atribuir o cargo."),
+        };
+    }
+
+    private static async Task<IResult> AssignPositionDirectAsync(
+        Guid employeeId,
+        AssignPositionRequest request,
+        AssignPosition assignPosition,
+        HttpContext http,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        var result = await assignPosition.ExecuteDirectAsync(
+            employeeId,
+            request.PositionId,
+            request.EffectiveFrom ?? clock.GetUtcNow(),
+            request.EffectiveTo,
+            BuildAuditContext(http),
+            cancellationToken);
+
+        return result.Outcome switch
+        {
+            AssignPositionOutcome.Assigned =>
+                Results.Created($"/hr/employees/{employeeId}", new { assignmentId = result.AssignmentId }),
+
+            AssignPositionOutcome.EmployeeNotFound or AssignPositionOutcome.PositionNotFound =>
+                Results.NotFound(new { erro = result.Message }),
+
+            _ => Results.Problem("Resultado inesperado ao atribuir o cargo directamente."),
         };
     }
 

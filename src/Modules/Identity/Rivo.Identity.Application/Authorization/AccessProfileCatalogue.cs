@@ -18,6 +18,16 @@ namespace Rivo.Identity.Application.Authorization;
 /// </summary>
 public sealed class AccessProfileCatalogue : IAccessProfileCatalogue
 {
+    /// <summary>
+    /// <see cref="AccessProfiles.AssignableProfiles"/> e não o catálogo
+    /// inteiro, pela mesma razão que <c>GET /identity/roles</c> (ADR-058):
+    /// `SuperAdmin` existe no catálogo para o seed lhe dar permissões, mas
+    /// não é perfil de negócio. A vista de governança de `Rivo.Settings`
+    /// mostra a alguém que administra a empresa o que ele pode atribuir —
+    /// anunciar-lhe uma conta de arranque que não pode usar nem conceder
+    /// seria mostrar uma porta sem lhe dar a chave.
+    /// </summary>
     public IReadOnlyList<AccessProfileSummary> List() =>
-        [.. AccessProfiles.Catalogue.Select(entry => new AccessProfileSummary(entry.Key, entry.Value))];
+        [.. AccessProfiles.AssignableProfiles
+            .Select(profile => new AccessProfileSummary(profile, AccessProfiles.Catalogue[profile]))];
 }

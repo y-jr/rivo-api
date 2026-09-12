@@ -4,6 +4,7 @@ using Rivo.Api.Composition;
 using Rivo.Api.Cors;
 using Rivo.Api.Errors;
 using Rivo.Api.OpenApi;
+using Rivo.Api.RateLimiting;
 using Rivo.Audit.Api;
 using Rivo.Commercial.Api;
 using Rivo.Commercial.Infrastructure;
@@ -73,6 +74,11 @@ builder.Services.AddOpenApi(options =>
 // Origens de browser autorizadas (ADR-033). Concern do host e não de módulo:
 // é o processo inteiro que é chamado de fora, não cada módulo por si.
 builder.Services.AddBrowserClientCors(builder.Configuration);
+
+// Tecto de pedidos nas rotas que autenticam. Segunda metade do travão à força
+// bruta: o bloqueio por tentativas fecha o ataque a uma conta, isto fecha o
+// varrimento de muitas.
+builder.Services.AddAuthenticationRateLimiter(builder.Configuration);
 
 // Colisão de concorrência optimista traduzida em 409 (ADR-035, fecha o K15).
 //
@@ -337,11 +343,16 @@ if (!app.Environment.IsDevelopment())
 // chegava a sair do browser.
 app.UseBrowserClientCors();
 
+// Depois do CORS, de propósito: o `OPTIONS` de verificação prévia não gasta
+// orçamento, e um 429 sem cabeçalhos de CORS chegaria ao browser como erro de
+// rede sem causa visível. Só afecta as rotas que pedem a política.
+app.UseAuthenticationRateLimiter();
+
 // A ordem importa: autenticar (quem é) antes de autorizar (pode fazer isto).
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapIdentityModule();
+app.MapIdentityModule(AuthenticationRateLimiter.PolicyName);
 app.MapAuditModule();
 app.MapDocumentsModule();
 app.MapFiscalModule();

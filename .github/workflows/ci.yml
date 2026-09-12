@@ -109,6 +109,11 @@ jobs:
             echo "ASPNETCORE_ENVIRONMENT=Development"
             echo "MIGRATE_ON_STARTUP=true"
             echo "SEED_ON_STARTUP=true"
+            # Tecto de autenticação desligado, e é deliberado: as suites
+            # autenticam dezenas de vezes por minuto a partir de um endereço
+            # só. Com o tecto de produção, o vermelho que davam seria a forma
+            # do ambiente de teste, não um defeito da aplicação.
+            echo "AUTH_RATE_LIMIT=0"
             # O anfitrião é o serviço do compose de desenvolvimento, nunca o
             # servidor externo: o CI não pode escrever na base de dados real.
             echo "CONNECTION_STRING=Server=sqlserver,1433;Database=rivo;User Id=sa;Password=Rivo_Dev_2026!;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=True;"

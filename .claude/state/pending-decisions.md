@@ -95,16 +95,20 @@ re-litigação:
 - [x] ~~Bootstrap do primeiro Admin~~ — **ADR-016**: seed controlado e
       idempotente, credenciais de configuração. O mecanismo de bootstrap não
       participa das regras normais de autorização.
-- [ ] **⚠ Bootstrap do primeiro Cargo com autoridade** (ADR-015 §R2, ADR-016
-      §R1). O seed atribui apenas Perfis de Acesso; a autoridade de decisão vem
-      do **Cargo**.
-
-      **Actualizado em 2026-08-25:** `approval` existe desde 2026-08-23 e o
-      `501` fechou — a razão original deste pendente caducou. O que resta é o
-      ovo e a galinha: criar o primeiro Cargo com autoridade exige decisão de
-      `approval`, e não há ninguém com autoridade para a tomar. Resolve-se
-      estendendo o `BootstrapUserSeeder`, à maneira do ADR-016: o bootstrap é o
-      passo anterior às regras de autorização existirem.
+- [x] ~~**Bootstrap do primeiro Cargo com autoridade**~~ (ADR-015 §R2, ADR-016
+      §R1). **Resolvido a 2026-09-12 (ADR-058).** Não foi por estender
+      `BootstrapUserSeeder` a semear uma `PositionAssignment` directamente —
+      ficaria resolvido só para o arranque, e o ovo-e-a-galinha reaparece se
+      um Cargo aprovador perder o único ocupante mais tarde. Em vez disso:
+      perfil novo `SuperAdmin` (nunca atribuível em runtime, só por
+      bootstrap) com uma permissão que nem `Admin` tem,
+      `hr.positions.assign_direct`, e um endpoint próprio,
+      `POST /hr/employees/{id}/positions/direct`, que atribui um Cargo com
+      efeito imediato saltando `approval`. Auditado com acção distinta
+      (`hr.position.assigned_directly`). Verificado ao vivo: `SuperAdmin`
+      atribui e o colaborador fica `Effective` de imediato; `Admin` recebe
+      `403` no mesmo endpoint e `400` ao tentar atribuir o perfil
+      `SuperAdmin` a alguém.
 - [x] ~~Assemblies de contratos por módulo~~ — **ADR-017**. `Rivo.X.Contracts`
       sem dependências; criado quando o módulo tem consumidor. Já aplicado a
       `audit`, `documents`, `hr` e `notifications`. **Por exercitar:** a

@@ -64,7 +64,7 @@ Test-Case "1. Migrations aplicadas" {
 
 Test-Case "2. Seed criou os perfis" {
     $roles = Invoke-Sql "select count(*) from [identity].app_role"
-    if ($roles -ne "8") { throw "esperados 8 perfis, obtidos $roles" }
+    if ($roles -ne "9") { throw "esperados 9 perfis, obtidos $roles" }
 
     # Sem contagem absoluta de permissoes: cresce legitimamente a cada modulo
     # novo. Verifica-se que o Admin tem as que deve e que nenhuma se repete.
@@ -97,6 +97,12 @@ where r.name = 'HR' and c.claim_value = 'hr.positions.write'
     # (ADR-043) e saiu no mesmo dia, com o comprovativo de pagamento
     # (ADR-044) — a primeira permissao real de um perfil externo.
     # **Nenhum dos oito perfis continua vazio.**
+    #
+    # O nono, `SuperAdmin`, nasceu a 2026-09-12 (ADR-058) e nunca esteve
+    # vazio: tem tudo o que o `Admin` tem mais `hr.positions.assign_direct`.
+    # Nao e perfil de negocio — e conta de arranque, e so o bootstrap lha
+    # atribui. Que nao seja atribuivel em runtime e verificado em
+    # `verify-authorization`, caso 4b.
     #
     # A saida do `AssetManager` nao e adivinhacao: a recepcao e a porta de
     # entrada do stock, e `modules/procurement.md` diz que `procurement` publica
@@ -156,7 +162,7 @@ where r.name in ('Manager','Finance') and c.claim_value = 'approval.policies.wri
 "@
     if ($configuram -ne "0") { throw "Manager ou Finance gerem politicas de aprovacao" }
 
-    "8 perfis; Admin com $adminPerms permissoes; HR sem catalogo; Manager/Finance decidem sem configurar"
+    "9 perfis; Admin com $adminPerms permissoes; HR sem catalogo; Manager/Finance decidem sem configurar"
 }
 
 Test-Case "3. Seed criou o Admin" {

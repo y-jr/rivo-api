@@ -54,7 +54,8 @@ Todos os módulos.
 - Identidade do utilizador autenticado (actor corrente).
 - Verificação de permissão por perfil.
 - **`IAccessProfileCatalogue`** (`Rivo.Identity.Contracts`, desde
-  2026-08-31) — os sete Perfis de Acesso e as permissões de cada um.
+  2026-08-31) — os Perfis de Acesso (9 hoje: os 7 do documento de produto,
+  `Cliente` e `SuperAdmin`) e as permissões de cada um.
   Primeiro consumidor: `Rivo.Settings` (Configurações & Administração,
   ADR-041). O catálogo de permissões (`IdentityPermissions`) mudou-se para
   este assembly no mesmo dia — mesmo lugar de `HrPermissions`,
@@ -95,9 +96,11 @@ Todos os módulos.
 ## Estado
 
 **Implementado.** Autenticação por JWT bearer com sessão persistida e
-revogável (ADR-012, ADR-013), catálogo dos sete Perfis de Acesso semeados com
-permissões como role claims (ADR-014), e bootstrap idempotente do Admin e do
-decisor iniciais por configuração (ADR-016).
+revogável (ADR-012, ADR-013), catálogo dos Perfis de Acesso (9: os 7 do
+documento de produto, `Cliente` do ADR-043 e `SuperAdmin` do ADR-058)
+semeados com permissões como role claims (ADR-014), e bootstrap idempotente
+do Admin, do decisor e do super-administrador iniciais por configuração
+(ADR-016, ADR-058).
 
 **Dois caminhos de autenticação:** password e Google (ADR-032). O segundo
 recebe um ID token do frontend, valida-o contra as chaves públicas da Google e
@@ -133,8 +136,14 @@ tem**.
 
 | Omitido | Porquê |
 |---|---|
-| **Permissões de cinco dos sete perfis** | `Admin` e `HR` estão povoados; `Manager`, `Finance`, `Sales`, `AssetManager` e `ProjectManager` estão vazios porque dependem de módulos de negócio que não existem. Inventá-las seria adivinhar |
 | **Refresh token** | Expirada a sessão, o utilizador volta a autenticar-se. Revisitar se a duração se revelar incómoda |
+
+⚠ **A linha "permissões de cinco dos sete perfis vazias" foi removida em
+2026-09-12: já não é verdade.** Os módulos de negócio que faltavam nasceram
+entretanto e `AccessProfiles.Catalogue` já não tem nenhum perfil vazio —
+`Manager`, `Finance`, `Sales`, `AssetManager` e `ProjectManager` estão todos
+povoados. Ver `project-state.md` para a contagem actual de perfis (9) e
+permissões.
 
 ### ⚠ Requisitos por satisfazer
 

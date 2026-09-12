@@ -116,6 +116,24 @@ public static class HrPermissions
     public const string PositionsAssign = "hr.positions.assign";
 
     /// <summary>
+    /// Atribuir um Cargo com efeito imediato, mesmo que confira autoridade de
+    /// aprovação — salta a submissão a `approval` que BR-20 exigiria
+    /// (ADR-058).
+    ///
+    /// <para>
+    /// <strong>Deliberadamente fora de <see cref="All"/> e de
+    /// <see cref="ForHumanResources"/>.</strong> Ao contrário das outras
+    /// permissões "apenas Admin" deste catálogo, esta quebra a própria
+    /// garantia que BR-20 existe para dar, por isso nenhum perfil a herda
+    /// automaticamente — nem `Admin`. É reservada à conta de operação
+    /// <c>SuperAdmin</c> (<c>AccessProfiles.SuperAdmin</c>), semeada só pelo
+    /// bootstrap, para resolver o arranque circular: o primeiro Cargo
+    /// aprovador de um ambiente novo não tem quem o aprove.
+    /// </para>
+    /// </summary>
+    public const string PositionsAssignDirect = "hr.positions.assign_direct";
+
+    /// <summary>
     /// Ligar uma conta de `identity` a um Colaborador já admitido (ADR-051).
     ///
     /// <para>

@@ -1,0 +1,45 @@
+# Reverse proxy da VPS — a porta de entrada de todo o sistema.
+#
+# **Infraestrutura partilhada, e não propriedade do Rivo** (ADR-031). Vive em
+# `/opt/projects/proxy/` na máquina, fora do `docker-compose.yml` da aplicação.
+# Esta cópia existe para a configuração ser recuperável e revista, não para
+# mudar quem é o dono: se um segundo serviço passar a viver atrás do mesmo
+# proxy, isto muda-se para um repositório próprio.
+#
+# ⚠ **A máquina é o que corre; este ficheiro é o que se lê.** Depois de
+# alterar aqui, copiar para a VPS e recarregar — ver o README ao lado.
+#
+# ---
+#
+# `syyt.tech` entrou a 2026-09-12 e fechou o K16, o defeito que o projecto
+# tinha escrito por palavras suas como «isto não pode ir para produção»: até
+# aí servia-se por IP em HTTP simples, e a password e o token viajavam em
+# claro.
+#
+# O bloco abaixo é tudo. O Caddy trata do resto sozinho:
+#
+#   - pede e renova o certificado ao Let's Encrypt (hoje: válido até 02·12·2026)
+#   - redirecciona `http` para `https` com 308, sem ser preciso declará-lo
+#   - termina o TLS e fala com a API em claro dentro da rede `proxy`, que não
+#     sai da máquina
+
+syyt.tech {
+        # Fecha a janela da primeira visita. Sem isto, o pedido que desencadeia
+        # a redirecção ainda vai em claro, e é nele que um atacante na mesma
+        # rede intercepta antes de a ligação segura existir.
+        #
+        # Um ano, e sem `includeSubDomains` nem `preload`, de propósito:
+        #
+        #   - `includeSubDomains` estenderia a promessa a tudo o que viesse a
+        #     viver debaixo de `syyt.tech`. Um `staging.` sem HTTPS deixaria de
+        #     abrir, e o browser não dá ao utilizador a opção de continuar.
+        #   - `preload` é candidatar o domínio a uma lista que os browsers
+        #     trazem compilada de fábrica. Resolve a primeira visita de vez, mas
+        #     sair dela leva meses e não está do nosso lado.
+        header Strict-Transport-Security "max-age=31536000"
+
+        # Pelo nome do container, na rede `proxy`. É isto que permite à API não
+        # publicar porto nenhum no host — e é dessa ausência que vem a
+        # segurança de confiar no `X-Forwarded-For` (ADR-031).
+        reverse_proxy rivo-api:8080
+}

@@ -29,9 +29,12 @@ namespace Rivo.Identity.Infrastructure.Identity;
 /// </para>
 ///
 /// <para>
-/// <strong>Limitação conhecida:</strong> só atribui Perfis de Acesso. A
+/// <strong>Só atribui Perfis de Acesso, e passou a chegar.</strong> A
 /// autoridade de decisão prevista em ADR-015 vem do Cargo, que pertence ao
-/// módulo `hr` e ainda não existe. Quando existir, é aqui que se estende.
+/// módulo `hr` — e o ADR-058 resolveu o arranque circular sem estender este
+/// seeder a semear Cargos: semeia-se a conta `SuperAdmin`, e é ela que
+/// atribui o primeiro Cargo aprovador pela API, com
+/// <c>hr.positions.assign_direct</c>.
 /// </para>
 /// </summary>
 public sealed class BootstrapUserSeeder(
@@ -54,6 +57,21 @@ public sealed class BootstrapUserSeeder(
         foreach (var configured in _options.Users)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            // Entrada em branco é ausência, não erro. As variáveis de
+            // ambiente indexadas (`Bootstrap__Users__2__Email`) não têm como
+            // exprimir "esta entrada não existe" — ou estão lá vazias, ou o
+            // compose recusa-se a arrancar. Tratar o vazio como "não semear"
+            // é o que permite a uma conta ser opcional sem partir os `.env`
+            // escritos antes de ela existir (ADR-058).
+            if (string.IsNullOrWhiteSpace(configured.Email)
+                || string.IsNullOrWhiteSpace(configured.Password))
+            {
+                logger.LogInformation(
+                    "Entrada de bootstrap sem e-mail ou password. Ignorada — é configuração ausente, não inválida.");
+                continue;
+            }
+
             await SeedUserAsync(configured);
         }
     }

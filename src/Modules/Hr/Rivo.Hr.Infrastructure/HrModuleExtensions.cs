@@ -103,6 +103,14 @@ public static class HrModuleExtensions
                     .RequireAuthenticatedUser()
                     .RequireClaim("permission", permission));
             }
+
+            // Fora de `HrPermissions.All` de propósito (ADR-058): registar a
+            // policy não implica dar a permissão a ninguém — só
+            // `AccessProfiles.SuperAdmin` a tem, e é o catálogo de perfis, não
+            // este `foreach`, que decide quem a recebe.
+            options.AddPolicy(HrPermissions.PositionsAssignDirect, policy => policy
+                .RequireAuthenticatedUser()
+                .RequireClaim("permission", HrPermissions.PositionsAssignDirect));
         });
 
         return services;
