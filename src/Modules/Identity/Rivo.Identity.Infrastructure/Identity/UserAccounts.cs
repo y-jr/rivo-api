@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Rivo.Identity.Application.Abstractions;
+using Rivo.Identity.Application.Authorization;
 using Rivo.Identity.Contracts;
 using Rivo.Identity.Infrastructure.Persistence;
 
@@ -67,7 +68,23 @@ public sealed class UserAccounts(
         // hashes.
         if (!await users.CheckPasswordAsync(user, password))
         {
+            // **É isto que faz o bloqueio existir.** As opções de lockout
+            // estavam configuradas (5 tentativas, 15 minutos) e o `IsLockedOutAsync`
+            // acima já as respeitava — mas nada incrementava o contador, por
+            // isso o limite nunca era atingido e a configuração era decorativa.
+            // Quem normalmente chama isto é o `SignInManager`, que este módulo
+            // não usa (ADR-013): sem ele, é aqui que tem de ser.
+            await users.AccessFailedAsync(user);
             return null;
+        }
+
+        // Entrar com sucesso limpa o histórico de tentativas. Sem isto, cinco
+        // enganos espalhados por meses acabariam por bloquear alguém que nunca
+        // falhou duas vezes seguidas. O `if` evita uma escrita na base de dados
+        // em cada entrada bem sucedida, que é o caminho quente.
+        if (await users.GetAccessFailedCountAsync(user) > 0)
+        {
+            await users.ResetAccessFailedCountAsync(user);
         }
 
         return await ToAuthenticatedAccountAsync(user);
@@ -144,12 +161,24 @@ public sealed class UserAccounts(
     }
 
     /// <summary>
-    /// Uma conta está activa enquanto não tiver bloqueio no futuro. É a leitura
-    /// inversa de <c>SetActiveAsync</c>, e vive aqui para as duas não poderem
-    /// divergir.
+    /// Uma conta está activa enquanto não estiver <em>desactivada</em>. É a
+    /// leitura inversa de <c>SetActiveAsync</c>, e vive aqui para as duas não
+    /// poderem divergir.
+    ///
+    /// <para>
+    /// <strong>Desactivada não é o mesmo que bloqueada</strong>, e o campo é o
+    /// mesmo — daí a distância. `SetActiveAsync` desactiva com
+    /// <see cref="DateTimeOffset.MaxValue"/>; o bloqueio por tentativas
+    /// falhadas escreve quinze minutos no futuro. Se esta leitura contasse
+    /// qualquer bloqueio como desactivação, quem errasse a password cinco
+    /// vezes apareceria à administração como conta fechada, e alguém a
+    /// reabriria sem nada ter sido fechado. Meio século separa os dois casos
+    /// sem depender de o sentinela sobreviver intacto à ida e volta à base de
+    /// dados.
+    /// </para>
     /// </summary>
     private static bool IsActive(ApplicationUser user, DateTimeOffset now) =>
-        user.LockoutEnd is null || user.LockoutEnd <= now;
+        user.LockoutEnd is not { } fim || fim <= now.AddYears(50);
 
 
     public async Task<AssignProfileOutcome> AssignProfileAsync(
@@ -166,9 +195,14 @@ public sealed class UserAccounts(
             return AssignProfileOutcome.UserNotFound;
         }
 
-        // Só perfis do catálogo semeado. Recusar perfis desconhecidos impede
-        // que um erro de escrita crie silenciosamente um papel sem permissões.
-        if (!await roles.RoleExistsAsync(profile))
+        // Só perfis atribuíveis. `AssignableProfiles` e não `RoleExistsAsync`
+        // de propósito: `SuperAdmin` existe como role (o seed cria-lhe
+        // permissões) mas está fora da lista atribuível, e `RoleExistsAsync`
+        // não faria essa distinção — deixaria um `Admin` da empresa atribuir
+        // a si próprio, ou a outra conta, a permissão que contorna BR-20
+        // (ADR-058). Recusar perfis desconhecidos, à parte disso, impede que
+        // um erro de escrita crie silenciosamente um papel sem permissões.
+        if (!AccessProfiles.AssignableProfiles.Contains(profile, StringComparer.Ordinal))
         {
             return AssignProfileOutcome.ProfileNotFound;
         }

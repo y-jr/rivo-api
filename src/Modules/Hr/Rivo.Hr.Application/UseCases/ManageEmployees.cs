@@ -411,6 +411,14 @@ public static class HrAuditActions
     public const string DepartmentCreated = "hr.department.created";
     public const string PositionCreated = "hr.position.created";
     public const string PositionAssigned = "hr.position.assigned";
+
+    /// <summary>
+    /// Atribuição directa, à margem de `approval` (ADR-058). Distinta de
+    /// <see cref="PositionAssigned"/> de propósito: quem revê a trilha tem de
+    /// ver de imediato que esta não passou por BR-20, e não confundi-la com
+    /// uma atribuição comum.
+    /// </summary>
+    public const string PositionAssignedDirectly = "hr.position.assigned_directly";
     public const string PositionAssignmentSubmitted = "hr.position.assignment_submitted";
     public const string PositionAssignmentApproved = "hr.position.assignment_approved";
     public const string PositionAssignmentRefused = "hr.position.assignment_refused";

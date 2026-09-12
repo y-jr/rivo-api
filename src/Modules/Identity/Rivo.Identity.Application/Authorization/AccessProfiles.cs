@@ -1,4 +1,5 @@
-﻿using Rivo.Approval.Contracts;
+﻿using System.Linq;
+using Rivo.Approval.Contracts;
 using Rivo.Commercial.Contracts;
 using Rivo.Audit.Contracts;
 using Rivo.Documents.Contracts;
@@ -19,7 +20,7 @@ namespace Rivo.Identity.Application.Authorization;
 
 /// <summary>
 /// Os sete Perfis de Acesso previstos no documento de produto, mais
-/// `Cliente` (ADR-043).
+/// `Cliente` (ADR-043) e `SuperAdmin` (ADR-058).
 ///
 /// Perfil de Acesso responde a "o que este utilizador pode ver/fazer no
 /// sistema". <strong>Não confundir com Cargo</strong>, que é posição
@@ -36,6 +37,15 @@ namespace Rivo.Identity.Application.Authorization;
 /// uma audiência externa que nenhum dos sete cobre. Decisão explícita do
 /// utilizador (ADR-043, 2026-09-03): conta própria em `identity`, perfil
 /// novo. Estende o documento-fonte; não o reescreve.
+/// </para>
+///
+/// <para>
+/// <strong>`SuperAdmin` é o nono, e não é um Perfil de negócio.</strong> É
+/// uma conta de operação/arranque (ADR-058): resolve o bloqueio circular de
+/// BR-20 — nenhum Cargo com autoridade de aprovação pode ser atribuído sem
+/// que já exista alguém a ocupar um, e num ambiente novo ninguém ocupa
+/// nenhum. Só semeada pelo bootstrap (nunca atribuível em runtime, ver
+/// <see cref="AssignableProfiles"/>) e nunca dada a ninguém da empresa.
 /// </para>
 /// </summary>
 public static class AccessProfiles
@@ -56,6 +66,33 @@ public static class AccessProfiles
     public const string Customer = "Cliente";
 
     /// <summary>
+    /// Conta de bootstrap/operação, nunca de negócio (ADR-058). Ver a nota de
+    /// classe.
+    /// </summary>
+    public const string SuperAdmin = "SuperAdmin";
+
+    /// <summary>Tudo o que `Admin` recebe — ver a entrada de <see cref="Admin"/> em <see cref="Catalogue"/>.</summary>
+    private static readonly IReadOnlyList<string> AdminPermissions =
+    [
+        .. IdentityPermissions.All,
+        .. AuditPermissions.All,
+        .. HrPermissions.All,
+        .. DocumentPermissions.All,
+        .. ApprovalPermissions.All,
+        .. FiscalPermissions.All,
+        .. FinancePermissions.All,
+        .. CommercialPermissions.All,
+        .. ProcurementPermissions.All,
+        .. PayrollPermissions.All,
+        .. ProjectsPermissions.All,
+        .. InventoryPermissions.All,
+        .. FleetPermissions.All,
+        .. DashboardPermissions.All,
+        .. MessagingPermissions.All,
+        .. AnalyticsPermissions.All,
+    ];
+
+    /// <summary>
     /// Perfil e permissões que lhe são atribuídas no seed.
     ///
     /// Cada módulo declara <em>que permissões existem</em>; `identity` decide
@@ -68,23 +105,7 @@ public static class AccessProfiles
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> Catalogue =
         new Dictionary<string, IReadOnlyList<string>>
         {
-            [Admin] = [
-                .. IdentityPermissions.All,
-                .. AuditPermissions.All,
-                .. HrPermissions.All,
-                .. DocumentPermissions.All,
-                .. ApprovalPermissions.All,
-                .. FiscalPermissions.All,
-                .. FinancePermissions.All,
-                .. CommercialPermissions.All,
-                .. ProcurementPermissions.All,
-                .. PayrollPermissions.All,
-                .. ProjectsPermissions.All,
-                .. InventoryPermissions.All,
-                .. FleetPermissions.All,
-                .. DashboardPermissions.All,
-                .. MessagingPermissions.All,
-                .. AnalyticsPermissions.All],
+            [Admin] = AdminPermissions,
 
             // `Manager` decide sobre pedidos de aprovação — incluindo pedidos de
             // pagamento — e regista facturas de compra e pede que sejam pagas.
@@ -218,6 +239,30 @@ public static class AccessProfiles
             // para anexar ficheiros a um registo seu — não é pensada para
             // clientes especificamente.
             [Customer] = [DocumentPermissions.Write],
+
+            // Tudo o que `Admin` tem, mais a única permissão que nem `Admin`
+            // tem: saltar a submissão a `approval` ao atribuir um Cargo com
+            // autoridade (BR-20). É o que dá a esta conta o poder de resolver
+            // o arranque circular sem ninguém ter de mexer na base de dados
+            // (ADR-058).
+            [SuperAdmin] = [.. AdminPermissions, HrPermissions.PositionsAssignDirect],
         };
+
+    /// <summary>
+    /// Os perfis que se podem atribuir através de <c>POST
+    /// /identity/users/{id}/roles</c> — todo o catálogo menos
+    /// <see cref="SuperAdmin"/>.
+    ///
+    /// <para>
+    /// <strong>Existe para <see cref="SuperAdmin"/> nunca aparecer</strong> na
+    /// lista de perfis do ecrã de administração nem ser atribuível por lá,
+    /// mesmo por quem já é `Admin` — do contrário um `Admin` da empresa
+    /// conseguiria conceder-se a si próprio, ou a outra conta, a permissão que
+    /// contorna BR-20. A única via para esta conta existir é o bootstrap
+    /// (ADR-058).
+    /// </para>
+    /// </summary>
+    public static readonly IReadOnlyList<string> AssignableProfiles =
+        [.. Catalogue.Keys.Where(profile => profile != SuperAdmin)];
 }
 

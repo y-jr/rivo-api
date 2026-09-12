@@ -89,10 +89,14 @@ Duas operações, duas autoridades:
 | **Catálogo** — criar/alterar/desactivar um Cargo, e marcar `confere_autoridade_aprovacao` | `Admin` | Imediato, auditado |
 | **Atribuição** — quem ocupa que Cargo, e quando | `HR` | Imediato **se** o Cargo não conferir autoridade de aprovação |
 | **Atribuição de Cargo com autoridade de aprovação** | `HR` submete | Fica **pendente**; só produz efeito após decisão "Aprovado" de `approval` |
+| **Atribuição directa, ignorando `approval`** (`hr.positions.assign_direct`, ADR-058) | Só `SuperAdmin` | Imediato, sempre — mesmo com autoridade de aprovação. Auditado com acção própria (`hr.position.assigned_directly`), distinta da atribuição normal |
 
 **Porquê:** `approval` resolve aprovadores por Cargo. Sem este controlo,
 quem atribui Cargos decidiria quem aprova pagamentos sem tocar em perfis nem
-permissões — escalada de privilégios invisível ao RBAC.
+permissões — escalada de privilégios invisível ao RBAC. A única excepção
+deliberada é `SuperAdmin` (ADR-058) — conta de bootstrap, nunca de negócio,
+que existe para resolver o arranque circular do motor de aprovação (nenhum
+Cargo aprovador tem ocupante num ambiente novo).
 
 Quem submete a atribuição não pode decidi-la (BR-2).
 

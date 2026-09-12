@@ -94,7 +94,10 @@ Test-Case "3. Autenticado com perfil adequado -> 200" {
 }
 
 Test-Case "4. Seed nao cria perfis fora do catalogo" {
-    $expected = @("Admin", "AssetManager", "Cliente", "Finance", "HR", "Manager", "ProjectManager", "Sales")
+    # SuperAdmin (ADR-058) e semeado como os outros, mas nao e atribuivel em
+    # runtime — por isso esta aqui e nao aparece em GET /identity/roles. A
+    # assimetria e verificada pelo caso 4b.
+    $expected = @("Admin", "AssetManager", "Cliente", "Finance", "HR", "Manager", "ProjectManager", "Sales", "SuperAdmin")
     $actual = (Invoke-RivoSql "select name from [identity].app_role order by name") -split "`n" | Where-Object { $_ }
     $diff = Compare-Object $expected $actual
     # `-join` e nao `Join-String`: este ultimo so existe a partir do PowerShell
@@ -102,7 +105,24 @@ Test-Case "4. Seed nao cria perfis fora do catalogo" {
     # havia algo a reportar, escondendo a divergencia atras de um erro de
     # cmdlet inexistente.
     if ($diff) { throw "divergencia: " + (($diff | ForEach-Object { $_.InputObject }) -join ",") }
-    "exactamente os 8 esperados"
+    "exactamente os 9 esperados"
+}
+
+Test-Case "4b. SuperAdmin nao e atribuivel nem visivel (ADR-058)" {
+    # A propriedade que o ADR-058 existe para dar: um Admin da empresa nao
+    # consegue ver nem conceder a si proprio a permissao que contorna BR-20.
+    $perfis = (Invoke-RestMethod "$base/identity/roles" -Headers $adminHeaders).name
+    if ($perfis -contains "SuperAdmin") { throw "SuperAdmin listado em /identity/roles" }
+
+    $qualquerConta = (Invoke-RestMethod "$base/identity/users" -Headers $adminHeaders)[0].userId
+    $corpo = @{ profile = "SuperAdmin" } | ConvertTo-Json
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/identity/users/$qualquerConta/roles" -Method Post -Body $corpo `
+            -ContentType "application/json" -Headers $adminHeaders
+    }
+
+    if ($code -ne 400) { throw "atribuir SuperAdmin devolveu $code, esperado 400" }
+    "invisivel no catalogo e recusado com 400, mesmo a um Admin"
 }
 
 Test-Case "5. Seed repetido nao duplica" {
@@ -116,13 +136,13 @@ Test-Case "5. Seed repetido nao duplica" {
     if (-not $up) { throw "API nao voltou a responder" }
 
     $roleCount = (Invoke-RivoSql "select count(*) from [identity].app_role")
-    if ($roleCount -ne "8") { throw "perfis duplicados: $roleCount" }
+    if ($roleCount -ne "9") { throw "perfis duplicados: $roleCount" }
 
     # Duplicacao verificada directamente. O total de permissoes cresce a cada
     # modulo novo, por isso nao serve de asercao.
     $dupClaims = (Invoke-RivoSql "select count(*) from (select role_id, claim_type, claim_value from [identity].app_role_claim group by role_id, claim_type, claim_value having count(*)>1) d")
     if ($dupClaims -ne "0") { throw "$dupClaims permissoes duplicadas" }
-    "8 perfis, sem permissoes duplicadas apos segunda execucao"
+    "9 perfis, sem permissoes duplicadas apos segunda execucao"
 }
 
 Test-Case "6. Permissoes sobrevivem ao reinicio da stack" {

@@ -343,6 +343,32 @@ pré-existente, encontrado ao construir isto.
   e código de sucesso. Verificado contra o código: a contagem bate, e as
   permissões conferidas por amostragem — foi a conferir que apareceu o K18
 
+### Conta de super-administração e atribuição directa de Cargo — 2026-09-12
+
+**ADR-058.** Fecha o pendente do ovo-e-a-galinha em `pending-decisions.md`
+§Approval Engine: o primeiro Cargo com autoridade de aprovação de um
+ambiente novo não tinha quem o aprovasse, e a única saída era escrever
+directamente na base de dados.
+
+- Perfil novo `AccessProfiles.SuperAdmin` — tudo o que `Admin` tem, mais
+  `hr.positions.assign_direct`, permissão que nem `Admin` tem
+- `POST /hr/employees/{employeeId}/positions/direct` — atribui um Cargo com
+  efeito imediato, saltando `approval` mesmo quando o Cargo confere
+  autoridade. Auditado com acção própria, `hr.position.assigned_directly`,
+  distinta de `PositionAssigned`
+- `AccessProfiles.AssignableProfiles` — o catálogo menos `SuperAdmin`.
+  `GET /identity/roles` e `POST /identity/users/{id}/roles` passam a usá-la:
+  `SuperAdmin` nunca aparece no ecrã de administração nem é atribuível em
+  runtime, mesmo por um `Admin` — só nasce por `Bootstrap:Users`
+  (`BOOTSTRAP_SUPERADMIN_EMAIL`/`_PASSWORD`)
+- Frontend: `Cargos.tsx` ganha um controlo extra no diálogo de atribuição,
+  visível só a quem tem a permissão nova
+
+Verificado ao vivo, não só nos testes: `SuperAdmin` atribuiu um Cargo de
+teste com autoridade e o colaborador ficou com `currentPosition` populado
+de imediato (nunca `Pending`); `Admin` recebeu `403` no mesmo endpoint e
+`400` ao tentar atribuir `SuperAdmin` a alguém.
+
 ## Verificação
 
 **Dezassete suites** PowerShell caixa-preta contra a stack em Docker, **336
