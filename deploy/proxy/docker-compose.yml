@@ -1,0 +1,29 @@
+# Reverse proxy da VPS. Corre em `/opt/projects/proxy/`, separado do compose
+# da aplicação — ver o Caddyfile ao lado e o README.
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: proxy-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Os certificados vivem aqui. Volume nomeado de propósito: sem ele, cada
+      # reinício pediria certificados novos, e o Let's Encrypt tem limites de
+      # emissão que se esgotam depressa dessa forma.
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - proxy
+
+volumes:
+  caddy-data:
+  caddy-config:
+
+# A mesma rede do `rivo-api`. É por ela que o Caddy o alcança pelo nome, e é o
+# que permite à API não publicar porto nenhum no host.
+networks:
+  proxy:
+    external: true
