@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Api.Composition;
 using Rivo.Api.Cors;
+using Rivo.Api.Http;
 using Rivo.Api.Errors;
 using Rivo.Api.OpenApi;
 using Rivo.Api.Notifications;
@@ -356,8 +357,9 @@ app.UseExceptionHandler();
 // **Tem de vir antes de tudo o que lê o IP**, incluindo a autenticação: o
 // `AuditContext` é construído a partir do `HttpContext` já processado.
 //
-// `KnownNetworks` e `KnownProxies` são limpos de propósito — com as duas
-// listas vazias, o middleware aceita o cabeçalho de qualquer origem.
+// `KnownIPNetworks` e `KnownProxies` têm de ser mesmo limpos — e a armadilha
+// que fez isso falhar em silêncio durante semanas está explicada em
+// `ProxyHeaders`, que é também onde um teste a guarda.
 //
 // **Isso só é seguro porque não há outra origem.** No deployment em VPS
 // (ADR-031) o container não publica porto nenhum no host: está numa rede
@@ -367,15 +369,7 @@ app.UseExceptionHandler();
 // cliente — e obriga a reavaliar esta configuração.
 if (!app.Environment.IsDevelopment())
 {
-    app.UseForwardedHeaders(new ForwardedHeadersOptions
-    {
-        ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
-        KnownNetworks = { },
-        KnownProxies = { },
-        // Um só salto: o reverse proxy da VPS. Aceitar mais permitiria a um
-        // cliente prefixar a cadeia com endereços à escolha.
-        ForwardLimit = 1,
-    });
+    app.UseForwardedHeaders(ProxyHeaders.Options());
 }
 
 // CORS antes da autenticação, e depois dos cabeçalhos reencaminhados.
