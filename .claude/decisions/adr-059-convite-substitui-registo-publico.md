@@ -139,6 +139,22 @@ STARTTLS. É também a biblioteca que a Microsoft aponta desde que marcou o
   como é que eu entro?».
 - **Convidar exige `Frontend:BaseUrl` configurado.** Sem ele, devolve 501: mais
   vale dizer que falta configuração do que enviar um convite que não abre.
+- **E isso tornou-o requisito de qualquer ambiente**, não só dos que enviam
+  correio. Convidar passou a ser a única via por que uma conta nasce, e as 21
+  suites de `scripts/` montam as suas por lá — sem a variável, todas falham com
+  501 antes de chegarem ao que verificam. Está no `.env` que o CI gera, no
+  `.env.example` (já preenchido) e em `appsettings.Development.json`. ⚠ Este
+  último **só vale para `dotnet run`**: sob docker compose,
+  `Frontend__BaseUrl: ${FRONTEND_BASE_URL:-}` põe a variável vazia, e uma
+  variável de ambiente vazia sobrepõe-se ao ficheiro.
+- **As suites criam contas em dois passos, e não num.** O testemunho vai só para
+  a caixa de correio, que nenhuma suite lê, por isso `New-RivoConta`
+  (`_ambiente.ps1`) convida e depois fixa a password pela reposição de
+  administrador. Substituiu 38 sítios que chamavam `register`.
+- **Não há mais contas sem perfil, e nove suites usavam-nas** para provar 403.
+  Passaram a usar `Cliente`, que tem exactamente uma permissão
+  (`documents.write`): a verificação fica mais precisa, porque o 403 passa a
+  provar que a distinção é por permissão e não por «ter ou não perfil».
 - Em desenvolvimento, sem SMTP, a ligação **não aparece nos logs** — o canal de
   log não escreve o corpo, que pode levar o testemunho. Lê-se de
   `notifications.notification`.
