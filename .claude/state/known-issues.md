@@ -13,11 +13,10 @@ Este ficheiro regista duas coisas distintas, e a distinção importa:
   Fechados: K9, K14, K15, K16, K18, K19, K21.
   Abertos: K8, K10, K11, K12, K13, K17, K20.
 
-  ⚠ **O K8 voltou a abrir a 2026-09-13, e em produção.** Não por regressão de
-  código — por `ASPNETCORE_ENVIRONMENT=Development` na VPS, que desliga os
-  cabeçalhos reencaminhados. Leva atrás a página de excepções de
-  desenvolvimento e transforma o tecto de autenticação num balde único para
-  todos os clientes. É o item mais urgente desta lista.
+  ⚠ **O K8 nunca esteve fechado.** O código que o deu por resolvido a
+  2026-08-16 tinha `KnownNetworks = { }`, que parece limpar e não limpa.
+  Encontrado e corrigido a 2026-09-13, depois de eu o ter atribuído por duas
+  vezes, e erradamente, ao nome do ambiente.
 
   O K13 está a meio: o canal de correio existe (ADR-059) e o fornecedor foi
   decidido. Fica aberto até alguém receber uma mensagem — configurado não é o
@@ -56,66 +55,65 @@ Registados porque a tentação de os repetir é real:
 
 ## Defeitos activos
 
-### K8 — IP da sessão é o do proxy — **RESOLVIDO 2026-08-16, REABERTO EM PRODUÇÃO a 2026-09-13**
+### K8 — IP da sessão é o do proxy — **nunca esteve fechado; causa real encontrada a 2026-09-13**
 
-> **⚠ Está aberto agora, e não por defeito de código.** `syyt.tech` está a
-> correr com `ASPNETCORE_ENVIRONMENT=Development`, e é isso que desliga o
-> `UseForwardedHeaders` — exactamente o cenário que os dois avisos abaixo
-> descrevem, pela segunda vez.
+> **O defeito estava no código desde 2026-08-16, e o código que o «fechou» nunca
+> funcionou.** Duas linhas:
 >
-> **Evidência, recolhida contra produção e por duas vias independentes:**
+> ```csharp
+> KnownNetworks = { },   // não limpa nada
+> KnownProxies  = { },   // não limpa nada
+> ```
 >
-> - `GET /identity/me/sessions` da sessão viva do `SuperAdmin` devolve
->   `ipAddress: ::ffff:172.18.0.3` — o container do Caddy. O `userAgent` vem
->   correcto, o que isola o defeito ao IP.
-> - A entrada `identity.user.invited` na trilha, do convite enviado nesse dia,
->   regista o mesmo endereço.
+> As duas propriedades são **só de leitura**, pelo que `= { }` num inicializador
+> de objecto só pode ser um **inicializador de colecção**: chama `Add` zero vezes
+> e deixa os valores por omissão — `::1/128` e `::1` — onde estavam. A intenção
+> lia-se como «listas vazias»; o efeito era «confia apenas no loopback».
 >
-> `172.18.0.3` é um endereço RFC1918 da rede Docker: só pode ser o par da
-> ligação se o cabeçalho reencaminhado tiver sido ignorado. Confirma-se com
-> `grep ASPNETCORE_ENVIRONMENT /opt/projects/rivo/.env`.
+> Atrás do reverse proxy o par da ligação é o container do Caddy, que não é o
+> loopback: o middleware concluia que o remetente não era de confiança e
+> **descartava os cabeçalhos sem um aviso**.
 >
-> **Três consequências, e a terceira não estava prevista aqui:**
+> **Corrigido** em `ProxyHeaders.Options()` (`src/Rivo.Api/Http`), que chama
+> `.Clear()` a sério, usa `KnownIPNetworks` em vez da propriedade obsoleta, e tem
+> três testes em `Rivo.Api.Tests` — um deles a demonstrar a armadilha, para que
+> ninguém a reintroduza a achar que é equivalente.
 >
-> 1. **BR-9 esvaziado outra vez.** Sessões e trilha guardam o proxy. Uma trilha
->    append-only que não sabe de onde veio o acto vale menos do que parece.
-> 2. **Página de excepções de desenvolvimento à frente do pipeline.** Devolve
->    stack trace e código-fonte a quem provocar um erro não tratado.
-> 3. **O tecto de autenticação (ADR-058) passa a ser um balde único.**
->    `AuthenticationRateLimiter` particiona por
->    `http.Connection.RemoteIpAddress`, e com os cabeçalhos desligados esse
->    endereço é o do proxy **para toda a gente**. Os 20 pedidos por minuto
->    deixam de ser por cliente e passam a ser do sistema inteiro: quem ataca
->    consegue negar a entrada a todos, e a defesa contra força bruta que o
->    tecto devia dar dilui-se no tráfego legítimo. O defeito de configuração
->    anula a funcionalidade.
+> **⚠ Diagnóstico errado pelo caminho, e vale a pena ficar escrito.** Atribuí
+> isto a `ASPNETCORE_ENVIRONMENT=Development` na VPS, com confiança e por duas
+> vezes, porque os sintomas são idênticos: IP do proxy nas sessões e na trilha, e
+> `http` anunciado sobre uma ligação https. A condição `if (!IsDevelopment())`
+> existia mesmo e era uma explicação plausível — mas não era a certa, e o
+> ambiente foi mudado para `Production` sem que nada melhorasse. **O sinal que
+> desfez o engano foi um `ls -la` a mostrar que não havia override nenhum**, o que
+> obrigou a voltar ao código. O compilador já avisava (`ASPDEPR005`) na linha
+> exacta, e eu passei-lhe ao lado.
 >
-> **Correcção:** `ASPNETCORE_ENVIRONMENT=Production` no `.env` da VPS. É para
-> isto que o ADR-038 existe — o Swagger tem interruptor próprio
-> (`EXPOSE_OPENAPI`), e ninguém precisa de mentir sobre o nome do ambiente para
-> o abrir. ⚠ Ao mudar, confirmar que `EXPOSE_OPENAPI` e `CORS_ALLOWED_ORIGINS`
-> estão escritos no `.env`: a omissão do primeiro passa a fechar o Swagger, e o
-> segundo deixa de poder vir do `appsettings.Development.json`. A origem da
-> Vercel está autorizada hoje e não consta desse ficheiro, logo já vem do
-> `.env` — mas confirmar antes, não depois.
+> **Duas consequências, enquanto durou:** BR-9 esvaziado (sessões e trilha com o
+> IP do proxy); e o tecto de autenticação a particionar por
+> `RemoteIpAddress` — ou seja, **um balde único para todos os clientes**, o que
+> anulava a defesa contra força bruta. A página de excepções de desenvolvimento,
+> que eu também atribuí a isto, nunca chegou a estar exposta: essa sim dependia
+> do nome do ambiente, e o ambiente estava certo.
 
-Fechado na Fase 1. `ForwardedHeadersMiddleware` activo fora de `Development`,
-com `KnownNetworks` e `KnownProxies` vazios e `ForwardLimit = 1`.
+Dado por fechado na Fase 1 com `ForwardedHeadersMiddleware` activo fora de
+`Development`, `ForwardLimit = 1` e as listas de confiança «vazias». As duas
+primeiras partes eram verdade; a terceira nunca foi — ver a caixa acima.
 
-Com as duas listas vazias o cabeçalho é aceite de qualquer origem, e isso só é
-seguro porque não há outra origem: o container não publica porto nenhum no
-host, e o único caminho até ele é o reverse proxy, que reescreve
-`X-Forwarded-For`.
+As duas armadilhas que continuam a valer, agora que o defeito está mesmo
+corrigido:
 
-**⚠ Publicar o porto 8080 no host reabre este defeito em silêncio**, e nada no
-código o detecta. A garantia é topológica, e a topologia é a do ADR-031.
+**⚠ Publicar o porto 8080 no host reabre isto em silêncio**, e nada no código o
+detecta. Com as listas vazias o cabeçalho é aceite de qualquer origem, e isso só
+é seguro porque não há outra origem: o container não publica porto nenhum e o
+único caminho até ele é o reverse proxy. A garantia é topológica, e a topologia
+é a do ADR-031.
 
-**⚠ Pôr `ASPNETCORE_ENVIRONMENT=Development` no ambiente publicado reabre-o
-também** — a condição é `if (!app.Environment.IsDevelopment())`. Aconteceu
-entre 2026-08-26 e 2026-08-27: o commit `0301ef5` fixou `Development` no
-`docker-compose.yml` para abrir o Swagger, e levou os cabeçalhos
-reencaminhados atrás. Refechado pelo **ADR-038**, que deu ao Swagger
-interruptor próprio e devolveu o nome do ambiente ao que era.
+**⚠ Pôr `ASPNETCORE_ENVIRONMENT=Development` no ambiente publicado desliga o
+middleware por inteiro** — a condição é `if (!app.Environment.IsDevelopment())`.
+Aconteceu entre 2026-08-26 e 2026-08-27: o commit `0301ef5` fixou `Development`
+no `docker-compose.yml` para abrir o Swagger, e levou os cabeçalhos atrás.
+Fechado pelo **ADR-038**, que deu ao Swagger interruptor próprio.
 
 <details><summary>Registo original</summary>
 
