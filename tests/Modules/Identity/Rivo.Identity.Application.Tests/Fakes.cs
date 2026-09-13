@@ -41,6 +41,35 @@ internal sealed class FakeUserAccounts : IUserAccounts
     /// <summary>Quantas vezes se tentou ligar uma identidade externa a uma conta.</summary>
     public int LinkAttempts { get; private set; }
 
+    /// <summary>Endereços convidados, pela ordem em que o foram (ADR-059).</summary>
+    public List<string> Invited { get; } = [];
+
+    /// <summary>Testemunho que o convite devolve. Fixo, para as asserções serem legíveis.</summary>
+    public const string InvitationToken = "testemunho-de-convite";
+
+    public Task<InvitationResult> InviteAsync(string email, CancellationToken cancellationToken)
+    {
+        Invited.Add(email);
+
+        var userId = Guid.NewGuid();
+
+        // Regista a conta como existente para que `AssignProfileAsync` a
+        // encontre — sem password, que é o estado real de quem foi convidado e
+        // ainda não aceitou.
+        Passwords[userId] = null!;
+
+        return Task.FromResult(InvitationResult.Success(userId, InvitationToken));
+    }
+
+    /// <summary>Perfis atribuídos, achatados, pela ordem em que o foram.</summary>
+    public IReadOnlyList<string> AssignedProfiles => [.. Profiles.Values.SelectMany(p => p)];
+
+    public Task<PasswordChangeOutcome> AcceptInvitationAsync(
+        Guid userId, string token, string password, CancellationToken cancellationToken) =>
+        Task.FromResult(token == InvitationToken
+            ? PasswordChangeOutcome.Changed()
+            : PasswordChangeOutcome.Rejected(["Convite inválido ou expirado."]));
+
     public Task<AuthenticatedAccount?> FindByExternalLoginAsync(
         string provider, string providerKey, CancellationToken cancellationToken) =>
         Task.FromResult(_linkedAccount);

@@ -90,6 +90,69 @@ public sealed class UserAccounts(
         return await ToAuthenticatedAccountAsync(user);
     }
 
+    public async Task<InvitationResult> InviteAsync(string email, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var user = new ApplicationUser
+        {
+            UserName = email,
+            Email = email,
+
+            // Confirmado por construção: quem abre a conta é quem administra,
+            // e o convite que se segue já prova que o endereço recebe correio.
+            EmailConfirmed = true,
+        };
+
+        // Sem password. `CreateAsync(user)` — e não a sobrecarga com password —
+        // deixa o hash a nulo, e é isso que impede a entrada antes de o convite
+        // ser aceite: `CheckPasswordAsync` contra um hash inexistente falha.
+        var created = await users.CreateAsync(user);
+
+        if (!created.Succeeded)
+        {
+            return InvitationResult.Failure([.. created.Errors.Select(error => error.Description)]);
+        }
+
+        // O mesmo testemunho da reposição de password: uso único, com prazo, e
+        // já suportado pelos token providers registados. Inventar um segundo
+        // mecanismo para o mesmo efeito seria mais código e mais superfície.
+        var token = await users.GeneratePasswordResetTokenAsync(user);
+
+        return InvitationResult.Success(user.Id, token);
+    }
+
+    public async Task<PasswordChangeOutcome> AcceptInvitationAsync(
+        Guid userId,
+        string token,
+        string password,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var user = await users.FindByIdAsync(userId.ToString());
+
+        if (user is null)
+        {
+            return PasswordChangeOutcome.UserNotFound();
+        }
+
+        // **Só serve uma conta que ainda não tem password.** Sem isto, um
+        // convite antigo por consumir seria uma segunda via de reposição para
+        // uma conta já em uso — e quem tivesse guardado o link de quando
+        // entrou passava a poder trocar a password de alguém.
+        if (await users.HasPasswordAsync(user))
+        {
+            return PasswordChangeOutcome.Rejected(["Este convite já foi aceite."]);
+        }
+
+        var result = await users.ResetPasswordAsync(user, token, password);
+
+        return result.Succeeded
+            ? PasswordChangeOutcome.Changed()
+            : PasswordChangeOutcome.Rejected([.. result.Errors.Select(error => error.Description)]);
+    }
+
     public async Task<AuthenticatedAccount?> FindByExternalLoginAsync(
         string provider,
         string providerKey,

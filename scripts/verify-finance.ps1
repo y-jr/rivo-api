@@ -56,10 +56,8 @@ function Get-Token {
 function New-PerfilHeaders {
     param([string]$Perfil, [string]$Sufixo)
     $email = "$Sufixo@rivo.ao"
-    $body = @{ email = $email; password = $script:pass } | ConvertTo-Json
-    $id = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $body -ContentType "application/json").userId
-    $body = @{ profile = $Perfil } | ConvertTo-Json
-    Invoke-RestMethod "$base/identity/users/$id/roles" -Method Post -Body $body -ContentType "application/json" -Headers $script:adminHeaders | Out-Null
+    # ADR-059: o convite cria a conta e atribui-lhe o perfil de uma vez.
+    New-RivoConta -Email $email -Password $script:pass -AdminHeaders $script:adminHeaders -Perfil $Perfil | Out-Null
     return @{ Authorization = "Bearer " + (Get-Token $email $script:pass) }
 }
 

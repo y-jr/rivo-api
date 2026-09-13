@@ -315,6 +315,58 @@ function Clear-RivoApprovalPolicies {
 
 <#
 .SYNOPSIS
+Cria uma conta utilizável por uma suite, agora que o registo público não existe.
+
+.DESCRIPTION
+Existe desde 2026-09-13, com o ADR-059. Até essa data havia
+`POST /identity/register`, e cada suite criava as suas contas com duas linhas
+próprias — eram 38 sítios a repetir o mesmo par.
+
+O registo saiu. A conta nasce de um convite, e a password só a define quem
+recebe o testemunho por correio — que uma suite não lê. Os dois passos que
+restam são ambos de quem administra contas, e nenhum deles é novo:
+
+1. `POST /identity/invitations` cria a conta **com perfil** e sem password;
+2. `POST /identity/users/{id}/password-reset` fixa-lhe uma password conhecida —
+   a mesma via por que se socorre quem perdeu a sua, já que não há recuperação
+   automática.
+
+⚠ **O perfil é obrigatório, e é o ponto do ADR-059:** já não há maneira de criar
+uma conta sem perfil nenhum. Uma suite que precise de provar 403 por falta de
+permissão usa o perfil mais estreito que não a tenha — `Cliente` tem apenas
+`documents.write` — em vez da conta vazia que antes usava.
+
+⚠ **Exige `Frontend:BaseUrl` configurado** na API, senão convidar responde 501.
+Está em `appsettings.Development.json` e no compose.
+
+.OUTPUTS
+O `userId` da conta criada.
+#>
+function New-RivoConta {
+    param(
+        [Parameter(Mandatory)][string]$Email,
+        [Parameter(Mandatory)][string]$Password,
+        [Parameter(Mandatory)][hashtable]$AdminHeaders,
+        [Parameter(Mandatory)][string]$Perfil
+    )
+
+    $base = $script:BaseUrl
+
+    $userId = (Invoke-RestMethod "$base/identity/invitations" -Method Post `
+        -Body (@{ email = $Email; profile = $Perfil } | ConvertTo-Json) `
+        -ContentType "application/json" -Headers $AdminHeaders).userId
+
+    # A conta nasceu sem password: sem isto, nenhuma suite lhe conseguiria
+    # entrar. O testemunho do convite ficou na fila de notificações.
+    Invoke-RestMethod "$base/identity/users/$userId/password-reset" -Method Post `
+        -Body (@{ newPassword = $Password } | ConvertTo-Json) `
+        -ContentType "application/json" -Headers $AdminHeaders | Out-Null
+
+    return $userId
+}
+
+<#
+.SYNOPSIS
 Cria um Colaborador **ligado a uma conta**, e devolve os cabeçalhos dessa conta.
 
 .DESCRIPTION
@@ -356,13 +408,13 @@ function New-RivoColaboradorComConta {
     $base = $script:BaseUrl
     if (-not $HeadersDeAdmissao) { $HeadersDeAdmissao = $AdminHeaders }
 
-    $corpo = @{ email = $Email; password = $Password } | ConvertTo-Json
-    $userId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $corpo `
-        -ContentType "application/json").userId
+    # Um passo onde eram três: `New-RivoConta` convida e o convite já atribui o
+    # perfil, por isso o `POST .../roles` que aqui estava saiu (ADR-059).
+    $userId = New-RivoConta -Email $Email -Password $Password `
+        -AdminHeaders $AdminHeaders -Perfil $Perfil
 
-    Invoke-RestMethod "$base/identity/users/$userId/roles" -Method Post `
-        -Body (@{ profile = $Perfil } | ConvertTo-Json) -ContentType "application/json" `
-        -Headers $AdminHeaders | Out-Null
+    # Guardado para o login no fim, que é o que devolve os cabeçalhos da conta.
+    $corpo = @{ email = $Email; password = $Password } | ConvertTo-Json
 
     $admissao = @{ fullName = $Nome }
     if ($DepartmentId) { $admissao.departmentId = $DepartmentId }

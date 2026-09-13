@@ -70,9 +70,13 @@ function Invoke-Upload {
         -F "category=$Category" 2>$null)
 }
 
-$semPerfilEmail = "semperfil-fl-$stamp@rivo.ao"
-Invoke-RestMethod "$base/identity/register" -Method Post -Body (@{ email = $semPerfilEmail; password = $pass } | ConvertTo-Json) -ContentType "application/json" | Out-Null
-$semPerfilHeaders = @{ Authorization = "Bearer " + (Get-Token $semPerfilEmail $pass) }
+# Era uma conta sem perfil nenhum ate o ADR-059 tirar o registo publico: nao ha
+# forma de criar uma agora, e o perfil e obrigatorio no convite. `Cliente` e o
+# mais estreito que existe -- tem `documents.write` e mais nada --, por isso
+# continua a provar o mesmo 403 por falta de permissao de fleet.
+$semPermissaoEmail = "sempermissao-fl-$stamp@rivo.ao"
+New-RivoConta -Email $semPermissaoEmail -Password $pass -AdminHeaders $adminHeaders -Perfil "Cliente" | Out-Null
+$semPermissaoHeaders = @{ Authorization = "Bearer " + (Get-Token $semPermissaoEmail $pass) }
 
 $motorista = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
     -Body (@{ fullName = "Motorista FL $stamp" } | ConvertTo-Json)).employeeId
@@ -527,7 +531,7 @@ Test-Case "49. Autorizacao: sem token 401, sem perfil 403" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles" }
     if ($code -ne 401) { throw "sem token: esperado 401, obtido $code" }
 
-    $code = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles" -Headers $semPerfilHeaders }
+    $code = Get-StatusCode { Invoke-RestMethod "$base/fleet/vehicles" -Headers $semPermissaoHeaders }
     if ($code -ne 403) { throw "sem perfil: esperado 403, obtido $code" }
     "401 e 403 correctos"
 }

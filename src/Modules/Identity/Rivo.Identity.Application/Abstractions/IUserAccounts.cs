@@ -25,6 +25,36 @@ public interface IUserAccounts
     Task<AuthenticatedAccount?> VerifyPasswordAsync(string email, string password, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Cria uma conta <strong>sem password</strong> e devolve o testemunho que
+    /// permite a quem a recebe escolher a sua (ADR-059).
+    ///
+    /// <para>
+    /// Sem password, a conta existe e não entra: a verificação de credenciais
+    /// compara contra um hash que não existe e falha sempre. É esse o estado
+    /// pretendido entre convidar e aceitar — a conta está reservada, o perfil
+    /// já lhe pode ser atribuído, e ninguém lá entra até alguém provar que
+    /// recebeu o convite.
+    /// </para>
+    /// </summary>
+    Task<InvitationResult> InviteAsync(string email, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Consome o testemunho e fixa a password escolhida por quem foi
+    /// convidado.
+    ///
+    /// <para>
+    /// O testemunho é de uso único e tem prazo — é o do próprio ASP.NET Core
+    /// Identity, o mesmo que serve a reposição de password. Aceitar duas vezes
+    /// falha na segunda.
+    /// </para>
+    /// </summary>
+    Task<PasswordChangeOutcome> AcceptInvitationAsync(
+        Guid userId,
+        string token,
+        string password,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Procura a conta já ligada a uma identidade de provider externo
     /// (ADR-032). É o caminho de todas as entradas menos a primeira.
     /// </summary>
@@ -196,6 +226,24 @@ public sealed record AuthenticatedAccount(
 /// Motivos da recusa, vindos das regras de password do Identity. Próprios para
 /// devolver a quem chamou — dizem o que corrigir.
 /// </param>
+/// <param name="Token">
+/// Preenchido apenas em caso de sucesso. **Não é segredo partilhado nem
+/// password**: é de uso único, tem prazo, e serve só para provar que quem o
+/// apresenta recebeu o convite no endereço a que foi enviado.
+/// </param>
+public sealed record InvitationResult(
+    bool Succeeded,
+    Guid? UserId,
+    string? Token,
+    IReadOnlyList<string> Errors)
+{
+    public static InvitationResult Success(Guid userId, string token) =>
+        new(true, userId, token, []);
+
+    public static InvitationResult Failure(IReadOnlyList<string> errors) =>
+        new(false, null, null, errors);
+}
+
 public sealed record PasswordChangeOutcome(
     PasswordChangeResult Result,
     IReadOnlyList<string> Errors)

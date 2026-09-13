@@ -114,6 +114,12 @@ jobs:
             # só. Com o tecto de produção, o vermelho que davam seria a forma
             # do ambiente de teste, não um defeito da aplicação.
             echo "AUTH_RATE_LIMIT=0"
+            # Sem isto, `POST /identity/invitations` responde 501 e **todas** as
+            # suites falham na montagem: desde o ADR-059 é por aí que uma conta
+            # nasce. O valor é irrelevante para o que se verifica — nenhuma suite
+            # abre a ligação —, mas tem de existir, e a API recusa-se a inventá-lo
+            # em vez de enviar um convite que não abre.
+            echo "FRONTEND_BASE_URL=http://localhost:5173"
             # O anfitrião é o serviço do compose de desenvolvimento, nunca o
             # servidor externo: o CI não pode escrever na base de dados real.
             echo "CONNECTION_STRING=Server=sqlserver,1433;Database=rivo;User Id=sa;Password=Rivo_Dev_2026!;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=True;"

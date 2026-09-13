@@ -158,8 +158,11 @@ Test-Case "6. Sem autenticacao -> 401; sem permissao -> 403" {
     # e criar outra so para repetir a verificacao seria ruido.
     $script:semPermissaoEmail = $e
 
-    $b = @{ email = $e; password = $pass } | ConvertTo-Json
-    Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json" | Out-Null
+    # Era uma conta sem perfil nenhum ate o ADR-059 tirar o registo publico.
+    # `Cliente` afia a verificacao em vez de a enfraquecer: tem
+    # `documents.write` e nao tem `documents.read`, por isso o 403 abaixo prova
+    # que a distincao e por permissao e nao por modulo.
+    New-RivoConta -Email $e -Password $pass -AdminHeaders $adminHeaders -Perfil "Cliente" | Out-Null
     $t = Get-Token $e $pass
 
     $code = Get-CurlStatus "$base/documents/$($script:documentId)" $t

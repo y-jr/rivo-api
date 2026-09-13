@@ -3,7 +3,11 @@ namespace Rivo.Identity.Api.Contracts;
 // DTOs próprios da fronteira HTTP. As entidades de domínio nunca são expostas
 // como modelos de transporte (architecture/dependency-rules.md).
 
-public sealed record RegisterRequest(string Email, string Password);
+// `RegisterRequest` saiu a 2026-09-13 com o registo publico (ADR-059).
+public sealed record InviteUserRequest(string Email, string Profile);
+
+/// <param name="Token">O testemunho do convite, como veio na ligacao.</param>
+public sealed record AcceptInvitationRequest(Guid UserId, string Token, string Password);
 
 public sealed record LoginRequest(string Email, string Password);
 

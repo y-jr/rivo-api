@@ -98,9 +98,12 @@ public static class IdentityModuleExtensions
 
         services.AddScoped<SessionIssuer>();
 
-        services.AddScoped<RegisterUser>();
         services.AddScoped<LogIn>();
         services.AddScoped<LogInWithGoogle>();
+
+        // Convite (ADR-059), no lugar do registo público que saiu.
+        services.AddScoped<InviteUser>();
+        services.AddScoped<AcceptInvitation>();
         services.AddScoped<LogOut>();
         services.AddScoped<ListUsers>();
         services.AddScoped<AssignAccessProfile>();
@@ -116,6 +119,10 @@ public static class IdentityModuleExtensions
         // (ADR-041). Singleton pela mesma razão de `ListAccessProfiles`: lê um
         // catálogo estático em código, sem estado nem ligação a nada.
         services.AddSingleton<IAccessProfileCatalogue, AccessProfileCatalogue>();
+
+        // `Scoped` e não `Singleton`, ao contrário do catálogo acima: este lê
+        // da base de dados através do `UserManager`, que é scoped.
+        services.AddScoped<IUserDirectory, UserDirectory>();
 
         services.AddScoped<AccessProfileSeeder>();
 

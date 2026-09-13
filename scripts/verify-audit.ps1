@@ -65,13 +65,29 @@ Test-Case "2. Schemas isolados por modulo" {
 $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 $newEmail = "auditado-$stamp@rivo.ao"
 $newPass = "Rivo!Auditado2026"
+$adminHeaders = @{ Authorization = "Bearer " + (Get-Token $adminEmail $adminPass) }
 
-Test-Case "3. Registo de conta e auditado" {
-    $body = @{ email = $newEmail; password = $newPass } | ConvertTo-Json
-    $userId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $body -ContentType "application/json").userId
-    $count = Invoke-Sql "select count(*) from audit.audit_event where action='identity.user.registered' and entity_id='$userId'"
-    if ($count -ne "1") { throw "esperado 1 registo, obtido $count" }
-    "identity.user.registered"
+# Era "3. Registo de conta e auditado", contra `identity.user.registered`. O
+# ADR-059 tirou o registo publico: a conta passa a nascer de um convite, e a
+# accao auditada e outra. A constante antiga fica no codigo por a trilha ser
+# append-only -- ha entradas historicas que a referenciam --, mas nenhuma nova
+# a escreve.
+Test-Case "3. Convite de conta e auditado" {
+    $userId = New-RivoConta -Email $newEmail -Password $newPass `
+        -AdminHeaders $adminHeaders -Perfil "Cliente"
+
+    $count = Invoke-Sql "select count(*) from audit.audit_event where action='identity.user.invited' and entity_id='$userId'"
+    if ($count -ne "1") { throw "esperado 1 convite auditado, obtido $count" }
+
+    # O actor e quem convida, e nao o convidado -- a conta convidada ainda nao
+    # tem como se autenticar, por isso nao poderia ser actor de nada.
+    $actor = Invoke-Sql "select actor_id from audit.audit_event where action='identity.user.invited' and entity_id='$userId'"
+    $adminId = Invoke-Sql "select id from [identity].app_user where email='$adminEmail'"
+    if ($actor -ne $adminId) { throw "actor registado '$actor' nao e quem convidou '$adminId'" }
+
+    # Que a rota do registo desapareceu verifica-se em verify-authorization,
+    # caso 10. Aqui interessa a trilha.
+    "identity.user.invited, com actor=quem convidou"
 }
 
 Test-Case "4. Login falhado e auditado (BR-12)" {
@@ -98,7 +114,6 @@ Test-Case "5. Login e logout auditados, com IP e correlation" {
 }
 
 Test-Case "6. Atribuicao de perfil auditada (BR-13)" {
-    $adminHeaders = @{ Authorization = "Bearer " + (Get-Token $adminEmail $adminPass) }
     $userId = Invoke-Sql "select id from [identity].app_user where email='$newEmail'"
     $body = @{ profile = "Finance" } | ConvertTo-Json
     Invoke-RestMethod "$base/identity/users/$userId/roles" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null

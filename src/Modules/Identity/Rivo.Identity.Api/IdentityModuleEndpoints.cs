@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 using Rivo.Audit.Contracts;
 using Rivo.Identity.Api.Contracts;
 using Rivo.Identity.Application.Abstractions;
@@ -40,16 +41,35 @@ public static class IdentityModuleEndpoints
     {
         var group = endpoints.MapGroup("/identity");
 
-        var registar = group.MapPost("/register", RegisterAsync);
+        // ⚠ `POST /register` **saiu a 2026-09-13** (ADR-059). Qualquer pessoa
+        // criava conta e entrava — sem permissão nenhuma, mas dentro da
+        // aplicação. Numa ferramenta de gestão de uma empresa, quem tem conta
+        // é quem a empresa decidiu que tem.
+        //
+        // Quem substitui é o par de rotas de convite, abaixo.
         var entrar = group.MapPost("/login", LogInAsync);
         var entrarComGoogle = group.MapPost("/login/google", LogInWithGoogleAsync);
 
+        // Aceitar um convite é público por necessidade: quem aceita ainda não
+        // tem como se autenticar. O que o protege é o testemunho — de uso
+        // único, com prazo, e entregue só no endereço de correio da conta.
+        var aceitarConvite = group.MapPost("/invitations/acceptance", AcceptInvitationAsync);
+
         if (!string.IsNullOrWhiteSpace(rateLimitPolicy))
         {
-            registar.RequireRateLimiting(rateLimitPolicy);
             entrar.RequireRateLimiting(rateLimitPolicy);
             entrarComGoogle.RequireRateLimiting(rateLimitPolicy);
+
+            // Também com tecto: é a outra rota pública que aceita adivinhação,
+            // e um testemunho tentado à bruta é tão password como a outra.
+            aceitarConvite.RequireRateLimiting(rateLimitPolicy);
         }
+
+        // Convidar é acto de quem administra contas — a mesma permissão de
+        // repor passwords e activar contas, e pela mesma razão: decide **quem**
+        // uma pessoa é no sistema.
+        group.MapPost("/invitations", InviteUserAsync)
+            .RequireAuthorization(IdentityPermissions.UsersWrite);
 
         group.MapPost("/logout", LogOutAsync).RequireAuthorization();
         group.MapGet("/me", GetCurrentUser).RequireAuthorization();
@@ -148,23 +168,74 @@ public static class IdentityModuleEndpoints
             CorrelationId: http.TraceIdentifier);
     }
 
-    private static async Task<IResult> RegisterAsync(
-        RegisterRequest request,
-        RegisterUser registerUser,
+    private static async Task<IResult> InviteUserAsync(
+        InviteUserRequest request,
+        InviteUser inviteUser,
+        IConfiguration configuration,
         HttpContext http,
         CancellationToken cancellationToken)
     {
-        var result = await registerUser.ExecuteAsync(
-            request.Email, request.Password, BuildAuditContext(http), cancellationToken);
+        // A ligação do convite aponta para o frontend, não para a API. Quem
+        // sabe onde o frontend vive é a configuração do ambiente — em
+        // desenvolvimento é o Vite, em produção é o domínio publicado.
+        var linkBase = configuration["Frontend:BaseUrl"];
 
-        // Password fraca ou e-mail duplicado são violações de regra, não falhas
-        // técnicas: devolvem-se ao chamador para que ele possa corrigir.
-        return result.Succeeded
-            ? Results.Created($"/identity/users/{result.UserId}", new { userId = result.UserId })
-            : Results.ValidationProblem(new Dictionary<string, string[]>
-            {
-                ["registo"] = [.. result.Errors],
-            });
+        if (string.IsNullOrWhiteSpace(linkBase))
+        {
+            // 501 e não 500: a capacidade não está configurada neste ambiente,
+            // e não é defeito do pedido. Mesmo tratamento do Google sem
+            // ClientId (ADR-032).
+            return Results.Problem(
+                "Convidar exige `Frontend:BaseUrl` configurado — é para lá que a ligação do convite aponta.",
+                statusCode: StatusCodes.Status501NotImplemented);
+        }
+
+        var result = await inviteUser.ExecuteAsync(
+            request.Email, request.Profile, linkBase, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            InviteUserOutcome.Invited =>
+                Results.Created($"/identity/users/{result.UserId}", new { userId = result.UserId }),
+
+            InviteUserOutcome.UnknownProfile => Results.ValidationProblem(
+                new Dictionary<string, string[]>
+                {
+                    ["profile"] =
+                    [
+                        $"'{request.Profile}' não é um Perfil de Acesso. " +
+                        $"Válidos: {string.Join(", ", AccessProfiles.AssignableProfiles)}.",
+                    ],
+                }),
+
+            InviteUserOutcome.Rejected => Results.ValidationProblem(
+                new Dictionary<string, string[]> { ["convite"] = [.. result.Errors] }),
+
+            _ => Results.Problem("Resultado inesperado ao convidar."),
+        };
+    }
+
+    private static async Task<IResult> AcceptInvitationAsync(
+        AcceptInvitationRequest request,
+        AcceptInvitation acceptInvitation,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var outcome = await acceptInvitation.ExecuteAsync(
+            request.UserId, request.Token, request.Password, BuildAuditContext(http), cancellationToken);
+
+        return outcome.Result switch
+        {
+            PasswordChangeResult.Changed => Results.NoContent(),
+
+            // Conta inexistente devolve o mesmo que testemunho inválido: quem
+            // tenta não fica a saber que identificadores existem.
+            PasswordChangeResult.UserNotFound => Results.ValidationProblem(
+                new Dictionary<string, string[]> { ["convite"] = ["Convite inválido ou expirado."] }),
+
+            _ => Results.ValidationProblem(
+                new Dictionary<string, string[]> { ["convite"] = [.. outcome.Errors] }),
+        };
     }
 
     private static async Task<IResult> LogInAsync(

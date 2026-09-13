@@ -59,6 +59,19 @@
     <PackageVersion Include="Azure.Storage.Blobs" Version="12.29.1" />
   </ItemGroup>
 
+  <!--
+    Entrega de correio (ADR-059).
+
+    MailKit e não o `SmtpClient` do .NET: o fornecedor documenta a porta 465
+    com SSL implícito como principal, e o cliente embutido não a suporta — só
+    faz STARTTLS. É também a biblioteca que a própria documentação da
+    Microsoft aponta desde que marcou o `SmtpClient` como obsoleto para código
+    novo.
+  -->
+  <ItemGroup>
+    <PackageVersion Include="MailKit" Version="4.17.0" />
+  </ItemGroup>
+
   <!-- Testes de integração (ADR-026). -->
   <ItemGroup>
     <PackageVersion Include="Testcontainers.MsSql" Version="4.14.0" />

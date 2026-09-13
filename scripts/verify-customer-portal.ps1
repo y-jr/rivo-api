@@ -47,18 +47,13 @@ function Get-Token {
 
 $adminHeaders = @{ Authorization = "Bearer " + (Get-Token $dotenv["BOOTSTRAP_ADMIN_EMAIL"] $dotenv["BOOTSTRAP_ADMIN_PASSWORD"]) }
 
+# ADR-059: cada conta nasce de um convite, que ja lhe atribui o perfil.
 $salesEmail = "cportal-vendas-$stamp@rivo.ao"
-$b = @{ email = $salesEmail; password = $pass } | ConvertTo-Json
-$salesUserId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
-$b = @{ profile = "Sales" } | ConvertTo-Json
-Invoke-RestMethod "$base/identity/users/$salesUserId/roles" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
+New-RivoConta -Email $salesEmail -Password $pass -AdminHeaders $adminHeaders -Perfil "Sales" | Out-Null
 $salesHeaders = @{ Authorization = "Bearer " + (Get-Token $salesEmail $pass) }
 
 $financeEmail = "cportal-fin-$stamp@rivo.ao"
-$b = @{ email = $financeEmail; password = $pass } | ConvertTo-Json
-$financeUserId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
-$b = @{ profile = "Finance" } | ConvertTo-Json
-Invoke-RestMethod "$base/identity/users/$financeUserId/roles" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
+New-RivoConta -Email $financeEmail -Password $pass -AdminHeaders $adminHeaders -Perfil "Finance" | Out-Null
 $financeHeaders = @{ Authorization = "Bearer " + (Get-Token $financeEmail $pass) }
 
 # Taxa fiscal aberta, efectiva desde sempre — a factura da suite precisa dela.
@@ -107,8 +102,8 @@ Test-Case "3. Registar cliente, registar conta e ligar (ADR-043)" {
     } | ConvertTo-Json
     $script:customerId = (Invoke-RestMethod "$base/commercial/customers" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders).customerId
 
-    $b = @{ email = $script:ownEmail; password = $pass } | ConvertTo-Json
-    $script:ownUserId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
+    $script:ownUserId = New-RivoConta -Email $script:ownEmail -Password $pass `
+        -AdminHeaders $adminHeaders -Perfil "Cliente"
 
     $b = @{ userId = $script:ownUserId } | ConvertTo-Json
     Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/account" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
@@ -183,9 +178,10 @@ Test-Case "8. Moeda tem omissao AOA" {
 }
 
 Test-Case "9. Outro utilizador sem cliente ligado -> 403, nunca ve o cliente de outro" {
+    # O 403 e por falta de cliente ligado, e nao por falta de perfil: esta conta
+    # tem `Cliente` como a do caso 3, e continua a nao ver nada.
     $e2 = "semvinculo-c-$stamp@rivo.ao"
-    $b = @{ email = $e2; password = $pass } | ConvertTo-Json
-    Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json" | Out-Null
+    New-RivoConta -Email $e2 -Password $pass -AdminHeaders $adminHeaders -Perfil "Cliente" | Out-Null
     $h2 = @{ Authorization = "Bearer " + (Get-Token $e2 $pass) }
 
     $code = Get-StatusCode { Invoke-RestMethod "$base/customer-portal/me?from=$de&to=$ate" -Headers $h2 }
@@ -193,12 +189,15 @@ Test-Case "9. Outro utilizador sem cliente ligado -> 403, nunca ve o cliente de 
     "HTTP 403 -- so ve o proprio, e o proprio nao existe para esta conta"
 }
 
-# A ligacao da conta (caso 3) so poe Customer.UserId -- nao atribui perfil
-# nenhum, mesma distincao que ADR-043 faz ("so depois disso o perfil Cliente
-# e atribuido"). Sem isto, o upload do comprovativo (documents.write) falhava
-# com 403 antes de chegar a nenhuma regra de ADR-044.
-$b = @{ profile = "Cliente" } | ConvertTo-Json
-Invoke-RestMethod "$base/identity/users/$($script:ownUserId)/roles" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
+# Estava aqui uma atribuicao do perfil `Cliente`, porque a ligacao da conta
+# (caso 3) so poe Customer.UserId e o registo publico criava a conta sem perfil
+# -- sem ela, o upload do comprovativo (`documents.write`) dava 403 antes de
+# chegar a qualquer regra do ADR-044.
+#
+# O ADR-059 tornou-a desnecessaria: o convite do caso 3 ja atribui `Cliente`. A
+# distincao que o ADR-043 faz entre ligar e atribuir continua a valer no
+# dominio; o que mudou e que a conta ja nasce com o perfil, e nao ha um momento
+# em que exista sem ele.
 
 Test-Case "10. Cliente submete comprovativo de pagamento -- fica Pending" {
     $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
@@ -278,12 +277,9 @@ Test-Case "14. Comprovativo de factura de outro cliente -- 404, nao revela a out
     $e2 = "cliente2-cp-$stamp@rivo-teste.local"
     $b = @{ name = "Segundo Cliente CP $stamp"; taxId = "58$stamp"; addressDetail = "Rua Z"; city = "Luanda"; country = "AO" } | ConvertTo-Json
     $cliente2Id = (Invoke-RestMethod "$base/commercial/customers" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders).customerId
-    $b = @{ email = $e2; password = $pass } | ConvertTo-Json
-    $user2Id = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
+    $user2Id = New-RivoConta -Email $e2 -Password $pass -AdminHeaders $adminHeaders -Perfil "Cliente"
     $b = @{ userId = $user2Id } | ConvertTo-Json
     Invoke-RestMethod "$base/commercial/customers/$cliente2Id/account" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
-    $b = @{ profile = "Cliente" } | ConvertTo-Json
-    Invoke-RestMethod "$base/identity/users/$user2Id/roles" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
 
     $h2 = @{ Authorization = "Bearer " + (Get-Token $e2 $pass) }
     $upload = Invoke-Upload $tempFile "comprovativo-pagamento" $h2.Authorization.Split(" ")[1] | ConvertFrom-Json
@@ -312,10 +308,8 @@ Test-Case "15. Cliente sem vendedor responsavel envia mensagem -- abre conversa 
 
 Test-Case "16. Atribuir vendedor responsavel; a proxima mensagem notifica-o (ADR-045)" {
     $vendedorEmail = "cportal-vendedor-$stamp@rivo.ao"
-    $b = @{ email = $vendedorEmail; password = $pass } | ConvertTo-Json
-    $script:vendedorUserId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
-    $b = @{ profile = "Sales" } | ConvertTo-Json
-    Invoke-RestMethod "$base/identity/users/$($script:vendedorUserId)/roles" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
+    $script:vendedorUserId = New-RivoConta -Email $vendedorEmail -Password $pass `
+        -AdminHeaders $adminHeaders -Perfil "Sales"
 
     $emp = Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $adminHeaders `
         -Body (@{ fullName = "Vendedor CP $stamp" } | ConvertTo-Json)
@@ -440,12 +434,9 @@ Test-Case "24. Responder a ticket de outro cliente -- 404, nao revela a outrem" 
     $e2 = "cliente-ticket-$stamp@rivo-teste.local"
     $b = @{ name = "Terceiro Cliente CP $stamp"; taxId = "59$stamp"; addressDetail = "Rua W"; city = "Luanda"; country = "AO" } | ConvertTo-Json
     $cliente3Id = (Invoke-RestMethod "$base/commercial/customers" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders).customerId
-    $b = @{ email = $e2; password = $pass } | ConvertTo-Json
-    $user3Id = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
+    $user3Id = New-RivoConta -Email $e2 -Password $pass -AdminHeaders $adminHeaders -Perfil "Cliente"
     $b = @{ userId = $user3Id } | ConvertTo-Json
     Invoke-RestMethod "$base/commercial/customers/$cliente3Id/account" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
-    $b = @{ profile = "Cliente" } | ConvertTo-Json
-    Invoke-RestMethod "$base/identity/users/$user3Id/roles" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
 
     $h3 = @{ Authorization = "Bearer " + (Get-Token $e2 $pass) }
     $b = @{ body = "Sou de outro cliente, isto devia falhar." } | ConvertTo-Json
