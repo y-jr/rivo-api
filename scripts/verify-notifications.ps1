@@ -49,11 +49,22 @@ $adminHeaders = @{ Authorization = "Bearer " + (Get-Token $dotenv["BOOTSTRAP_ADM
 $alvoEmail = "alvo-$stamp@rivo.ao"
 $outroEmail = "outro-$stamp@rivo.ao"
 foreach ($e in @($alvoEmail, $outroEmail)) {
-    $b = @{ email = $e; password = $pass } | ConvertTo-Json
-    Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json" | Out-Null
+    New-RivoConta -Email $e -Password $pass -AdminHeaders $adminHeaders -Perfil "Cliente" | Out-Null
 }
 $alvoId = Invoke-Sql "select id from [identity].app_user where email='$alvoEmail'"
 $outroId = Invoke-Sql "select id from [identity].app_user where email='$outroEmail'"
+
+# ⚠ Desde o ADR-059, convidar **enfileira uma notificacao** com a ligacao do
+# convite -- e o proprio mecanismo por que o convite sai. Para esta suite isso e
+# ruido de montagem: os casos 4, 5 e 6 contam caixas exactas ("1 notificacao",
+# "lista vazia", "zero por ler"), e duas caixas que ja nascem com uma dentro
+# faziam falhar tres casos sem que nada no modulo `notifications` estivesse mal.
+#
+# Limpa-se a caixa das duas contas de teste, e so delas. Nao e o BR-14 a ser
+# contornado: BR-14 e sobre registos de negocio na aplicacao, e isto e uma suite
+# a por a sua propria montagem num estado conhecido. Que o convite notifica
+# verifica-se onde lhe compete, em verify-authorization.
+Invoke-Sql "delete from notifications.notification where recipient_user_id in ('$alvoId', '$outroId')" | Out-Null
 
 Write-Host "`n=== Modulo notifications ===`n"
 

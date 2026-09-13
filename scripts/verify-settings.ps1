@@ -107,9 +107,8 @@ Test-Case "5. Sem autenticacao -> 401" {
 Test-Case "6. Autenticado sem as duas permissoes -> 403" {
     $email = "settings-verify-$stamp@rivo.ao"
     $pass = "Rivo!Settings2026"
-    $body = @{ email = $email; password = $pass } | ConvertTo-Json
-    $userId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $body -ContentType "application/json").userId
-    Invoke-RestMethod "$base/identity/users/$userId/roles" -Method Post -Body (@{ profile = "HR" } | ConvertTo-Json) -ContentType "application/json" -Headers $adminHeaders | Out-Null
+    # ADR-059: o convite cria a conta e atribui-lhe o perfil de uma vez.
+    New-RivoConta -Email $email -Password $pass -AdminHeaders $adminHeaders -Perfil "HR" | Out-Null
 
     $token = Get-Token $email $pass
     $code = Get-StatusCode { Invoke-RestMethod "$base/settings/overview" -Headers @{ Authorization = "Bearer $token" } }
@@ -129,9 +128,8 @@ $importPass = "Rivo!Import2026"
 function New-ImportPerfilHeaders {
     param([string]$Perfil, [string]$Sufixo)
     $email = "$Sufixo-$stamp@rivo.ao"
-    $body = @{ email = $email; password = $importPass } | ConvertTo-Json
-    $id = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $body -ContentType "application/json").userId
-    Invoke-RestMethod "$base/identity/users/$id/roles" -Method Post -Body (@{ profile = $Perfil } | ConvertTo-Json) -ContentType "application/json" -Headers $adminHeaders | Out-Null
+    # ADR-059: o convite cria a conta e atribui-lhe o perfil de uma vez.
+    New-RivoConta -Email $email -Password $importPass -AdminHeaders $adminHeaders -Perfil $Perfil | Out-Null
     return @{ Authorization = "Bearer " + (Get-Token $email $importPass) }
 }
 

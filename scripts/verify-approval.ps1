@@ -69,9 +69,13 @@ $adminHeaders = @{ Authorization = "Bearer " + (Get-Token $dotenv["BOOTSTRAP_ADM
 # A conta desapareceu porque nao havia nada que so ela pudesse fazer --
 # `$requisitanteConta`, ja ligada, abre a folha e submete-a.
 
-$semPerfilEmail = "semperfil-ap-$stamp@rivo.ao"
-Invoke-RestMethod "$base/identity/register" -Method Post -Body (@{ email = $semPerfilEmail; password = $pass } | ConvertTo-Json) -ContentType "application/json" | Out-Null
-$semPerfilHeaders = @{ Authorization = "Bearer " + (Get-Token $semPerfilEmail $pass) }
+# Era uma conta sem perfil nenhum ate o ADR-059 tirar o registo publico: nao ha
+# forma de criar uma agora, e o perfil e obrigatorio no convite. `Cliente` e o
+# mais estreito que existe -- tem `documents.write` e mais nada --, por isso
+# continua a provar o mesmo 403 por falta de permissao de approval.
+$semPermissaoEmail = "sempermissao-ap-$stamp@rivo.ao"
+New-RivoConta -Email $semPermissaoEmail -Password $pass -AdminHeaders $adminHeaders -Perfil "Cliente" | Out-Null
+$semPermissaoHeaders = @{ Authorization = "Bearer " + (Get-Token $semPermissaoEmail $pass) }
 
 # --- Cenario: uma folha submetida, so para ter um pedido PendingApproval em
 # approval. O que se verifica daqui para a frente e o pedido, nao a folha.
@@ -158,7 +162,7 @@ Test-Case "4. Autorizacao: sem token 401, sem perfil 403" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/approval/requests/$requestId/cancellation" -Method Post }
     if ($code -ne 401) { throw "sem token: esperado 401, obtido $code" }
 
-    $code = Get-StatusCode { Invoke-RestMethod "$base/approval/requests/$requestId/cancellation" -Method Post -Headers $semPerfilHeaders }
+    $code = Get-StatusCode { Invoke-RestMethod "$base/approval/requests/$requestId/cancellation" -Method Post -Headers $semPermissaoHeaders }
     if ($code -ne 403) { throw "sem perfil: esperado 403, obtido $code" }
     "401 e 403 correctos"
 }

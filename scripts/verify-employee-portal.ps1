@@ -45,10 +45,7 @@ $adminHeaders = @{ Authorization = "Bearer " + (Get-Token $dotenv["BOOTSTRAP_ADM
 
 # Utilizador com perfil HR, para admitir o colaborador desta suite.
 $hrEmail = "portal-rh-$stamp@rivo.ao"
-$b = @{ email = $hrEmail; password = $pass } | ConvertTo-Json
-$hrUserId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
-$b = @{ profile = "HR" } | ConvertTo-Json
-Invoke-RestMethod "$base/identity/users/$hrUserId/roles" -Method Post -Body $b -ContentType "application/json" -Headers $adminHeaders | Out-Null
+New-RivoConta -Email $hrEmail -Password $pass -AdminHeaders $adminHeaders -Perfil "HR" | Out-Null
 $hrHeaders = @{ Authorization = "Bearer " + (Get-Token $hrEmail $pass) }
 
 Write-Host "`n=== Camada de composicao employee-portal ===`n"
@@ -77,8 +74,11 @@ $script:ownEmail = "colaborador-$stamp@rivo.ao"
 $script:ownUserId = $null
 $script:ownEmployeeId = $null
 Test-Case "4. Colaborador com conta ligada ve o seu proprio perfil" {
-    $b = @{ email = $script:ownEmail; password = $pass } | ConvertTo-Json
-    $script:ownUserId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
+    # `Cliente` e o perfil mais estreito: este caso quer um colaborador que veja
+    # o seu proprio perfil no portal, e `/portal/me` nao pede permissao nenhuma
+    # -- pede o vinculo. O perfil aqui e so o que o convite obriga a dar.
+    $script:ownUserId = New-RivoConta -Email $script:ownEmail -Password $pass `
+        -AdminHeaders $adminHeaders -Perfil "Cliente"
 
     $b = @{ fullName = "Colaborador Portal $stamp"; departmentId = $script:deptId } | ConvertTo-Json
     $script:ownEmployeeId = (Invoke-RestMethod "$base/hr/employees" -Method Post -Body $b -ContentType "application/json" -Headers $hrHeaders).employeeId
@@ -121,9 +121,11 @@ Test-Case "6. Com cargo atribuido, currentPosition aparece no proprio perfil" {
 }
 
 Test-Case "7. Outro utilizador sem colaborador ligado -> 403, nunca ve o colaborador de outro" {
+    # O 403 aqui e por falta de vinculo, e nao por falta de permissao: mesmo com
+    # perfil -- e desde o ADR-059 o convite obriga a um --, quem nao esta ligado
+    # a um colaborador nao tem "o proprio" para ver.
     $e2 = "semvinculo-$stamp@rivo.ao"
-    $b = @{ email = $e2; password = $pass } | ConvertTo-Json
-    Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json" | Out-Null
+    New-RivoConta -Email $e2 -Password $pass -AdminHeaders $adminHeaders -Perfil "Cliente" | Out-Null
     $h2 = @{ Authorization = "Bearer " + (Get-Token $e2 $pass) }
 
     $code = Get-StatusCode { Invoke-RestMethod "$base/portal/me" -Headers $h2 }

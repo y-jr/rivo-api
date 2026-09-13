@@ -64,10 +64,7 @@ $adminHeaders = @{ Authorization = "Bearer " + (Get-Token $dotenv["BOOTSTRAP_ADM
 # Utilizador com perfil Sales, para verificar que quem vende nao fixa a taxa
 # que a sua propria venda vai liquidar.
 $salesEmail = "vendas-$stamp@rivo.ao"
-$body = @{ email = $salesEmail; password = $pass } | ConvertTo-Json
-$salesUserId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $body -ContentType "application/json").userId
-$body = @{ profile = "Sales" } | ConvertTo-Json
-Invoke-RestMethod "$base/identity/users/$salesUserId/roles" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+$salesUserId = New-RivoConta -Email $salesEmail -Password $pass -AdminHeaders $adminHeaders -Perfil "Sales"
 $salesHeaders = @{ Authorization = "Bearer " + (Get-Token $salesEmail $pass) }
 
 # Codigo de taxa proprio desta corrida. Maximo 10 caracteres na base de dados,

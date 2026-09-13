@@ -51,11 +51,13 @@ $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 
 $adminHeaders = @{ Authorization = "Bearer " + (Get-Token $dotenv["BOOTSTRAP_ADMIN_EMAIL"] $dotenv["BOOTSTRAP_ADMIN_PASSWORD"]) }
 
-# Utilizador sem perfil nenhum, para a fronteira de autorizacao.
-$semPerfilEmail = "semperfil-c-$stamp@rivo.ao"
-$body = @{ email = $semPerfilEmail; password = $pass } | ConvertTo-Json
-Invoke-RestMethod "$base/identity/register" -Method Post -Body $body -ContentType "application/json" | Out-Null
-$semPerfilHeaders = @{ Authorization = "Bearer " + (Get-Token $semPerfilEmail $pass) }
+# Utilizador sem as permissoes de commercial, para a fronteira de autorizacao.
+# Era uma conta sem perfil nenhum ate o ADR-059 tirar o registo publico: nao ha
+# forma de criar uma agora, e o perfil e obrigatorio no convite. `Cliente` e o
+# mais estreito que existe -- tem `documents.write` e mais nada.
+$semPermissaoEmail = "sempermissao-c-$stamp@rivo.ao"
+New-RivoConta -Email $semPermissaoEmail -Password $pass -AdminHeaders $adminHeaders -Perfil "Cliente" | Out-Null
+$semPermissaoHeaders = @{ Authorization = "Bearer " + (Get-Token $semPermissaoEmail $pass) }
 
 $nif = "54$stamp"
 
@@ -172,7 +174,7 @@ Test-Case "10. Autorizacao: sem token 401, sem perfil 403" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/commercial/customers" }
     if ($code -ne 401) { throw "sem token: esperado 401, obtido $code" }
 
-    $code = Get-StatusCode { Invoke-RestMethod "$base/commercial/customers" -Headers $semPerfilHeaders }
+    $code = Get-StatusCode { Invoke-RestMethod "$base/commercial/customers" -Headers $semPermissaoHeaders }
     if ($code -ne 403) { throw "sem perfil: esperado 403, obtido $code" }
     "401 e 403 correctos"
 }
@@ -185,9 +187,10 @@ Test-Case "11. NIF e unico na base de dados" {
 
 Test-Case "12. Ligar uma conta a um cliente (ADR-043)" {
     $contaEmail = "cliente-conta-$stamp@rivo-teste.local"
-    $regBody = @{ email = $contaEmail; password = $pass } | ConvertTo-Json
-    $reg = Invoke-RestMethod "$base/identity/register" -Method Post -Body $regBody -ContentType "application/json"
-    $script:contaUserId = $reg.userId
+    # ADR-059: a conta de quem vai usar o portal nasce de um convite, e o perfil
+    # que lhe serve e exactamente `Cliente` (ADR-043).
+    $script:contaUserId = New-RivoConta -Email $contaEmail -Password $pass `
+        -AdminHeaders $adminHeaders -Perfil "Cliente"
 
     $ligarBody = @{ userId = $script:contaUserId } | ConvertTo-Json
     Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/account" -Method Post -Body $ligarBody -ContentType "application/json" -Headers $adminHeaders | Out-Null
@@ -222,7 +225,7 @@ Test-Case "15. UserId e unico na base de dados (commercial.customer)" {
 
 Test-Case "16. Ligar conta exige a mesma permissao de escrever no cliente" {
     $ligarBody = @{ userId = [Guid]::NewGuid().ToString() } | ConvertTo-Json
-    $code = Get-StatusCode { Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/account" -Method Post -Body $ligarBody -ContentType "application/json" -Headers $semPerfilHeaders }
+    $code = Get-StatusCode { Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/account" -Method Post -Body $ligarBody -ContentType "application/json" -Headers $semPermissaoHeaders }
     if ($code -ne 403) { throw "esperado 403, obtido $code" }
     "403 sem commercial.customers.write"
 }
@@ -235,9 +238,8 @@ Test-Case "16. Ligar conta exige a mesma permissao de escrever no cliente" {
 
 Test-Case "16b. Religar por cima e recusado, nao substitui (ADR-055)" {
     $outraEmail = "cliente-outra-$stamp@rivo-teste.local"
-    $reg = Invoke-RestMethod "$base/identity/register" -Method Post `
-        -Body (@{ email = $outraEmail; password = $pass } | ConvertTo-Json) -ContentType "application/json"
-    $script:outraContaId = $reg.userId
+    $script:outraContaId = New-RivoConta -Email $outraEmail -Password $pass `
+        -AdminHeaders $adminHeaders -Perfil "Cliente"
 
     $code = Get-StatusCode {
         Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/account" -Method Post `
@@ -376,7 +378,7 @@ Test-Case "19. Atribuir colaborador inexistente devolve 404, sem gravar nada" {
 }
 
 Test-Case "20. Atribuir null remove a atribuicao; exige a mesma permissao de escrever no cliente" {
-    $codeSemPerfil = Get-StatusCode { Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/owner" -Method Post -Body (@{ employeeId = $script:vendedorId } | ConvertTo-Json) -ContentType "application/json" -Headers $semPerfilHeaders }
+    $codeSemPerfil = Get-StatusCode { Invoke-RestMethod "$base/commercial/customers/$($script:customerId)/owner" -Method Post -Body (@{ employeeId = $script:vendedorId } | ConvertTo-Json) -ContentType "application/json" -Headers $semPermissaoHeaders }
     if ($codeSemPerfil -ne 403) { throw "esperado 403 sem commercial.customers.write, obtido $codeSemPerfil" }
 
     $body = @{ employeeId = $null } | ConvertTo-Json

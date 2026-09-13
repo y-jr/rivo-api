@@ -35,13 +35,6 @@ function Get-StatusCode {
     }
 }
 
-function New-User {
-    param([string]$Email, [string]$Password)
-
-    $body = @{ email = $Email; password = $Password } | ConvertTo-Json
-    return (Invoke-RestMethod "$base/identity/register" -Method Post -Body $body -ContentType "application/json").userId
-}
-
 function Get-Token {
     param([string]$Email, [string]$Password)
 
@@ -56,19 +49,24 @@ $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 $adminEmail = "admin-$stamp@rivo.ao"
 $plainEmail = "comum-$stamp@rivo.ao"
 
-$adminId = New-User $adminEmail $pass
-New-User $plainEmail $pass | Out-Null
+# As duas contas desta suite nascem de um convite, dado pelo Admin do bootstrap
+# (ADR-059). Antes nasciam de `POST /identity/register` e o perfil da primeira
+# era enxertado por SQL directo — o registo não sabia atribuir perfis, e sem
+# alguém com `identity.roles.assign` não havia por onde começar. O convite sabe,
+# e o bootstrap já semeia esse alguém (ADR-016): o `insert` saiu daqui.
+$dotenv = Get-RivoCredentials
+$bootstrapHeaders = @{
+    Authorization = "Bearer " + (Get-Token $dotenv["BOOTSTRAP_ADMIN_EMAIL"] $dotenv["BOOTSTRAP_ADMIN_PASSWORD"])
+}
 
-# O primeiro Admin é atribuído fora de banda: nenhum utilizador é semeado, por
-# isso não há ninguém com permissão para conceder o primeiro perfil.
-Invoke-RivoSql @"
-insert into [identity].app_user_role (user_id, role_id)
-select '$adminId', r.id from [identity].app_role r
-where r.name = 'Admin'
-  and not exists (
-    select 1 from [identity].app_user_role ur
-    where ur.user_id = '$adminId' and ur.role_id = r.id);
-"@ | Out-Null
+$adminId = New-RivoConta -Email $adminEmail -Password $pass `
+    -AdminHeaders $bootstrapHeaders -Perfil "Admin"
+
+# `Cliente` e não "sem perfil": o convite exige perfil, e este é o mais estreito
+# do catálogo — tem `documents.write` e mais nada, por isso continua a ser a
+# conta certa para provar o 403 dos casos 2 e 7.
+New-RivoConta -Email $plainEmail -Password $pass `
+    -AdminHeaders $bootstrapHeaders -Perfil "Cliente" | Out-Null
 
 $adminToken = Get-Token $adminEmail $pass
 $plainToken = Get-Token $plainEmail $pass
@@ -184,6 +182,122 @@ Test-Case "9. Utilizador inexistente distingue-se de perfil invalido" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/identity/users/$inexistente/roles" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders }
     if ($code -ne 404) { throw "esperado 404 para utilizador inexistente, obtido $code" }
     "404 para o URI, 400 para o corpo"
+}
+
+# ── O convite, e a porta que se fechou (ADR-059) ─────────────────────────────
+#
+# Sao os casos que sustentam a barreira que o utilizador pediu a 2026-09-13,
+# depois de criar conta em producao e entrar de imediato. Verificam-se aqui, e
+# nao em `verify-bootstrap`, porque e isto a autorizacao a decidir quem existe.
+
+Test-Case "10. O registo publico deixou de existir" {
+    $corpo = @{ email = "naodevianascer-$stamp@rivo.ao"; password = $pass } | ConvertTo-Json
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/identity/register" -Method Post -Body $corpo -ContentType "application/json"
+    }
+
+    # 404 e nao 405 nem 403: a rota nao esta escondida atras de uma permissao,
+    # nem aceita o verbo e recusa. Nao existe.
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+
+    $criada = Invoke-RivoSql "select count(*) from [identity].app_user where email='naodevianascer-$stamp@rivo.ao'"
+    if ($criada -ne "0") { throw "a conta foi criada apesar do $code" }
+    "404, e nenhuma conta criada"
+}
+
+Test-Case "11. Convidar exige a permissao de quem administra contas" {
+    $corpo = @{ email = "convidado-por-quem-nao-pode-$stamp@rivo.ao"; profile = "Cliente" } | ConvertTo-Json
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/identity/invitations" -Method Post -Body $corpo `
+            -ContentType "application/json" -Headers $plainHeaders
+    }
+    if ($code -ne 403) { throw "esperado 403 sem identity.users.write, obtido $code" }
+
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/identity/invitations" -Method Post -Body $corpo -ContentType "application/json"
+    }
+    if ($code -ne 401) { throw "esperado 401 sem autenticacao, obtido $code" }
+    "403 sem permissao, 401 sem autenticacao"
+}
+
+Test-Case "12. O convite recusa perfil ausente, invalido e SuperAdmin" {
+    foreach ($perfil in @($null, "", "NaoExiste", "SuperAdmin")) {
+        $c = @{ email = "convite-recusado-$stamp@rivo.ao" }
+        if ($null -ne $perfil) { $c.profile = $perfil }
+
+        $code = Get-StatusCode {
+            Invoke-RestMethod "$base/identity/invitations" -Method Post -Body ($c | ConvertTo-Json) `
+                -ContentType "application/json" -Headers $adminHeaders
+        }
+        if ($code -ne 400) { throw "perfil '$perfil' devolveu $code, esperado 400" }
+    }
+
+    # A recusa do SuperAdmin e a que importa: sem ela, convidar era o desvio
+    # por onde um Admin da empresa se dava a permissao que contorna BR-20.
+    $criada = Invoke-RivoSql "select count(*) from [identity].app_user where email='convite-recusado-$stamp@rivo.ao'"
+    if ($criada -ne "0") { throw "conta criada por um convite recusado" }
+    "quatro recusas com 400, e nenhuma conta criada"
+}
+
+$script:convidadoId = $null
+$script:convidadoEmail = "convidado-$stamp@rivo.ao"
+Test-Case "13. A conta convidada existe e ninguem lhe entra" {
+    $script:convidadoId = (Invoke-RestMethod "$base/identity/invitations" -Method Post `
+        -Body (@{ email = $script:convidadoEmail; profile = "Finance" } | ConvertTo-Json) `
+        -ContentType "application/json" -Headers $adminHeaders).userId
+
+    $comPassword = Invoke-RivoSql "select case when password_hash is null then 'f' else 't' end from [identity].app_user where id='$($script:convidadoId)'"
+    if ($comPassword -ne "f") { throw "a conta nasceu com password ('$comPassword')" }
+
+    # Ja tem o perfil: convidar e um acto so, e nao dois que alguem se esquece
+    # de completar -- era esse o defeito das contas que o registo deixava.
+    $perfil = Invoke-RivoSql @"
+select count(*) from [identity].app_user_role ur
+join [identity].app_role r on r.id = ur.role_id
+where ur.user_id = '$($script:convidadoId)' and r.name = 'Finance'
+"@
+    if ($perfil -ne "1") { throw "o convite nao atribuiu o perfil" }
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/identity/login" -Method Post `
+        -Body (@{ email = $script:convidadoEmail; password = $pass } | ConvertTo-Json) `
+        -ContentType "application/json" }
+    if ($code -ne 401) { throw "entrou numa conta sem password: $code" }
+    "existe, com perfil, sem password, e o login da 401"
+}
+
+Test-Case "14. O testemunho vai na mensagem, e nao na resposta" {
+    $mensagem = Invoke-RivoSql "select message from notifications.notification where recipient_user_id='$($script:convidadoId)' and type='identity.user_invited'"
+    if (-not $mensagem) { throw "convidar nao enfileirou notificacao nenhuma" }
+    if ($mensagem -notmatch "/convite\?u=$($script:convidadoId)&t=") { throw "mensagem sem a ligacao do convite" }
+    "a ligacao esta na caixa de correio do convidado"
+}
+
+Test-Case "15. Aceitar o convite abre a conta -- uma vez so" {
+    $mensagem = Invoke-RivoSql "select message from notifications.notification where recipient_user_id='$($script:convidadoId)' and type='identity.user_invited'"
+    if ($mensagem -notmatch "t=([A-Za-z0-9_-]+)") { throw "nao se extraiu o testemunho da ligacao" }
+    $testemunho = $Matches[1]
+
+    $novaPass = "Rivo!Convidado2026"
+    $corpo = @{ userId = $script:convidadoId; token = $testemunho; password = $novaPass } | ConvertTo-Json
+
+    # `Invoke-WebRequest` e nao `Get-StatusCode`: num sucesso o `Invoke-RestMethod`
+    # nao devolve o codigo, e o auxiliar responderia 200 a um 204.
+    $r = Invoke-WebRequest "$base/identity/invitations/acceptance" -Method Post -Body $corpo `
+        -ContentType "application/json" -SkipHttpErrorCheck
+    if ($r.StatusCode -ne 204) { throw "aceitar devolveu $($r.StatusCode), esperado 204" }
+
+    # Agora entra, e com as permissoes do perfil que o convite lhe deu.
+    $token = Get-Token $script:convidadoEmail $novaPass
+    $eu = Invoke-RestMethod "$base/identity/me" -Headers @{ Authorization = "Bearer $token" }
+    if ($eu.roles -notcontains "Finance") { throw "entrou sem o perfil do convite: $($eu.roles -join ',')" }
+
+    # De uso unico. Sem isto, um convite antigo por consumir era uma segunda via
+    # de reposicao de password para uma conta ja em uso.
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/identity/invitations/acceptance" -Method Post -Body $corpo -ContentType "application/json"
+    }
+    if ($code -ne 400) { throw "repetir o convite devolveu $code, esperado 400" }
+    "204, entra com o perfil Finance, e repetir da 400"
 }
 
 Write-Host ""

@@ -48,10 +48,7 @@ $adminHeaders = @{ Authorization = "Bearer " + (Get-Token $dotenv["BOOTSTRAP_ADM
 
 # Utilizador com perfil HR, para testar a separacao do ADR-015
 $hrEmail = "rh-$stamp@rivo.ao"
-$body = @{ email = $hrEmail; password = $pass } | ConvertTo-Json
-$hrUserId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $body -ContentType "application/json").userId
-$body = @{ profile = "HR" } | ConvertTo-Json
-Invoke-RestMethod "$base/identity/users/$hrUserId/roles" -Method Post -Body $body -ContentType "application/json" -Headers $adminHeaders | Out-Null
+$hrUserId = New-RivoConta -Email $hrEmail -Password $pass -AdminHeaders $adminHeaders -Perfil "HR"
 $hrHeaders = @{ Authorization = "Bearer " + (Get-Token $hrEmail $pass) }
 
 Write-Host "`n=== Modulo hr ===`n"
@@ -300,10 +297,12 @@ Test-Case "17. Sem autenticacao -> 401; sem permissao -> 403" {
     $code = Get-StatusCode { Invoke-RestMethod "$base/hr/employees" }
     if ($code -ne 401) { throw "esperado 401, obtido $code" }
 
-    # Utilizador sem perfil nenhum.
-    $e = "semperfil-$stamp@rivo.ao"
-    $b = @{ email = $e; password = $pass } | ConvertTo-Json
-    Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json" | Out-Null
+    # Era uma conta sem perfil nenhum ate o ADR-059 tirar o registo publico: nao
+    # ha forma de criar uma agora. `Cliente` e o mais estreito do catalogo --
+    # tem `documents.write` e mais nada -- e prova o mesmo, melhor: o 403 e por
+    # falta da permissao de hr, e nao por a conta nao ter perfil.
+    $e = "sempermissao-$stamp@rivo.ao"
+    New-RivoConta -Email $e -Password $pass -AdminHeaders $adminHeaders -Perfil "Cliente" | Out-Null
     $h = @{ Authorization = "Bearer " + (Get-Token $e $pass) }
     $code = Get-StatusCode { Invoke-RestMethod "$base/hr/employees" -Headers $h }
     if ($code -ne 403) { throw "esperado 403, obtido $code" }
@@ -313,8 +312,8 @@ Test-Case "17. Sem autenticacao -> 401; sem permissao -> 403" {
 $script:linkedUserId = $null
 Test-Case "18. A admissao recusa userId em vez de o ignorar (ADR-054)" {
     $e = "portal-$stamp@rivo.ao"
-    $b = @{ email = $e; password = $pass } | ConvertTo-Json
-    $script:linkedUserId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
+    $script:linkedUserId = New-RivoConta -Email $e -Password $pass `
+        -AdminHeaders $adminHeaders -Perfil "Cliente"
 
     # 400 e nao "aceite e ignorado". O campo continua declarado no DTO so para
     # poder ser recusado: apaga-lo faria o desserializador descarta-lo em
@@ -372,8 +371,8 @@ Test-Case "21. Ligar conta a colaborador ja admitido devolve 204" {
     $script:semContaId = (Invoke-RestMethod "$base/hr/employees" -Method Post -Body $b -ContentType "application/json" -Headers $hrHeaders).employeeId
 
     $email = "ligado-$stamp@rivo.ao"
-    $b = @{ email = $email; password = $pass } | ConvertTo-Json
-    $script:contaNovaId = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
+    $script:contaNovaId = New-RivoConta -Email $email -Password $pass `
+        -AdminHeaders $adminHeaders -Perfil "Cliente"
 
     $r = Invoke-WebRequest "$base/hr/employees/$($script:semContaId)/account" -Method Post `
         -Body (@{ userId = $script:contaNovaId } | ConvertTo-Json) -ContentType "application/json" `
@@ -407,8 +406,8 @@ Test-Case "23. Conta ja de outro colaborador da 409" {
 
 Test-Case "24. Colaborador que ja tem conta da 409, nao substitui" {
     $email = "outra-conta-$stamp@rivo.ao"
-    $b = @{ email = $email; password = $pass } | ConvertTo-Json
-    $terceira = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
+    $terceira = New-RivoConta -Email $email -Password $pass `
+        -AdminHeaders $adminHeaders -Perfil "Cliente"
 
     $code = Get-StatusCode {
         Invoke-RestMethod "$base/hr/employees/$($script:semContaId)/account" -Method Post `
@@ -441,8 +440,10 @@ Test-Case "26. Perfil HR nao consegue ligar contas" {
     $b = @{ fullName = "Fora Do Alcance $stamp" } | ConvertTo-Json
     $alvoId = (Invoke-RestMethod "$base/hr/employees" -Method Post -Body $b -ContentType "application/json" -Headers $hrHeaders).employeeId
     $email = "recusado-$stamp@rivo.ao"
-    $b = @{ email = $email; password = $pass } | ConvertTo-Json
-    $conta = (Invoke-RestMethod "$base/identity/register" -Method Post -Body $b -ContentType "application/json").userId
+    # Convidada pelo Admin: RH nao tem `identity.users.write`, e este caso existe
+    # precisamente para provar o que RH nao consegue fazer.
+    $conta = New-RivoConta -Email $email -Password $pass `
+        -AdminHeaders $adminHeaders -Perfil "Cliente"
 
     $code = Get-StatusCode {
         Invoke-RestMethod "$base/hr/employees/$alvoId/account" -Method Post `
