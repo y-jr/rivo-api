@@ -112,7 +112,9 @@ builder.Services.AddNotificationsModule(builder.Configuration);
 // `INotificationChannel` é a que o contentor resolve. Sem servidor
 // configurado, fica o canal de log — que é o estado de desenvolvimento e
 // continua a ser válido.
-if (builder.Configuration.GetSection(SmtpOptions.SectionName).Get<SmtpOptions>()?.Enabled == true)
+var smtp = builder.Configuration.GetSection(SmtpOptions.SectionName).Get<SmtpOptions>();
+
+if (smtp?.Enabled == true)
 {
     builder.Services.AddScoped<INotificationChannel, SmtpNotificationChannel>();
 }
@@ -183,6 +185,28 @@ builder.Services.AddScoped<IProcurementApprovalSubmission, ProcurementApprovalSu
 builder.Services.AddScoped<IPayrollApprovalSubmission, PayrollApprovalSubmission>();
 
 var app = builder.Build();
+
+// Dito alto no arranque, e de propósito. A pergunta "o correio está ligado?"
+// não tinha resposta nos logs: o canal de log e o de SMTP escrevem a mesma
+// linha ao entregar, e configuração em falta não produzia ruído nenhum.
+// Custou descobrir na base de dados que nada sequer tinha sido tentado.
+//
+// Sem password, evidentemente. O remetente aparece porque é o campo que mais
+// engana: quase todos os fornecedores recusam enviar em nome de um endereço
+// que não alojam, e a recusa chega como erro de autenticação.
+if (smtp?.Enabled == true)
+{
+    app.Logger.LogInformation(
+        "Correio activo: {Host}:{Port} como {User}, a enviar de {From}.",
+        smtp.Host, smtp.Port, smtp.User, smtp.From);
+}
+else
+{
+    app.Logger.LogWarning(
+        "Correio DESLIGADO ({Falta} por preencher): as notificações ficam na aplicação " +
+        "e não sai nada da máquina. Um convite criado assim não chega a ninguém.",
+        string.IsNullOrWhiteSpace(smtp?.Host) ? "Smtp:Host" : "Smtp:From");
+}
 
 // Documentação e interface da API, por interruptor explícito — ADR-038.
 //

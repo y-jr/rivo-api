@@ -1,6 +1,6 @@
 # Problemas Conhecidos
 
-_Última actualização: 2026-08-27._
+_Última actualização: 2026-09-13._
 
 Este ficheiro regista duas coisas distintas, e a distinção importa:
 
@@ -10,8 +10,18 @@ Este ficheiro regista duas coisas distintas, e a distinção importa:
   satisfaz um requisito. Seis módulos estão em produção de desenvolvimento,
   logo há defeitos de código a registar.
 
-  Fechados: K8, K9, K14, K15, K16, K18, K19, K21.
-  Abertos: K10, K11, K12, K13, K17, K20.
+  Fechados: K9, K14, K15, K16, K18, K19, K21.
+  Abertos: K8, K10, K11, K12, K13, K17, K20.
+
+  ⚠ **O K8 voltou a abrir a 2026-09-13, e em produção.** Não por regressão de
+  código — por `ASPNETCORE_ENVIRONMENT=Development` na VPS, que desliga os
+  cabeçalhos reencaminhados. Leva atrás a página de excepções de
+  desenvolvimento e transforma o tecto de autenticação num balde único para
+  todos os clientes. É o item mais urgente desta lista.
+
+  O K13 está a meio: o canal de correio existe (ADR-059) e o fornecedor foi
+  decidido. Fica aberto até alguém receber uma mensagem — configurado não é o
+  mesmo que entregue.
 
 Os anti-padrões do protótipo ficam listados à parte, porque a tentação de os
 repetir é real.
@@ -46,7 +56,48 @@ Registados porque a tentação de os repetir é real:
 
 ## Defeitos activos
 
-### ~~K8 — IP da sessão é o do proxy~~ — **RESOLVIDO 2026-08-16**
+### K8 — IP da sessão é o do proxy — **RESOLVIDO 2026-08-16, REABERTO EM PRODUÇÃO a 2026-09-13**
+
+> **⚠ Está aberto agora, e não por defeito de código.** `syyt.tech` está a
+> correr com `ASPNETCORE_ENVIRONMENT=Development`, e é isso que desliga o
+> `UseForwardedHeaders` — exactamente o cenário que os dois avisos abaixo
+> descrevem, pela segunda vez.
+>
+> **Evidência, recolhida contra produção e por duas vias independentes:**
+>
+> - `GET /identity/me/sessions` da sessão viva do `SuperAdmin` devolve
+>   `ipAddress: ::ffff:172.18.0.3` — o container do Caddy. O `userAgent` vem
+>   correcto, o que isola o defeito ao IP.
+> - A entrada `identity.user.invited` na trilha, do convite enviado nesse dia,
+>   regista o mesmo endereço.
+>
+> `172.18.0.3` é um endereço RFC1918 da rede Docker: só pode ser o par da
+> ligação se o cabeçalho reencaminhado tiver sido ignorado. Confirma-se com
+> `grep ASPNETCORE_ENVIRONMENT /opt/projects/rivo/.env`.
+>
+> **Três consequências, e a terceira não estava prevista aqui:**
+>
+> 1. **BR-9 esvaziado outra vez.** Sessões e trilha guardam o proxy. Uma trilha
+>    append-only que não sabe de onde veio o acto vale menos do que parece.
+> 2. **Página de excepções de desenvolvimento à frente do pipeline.** Devolve
+>    stack trace e código-fonte a quem provocar um erro não tratado.
+> 3. **O tecto de autenticação (ADR-058) passa a ser um balde único.**
+>    `AuthenticationRateLimiter` particiona por
+>    `http.Connection.RemoteIpAddress`, e com os cabeçalhos desligados esse
+>    endereço é o do proxy **para toda a gente**. Os 20 pedidos por minuto
+>    deixam de ser por cliente e passam a ser do sistema inteiro: quem ataca
+>    consegue negar a entrada a todos, e a defesa contra força bruta que o
+>    tecto devia dar dilui-se no tráfego legítimo. O defeito de configuração
+>    anula a funcionalidade.
+>
+> **Correcção:** `ASPNETCORE_ENVIRONMENT=Production` no `.env` da VPS. É para
+> isto que o ADR-038 existe — o Swagger tem interruptor próprio
+> (`EXPOSE_OPENAPI`), e ninguém precisa de mentir sobre o nome do ambiente para
+> o abrir. ⚠ Ao mudar, confirmar que `EXPOSE_OPENAPI` e `CORS_ALLOWED_ORIGINS`
+> estão escritos no `.env`: a omissão do primeiro passa a fechar o Swagger, e o
+> segundo deixa de poder vir do `appsettings.Development.json`. A origem da
+> Vercel está autorizada hoje e não consta desse ficheiro, logo já vem do
+> `.env` — mas confirmar antes, não depois.
 
 Fechado na Fase 1. `ForwardedHeadersMiddleware` activo fora de `Development`,
 com `KnownNetworks` e `KnownProxies` vazios e `ForwardLimit = 1`.
@@ -180,20 +231,54 @@ ou do disco, ou um serviço compatível com S3.
 - **Seguimento:** limpeza periódica de ficheiros sem registo correspondente.
   Não urgente: o órfão ocupa espaço mas não corrompe nada.
 
-### K13 — Notificações não são entregues fora da aplicação
+### K13 — Notificações não são entregues fora da aplicação — **o canal existe desde 2026-09-13; falta ver uma mensagem chegar**
 
-- **Módulo:** `notifications`
-- **Impacto:** o canal registado é `LoggingNotificationChannel`, que escreve
-  uma linha de log e devolve. A fila, o worker, os estados e o recuo
-  exponencial são reais; **o envio de e-mail não existe**. Uma notificação com
-  `SendEmail = true` é marcada como entregue sem que ninguém a receba.
-- **Contorno:** nenhum. É deliberado e está documentado no próprio código — o
-  canal existe para que o percurso de entrega seja testável sem fornecedor.
-- **Seguimento:** implementar `INotificationChannel` sobre o provider de
-  e-mail transaccional e substituir o registo. **Depende da decisão de
-  provider**, que está em aberto. Até lá, não confiar em notificação por
-  e-mail para nada que tenha consequência — designadamente para pedidos de
-  aprovação quando `approval` existir.
+- **Módulo:** `notifications`, com o canal de SMTP em `Rivo.Api`
+- **Era:** o canal registado era `LoggingNotificationChannel`, que escrevia uma
+  linha de log e devolvia. A fila, o worker, os estados e o recuo exponencial
+  eram reais; **o envio não existia**. Uma notificação era marcada como entregue
+  sem que ninguém a recebesse.
+- **O que mudou:** o ADR-059 fechou a parte de código. A decisão de provider, de
+  que isto dependia, deixou de estar em aberto — Hostinger, a mesma casa que
+  aloja o domínio da API. `SmtpNotificationChannel` (MailKit, 465 com SSL
+  implícito) substitui o canal de log quando há servidor configurado; vazio
+  mantém o de log, que continua a ser o estado válido de desenvolvimento.
+
+  Vive em `Rivo.Api` e não em `notifications`: a notificação guarda
+  `RecipientUserId`, o endereço vive em `identity`, e `ProjectReferenceTests`
+  afirma `["Notifications"] = []`. Quem junta os dois é a composição, através de
+  `IUserDirectory`.
+- **E o canal existia sem nunca ser chamado.** A 2026-09-13, com SMTP
+  configurado e correcto, um convite não chegou ao destinatário. A causa não
+  era o servidor de correio: `NotificationRequest.SendEmail` tem por omissão
+  `false`, o `InviteUser` enfileirava sem o pedir, e `Notification.Create`
+  traduz isso em `NotRequired` — estado que o worker nunca recolhe.
+  **Nenhum sítio do código passava `SendEmail: true`.**
+
+  Não houve erro em parte nenhuma: a conta era criada, a notificação gravada
+  com a ligação certa, e a entrega simplesmente não era pedida. Passou em todos
+  os testes porque nenhum verificava a entrega — só o conteúdo da mensagem.
+
+  Corrigido em três níveis, e não só no primeiro: `SendEmail: true` no convite;
+  uma guarda em `Notifier.QueueAsync` que recusa enfileirar um tipo que não
+  existe sem entrega; e verificação a dobrar — teste de unidade sobre o pedido,
+  e `verify-authorization` 14 a afirmar que o `delivery_status` do convite não
+  é `NotRequired`.
+
+- **Por que continua aberto:** **ninguém viu ainda uma mensagem chegar a uma
+  caixa de correio.** Configuração e código estão postos, e não é o mesmo que
+  entrega comprovada — um `From` que o servidor não aloje, uma password errada ou
+  um bloqueio do fornecedor falham todos em silêncio do lado de quem convida.
+  Fecha-se quando um convite real for recebido e aceite ponta a ponta.
+- **Consequência imediata, e é nova:** desde o ADR-059 o convite é **a única via
+  por que uma conta nasce**. Enquanto isto não estiver comprovado, cada convite
+  cria a conta, enfileira a mensagem e pode não chegar a ninguém — sem erro
+  visível. O contorno, e não é bom, é ler a ligação de
+  `notifications.notification` e entregá-la à mão.
+- **Seguimento:** convidar um endereço próprio e confirmar a recepção. Se falhar,
+  os logs do container dizem porquê — o canal deixa a excepção subir para o
+  worker, que marca a notificação para nova tentativa em vez de a dar por
+  entregue.
 
 ### ~~K14 — Concorrência optimista não implementada~~ — **RESOLVIDO 2026-08-16**
 

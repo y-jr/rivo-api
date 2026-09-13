@@ -99,7 +99,15 @@ public sealed class InviteUser(
                     "Para escolher a sua password e entrar pela primeira vez, siga esta ligação:\n\n" +
                     $"{link}\n\n" +
                     "A ligação é de uso único e expira. Se não estava à espera deste convite, ignore esta mensagem — " +
-                    "sem escolher uma password, ninguém entra na conta."),
+                    "sem escolher uma password, ninguém entra na conta.",
+
+                // **Sem isto o convite não sai, e nada o diz.** `SendEmail`
+                // tem por omissão `false`, e uma notificação assim nasce
+                // `NotRequired`: fica na caixa da aplicação — o único sítio
+                // onde quem foi convidado ainda não consegue entrar. Foi
+                // assim que o convite chegou a produção, e passou em todos
+                // os testes porque nenhum verificava a entrega.
+                SendEmail: true),
             cancellationToken);
 
         return InviteUserResult.Invited(userId);

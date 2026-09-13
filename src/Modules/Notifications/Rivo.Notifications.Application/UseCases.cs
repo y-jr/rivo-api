@@ -13,8 +13,33 @@ namespace Rivo.Notifications.Application;
 /// </summary>
 public sealed class Notifier(INotificationStore store, TimeProvider clock) : INotifier
 {
+    /// <summary>
+    /// Tipos que não existem sem entrega externa.
+    ///
+    /// <para>
+    /// O convite é o caso (ADR-059): guardado só na caixa da aplicação é um
+    /// convite que ninguém lê, porque quem foi convidado ainda não consegue
+    /// entrar para o ler. `SendEmail` tem por omissão `false` — o que está
+    /// certo para um aviso dentro da aplicação e é uma armadilha para este.
+    /// Foi assim que o ADR-059 chegou a produção a criar contas e a não enviar
+    /// nada, sem um único erro em lado nenhum.
+    /// </para>
+    /// </summary>
+    private static readonly HashSet<string> ExigemEntrega = [NotificationTypes.UserInvited];
+
     public async Task QueueAsync(NotificationRequest request, CancellationToken cancellationToken)
     {
+        // Recusar é melhor do que enfileirar uma notificação que nunca sai:
+        // isto só dispara por defeito de quem chama, e um defeito que rebenta
+        // é preferível a um que fica calado na base de dados.
+        if (!request.SendEmail && ExigemEntrega.Contains(request.Type))
+        {
+            throw new ArgumentException(
+                $"O tipo '{request.Type}' não existe sem entrega externa: enfileirá-lo com " +
+                "SendEmail=false cria uma notificação que ninguém recebe.",
+                nameof(request));
+        }
+
         var notification = Notification.Create(
             request.RecipientUserId,
             request.Type,

@@ -81,8 +81,15 @@ public sealed class SmtpNotificationChannel(
             return;
         }
 
+        // `Enabled` garante os dois, e o canal só é registado nessa condição
+        // (ver `Program`). Repetir aqui não é defensivo a mais: torna a
+        // garantia visível ao compilador e transforma um registo errado num
+        // erro que diz qual e o campo em falta.
+        var servidor = _options.Host ?? throw new InvalidOperationException("Smtp:Host por preencher.");
+        var remetente = _options.From ?? throw new InvalidOperationException("Smtp:From por preencher.");
+
         var mensagem = new MimeMessage();
-        mensagem.From.Add(new MailboxAddress(_options.FromName, _options.From));
+        mensagem.From.Add(new MailboxAddress(_options.FromName, remetente));
         mensagem.To.Add(MailboxAddress.Parse(destinatario.Email));
         mensagem.Subject = notification.Title;
         mensagem.Body = new TextPart("plain") { Text = notification.Message };
@@ -96,11 +103,15 @@ public sealed class SmtpNotificationChannel(
             ? SecureSocketOptions.SslOnConnect
             : SecureSocketOptions.StartTls;
 
-        await cliente.ConnectAsync(_options.Host, _options.Port, seguranca, cancellationToken);
+        await cliente.ConnectAsync(servidor, _options.Port, seguranca, cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(_options.User))
         {
-            await cliente.AuthenticateAsync(_options.User, _options.Password, cancellationToken);
+            // `?? string.Empty` e não `!`: uma password em falta é erro de
+            // configuração, e vale mais o servidor recusar com uma mensagem de
+            // autenticação — que fica em `LastDeliveryError` — do que um
+            // ArgumentNullException que não diz o que falta.
+            await cliente.AuthenticateAsync(_options.User, _options.Password ?? string.Empty, cancellationToken);
         }
 
         await cliente.SendAsync(mensagem, cancellationToken);

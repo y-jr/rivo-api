@@ -161,6 +161,13 @@ STARTTLS. É também a biblioteca que a Microsoft aponta desde que marcou o
 
 ## Risks
 
+- **O frontend não vive atrás do mesmo proxy que a API**, e o convite aponta para
+  ele. `syyt.tech` serve só a API (o Caddyfile encaminha tudo para
+  `rivo-api:8080`); a aplicação está na Vercel, em
+  `https://rivo-lac.vercel.app` — verificado a 2026-09-13, já com o registo
+  fechado e a página `/convite` publicada. É esse o valor de
+  `FRONTEND_BASE_URL` na VPS, e apontá-lo para `syyt.tech` daria convites cuja
+  ligação responde 404.
 - **A caixa `geral@syyt.tech` é lida por alguém.** Foi escolha deliberada face
   a um `nao-responder@`: uma resposta ao convite chega a uma pessoa. O custo é
   que o endereço de onde sai o correio automático é o mesmo que recebe correio
