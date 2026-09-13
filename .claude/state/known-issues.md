@@ -248,6 +248,23 @@ ou do disco, ou um serviço compatível com S3.
   `RecipientUserId`, o endereço vive em `identity`, e `ProjectReferenceTests`
   afirma `["Notifications"] = []`. Quem junta os dois é a composição, através de
   `IUserDirectory`.
+- **E o canal existia sem nunca ser chamado.** A 2026-09-13, com SMTP
+  configurado e correcto, um convite não chegou ao destinatário. A causa não
+  era o servidor de correio: `NotificationRequest.SendEmail` tem por omissão
+  `false`, o `InviteUser` enfileirava sem o pedir, e `Notification.Create`
+  traduz isso em `NotRequired` — estado que o worker nunca recolhe.
+  **Nenhum sítio do código passava `SendEmail: true`.**
+
+  Não houve erro em parte nenhuma: a conta era criada, a notificação gravada
+  com a ligação certa, e a entrega simplesmente não era pedida. Passou em todos
+  os testes porque nenhum verificava a entrega — só o conteúdo da mensagem.
+
+  Corrigido em três níveis, e não só no primeiro: `SendEmail: true` no convite;
+  uma guarda em `Notifier.QueueAsync` que recusa enfileirar um tipo que não
+  existe sem entrega; e verificação a dobrar — teste de unidade sobre o pedido,
+  e `verify-authorization` 14 a afirmar que o `delivery_status` do convite não
+  é `NotRequired`.
+
 - **Por que continua aberto:** **ninguém viu ainda uma mensagem chegar a uma
   caixa de correio.** Configuração e código estão postos, e não é o mesmo que
   entrega comprovada — um `From` que o servidor não aloje, uma password errada ou

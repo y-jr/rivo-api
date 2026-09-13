@@ -269,7 +269,14 @@ Test-Case "14. O testemunho vai na mensagem, e nao na resposta" {
     $mensagem = Invoke-RivoSql "select message from notifications.notification where recipient_user_id='$($script:convidadoId)' and type='identity.user_invited'"
     if (-not $mensagem) { throw "convidar nao enfileirou notificacao nenhuma" }
     if ($mensagem -notmatch "/convite\?u=$($script:convidadoId)&t=") { throw "mensagem sem a ligacao do convite" }
-    "a ligacao esta na caixa de correio do convidado"
+
+    # E pedida para sair mesmo da aplicacao. `SendEmail` tem por omissao
+    # `false`, e uma notificacao assim nasce `NotRequired`: o worker nunca lhe
+    # toca e o convite fica na caixa de uma pessoa que ainda nao consegue
+    # entrar para o ler. Foi assim que chegou a producao.
+    $estado = Invoke-RivoSql "select delivery_status from notifications.notification where recipient_user_id='$($script:convidadoId)' and type='identity.user_invited'"
+    if ($estado -eq "NotRequired") { throw "o convite nasceu NotRequired -- nunca sera enviado" }
+    "a ligacao esta na mensagem, e a entrega foi pedida (estado=$estado)"
 }
 
 Test-Case "15. Aceitar o convite abre a conta -- uma vez so" {

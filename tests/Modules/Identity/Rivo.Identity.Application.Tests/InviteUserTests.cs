@@ -51,6 +51,29 @@ public sealed class InviteUserTests
     }
 
     [Fact]
+    public async Task O_convite_pede_entrega_por_correio()
+    {
+        var contas = new FakeUserAccounts();
+        var notificador = new FakeNotifier();
+        var convidar = new InviteUser(contas, new FakeAuditTrail(), notificador);
+
+        await convidar.ExecuteAsync(
+            "novo@rivo.ao", "HR", LinkBase, Contexto, CancellationToken.None);
+
+        // O teste que faltava, e a ausência custou um convite que chegou a
+        // produção sem sair da aplicação. `SendEmail` tem por omissão
+        // `false`, e uma notificação assim nasce `NotRequired`: fica na caixa
+        // da aplicação, que é o único sítio onde quem foi convidado ainda não
+        // consegue entrar.
+        //
+        // Verificar a mensagem não chegava: ela estava certa, e o correio não
+        // saía à mesma.
+        Assert.True(
+            Assert.Single(notificador.Queued).SendEmail,
+            "O convite tem de pedir entrega por correio: sem ela ninguém o recebe.");
+    }
+
+    [Fact]
     public async Task Perfil_desconhecido_e_recusado_antes_de_criar_a_conta()
     {
         var contas = new FakeUserAccounts();
