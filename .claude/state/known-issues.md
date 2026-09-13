@@ -10,8 +10,14 @@ Este ficheiro regista duas coisas distintas, e a distinção importa:
   satisfaz um requisito. Seis módulos estão em produção de desenvolvimento,
   logo há defeitos de código a registar.
 
-  Fechados: K8, K9, K14, K15, K16, K18, K19, K21.
-  Abertos: K10, K11, K12, K13, K17, K20.
+  Fechados: K9, K14, K15, K16, K18, K19, K21.
+  Abertos: K8, K10, K11, K12, K13, K17, K20.
+
+  ⚠ **O K8 voltou a abrir a 2026-09-13, e em produção.** Não por regressão de
+  código — por `ASPNETCORE_ENVIRONMENT=Development` na VPS, que desliga os
+  cabeçalhos reencaminhados. Leva atrás a página de excepções de
+  desenvolvimento e transforma o tecto de autenticação num balde único para
+  todos os clientes. É o item mais urgente desta lista.
 
   O K13 está a meio: o canal de correio existe (ADR-059) e o fornecedor foi
   decidido. Fica aberto até alguém receber uma mensagem — configurado não é o
@@ -50,7 +56,48 @@ Registados porque a tentação de os repetir é real:
 
 ## Defeitos activos
 
-### ~~K8 — IP da sessão é o do proxy~~ — **RESOLVIDO 2026-08-16**
+### K8 — IP da sessão é o do proxy — **RESOLVIDO 2026-08-16, REABERTO EM PRODUÇÃO a 2026-09-13**
+
+> **⚠ Está aberto agora, e não por defeito de código.** `syyt.tech` está a
+> correr com `ASPNETCORE_ENVIRONMENT=Development`, e é isso que desliga o
+> `UseForwardedHeaders` — exactamente o cenário que os dois avisos abaixo
+> descrevem, pela segunda vez.
+>
+> **Evidência, recolhida contra produção e por duas vias independentes:**
+>
+> - `GET /identity/me/sessions` da sessão viva do `SuperAdmin` devolve
+>   `ipAddress: ::ffff:172.18.0.3` — o container do Caddy. O `userAgent` vem
+>   correcto, o que isola o defeito ao IP.
+> - A entrada `identity.user.invited` na trilha, do convite enviado nesse dia,
+>   regista o mesmo endereço.
+>
+> `172.18.0.3` é um endereço RFC1918 da rede Docker: só pode ser o par da
+> ligação se o cabeçalho reencaminhado tiver sido ignorado. Confirma-se com
+> `grep ASPNETCORE_ENVIRONMENT /opt/projects/rivo/.env`.
+>
+> **Três consequências, e a terceira não estava prevista aqui:**
+>
+> 1. **BR-9 esvaziado outra vez.** Sessões e trilha guardam o proxy. Uma trilha
+>    append-only que não sabe de onde veio o acto vale menos do que parece.
+> 2. **Página de excepções de desenvolvimento à frente do pipeline.** Devolve
+>    stack trace e código-fonte a quem provocar um erro não tratado.
+> 3. **O tecto de autenticação (ADR-058) passa a ser um balde único.**
+>    `AuthenticationRateLimiter` particiona por
+>    `http.Connection.RemoteIpAddress`, e com os cabeçalhos desligados esse
+>    endereço é o do proxy **para toda a gente**. Os 20 pedidos por minuto
+>    deixam de ser por cliente e passam a ser do sistema inteiro: quem ataca
+>    consegue negar a entrada a todos, e a defesa contra força bruta que o
+>    tecto devia dar dilui-se no tráfego legítimo. O defeito de configuração
+>    anula a funcionalidade.
+>
+> **Correcção:** `ASPNETCORE_ENVIRONMENT=Production` no `.env` da VPS. É para
+> isto que o ADR-038 existe — o Swagger tem interruptor próprio
+> (`EXPOSE_OPENAPI`), e ninguém precisa de mentir sobre o nome do ambiente para
+> o abrir. ⚠ Ao mudar, confirmar que `EXPOSE_OPENAPI` e `CORS_ALLOWED_ORIGINS`
+> estão escritos no `.env`: a omissão do primeiro passa a fechar o Swagger, e o
+> segundo deixa de poder vir do `appsettings.Development.json`. A origem da
+> Vercel está autorizada hoje e não consta desse ficheiro, logo já vem do
+> `.env` — mas confirmar antes, não depois.
 
 Fechado na Fase 1. `ForwardedHeadersMiddleware` activo fora de `Development`,
 com `KnownNetworks` e `KnownProxies` vazios e `ForwardLimit = 1`.
