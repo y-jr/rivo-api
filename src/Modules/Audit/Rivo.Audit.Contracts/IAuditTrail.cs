@@ -59,7 +59,18 @@ public sealed record AuditContext(Guid? ActorId, string? IpAddress, string? Corr
 /// </summary>
 public static class AuditActions
 {
+    /// <summary>
+    /// ⚠ Histórico. O registo público fechou a 2026-09-13 (ADR-059): quem tem
+    /// conta passa a ser quem foi convidado. A constante fica porque a trilha
+    /// é append-only (BR-14) e as entradas antigas continuam a referenciá-la.
+    /// </summary>
     public const string UserRegistered = "identity.user.registered";
+
+    /// <summary>Alguém com autoridade abriu uma conta e convidou o titular (ADR-059).</summary>
+    public const string UserInvited = "identity.user.invited";
+
+    /// <summary>O convidado escolheu password, e a conta passou a poder entrar.</summary>
+    public const string InvitationAccepted = "identity.user.invitation_accepted";
     public const string UserLoggedIn = "identity.user.logged_in";
     public const string UserLoginFailed = "identity.user.login_failed";
     public const string UserLoggedOut = "identity.user.logged_out";

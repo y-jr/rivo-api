@@ -67,6 +67,23 @@ services:
       RateLimiting__AuthenticationPermitLimit: ${AUTH_RATE_LIMIT:-20}
       RateLimiting__AuthenticationWindowSeconds: ${AUTH_RATE_WINDOW_SECONDS:-60}
 
+      # Onde vive o frontend. É para aqui que aponta a ligação do convite
+      # (ADR-059) — não para a API. Sem isto, convidar devolve 501: mais vale
+      # dizer que falta configuração do que enviar um convite que não abre.
+      Frontend__BaseUrl: ${FRONTEND_BASE_URL:-}
+
+      # Servidor de correio (ADR-059). Vazio deixa o canal de log a funcionar,
+      # que é o estado de desenvolvimento — a fila e o worker são reais, só
+      # não sai nada da máquina.
+      #
+      # A password é segredo: vive no .env da máquina, nunca aqui.
+      Smtp__Host: ${SMTP_HOST:-}
+      Smtp__Port: ${SMTP_PORT:-465}
+      Smtp__User: ${SMTP_USER:-}
+      Smtp__Password: ${SMTP_PASSWORD:-}
+      Smtp__From: ${SMTP_FROM:-}
+      Smtp__FromName: ${SMTP_FROM_NAME:-Rivo}
+
       # Login com Google (ADR-032). Opcional: sem ClientId, o endpoint
       # /identity/login/google responde 501 e o resto da aplicação não muda.
       # Não é segredo — viaja no frontend — mas é ele que fixa a audiência

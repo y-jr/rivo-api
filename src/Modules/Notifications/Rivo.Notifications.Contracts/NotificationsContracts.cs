@@ -54,6 +54,12 @@ public static class NotificationTypes
 {
     public const string AccessProfileAssigned = "identity.access_profile_assigned";
 
+    /// <summary>
+    /// Convite para criar conta (ADR-059). É a primeira notificação que tem
+    /// de sair mesmo da aplicação: sem correio entregue, ninguém entra.
+    /// </summary>
+    public const string UserInvited = "identity.user_invited";
+
     /// <summary>O cliente escreveu — avisa o vendedor responsável (ADR-045).</summary>
     public const string MessagingNewMessage = "messaging.conversation.message_received";
 }

@@ -4,7 +4,9 @@ using Rivo.Api.Composition;
 using Rivo.Api.Cors;
 using Rivo.Api.Errors;
 using Rivo.Api.OpenApi;
+using Rivo.Api.Notifications;
 using Rivo.Api.RateLimiting;
+using Rivo.Notifications.Application;
 using Rivo.Audit.Api;
 using Rivo.Commercial.Api;
 using Rivo.Commercial.Infrastructure;
@@ -80,6 +82,12 @@ builder.Services.AddBrowserClientCors(builder.Configuration);
 // varrimento de muitas.
 builder.Services.AddAuthenticationRateLimiter(builder.Configuration);
 
+// Configuração do servidor de correio (ADR-059). O canal que a usa é
+// registado a seguir a `AddNotificationsModule`, mais abaixo.
+builder.Services
+    .AddOptions<SmtpOptions>()
+    .Bind(builder.Configuration.GetSection(SmtpOptions.SectionName));
+
 // Colisão de concorrência optimista traduzida em 409 (ADR-035, fecha o K15).
 //
 // Aqui e não em cada módulo: nenhuma camada Application referencia o EF Core,
@@ -98,6 +106,16 @@ builder.Services.AddExceptionHandler<BadRequestHandler>();
 builder.Services.AddAuditModule(builder.Configuration);
 builder.Services.AddDocumentsModule(builder.Configuration);
 builder.Services.AddNotificationsModule(builder.Configuration);
+
+// Troca o canal de log pelo de correio, quando há servidor configurado
+// (ADR-059). **Tem de vir depois** do registo do módulo: a última inscrição de
+// `INotificationChannel` é a que o contentor resolve. Sem servidor
+// configurado, fica o canal de log — que é o estado de desenvolvimento e
+// continua a ser válido.
+if (builder.Configuration.GetSection(SmtpOptions.SectionName).Get<SmtpOptions>()?.Enabled == true)
+{
+    builder.Services.AddScoped<INotificationChannel, SmtpNotificationChannel>();
+}
 builder.Services.AddFiscalModule(builder.Configuration);
 builder.Services.AddCommercialModule(builder.Configuration);
 builder.Services.AddProcurementModule(builder.Configuration);

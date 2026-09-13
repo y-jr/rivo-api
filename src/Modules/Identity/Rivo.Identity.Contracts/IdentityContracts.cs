@@ -20,6 +20,32 @@ public interface IAccessProfileCatalogue
 public sealed record AccessProfileSummary(string Name, IReadOnlyList<string> Permissions);
 
 /// <summary>
+/// Resolve uma conta a partir do seu identificador. Publicado para o canal de
+/// entrega de notificações poder saber <em>para onde</em> enviar.
+///
+/// <para>
+/// <strong>Existe porque `notifications` não pode perguntar.</strong> Uma
+/// notificação guarda <c>RecipientUserId</c> e mais nada — o endereço vive em
+/// `identity`, e o módulo de notificações não depende de módulo nenhum, por
+/// desenho (verificado em <c>ProjectReferenceTests</c>). Quem os junta é a
+/// camada de composição, que conhece os dois lados sem que nenhum deles passe
+/// a conhecer o outro.
+/// </para>
+///
+/// <para>
+/// Não devolve a password nem os perfis: quem entrega correio precisa do
+/// endereço e do nome por que tratar a pessoa, e de nada mais.
+/// </para>
+/// </summary>
+public interface IUserDirectory
+{
+    Task<UserContact?> FindAsync(Guid userId, CancellationToken cancellationToken);
+}
+
+/// <param name="Email">O endereço da conta. É também o nome de utilizador.</param>
+public sealed record UserContact(Guid UserId, string Email);
+
+/// <summary>
 /// Catálogo de permissões do módulo `identity`.
 ///
 /// <para>

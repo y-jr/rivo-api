@@ -45,9 +45,15 @@ public class EndpointAuthorizationTests
         // existem — o Google não cria contas.
         "POST /identity/login/google",
 
-        // Registo de conta. A criação de utilizadores com perfil continua a
-        // exigir permissão — ver `POST /identity/users/{userId}/roles`.
-        "POST /identity/register",
+        // Aceitar um convite (ADR-059). Público por necessidade — quem aceita
+        // ainda não tem como se autenticar —, e é o que substituiu o registo
+        // de conta, que saiu a 2026-09-13 precisamente por ser público a
+        // sério: qualquer pessoa criava conta e entrava.
+        //
+        // Aqui, público não quer dizer sem verificação: o corpo traz um
+        // testemunho de uso único, com prazo, que só existe em quem recebeu o
+        // convite na caixa de correio da conta. Sem ele, nada acontece.
+        "POST /identity/invitations/acceptance",
 
         // Sonda de disponibilidade. Não revela dados: apenas se a aplicação
         // está viva e se alcança a base de dados.
