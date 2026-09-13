@@ -1,6 +1,6 @@
 # Problemas Conhecidos
 
-_Última actualização: 2026-08-27._
+_Última actualização: 2026-09-13._
 
 Este ficheiro regista duas coisas distintas, e a distinção importa:
 
@@ -12,6 +12,10 @@ Este ficheiro regista duas coisas distintas, e a distinção importa:
 
   Fechados: K8, K9, K14, K15, K16, K18, K19, K21.
   Abertos: K10, K11, K12, K13, K17, K20.
+
+  O K13 está a meio: o canal de correio existe (ADR-059) e o fornecedor foi
+  decidido. Fica aberto até alguém receber uma mensagem — configurado não é o
+  mesmo que entregue.
 
 Os anti-padrões do protótipo ficam listados à parte, porque a tentação de os
 repetir é real.
@@ -180,20 +184,37 @@ ou do disco, ou um serviço compatível com S3.
 - **Seguimento:** limpeza periódica de ficheiros sem registo correspondente.
   Não urgente: o órfão ocupa espaço mas não corrompe nada.
 
-### K13 — Notificações não são entregues fora da aplicação
+### K13 — Notificações não são entregues fora da aplicação — **o canal existe desde 2026-09-13; falta ver uma mensagem chegar**
 
-- **Módulo:** `notifications`
-- **Impacto:** o canal registado é `LoggingNotificationChannel`, que escreve
-  uma linha de log e devolve. A fila, o worker, os estados e o recuo
-  exponencial são reais; **o envio de e-mail não existe**. Uma notificação com
-  `SendEmail = true` é marcada como entregue sem que ninguém a receba.
-- **Contorno:** nenhum. É deliberado e está documentado no próprio código — o
-  canal existe para que o percurso de entrega seja testável sem fornecedor.
-- **Seguimento:** implementar `INotificationChannel` sobre o provider de
-  e-mail transaccional e substituir o registo. **Depende da decisão de
-  provider**, que está em aberto. Até lá, não confiar em notificação por
-  e-mail para nada que tenha consequência — designadamente para pedidos de
-  aprovação quando `approval` existir.
+- **Módulo:** `notifications`, com o canal de SMTP em `Rivo.Api`
+- **Era:** o canal registado era `LoggingNotificationChannel`, que escrevia uma
+  linha de log e devolvia. A fila, o worker, os estados e o recuo exponencial
+  eram reais; **o envio não existia**. Uma notificação era marcada como entregue
+  sem que ninguém a recebesse.
+- **O que mudou:** o ADR-059 fechou a parte de código. A decisão de provider, de
+  que isto dependia, deixou de estar em aberto — Hostinger, a mesma casa que
+  aloja o domínio da API. `SmtpNotificationChannel` (MailKit, 465 com SSL
+  implícito) substitui o canal de log quando há servidor configurado; vazio
+  mantém o de log, que continua a ser o estado válido de desenvolvimento.
+
+  Vive em `Rivo.Api` e não em `notifications`: a notificação guarda
+  `RecipientUserId`, o endereço vive em `identity`, e `ProjectReferenceTests`
+  afirma `["Notifications"] = []`. Quem junta os dois é a composição, através de
+  `IUserDirectory`.
+- **Por que continua aberto:** **ninguém viu ainda uma mensagem chegar a uma
+  caixa de correio.** Configuração e código estão postos, e não é o mesmo que
+  entrega comprovada — um `From` que o servidor não aloje, uma password errada ou
+  um bloqueio do fornecedor falham todos em silêncio do lado de quem convida.
+  Fecha-se quando um convite real for recebido e aceite ponta a ponta.
+- **Consequência imediata, e é nova:** desde o ADR-059 o convite é **a única via
+  por que uma conta nasce**. Enquanto isto não estiver comprovado, cada convite
+  cria a conta, enfileira a mensagem e pode não chegar a ninguém — sem erro
+  visível. O contorno, e não é bom, é ler a ligação de
+  `notifications.notification` e entregá-la à mão.
+- **Seguimento:** convidar um endereço próprio e confirmar a recepção. Se falhar,
+  os logs do container dizem porquê — o canal deixa a excepção subir para o
+  worker, que marca a notificação para nova tentativa em vez de a dar por
+  entregue.
 
 ### ~~K14 — Concorrência optimista não implementada~~ — **RESOLVIDO 2026-08-16**
 
