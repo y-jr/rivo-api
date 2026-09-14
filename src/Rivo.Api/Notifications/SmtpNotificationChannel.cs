@@ -92,7 +92,10 @@ public sealed class SmtpNotificationChannel(
         mensagem.From.Add(new MailboxAddress(_options.FromName, remetente));
         mensagem.To.Add(MailboxAddress.Parse(destinatario.Email));
         mensagem.Subject = notification.Title;
-        mensagem.Body = new TextPart("plain") { Text = notification.Message };
+        // Texto simples e HTML, as duas versões do mesmo conteúdo. Ver
+        // `CorpoDaMensagem` para o porquê de o desenho viver aqui e não no
+        // módulo de notificações.
+        mensagem.Body = CorpoDaMensagem.Construir(notification);
 
         await SmtpMailer.SendAsync(_options, mensagem, cancellationToken);
 

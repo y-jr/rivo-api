@@ -265,23 +265,35 @@ where ur.user_id = '$($script:convidadoId)' and r.name = 'Finance'
     "existe, com perfil, sem password, e o login da 401"
 }
 
-Test-Case "14. O testemunho vai na mensagem, e nao na resposta" {
-    $mensagem = Invoke-RivoSql "select message from notifications.notification where recipient_user_id='$($script:convidadoId)' and type='identity.user_invited'"
-    if (-not $mensagem) { throw "convidar nao enfileirou notificacao nenhuma" }
-    if ($mensagem -notmatch "/convite\?u=$($script:convidadoId)&t=") { throw "mensagem sem a ligacao do convite" }
+Test-Case "14. O testemunho vai no destino da notificacao, e nao na resposta" {
+    $onde = "where recipient_user_id='$($script:convidadoId)' and type='identity.user_invited'"
+
+    # Desde 15-09 o destino e dado estruturado, e nao texto dentro do corpo: o
+    # `message` e o mesmo que a aplicacao mostra na lista de notificacoes, e e o
+    # canal de correio que o desenha como botao.
+    $destino = Invoke-RivoSql "select action_url from notifications.notification $onde"
+    if (-not $destino) { throw "convidar nao enfileirou notificacao com destino" }
+    if ($destino -notmatch "/convite\?u=$($script:convidadoId)&t=") { throw "destino sem a ligacao do convite: $destino" }
+
+    $etiqueta = Invoke-RivoSql "select action_label from notifications.notification $onde"
+    if (-not $etiqueta) { throw "destino sem etiqueta -- o botao ficaria por legendar" }
+
+    # E o testemunho nao fica no corpo, que e o que se le em texto simples e o
+    # que fica visivel dentro da aplicacao.
+    $mensagem = Invoke-RivoSql "select message from notifications.notification $onde"
+    if ($mensagem -match "&t=") { throw "o testemunho continua no corpo da mensagem" }
 
     # E pedida para sair mesmo da aplicacao. `SendEmail` tem por omissao
     # `false`, e uma notificacao assim nasce `NotRequired`: o worker nunca lhe
-    # toca e o convite fica na caixa de uma pessoa que ainda nao consegue
-    # entrar para o ler. Foi assim que chegou a producao.
-    $estado = Invoke-RivoSql "select delivery_status from notifications.notification where recipient_user_id='$($script:convidadoId)' and type='identity.user_invited'"
+    # toca e o convite fica na caixa de quem ainda nao consegue entrar para o ler.
+    $estado = Invoke-RivoSql "select delivery_status from notifications.notification $onde"
     if ($estado -eq "NotRequired") { throw "o convite nasceu NotRequired -- nunca sera enviado" }
-    "a ligacao esta na mensagem, e a entrega foi pedida (estado=$estado)"
+    "destino legendado, corpo sem testemunho, entrega pedida (estado=$estado)"
 }
 
 Test-Case "15. Aceitar o convite abre a conta -- uma vez so" {
-    $mensagem = Invoke-RivoSql "select message from notifications.notification where recipient_user_id='$($script:convidadoId)' and type='identity.user_invited'"
-    if ($mensagem -notmatch "t=([A-Za-z0-9_-]+)") { throw "nao se extraiu o testemunho da ligacao" }
+    $ligacao = Invoke-RivoSql "select action_url from notifications.notification where recipient_user_id='$($script:convidadoId)' and type='identity.user_invited'"
+    if ($ligacao -notmatch "t=([A-Za-z0-9_-]+)") { throw "nao se extraiu o testemunho do destino" }
     $testemunho = $Matches[1]
 
     $novaPass = "Rivo!Convidado2026"

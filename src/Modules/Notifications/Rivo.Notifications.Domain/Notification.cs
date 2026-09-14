@@ -44,6 +44,8 @@ public sealed class Notification
         string type,
         string title,
         string message,
+        string? actionUrl,
+        string? actionLabel,
         NotificationDeliveryStatus deliveryStatus,
         DateTimeOffset createdAt)
     {
@@ -52,6 +54,8 @@ public sealed class Notification
         Type = type;
         Title = title;
         Message = message;
+        ActionUrl = actionUrl;
+        ActionLabel = actionLabel;
         DeliveryStatus = deliveryStatus;
         NextAttemptAt = deliveryStatus is NotificationDeliveryStatus.Pending ? createdAt : null;
         CreatedAt = createdAt;
@@ -84,6 +88,23 @@ public sealed class Notification
 
     public string Message { get; private set; }
 
+    /// <summary>
+    /// Para onde leva a notificação, quando leva a algum lado.
+    ///
+    /// <para>
+    /// <strong>É dado, e não marcação.</strong> O <see cref="Message"/> continua
+    /// texto simples porque é o mesmo corpo que a aplicação mostra na lista de
+    /// notificações; enfiar-lhe HTML punha etiquetas à vista nesse ecrã. Guardar
+    /// o destino à parte deixa cada canal decidir como o apresenta — o correio
+    /// desenha um botão, a aplicação pode desenhar uma ligação — sem que o
+    /// módulo saiba nada de nenhum dos dois.
+    /// </para>
+    /// </summary>
+    public string? ActionUrl { get; private set; }
+
+    /// <summary>O que o botão diz. Sem isto o destino não tem nome.</summary>
+    public string? ActionLabel { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; }
 
     public DateTimeOffset? ReadAt { get; private set; }
@@ -105,7 +126,9 @@ public sealed class Notification
         string title,
         string message,
         bool sendEmail,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        string? actionUrl = null,
+        string? actionLabel = null)
     {
         if (recipientUserId == Guid.Empty)
         {
@@ -115,12 +138,37 @@ public sealed class Notification
         ArgumentException.ThrowIfNullOrWhiteSpace(type);
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
 
+        // Um destino sem nome deixa um botão por legendar; um nome sem destino
+        // deixa um botão que não vai a lado nenhum. Qualquer um dos dois só se
+        // descobre na caixa de correio de quem recebe, que é tarde.
+        var temUrl = !string.IsNullOrWhiteSpace(actionUrl);
+        var temEtiqueta = !string.IsNullOrWhiteSpace(actionLabel);
+
+        if (temUrl != temEtiqueta)
+        {
+            throw new ArgumentException(
+                "A acção de uma notificação é o par destino+etiqueta: ou vêm os dois, ou nenhum.",
+                temUrl ? nameof(actionLabel) : nameof(actionUrl));
+        }
+
+        // Absoluto e http(s): o destino vai para dentro de uma mensagem de
+        // correio, onde um caminho relativo não tem a que se referir.
+        if (temUrl && (!Uri.TryCreate(actionUrl, UriKind.Absolute, out var destino)
+            || (destino.Scheme != Uri.UriSchemeHttp && destino.Scheme != Uri.UriSchemeHttps)))
+        {
+            throw new ArgumentException(
+                $"O destino da acção tem de ser um URL absoluto http(s): '{actionUrl}'.",
+                nameof(actionUrl));
+        }
+
         return new Notification(
             Guid.CreateVersion7(),
             recipientUserId,
             type.Trim(),
             title.Trim(),
             message ?? string.Empty,
+            temUrl ? actionUrl!.Trim() : null,
+            temEtiqueta ? actionLabel!.Trim() : null,
             // Sem canal externo não há nada a entregar: nasce concluída em vez
             // de ficar pendente para sempre à espera de um worker.
             sendEmail ? NotificationDeliveryStatus.Pending : NotificationDeliveryStatus.NotRequired,
