@@ -94,33 +94,55 @@ public sealed class SmtpNotificationChannel(
         mensagem.Subject = notification.Title;
         mensagem.Body = new TextPart("plain") { Text = notification.Message };
 
-        using var cliente = new SmtpClient();
-
-        // 465 fala TLS desde o primeiro byte; 587 começa em claro e sobe com
-        // STARTTLS. Escolher pelo porto evita uma opção a mais para enganar
-        // quem configura.
-        var seguranca = _options.Port == 465
-            ? SecureSocketOptions.SslOnConnect
-            : SecureSocketOptions.StartTls;
-
-        await cliente.ConnectAsync(servidor, _options.Port, seguranca, cancellationToken);
-
-        if (!string.IsNullOrWhiteSpace(_options.User))
-        {
-            // `?? string.Empty` e não `!`: uma password em falta é erro de
-            // configuração, e vale mais o servidor recusar com uma mensagem de
-            // autenticação — que fica em `LastDeliveryError` — do que um
-            // ArgumentNullException que não diz o que falta.
-            await cliente.AuthenticateAsync(_options.User, _options.Password ?? string.Empty, cancellationToken);
-        }
-
-        await cliente.SendAsync(mensagem, cancellationToken);
-        await cliente.DisconnectAsync(quit: true, cancellationToken);
+        await SmtpMailer.SendAsync(_options, mensagem, cancellationToken);
 
         // O assunto e o tipo bastam para confirmar a entrega; o corpo pode
         // levar um convite com token e não vai para os logs.
         logger.LogInformation(
             "Notificação {NotificationId} do tipo {Type} enviada por correio.",
             notification.Id, notification.Type);
+    }
+}
+
+/// <summary>
+/// A ligação SMTP propriamente dita, partilhada por quem monta a mensagem.
+///
+/// <para>
+/// Extraído de <see cref="SmtpNotificationChannel"/> para que
+/// <c>EmailDebugEndpoints</c> não reimplemente a escolha de porta/segurança —
+/// foi exactamente essa reimplementação, com <c>SslOnConnect</c> fixo em vez
+/// de escolhido pelo porto, que produziu um segundo caminho a testar (e a
+/// poder divergir) do único que já estava correcto.
+/// </para>
+/// </summary>
+internal static class SmtpMailer
+{
+    public static async Task SendAsync(
+        SmtpOptions options, MimeMessage message, CancellationToken cancellationToken)
+    {
+        var servidor = options.Host ?? throw new InvalidOperationException("Smtp:Host por preencher.");
+
+        using var cliente = new SmtpClient();
+
+        // 465 fala TLS desde o primeiro byte; 587 começa em claro e sobe com
+        // STARTTLS. Escolher pelo porto evita uma opção a mais para enganar
+        // quem configura.
+        var seguranca = options.Port == 465
+            ? SecureSocketOptions.SslOnConnect
+            : SecureSocketOptions.StartTls;
+
+        await cliente.ConnectAsync(servidor, options.Port, seguranca, cancellationToken);
+
+        if (!string.IsNullOrWhiteSpace(options.User))
+        {
+            // `?? string.Empty` e não `!`: uma password em falta é erro de
+            // configuração, e vale mais o servidor recusar com uma mensagem de
+            // autenticação — que fica em `LastDeliveryError` — do que um
+            // ArgumentNullException que não diz o que falta.
+            await cliente.AuthenticateAsync(options.User, options.Password ?? string.Empty, cancellationToken);
+        }
+
+        await cliente.SendAsync(message, cancellationToken);
+        await cliente.DisconnectAsync(quit: true, cancellationToken);
     }
 }
