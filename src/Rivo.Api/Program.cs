@@ -16,7 +16,7 @@ using Rivo.Procurement.Infrastructure;
 using Rivo.Audit.Infrastructure;
 using Rivo.Documents.Api;
 using Rivo.Documents.Infrastructure;
-using Rivo.Finance.Api; 
+using Rivo.Finance.Api;
 using Rivo.Finance.Infrastructure;
 using Rivo.Fiscal.Api;
 using Rivo.Fiscal.Infrastructure;
@@ -410,6 +410,10 @@ app.MapEmployeePortalModule();
 app.MapCustomerPortalModule();
 app.MapDashboardModule();
 app.MapAnalyticsModule();
+
+// Não é módulo nem camada de composição — utilitário de operação para
+// verificar a ligação SMTP sem convidar uma conta (ver EmailDebugEndpoints).
+app.MapEmailDebug();
 
 // Verifica que a aplicação está viva e que alcança a base de dados.
 app.MapGet("/health", async (RivoIdentityDbContext db, CancellationToken ct) =>
