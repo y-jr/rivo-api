@@ -1,0 +1,38 @@
+# Normalização de fins de linha.
+#
+# O projecto desenvolve-se em Windows e corre em Linux. Sem isto, o Git guarda o
+# que o `core.autocrlf` de cada máquina decidir — e há ficheiros onde a escolha
+# errada não dá erro de compilação nenhum, dá uma falha em produção.
+
+* text=auto
+
+# ⚠ **Scripts de shell têm de ser LF, sempre.**
+#
+# Um `.sh` com CRLF dá, na VPS, `bad interpreter: /bin/bash^M` — uma mensagem
+# que não nomeia a causa e que manda quem a lê procurar no sítio errado. É
+# especialmente mau em `deploy/backup/`: a rotina silenciosamente não corre, e
+# uma cópia de segurança que não acontece tem exactamente o mesmo aspecto de
+# uma que acontece.
+*.sh    text eol=lf
+*.bash  text eol=lf
+
+# Pelo mesmo motivo, do outro lado: um `.ps1` ou um `.cmd` de Windows fica com
+# CRLF.
+*.ps1   text eol=crlf
+*.cmd   text eol=crlf
+*.bat   text eol=crlf
+
+# O Dockerfile e o que vive dentro de contentores são Linux por definição.
+Dockerfile      text eol=lf
+*.Dockerfile    text eol=lf
+Caddyfile       text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+
+# Binários, para o Git não tentar normalizar nada.
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.pdf   binary
+*.bak   binary
+*.snk   binary
