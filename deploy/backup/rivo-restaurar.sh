@@ -14,7 +14,7 @@ set -Eeuo pipefail
 
 PROJECTO="${PROJECTO:-/opt/projects/rivo}"
 CONTENTOR_SQL="${CONTENTOR_SQL:-rivo-sqlserver}"
-BASE="${BASE:-rivo}"
+BASE="${BASE:-rivo_db}"
 SQL_UTILIZADOR="${SQL_UTILIZADOR:-sa}"
 BACKUP_NO_CONTENTOR="${BACKUP_NO_CONTENTOR:-/var/opt/mssql/backup}"
 VOLUME_DOCUMENTOS="${VOLUME_DOCUMENTOS:-rivo_rivo-documents-data}"
@@ -55,14 +55,42 @@ fi
 
 # Ver a nota em `rivo-backup.sh`: a password vai por variável de ambiente, e não
 # por argumento, que apareceria em `ps`.
+# Ver a nota em `rivo-backup.sh`: a saída é capturada e mostrada quando falha,
+# porque o `sqlcmd` escreve os erros de SQL na saída normal — e num script de
+# restauro, falhar sem dizer porquê é ainda pior do que num de cópia.
 sqlcmd_no_contentor() {
-  docker exec -e "SQLCMDPASSWORD=${SQL_PASSWORD}" "${CONTENTOR_SQL}" \
-    /opt/mssql-tools18/bin/sqlcmd \
-    -S localhost -U "${SQL_UTILIZADOR}" -C -b -h -1 -W -Q "$1"
+  local saida
+  if ! saida="$(docker exec -e "SQLCMDPASSWORD=${SQL_PASSWORD}" "${CONTENTOR_SQL}" \
+      /opt/mssql-tools18/bin/sqlcmd \
+      -S localhost -U "${SQL_UTILIZADOR}" -C -b -h -1 -W -Q "$1" 2>&1)"; then
+    echo "--- o SQL Server respondeu ---" >&2
+    echo "${saida}" >&2
+    echo "------------------------------" >&2
+    return 1
+  fi
+
+  if printf '%s' "${saida}" | grep -qiE '^(Msg [0-9]+|Sqlcmd: Error)'; then
+    echo "--- o SQL Server respondeu ---" >&2
+    echo "${saida}" >&2
+    echo "------------------------------" >&2
+    return 1
+  fi
+
+  printf '%s\n' "${saida}"
 }
 
-docker exec "${CONTENTOR_SQL}" mkdir -p "${BACKUP_NO_CONTENTOR}"
+docker exec -u 0 "${CONTENTOR_SQL}" sh -c \
+  "mkdir -p '${BACKUP_NO_CONTENTOR}' && chown mssql '${BACKUP_NO_CONTENTOR}'" 2>/dev/null \
+  || docker exec "${CONTENTOR_SQL}" mkdir -p "${BACKUP_NO_CONTENTOR}"
+
 docker cp "${TRABALHO}/${BASE}.bak" "${CONTENTOR_SQL}:${BACKUP_NO_CONTENTOR}/restaurar.bak"
+
+# ⚠ **O `docker cp` escreve como root.** No backup isto não se nota — quem cria o
+# ficheiro é o próprio SQL Server, e fica dono dele. Aqui o ficheiro vem de fora,
+# e o processo do SQL Server corre como `mssql`: sem isto, o `RESTORE VERIFYONLY`
+# responde «Operating system error 5 (Access is denied)», que não nomeia as
+# permissões do ficheiro como causa.
+docker exec -u 0 "${CONTENTOR_SQL}" chown mssql "${BACKUP_NO_CONTENTOR}/restaurar.bak" 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 # Verificar sempre, mesmo quando se vai restaurar a seguir. É barato, e é o que

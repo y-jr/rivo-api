@@ -45,7 +45,7 @@ enviar-para-fora.sh     🟣  corre na VPS, envia cifrado para o balde
 
 | | |
 |---|---|
-| `rivo.bak` | backup **nativo** do SQL Server, não exportação lógica |
+| `rivo_db.bak` | backup **nativo** do SQL Server, não exportação lógica |
 | `documentos.tar.gz` | o volume `rivo_rivo-documents-data` — contratos e comprovativos (K12) |
 | `env` | o `.env` do projecto. **Leva segredos** |
 | `MANIFESTO.txt` | o que é, de quando, e como se restaura |
@@ -149,7 +149,7 @@ Depois: `DROP DATABASE rivo_ensaio`.
 
 **O `sa`.** Estes scripts aceitam `BACKUP_SQL_PASSWORD` precisamente para não
 dependerem dele, mas o utilizador restrito ainda não existe — continua no topo
-da lista, ao lado disto. Um utilizador com `db_backupoperator` na base `rivo`
+da lista, ao lado disto. Um utilizador com `db_backupoperator` na base `rivo_db`
 chega para o 🟢 e não serve para mais nada.
 
 **Rollback de deploy.** São problemas vizinhos e não o mesmo: isto repõe dados,

@@ -25,7 +25,7 @@ PROJECTO="${PROJECTO:-/opt/projects/rivo}"
 DESTINO="${DESTINO:-/var/backups/rivo}"
 
 CONTENTOR_SQL="${CONTENTOR_SQL:-rivo-sqlserver}"
-BASE="${BASE:-rivo}"
+BASE="${BASE:-rivo_db}"
 SQL_UTILIZADOR="${SQL_UTILIZADOR:-sa}"
 
 # Caminho DENTRO do contentor do SQL Server. Tem de ser um directório onde o
@@ -120,13 +120,55 @@ dizer "Base de dados '${BASE}' — a copiar..."
 # A password vai por `SQLCMDPASSWORD` e não por `-P`. Um argumento de linha de
 # comandos aparece em `ps` para qualquer utilizador da máquina; uma variável
 # passada ao `docker exec` fica no processo do contentor.
+#
+# ⚠ **A saída é capturada e mostrada quando falha.** A primeira versão mandava
+# tudo para `/dev/null` no caminho feliz — e o `sqlcmd` escreve os erros de SQL
+# na saída normal, não na de erro. O resultado era um backup que falhava a dizer
+# só «FALHOU», que é exactamente o modo de falha que este script existe para
+# evitar: acontecer, e não se saber porquê.
 sqlcmd_no_contentor() {
-  docker exec -e "SQLCMDPASSWORD=${SQL_PASSWORD}" "${CONTENTOR_SQL}" \
-    /opt/mssql-tools18/bin/sqlcmd \
-    -S localhost -U "${SQL_UTILIZADOR}" -C -b -h -1 -W -Q "$1"
+  local saida
+  if ! saida="$(docker exec -e "SQLCMDPASSWORD=${SQL_PASSWORD}" "${CONTENTOR_SQL}" \
+      /opt/mssql-tools18/bin/sqlcmd \
+      -S localhost -U "${SQL_UTILIZADOR}" -C -b -h -1 -W -Q "$1" 2>&1)"; then
+    echo "--- o SQL Server respondeu ---" >&2
+    echo "${saida}" >&2
+    echo "------------------------------" >&2
+    return 1
+  fi
+
+  # O `sqlcmd` devolve 0 a algumas condições que deixam a mensagem na saída sem
+  # a marcar como erro. Se lá vier "Msg" ou "Error", não se dá por bom.
+  if printf '%s' "${saida}" | grep -qiE '^(Msg [0-9]+|Sqlcmd: Error)'; then
+    echo "--- o SQL Server respondeu ---" >&2
+    echo "${saida}" >&2
+    echo "------------------------------" >&2
+    return 1
+  fi
+
+  printf '%s\n' "${saida}"
 }
 
-docker exec "${CONTENTOR_SQL}" mkdir -p "${BACKUP_NO_CONTENTOR}"
+# O directório tem de existir **e** de ser escrevível pelo processo do SQL
+# Server, que corre como `mssql` dentro do contentor. Criá-lo como root deixaria
+# um directório que o servidor não consegue abrir, e o erro que isso dá
+# («Operating system error 5») não diz que a causa foram as permissões da pasta.
+docker exec -u 0 "${CONTENTOR_SQL}" sh -c \
+  "mkdir -p '${BACKUP_NO_CONTENTOR}' && chown mssql '${BACKUP_NO_CONTENTOR}'" 2>/dev/null \
+  || docker exec "${CONTENTOR_SQL}" mkdir -p "${BACKUP_NO_CONTENTOR}"
+
+# A base existe neste servidor? A pergunta parece redundante e não é: o
+# `docker-compose.yml` de produção **não declara serviço de SQL Server nenhum**,
+# e o contentor pode ser outro que não o que a aplicação usa. Um nome errado dá
+# «Database does not exist», que não distingue «enganei-me no nome» de «estou no
+# servidor errado» — e a segunda é a que faria copiar a base errada durante meses.
+if ! sqlcmd_no_contentor "
+SELECT 1 FROM sys.databases WHERE name = N'${BASE}';" | grep -q 1; then
+  echo "A base '${BASE}' não existe em '${CONTENTOR_SQL}'. Existem:" >&2
+  sqlcmd_no_contentor "SELECT name FROM sys.databases ORDER BY name;" | sed 's/^/  /' >&2
+  echo "Confirme contra o CONNECTION_STRING do .env que este é o servidor certo." >&2
+  exit 2
+fi
 
 # COPY_ONLY: não mexe na cadeia de backups diferenciais que o servidor possa vir
 # a ter. CHECKSUM: o servidor calcula somas ao escrever, e é o que torna a
