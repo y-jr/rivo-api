@@ -55,10 +55,28 @@ fi
 
 # Ver a nota em `rivo-backup.sh`: a password vai por variável de ambiente, e não
 # por argumento, que apareceria em `ps`.
+# Ver a nota em `rivo-backup.sh`: a saída é capturada e mostrada quando falha,
+# porque o `sqlcmd` escreve os erros de SQL na saída normal — e num script de
+# restauro, falhar sem dizer porquê é ainda pior do que num de cópia.
 sqlcmd_no_contentor() {
-  docker exec -e "SQLCMDPASSWORD=${SQL_PASSWORD}" "${CONTENTOR_SQL}" \
-    /opt/mssql-tools18/bin/sqlcmd \
-    -S localhost -U "${SQL_UTILIZADOR}" -C -b -h -1 -W -Q "$1"
+  local saida
+  if ! saida="$(docker exec -e "SQLCMDPASSWORD=${SQL_PASSWORD}" "${CONTENTOR_SQL}" \
+      /opt/mssql-tools18/bin/sqlcmd \
+      -S localhost -U "${SQL_UTILIZADOR}" -C -b -h -1 -W -Q "$1" 2>&1)"; then
+    echo "--- o SQL Server respondeu ---" >&2
+    echo "${saida}" >&2
+    echo "------------------------------" >&2
+    return 1
+  fi
+
+  if printf '%s' "${saida}" | grep -qiE '^(Msg [0-9]+|Sqlcmd: Error)'; then
+    echo "--- o SQL Server respondeu ---" >&2
+    echo "${saida}" >&2
+    echo "------------------------------" >&2
+    return 1
+  fi
+
+  printf '%s\n' "${saida}"
 }
 
 docker exec "${CONTENTOR_SQL}" mkdir -p "${BACKUP_NO_CONTENTOR}"
