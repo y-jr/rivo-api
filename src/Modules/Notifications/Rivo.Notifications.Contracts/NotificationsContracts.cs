@@ -47,7 +47,18 @@ public sealed record NotificationRequest(
     string Type,
     string Title,
     string Message,
-    bool SendEmail = false);
+    bool SendEmail = false,
+
+    /// <param name="ActionUrl">
+    /// Para onde a notificação leva, se levar a algum lado. Absoluto e http(s).
+    /// Vem à parte do <c>Message</c> de propósito: o corpo é texto simples, porque
+    /// é o mesmo que a aplicação mostra na lista; o destino em separado deixa o
+    /// canal de correio desenhar um botão sem que este módulo saiba o que é HTML.
+    /// </param>
+    string? ActionUrl = null,
+
+    /// <param name="ActionLabel">O que o botão diz. Obrigatório se houver destino.</param>
+    string? ActionLabel = null);
 
 /// <summary>Tipos de notificação emitidos pelos módulos.</summary>
 public static class NotificationTypes

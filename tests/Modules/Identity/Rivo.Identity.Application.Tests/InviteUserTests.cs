@@ -45,9 +45,18 @@ public sealed class InviteUserTests
         // outra pessoa — que é exactamente o que o convite existe para impedir.
         Assert.NotNull(resultado.UserId);
 
-        var mensagem = Assert.Single(notificador.Queued).Message;
-        Assert.Contains(LinkBase, mensagem);
-        Assert.Contains("/convite?u=", mensagem);
+        // O destino passou a ser dado estruturado: o corpo é texto simples,
+        // porque é o mesmo que a aplicação mostra na lista de notificações, e
+        // e o canal de correio que o desenha como botao.
+        var pedido = Assert.Single(notificador.Queued);
+        Assert.NotNull(pedido.ActionUrl);
+        Assert.StartsWith(LinkBase, pedido.ActionUrl);
+        Assert.Contains("/convite?u=", pedido.ActionUrl);
+        Assert.False(string.IsNullOrWhiteSpace(pedido.ActionLabel));
+
+        // E o testemunho não aparece no corpo, que é o que se lê em texto
+        // simples e o que fica visível na aplicação.
+        Assert.DoesNotContain("&t=", pedido.Message);
     }
 
     [Fact]

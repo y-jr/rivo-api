@@ -46,7 +46,9 @@ public sealed class Notifier(INotificationStore store, TimeProvider clock) : INo
             request.Title,
             request.Message,
             request.SendEmail,
-            clock.GetUtcNow());
+            clock.GetUtcNow(),
+            request.ActionUrl,
+            request.ActionLabel);
 
         await store.AddAsync(notification, cancellationToken);
         await store.SaveChangesAsync(cancellationToken);

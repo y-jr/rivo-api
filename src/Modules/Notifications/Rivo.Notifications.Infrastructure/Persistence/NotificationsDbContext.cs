@@ -27,6 +27,11 @@ public sealed class NotificationsDbContext(DbContextOptions<NotificationsDbConte
             notification.Property(n => n.Type).HasMaxLength(100).IsRequired();
             notification.Property(n => n.Title).HasMaxLength(200).IsRequired();
             notification.Property(n => n.Message).HasMaxLength(2000);
+
+            // 2048 e não 2000: o destino de um convite leva um testemunho
+            // codificado, que sozinho passa dos 300 caracteres.
+            notification.Property(n => n.ActionUrl).HasMaxLength(2048);
+            notification.Property(n => n.ActionLabel).HasMaxLength(80);
             notification.Property(n => n.LastDeliveryError).HasMaxLength(500);
             notification.Property(n => n.DeliveryStatus).HasConversion<string>().HasMaxLength(20);
 

@@ -218,3 +218,58 @@ public class NotificationTests
         Assert.True(notification.IsDueAt(Now.AddMinutes(2)));
     }
 }
+
+/// <summary>
+/// A acção de uma notificação — o par destino+etiqueta que o canal de correio
+/// desenha como botão.
+/// </summary>
+public sealed class AccaoDaNotificacaoTests
+{
+    private static readonly DateTimeOffset Agora = new(2026, 9, 15, 10, 0, 0, TimeSpan.Zero);
+
+    private static Notification Criar(string? url, string? etiqueta) =>
+        Notification.Create(
+            Guid.CreateVersion7(), "identity.user_invited", "Tem acesso ao Rivo",
+            "Corpo.", sendEmail: true, Agora, url, etiqueta);
+
+    [Fact]
+    public void Destino_e_etiqueta_vem_os_dois_ou_nenhum()
+    {
+        // Um destino sem nome deixa um botão por legendar; um nome sem destino
+        // deixa um botão que não vai a lado nenhum. Ambos só se descobrem na
+        // caixa de correio de quem recebe.
+        Assert.Throws<ArgumentException>(() => Criar("https://rivo.ao/convite", null));
+        Assert.Throws<ArgumentException>(() => Criar(null, "Escolher a minha password"));
+    }
+
+    [Fact]
+    public void Sem_accao_nenhuma_e_estado_valido()
+    {
+        var n = Criar(null, null);
+
+        Assert.Null(n.ActionUrl);
+        Assert.Null(n.ActionLabel);
+    }
+
+    [Theory]
+    [InlineData("/convite?u=1")]
+    [InlineData("convite")]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("ftp://rivo.ao/x")]
+    public void O_destino_tem_de_ser_absoluto_e_http(string url)
+    {
+        // Vai para dentro de uma mensagem de correio, onde um caminho relativo
+        // não tem a que se referir — e onde um esquema que não seja http(s) é,
+        // na melhor das hipóteses, inerte.
+        Assert.Throws<ArgumentException>(() => Criar(url, "Abrir"));
+    }
+
+    [Fact]
+    public void Um_destino_valido_e_guardado_sem_espacos()
+    {
+        var n = Criar("  https://rivo.ao/convite?u=1&t=abc  ", "  Escolher a minha password  ");
+
+        Assert.Equal("https://rivo.ao/convite?u=1&t=abc", n.ActionUrl);
+        Assert.Equal("Escolher a minha password", n.ActionLabel);
+    }
+}
