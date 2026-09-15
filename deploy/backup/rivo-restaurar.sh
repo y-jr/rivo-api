@@ -79,8 +79,18 @@ sqlcmd_no_contentor() {
   printf '%s\n' "${saida}"
 }
 
-docker exec "${CONTENTOR_SQL}" mkdir -p "${BACKUP_NO_CONTENTOR}"
+docker exec -u 0 "${CONTENTOR_SQL}" sh -c \
+  "mkdir -p '${BACKUP_NO_CONTENTOR}' && chown mssql '${BACKUP_NO_CONTENTOR}'" 2>/dev/null \
+  || docker exec "${CONTENTOR_SQL}" mkdir -p "${BACKUP_NO_CONTENTOR}"
+
 docker cp "${TRABALHO}/${BASE}.bak" "${CONTENTOR_SQL}:${BACKUP_NO_CONTENTOR}/restaurar.bak"
+
+# ⚠ **O `docker cp` escreve como root.** No backup isto não se nota — quem cria o
+# ficheiro é o próprio SQL Server, e fica dono dele. Aqui o ficheiro vem de fora,
+# e o processo do SQL Server corre como `mssql`: sem isto, o `RESTORE VERIFYONLY`
+# responde «Operating system error 5 (Access is denied)», que não nomeia as
+# permissões do ficheiro como causa.
+docker exec -u 0 "${CONTENTOR_SQL}" chown mssql "${BACKUP_NO_CONTENTOR}/restaurar.bak" 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 # Verificar sempre, mesmo quando se vai restaurar a seguir. É barato, e é o que
