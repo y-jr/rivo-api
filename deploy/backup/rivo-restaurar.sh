@@ -14,7 +14,7 @@ set -Eeuo pipefail
 
 PROJECTO="${PROJECTO:-/opt/projects/rivo}"
 CONTENTOR_SQL="${CONTENTOR_SQL:-rivo-sqlserver}"
-BASE="${BASE:-rivo}"
+BASE="${BASE:-rivo_db}"
 SQL_UTILIZADOR="${SQL_UTILIZADOR:-sa}"
 BACKUP_NO_CONTENTOR="${BACKUP_NO_CONTENTOR:-/var/opt/mssql/backup}"
 VOLUME_DOCUMENTOS="${VOLUME_DOCUMENTOS:-rivo_rivo-documents-data}"
