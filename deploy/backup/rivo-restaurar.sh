@@ -17,7 +17,7 @@ CONTENTOR_SQL="${CONTENTOR_SQL:-rivo-sqlserver}"
 BASE="${BASE:-rivo}"
 SQL_UTILIZADOR="${SQL_UTILIZADOR:-sa}"
 BACKUP_NO_CONTENTOR="${BACKUP_NO_CONTENTOR:-/var/opt/mssql/backup}"
-VOLUME_DOCUMENTOS="${VOLUME_DOCUMENTOS:-rivo-documents-data}"
+VOLUME_DOCUMENTOS="${VOLUME_DOCUMENTOS:-rivo_rivo-documents-data}"
 CONTENTOR_API="${CONTENTOR_API:-rivo-api}"
 
 ARQUIVO="${1:-}"

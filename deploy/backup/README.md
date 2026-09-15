@@ -46,7 +46,7 @@ enviar-para-fora.sh     🟣  corre na VPS, envia cifrado para o balde
 | | |
 |---|---|
 | `rivo.bak` | backup **nativo** do SQL Server, não exportação lógica |
-| `documentos.tar.gz` | o volume `rivo-documents-data` — contratos e comprovativos (K12) |
+| `documentos.tar.gz` | o volume `rivo_rivo-documents-data` — contratos e comprovativos (K12) |
 | `env` | o `.env` do projecto. **Leva segredos** |
 | `MANIFESTO.txt` | o que é, de quando, e como se restaura |
 
