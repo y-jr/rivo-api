@@ -23,6 +23,37 @@ CONTENTOR_API="${CONTENTOR_API:-rivo-api}"
 ARQUIVO="${1:-}"
 MODO="${2:-}"
 
+# ---------------------------------------------------------------------------
+# ⚠ **Um argumento a mais já fez um restauro que ninguém pediu.**
+#
+# A primeira versão lia `$2` como modo, fosse ele o que fosse. Em 2026-09-15,
+# `rivo-restaurar /var/backups/rivo/rivo-*.tar.gz --so-verificar` expandiu o
+# padrão para DOIS ficheiros: `$2` passou a ser o segundo arquivo, o
+# `--so-verificar` foi para `$3` e ficou ignorado — e o script restaurou a base
+# de produção a partir da cópia mais **antiga**, em silêncio até ao pedido de
+# confirmação.
+#
+# Um glob que casa com mais de um ficheiro é normal, e por isso a defesa não pode
+# ser «ter cuidado». Recusa-se tudo o que não seja exactamente um arquivo e, no
+# máximo, a bandeira conhecida.
+# ---------------------------------------------------------------------------
+if [ "$#" -gt 2 ]; then
+  echo "Demasiados argumentos ($#). Este script restaura UM arquivo de cada vez." >&2
+  echo >&2
+  echo "Recebi:" >&2
+  for a in "$@"; do echo "  ${a}" >&2; done
+  echo >&2
+  echo "Se usou um padrão como 'rivo-*.tar.gz', ele casou com mais do que um" >&2
+  echo "ficheiro. Indique o arquivo pelo nome completo." >&2
+  exit 2
+fi
+
+if [ -n "${MODO}" ] && [ "${MODO}" != "--so-verificar" ]; then
+  echo "Segundo argumento desconhecido: '${MODO}'" >&2
+  echo "O único aceite é '--so-verificar'. Se isso é um caminho, indique só um arquivo." >&2
+  exit 2
+fi
+
 if [ -z "${ARQUIVO}" ] || [ ! -f "${ARQUIVO}" ]; then
   echo "Uso: $0 <arquivo.tar.gz> [--so-verificar]" >&2
   exit 2
@@ -116,13 +147,34 @@ fi
 # Daqui para baixo escreve-se por cima do que existe. Confirmação explícita, e
 # não uma bandeira `--sim` que se copia de um histórico de comandos sem ler.
 # ---------------------------------------------------------------------------
+# Se há um arquivo mais recente ao lado deste, dizê-lo aqui. Restaurar uma cópia
+# antiga havendo uma nova é quase sempre engano — e o momento de o apanhar é
+# este, não depois.
+PASTA="$(cd "$(dirname "${ARQUIVO}")" && pwd)"
+MAIS_RECENTE="$(ls -1t "${PASTA}"/rivo-*.tar.gz 2>/dev/null | head -1 || true)"
+
 cat <<AVISO
 
   ⚠  ISTO SUBSTITUI A BASE DE DADOS '${BASE}' E OS FICHEIROS CARREGADOS.
      Tudo o que exista agora e não esteja neste arquivo perde-se.
      A aplicação vai ser parada durante a operação.
 
+     A repor:  $(basename "${ARQUIVO}")
+     Feito em: $(grep -m1 'Feita em' "${TRABALHO}/MANIFESTO.txt" 2>/dev/null | cut -d: -f2- | xargs || echo 'desconhecido')
+
 AVISO
+
+if [ -n "${MAIS_RECENTE}" ] && [ "${MAIS_RECENTE}" != "${PASTA}/$(basename "${ARQUIVO}")" ]; then
+  cat <<MAIS
+
+  ⚠  ATENÇÃO: este NÃO é o arquivo mais recente nesta pasta.
+     O mais recente é:  $(basename "${MAIS_RECENTE}")
+
+     Restaurar um mais antigo descarta tudo o que aconteceu entretanto.
+     Se não é isso que quer, responda qualquer outra coisa e recomece.
+
+MAIS
+fi
 read -r -p "  Escreva o nome da base de dados para confirmar: " CONFIRMACAO
 [ "${CONFIRMACAO}" = "${BASE}" ] || { echo "Não confirmado. Nada foi alterado."; exit 1; }
 
