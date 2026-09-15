@@ -274,6 +274,15 @@ UpgradeLog*.htm
 ServiceFabricBackup/
 *.rptproj.bak
 
+# ⚠ `Backup*/` acima é do .gitignore-padrão do Visual Studio e destina-se às
+# pastas que ele deixa ao converter projectos antigos. Em Windows, onde
+# `core.ignorecase` é verdadeiro, apanha também `deploy/backup/` — que é código
+# nosso, e que ficaria de fora de um commit **sem um único aviso**.
+#
+# A negação tem de ser do directório, e não dos ficheiros: o Git não desce a um
+# directório excluído, por isso `!deploy/backup/*.sh` não chegaria.
+!deploy/backup/
+
 # SQL Server files
 *.mdf
 *.ldf
