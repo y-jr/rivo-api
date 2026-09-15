@@ -10,17 +10,19 @@ Este ficheiro regista duas coisas distintas, e a distinção importa:
   satisfaz um requisito. Seis módulos estão em produção de desenvolvimento,
   logo há defeitos de código a registar.
 
-  Fechados: K9, K14, K15, K16, K18, K19, K21.
-  Abertos: K8, K10, K11, K12, K13, K17, K20.
+  Fechados: K8, K9, K13, K14, K15, K16, K18, K19, K21.
+  Abertos: K10, K11, K12, K17, K20, K22.
 
-  ⚠ **O K8 nunca esteve fechado.** O código que o deu por resolvido a
-  2026-08-16 tinha `KnownNetworks = { }`, que parece limpar e não limpa.
-  Encontrado e corrigido a 2026-09-13, depois de eu o ter atribuído por duas
-  vezes, e erradamente, ao nome do ambiente.
+  ⚠ **O K8 nunca esteve fechado** entre 2026-08-16 e 2026-09-14. O código que o
+  deu por resolvido tinha `KnownNetworks = { }`, que parece limpar e não limpa.
+  Corrigido a 14·09, depois de ter sido atribuído por duas vezes, e
+  erradamente, ao nome do ambiente.
 
-  O K13 está a meio: o canal de correio existe (ADR-059) e o fornecedor foi
-  decidido. Fica aberto até alguém receber uma mensagem — configurado não é o
-  mesmo que entregue.
+  ✅ **O K13 fechou a 2026-09-15**, e não por configuração: uma pessoa recebeu o
+  convite, escolheu a password e entrou. Era o defeito mais antigo ainda aberto.
+
+  ⚠ **O K22 é novo, e nasce de uma premissa que caiu.** O ADR-029 escolheu SQL
+  Server porque havia uma instância «já operada, com backups». Deixou de haver.
 
 Os anti-padrões do protótipo ficam listados à parte, porque a tentação de os
 repetir é real.
@@ -229,6 +231,43 @@ ou do disco, ou um serviço compatível com S3.
 - **Seguimento:** limpeza periódica de ficheiros sem registo correspondente.
   Não urgente: o órfão ocupa espaço mas não corrompe nada.
 
+### K22 — Nem a base de dados nem os documentos têm cópia de segurança
+
+- **Módulo:** nenhum — é operação, e por isso não tem código que o cause.
+- **Impacto:** a 2026-09-15 **não existia cópia nenhuma**. Nem da base de dados,
+  nem do volume `rivo-documents-data`, que guarda contratos de trabalho e
+  comprovativos fiscais. Somado a `MIGRATE_ON_STARTUP=true` (ADR-030) e à
+  ausência de rollback no deploy, uma migração má não tem para onde voltar.
+- **Como se chegou aqui:** o ADR-029 escolheu SQL Server com a justificação de
+  correr «contra uma instância já existente e já operada… **com backups,
+  monitorização e um administrador**». A base passou entretanto a ser um
+  contentor na própria VPS, e a premissa caiu com ela. Ninguém a foi rever.
+
+  ⚠ **E este ficheiro descrevia o contrário.** Ao lado do K12 dizia-se «a base
+  de dados tem backup» — herdado daquela frase, e nunca verificado.
+
+- **Endereçado por:** ADR-060 e `deploy/backup/` — três níveis (VPS, PC/NAS,
+  externo cifrado), com verificação em cada um e um script de restauração.
+- **Por que continua aberto:** **os scripts existem e nunca correram.** Não há
+  nada instalado na VPS, não há cron, e nenhuma cópia foi ainda produzida.
+  Escrito não é a correr — é a mesma distinção que o K13 custou a aprender.
+  Fecha quando houver um arquivo na VPS, uma cópia no PC, uma no balde, e um
+  ensaio de restauro feito.
+
+### ~~K13 — Notificações não são entregues fora da aplicação~~ — **FECHADO a 2026-09-15**
+
+Fechado por percurso completo feito por uma pessoa: convite criado, e-mail
+recebido, password escolhida, sessão iniciada. Era o defeito mais antigo do
+projecto ainda em aberto.
+
+Não fechou quando o canal passou a existir (ADR-059, 13·09), nem quando o SMTP
+foi configurado. Fechou quando alguém recebeu uma mensagem — e entre as duas
+coisas houve um defeito que só se via na base de dados: o convite era
+enfileirado com `SendEmail = false`, nascia `NotRequired`, e o worker nunca lhe
+tocava. **Configurado nunca foi o mesmo que entregue.**
+
+<details><summary>Registo do percurso</summary>
+
 ### K13 — Notificações não são entregues fora da aplicação — **o canal existe desde 2026-09-13; falta ver uma mensagem chegar**
 
 - **Módulo:** `notifications`, com o canal de SMTP em `Rivo.Api`
@@ -277,6 +316,8 @@ ou do disco, ou um serviço compatível com S3.
   os logs do container dizem porquê — o canal deixa a excepção subir para o
   worker, que marca a notificação para nova tentativa em vez de a dar por
   entregue.
+
+</details>
 
 ### ~~K14 — Concorrência optimista não implementada~~ — **RESOLVIDO 2026-08-16**
 
