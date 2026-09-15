@@ -32,7 +32,11 @@ SQL_UTILIZADOR="${SQL_UTILIZADOR:-sa}"
 # processo do SQL Server saiba escrever — `/var/opt/mssql` é o volume dele.
 BACKUP_NO_CONTENTOR="${BACKUP_NO_CONTENTOR:-/var/opt/mssql/backup}"
 
-VOLUME_DOCUMENTOS="${VOLUME_DOCUMENTOS:-rivo-documents-data}"
+# ⚠ Com o prefixo do projecto. O `docker-compose.yml` declara
+# `rivo-documents-data`, e o Compose grava-o como `<projecto>_<nome>` — aqui,
+# `rivo_rivo-documents-data`. Confirmado na VPS a 2026-09-15; o nome sem prefixo
+# não existe, e usá-lo daria um volume novo e vazio em vez de um erro.
+VOLUME_DOCUMENTOS="${VOLUME_DOCUMENTOS:-rivo_rivo-documents-data}"
 DIAS_A_GUARDAR="${DIAS_A_GUARDAR:-7}"
 
 CARIMBO="$(date -u +%Y%m%d-%H%M%S)"
@@ -75,6 +79,28 @@ fi
 if [ -z "${SQL_PASSWORD:-}" ]; then
   echo "Sem password do SQL Server. Defina SQL_PASSWORD, ou ponha" >&2
   echo "BACKUP_SQL_PASSWORD no ${PROJECTO}/.env." >&2
+  exit 2
+fi
+
+# ---------------------------------------------------------------------------
+# Confirmar o que se vai copiar, antes de começar.
+#
+# **O `docker run -v` cria um volume vazio quando o nome não existe.** Um erro
+# de nome não daria erro nenhum: daria um `documentos.tar.gz` com zero ficheiros
+# dentro de um arquivo que parece bom — e só no dia da restauração é que alguém
+# descobria que os contratos não estavam lá. Falhar aqui é barato; falhar lá é
+# irrecuperável.
+# ---------------------------------------------------------------------------
+if ! docker ps --format '{{.Names}}' | grep -qx "${CONTENTOR_SQL}"; then
+  echo "O contentor '${CONTENTOR_SQL}' não está a correr. A correr agora:" >&2
+  docker ps --format '  {{.Names}}\t{{.Image}}' >&2
+  exit 2
+fi
+
+if ! docker volume inspect "${VOLUME_DOCUMENTOS}" >/dev/null 2>&1; then
+  echo "O volume '${VOLUME_DOCUMENTOS}' não existe. Volumes disponíveis:" >&2
+  docker volume ls --format '  {{.Name}}' >&2
+  echo "Sugestão: o Compose prefixa com o nome do projecto (rivo_...)." >&2
   exit 2
 fi
 
