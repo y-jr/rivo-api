@@ -21,6 +21,20 @@ public static class HrModuleEndpoints
         group.MapPost("/employees", HireEmployeeAsync)
             .RequireAuthorization(HrPermissions.EmployeesWrite);
 
+        // --- Correcções (ADR-063) ---
+        //
+        // **PUT para corrigir, POST para actos.** O resto do módulo usa POST
+        // porque quase tudo aqui é um acontecimento com nome próprio — admitir,
+        // ligar uma conta, atribuir um cargo. Corrigir não é acontecimento: é
+        // repor o valor certo num campo que estava errado, e o verbo que diz
+        // isso é PUT. A transferência de departamento, essa, continua a ser um
+        // acto, e por isso tem sub-recurso e POST.
+        group.MapPut("/employees/{employeeId:guid}", CorrectEmployeeAsync)
+            .RequireAuthorization(HrPermissions.EmployeesWrite);
+
+        group.MapPost("/employees/{employeeId:guid}/department", TransferEmployeeAsync)
+            .RequireAuthorization(HrPermissions.EmployeesWrite);
+
         group.MapGet("/employees/{employeeId:guid}", GetEmployeeAsync)
             .RequireAuthorization(HrPermissions.EmployeesRead);
 
@@ -54,12 +68,20 @@ public static class HrModuleEndpoints
         group.MapPost("/departments", CreateDepartmentAsync)
             .RequireAuthorization(HrPermissions.DepartmentsWrite);
 
+        group.MapPut("/departments/{departmentId:guid}", CorrectDepartmentAsync)
+            .RequireAuthorization(HrPermissions.DepartmentsWrite);
+
         group.MapGet("/positions", ListPositionsAsync)
             .RequireAuthorization(HrPermissions.PositionsRead);
 
         // Catálogo de Cargos: só Admin. Quem controla a marca de autoridade
         // controla, indirectamente, quem pode vir a aprovar (ADR-015).
         group.MapPost("/positions", CreatePositionAsync)
+            .RequireAuthorization(HrPermissions.PositionsWrite);
+
+        // Corrigir o catálogo pede a mesma permissão que o criar, e por isso
+        // fica fora do perfil HR (ADR-015).
+        group.MapPut("/positions/{positionId:guid}", CorrectPositionAsync)
             .RequireAuthorization(HrPermissions.PositionsWrite);
 
         // Atribuição: operação corrente de RH.
@@ -340,6 +362,63 @@ public static class HrModuleEndpoints
             ? Results.NotFound(new { erro = "Colaborador não encontrado." })
             : Results.Ok(historico);
     }
+
+    /// <summary>
+    /// Traduz o desfecho de uma correcção. Escrito uma vez porque as quatro são
+    /// iguais nisto: 204 quando fica feito, 404 quando o registo não existe, e
+    /// 400 quando o pedido refere algo que não existe ou traz um campo vazio.
+    /// </summary>
+    private static IResult Responder(CorrectionResult resultado) =>
+        resultado.Outcome switch
+        {
+            // 204 e não o objecto corrigido: quem chama já sabe o que enviou, e
+            // devolver o registo convidaria o ecrã a confiar nele em vez de
+            // reler a lista -- que é onde as outras correcções aparecem.
+            CorrectionOutcome.Corrected => Results.NoContent(),
+
+            CorrectionOutcome.NotFound => Results.NotFound(new { erro = "Registo não encontrado." }),
+
+            CorrectionOutcome.Rejected =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["correccao"] = [resultado.Error!] }),
+
+            _ => Results.Problem("Resultado inesperado na correcção."),
+        };
+
+    private static async Task<IResult> CorrectEmployeeAsync(
+        Guid employeeId,
+        CorrectEmployeeRequest request,
+        CorrectEmployee correct,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        Responder(await correct.ExecuteAsync(
+            employeeId, request.FullName, BuildAuditContext(http), cancellationToken));
+
+    private static async Task<IResult> TransferEmployeeAsync(
+        Guid employeeId,
+        TransferEmployeeRequest request,
+        TransferEmployee transfer,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        Responder(await transfer.ExecuteAsync(
+            employeeId, request.DepartmentId, BuildAuditContext(http), cancellationToken));
+
+    private static async Task<IResult> CorrectDepartmentAsync(
+        Guid departmentId,
+        CorrectDepartmentRequest request,
+        CorrectDepartment correct,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        Responder(await correct.ExecuteAsync(
+            departmentId, request.Name, request.ManagerId, BuildAuditContext(http), cancellationToken));
+
+    private static async Task<IResult> CorrectPositionAsync(
+        Guid positionId,
+        CorrectPositionRequest request,
+        CorrectPosition correct,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        Responder(await correct.ExecuteAsync(
+            positionId, request.Name, request.HierarchyLevel, BuildAuditContext(http), cancellationToken));
 
     private static async Task<IResult> ListDepartmentsAsync(
         ListDepartments listDepartments,
@@ -1018,6 +1097,23 @@ public sealed record HireEmployeeRequest(string FullName, Guid? DepartmentId, Gu
 public sealed record LinkEmployeeAccountRequest(Guid UserId);
 
 public sealed record CreateDepartmentRequest(string Name, Guid? ManagerId);
+
+/// <param name="FullName">O nome corrigido. Vazio é recusado, não apagado.</param>
+public sealed record CorrectEmployeeRequest(string FullName);
+
+/// <param name="DepartmentId">
+/// Nulo tira o colaborador de qualquer departamento — é escolha válida, e não
+/// campo esquecido.
+/// </param>
+public sealed record TransferEmployeeRequest(Guid? DepartmentId);
+
+public sealed record CorrectDepartmentRequest(string Name, Guid? ManagerId);
+
+/// <summary>
+/// Sem <c>GrantsApprovalAuthority</c>, de propósito: a marca de autoridade não
+/// se corrige. Ver <c>Position.Correct</c> para a razão.
+/// </summary>
+public sealed record CorrectPositionRequest(string Name, int HierarchyLevel);
 
 public sealed record CreatePositionRequest(string Name, int HierarchyLevel, bool GrantsApprovalAuthority);
 

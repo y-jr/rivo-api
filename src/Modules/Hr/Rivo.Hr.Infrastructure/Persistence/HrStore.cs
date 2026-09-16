@@ -41,6 +41,9 @@ public sealed class HrStore(HrDbContext context) : IHrStore
     public async Task<bool> DepartmentExistsAsync(Guid departmentId, CancellationToken cancellationToken) =>
         await context.Departments.AnyAsync(d => d.Id == departmentId, cancellationToken);
 
+    public async Task<Department?> FindDepartmentAsync(Guid departmentId, CancellationToken cancellationToken) =>
+        await context.Departments.FirstOrDefaultAsync(d => d.Id == departmentId, cancellationToken);
+
     public async Task<IReadOnlyList<Department>> ListDepartmentsAsync(CancellationToken cancellationToken) =>
         await context.Departments.AsNoTracking().OrderBy(d => d.Name).ToListAsync(cancellationToken);
 

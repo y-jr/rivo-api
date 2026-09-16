@@ -598,7 +598,150 @@ Test-Case "38. Perfil HR nao ve o historico de contas" {
 # episodio aberto. Essa invariante vale nas duas situacoes, e e ela que diz se
 # a migracao fez o que devia.
 
-Test-Case "39. Dados sobrevivem ao reinicio da stack" {
+# --- Correcções (ADR-063). Até 2026-09-16 o sistema inteiro não tinha um único
+# PUT: nada se editava, e um nome mal escrito ficava mal escrito para sempre.
+
+Test-Case "40. Corrigir o nome de um colaborador, com o anterior na trilha" {
+    $antes = (Invoke-RestMethod "$base/hr/employees/$($script:employeeId)" -Headers $hrHeaders).displayName
+
+    Invoke-RestMethod "$base/hr/employees/$($script:employeeId)" -Method Put -ContentType "application/json" `
+        -Headers $hrHeaders -Body (@{ fullName = "Ana Teste Corrigida" } | ConvertTo-Json) | Out-Null
+
+    $depois = (Invoke-RestMethod "$base/hr/employees/$($script:employeeId)" -Headers $hrHeaders).displayName
+    if ($depois -ne "Ana Teste Corrigida") { throw "o nome nao mudou: '$depois'" }
+
+    # O valor anterior e o que torna a correccao auditavel: sem ele, fica a
+    # saber-se que algo mudou e nao o que dizia antes.
+    $registo = Invoke-Sql "select top 1 old_value from audit.audit_event where action='hr.employee.corrected' and entity_id='$($script:employeeId)' order by occurred_at desc"
+    if ($registo -notmatch [regex]::Escape($antes)) { throw "a trilha nao guardou o nome anterior: '$registo'" }
+
+    "'$antes' -> 'Ana Teste Corrigida', com o anterior na trilha"
+}
+
+Test-Case "41. Nome vazio e recusado, e nao apaga o que la estava" {
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/hr/employees/$($script:employeeId)" -Method Put -ContentType "application/json" `
+            -Headers $hrHeaders -Body (@{ fullName = "   " } | ConvertTo-Json)
+    }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+
+    $nome = (Invoke-RestMethod "$base/hr/employees/$($script:employeeId)" -Headers $hrHeaders).displayName
+    if ($nome -ne "Ana Teste Corrigida") { throw "o nome foi alterado apesar da recusa: '$nome'" }
+    "400, e o nome intacto"
+}
+
+Test-Case "42. Corrigir colaborador inexistente -> 404, e nao 400" {
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/hr/employees/$([Guid]::NewGuid())" -Method Put -ContentType "application/json" `
+            -Headers $hrHeaders -Body (@{ fullName = "Ninguem" } | ConvertTo-Json)
+    }
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+    "404 -- o registo nao existe, o pedido esta bem formado"
+}
+
+Test-Case "43. Transferir de departamento e acto proprio, com accao propria na trilha" {
+    $outro = (Invoke-RestMethod "$base/hr/departments" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+            -Body (@{ name = "Segundo Departamento $stamp" } | ConvertTo-Json)).departmentId
+
+    Invoke-RestMethod "$base/hr/employees/$($script:employeeId)/department" -Method Post -ContentType "application/json" `
+        -Headers $hrHeaders -Body (@{ departmentId = $outro } | ConvertTo-Json) | Out-Null
+
+    $actual = (Invoke-RestMethod "$base/hr/employees/$($script:employeeId)" -Headers $hrHeaders).departmentId
+    if ($actual -ne $outro) { throw "nao transferiu: '$actual'" }
+
+    # Accao distinta de `corrected`: quem le a trilha separa uma reorganizacao
+    # de um engano de digitacao sem ter de comparar valores.
+    $n = Invoke-Sql "select count(*) from audit.audit_event where action='hr.employee.transferred' and entity_id='$($script:employeeId)'"
+    if ($n -ne "1") { throw "$n registos de transferencia, esperado 1" }
+
+    $anterior = Invoke-Sql "select top 1 old_value from audit.audit_event where action='hr.employee.transferred' and entity_id='$($script:employeeId)' order by occurred_at desc"
+    if ($anterior -notmatch [regex]::Escape($script:deptId)) { throw "a trilha nao guardou o departamento anterior: '$anterior'" }
+
+    "transferido, com o departamento anterior registado"
+}
+
+Test-Case "44. Transferir para departamento inexistente -> 400, sem mover" {
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/hr/employees/$($script:employeeId)/department" -Method Post -ContentType "application/json" `
+            -Headers $hrHeaders -Body (@{ departmentId = [Guid]::NewGuid().ToString() } | ConvertTo-Json)
+    }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "400 -- o destino tem de existir"
+}
+
+Test-Case "45. Corrigir um departamento: nome e responsavel" {
+    Invoke-RestMethod "$base/hr/departments/$($script:deptId)" -Method Put -ContentType "application/json" `
+        -Headers $hrHeaders -Body (@{ name = "Operacoes Corrigidas $stamp"; managerId = $script:employeeId } | ConvertTo-Json) | Out-Null
+
+    $dep = @(Invoke-RestMethod "$base/hr/departments" -Headers $hrHeaders) | Where-Object { $_.departmentId -eq $script:deptId }
+    if ($dep.name -ne "Operacoes Corrigidas $stamp") { throw "o nome nao mudou: '$($dep.name)'" }
+    if ($dep.managerId -ne $script:employeeId) { throw "o responsavel nao ficou: '$($dep.managerId)'" }
+    "nome e responsavel corrigidos"
+}
+
+Test-Case "46. Responsavel desconhecido e recusado com 400" {
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/hr/departments/$($script:deptId)" -Method Put -ContentType "application/json" `
+            -Headers $hrHeaders -Body (@{ name = "Operacoes Corrigidas $stamp"; managerId = [Guid]::NewGuid().ToString() } | ConvertTo-Json)
+    }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "400 -- o responsavel tem de ser um colaborador conhecido"
+}
+
+Test-Case "47. Corrigir um cargo: nome e nivel" {
+    Invoke-RestMethod "$base/hr/positions/$($script:plainPositionId)" -Method Put -ContentType "application/json" `
+        -Headers $adminHeaders -Body (@{ name = "Tecnico Senior $stamp"; hierarchyLevel = 4 } | ConvertTo-Json) | Out-Null
+
+    $cargo = @(Invoke-RestMethod "$base/hr/positions" -Headers $hrHeaders) | Where-Object { $_.positionId -eq $script:plainPositionId }
+    if ($cargo.name -ne "Tecnico Senior $stamp") { throw "o nome nao mudou: '$($cargo.name)'" }
+    if ($cargo.hierarchyLevel -ne 4) { throw "o nivel nao mudou: $($cargo.hierarchyLevel)" }
+    "nome e nivel corrigidos"
+}
+
+Test-Case "48. ⚠ Corrigir um cargo NUNCA lhe muda a autoridade de aprovacao (BR-20)" {
+    # O caso central do ADR-063. Se a marca fosse editavel, liga-la num cargo ja
+    # atribuido daria autoridade a toda a gente que o ocupa -- sem que nenhuma
+    # dessas atribuicoes passasse pela aprovacao que a regra exige.
+    $antes = @(Invoke-RestMethod "$base/hr/positions" -Headers $hrHeaders) | Where-Object { $_.positionId -eq $script:authorityPositionId }
+    if (-not $antes.grantsApprovalAuthority) { throw "o cargo de referencia devia conferir autoridade" }
+
+    # O corpo traz a marca a falso de proposito: o servidor nao a le.
+    Invoke-RestMethod "$base/hr/positions/$($script:authorityPositionId)" -Method Put -ContentType "application/json" `
+        -Headers $adminHeaders `
+        -Body (@{ name = "Director Financeiro $stamp"; hierarchyLevel = 1; grantsApprovalAuthority = $false } | ConvertTo-Json) | Out-Null
+
+    $depois = @(Invoke-RestMethod "$base/hr/positions" -Headers $hrHeaders) | Where-Object { $_.positionId -eq $script:authorityPositionId }
+    if ($depois.name -ne "Director Financeiro $stamp") { throw "o nome nao mudou" }
+    if (-not $depois.grantsApprovalAuthority) { throw "A MARCA DE AUTORIDADE FOI DESLIGADA PELA CORRECCAO -- BR-20 contornado" }
+
+    "nome corrigido; a marca de autoridade ignorou o corpo do pedido"
+}
+
+Test-Case "49. Perfil HR nao corrige o catalogo de cargos (ADR-015)" {
+    # Mesma permissao que criar, e continua fora do perfil HR: quem mexe no
+    # catalogo mexe, indirectamente, na cadeia de autoridade.
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/hr/positions/$($script:plainPositionId)" -Method Put -ContentType "application/json" `
+            -Headers $hrHeaders -Body (@{ name = "Nao Deve Passar"; hierarchyLevel = 9 } | ConvertTo-Json)
+    }
+    if ($code -ne 403) { throw "esperado 403, obtido $code" }
+    "403 sem hr.positions.write"
+}
+
+Test-Case "50. Corrigir sem autenticacao -> 401 nas tres rotas" {
+    foreach ($rota in @(
+            "employees/$($script:employeeId)",
+            "departments/$($script:deptId)",
+            "positions/$($script:plainPositionId)")) {
+        $code = Get-StatusCode {
+            Invoke-RestMethod "$base/hr/$rota" -Method Put -ContentType "application/json" -Body (@{ name = "x"; fullName = "x"; hierarchyLevel = 1 } | ConvertTo-Json)
+        }
+        if ($code -ne 401) { throw "/hr/$rota devolveu $code, esperado 401" }
+    }
+    "401 nas tres"
+}
+
+Test-Case "51. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
