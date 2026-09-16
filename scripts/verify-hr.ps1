@@ -612,7 +612,7 @@ Test-Case "40. Corrigir o nome de um colaborador, com o anterior na trilha" {
 
     # O valor anterior e o que torna a correccao auditavel: sem ele, fica a
     # saber-se que algo mudou e nao o que dizia antes.
-    $registo = Invoke-Sql "select top 1 old_value from audit.audit_event where action='hr.employee.corrected' and entity_id='$($script:employeeId)' order by occurred_at desc"
+    $registo = Invoke-Sql "select top 1 previous_value from audit.audit_event where action='hr.employee.corrected' and entity_id='$($script:employeeId)' order by occurred_at desc"
     if ($registo -notmatch [regex]::Escape($antes)) { throw "a trilha nao guardou o nome anterior: '$registo'" }
 
     "'$antes' -> 'Ana Teste Corrigida', com o anterior na trilha"
@@ -654,7 +654,7 @@ Test-Case "43. Transferir de departamento e acto proprio, com accao propria na t
     $n = Invoke-Sql "select count(*) from audit.audit_event where action='hr.employee.transferred' and entity_id='$($script:employeeId)'"
     if ($n -ne "1") { throw "$n registos de transferencia, esperado 1" }
 
-    $anterior = Invoke-Sql "select top 1 old_value from audit.audit_event where action='hr.employee.transferred' and entity_id='$($script:employeeId)' order by occurred_at desc"
+    $anterior = Invoke-Sql "select top 1 previous_value from audit.audit_event where action='hr.employee.transferred' and entity_id='$($script:employeeId)' order by occurred_at desc"
     if ($anterior -notmatch [regex]::Escape($script:deptId)) { throw "a trilha nao guardou o departamento anterior: '$anterior'" }
 
     "transferido, com o departamento anterior registado"
@@ -673,9 +673,15 @@ Test-Case "45. Corrigir um departamento: nome e responsavel" {
     Invoke-RestMethod "$base/hr/departments/$($script:deptId)" -Method Put -ContentType "application/json" `
         -Headers $hrHeaders -Body (@{ name = "Operacoes Corrigidas $stamp"; managerId = $script:employeeId } | ConvertTo-Json) | Out-Null
 
-    $dep = @(Invoke-RestMethod "$base/hr/departments" -Headers $hrHeaders) | Where-Object { $_.departmentId -eq $script:deptId }
-    if ($dep.name -ne "Operacoes Corrigidas $stamp") { throw "o nome nao mudou: '$($dep.name)'" }
-    if ($dep.managerId -ne $script:employeeId) { throw "o responsavel nao ficou: '$($dep.managerId)'" }
+    # Pela base, e nao filtrando a listagem: ver a nota do caso 14 -- com mais de
+    # um registo, `Where-Object` sobre a resposta de `Invoke-RestMethod` deixa
+    # passar a lista inteira, e `$dep.name` devolve todos os nomes de uma vez.
+    # Foi exactamente nisto que estes casos tropecaram na primeira corrida.
+    $nome = Invoke-Sql "select name from hr.department where id='$($script:deptId)'"
+    if ($nome -ne "Operacoes Corrigidas $stamp") { throw "o nome nao mudou: '$nome'" }
+
+    $gestor = Invoke-Sql "select cast(manager_id as varchar(36)) from hr.department where id='$($script:deptId)'"
+    if ($gestor -ne $script:employeeId) { throw "o responsavel nao ficou: '$gestor'" }
     "nome e responsavel corrigidos"
 }
 
@@ -692,9 +698,11 @@ Test-Case "47. Corrigir um cargo: nome e nivel" {
     Invoke-RestMethod "$base/hr/positions/$($script:plainPositionId)" -Method Put -ContentType "application/json" `
         -Headers $adminHeaders -Body (@{ name = "Tecnico Senior $stamp"; hierarchyLevel = 4 } | ConvertTo-Json) | Out-Null
 
-    $cargo = @(Invoke-RestMethod "$base/hr/positions" -Headers $hrHeaders) | Where-Object { $_.positionId -eq $script:plainPositionId }
-    if ($cargo.name -ne "Tecnico Senior $stamp") { throw "o nome nao mudou: '$($cargo.name)'" }
-    if ($cargo.hierarchyLevel -ne 4) { throw "o nivel nao mudou: $($cargo.hierarchyLevel)" }
+    $nome = Invoke-Sql "select name from hr.position where id='$($script:plainPositionId)'"
+    if ($nome -ne "Tecnico Senior $stamp") { throw "o nome nao mudou: '$nome'" }
+
+    $nivel = Invoke-Sql "select hierarchy_level from hr.position where id='$($script:plainPositionId)'"
+    if ($nivel -ne "4") { throw "o nivel nao mudou: $nivel" }
     "nome e nivel corrigidos"
 }
 
@@ -702,17 +710,19 @@ Test-Case "48. ⚠ Corrigir um cargo NUNCA lhe muda a autoridade de aprovacao (B
     # O caso central do ADR-063. Se a marca fosse editavel, liga-la num cargo ja
     # atribuido daria autoridade a toda a gente que o ocupa -- sem que nenhuma
     # dessas atribuicoes passasse pela aprovacao que a regra exige.
-    $antes = @(Invoke-RestMethod "$base/hr/positions" -Headers $hrHeaders) | Where-Object { $_.positionId -eq $script:authorityPositionId }
-    if (-not $antes.grantsApprovalAuthority) { throw "o cargo de referencia devia conferir autoridade" }
+    $antes = Invoke-Sql "select cast(grants_approval_authority as int) from hr.position where id='$($script:authorityPositionId)'"
+    if ($antes -ne "1") { throw "o cargo de referencia devia conferir autoridade (obtido '$antes')" }
 
     # O corpo traz a marca a falso de proposito: o servidor nao a le.
     Invoke-RestMethod "$base/hr/positions/$($script:authorityPositionId)" -Method Put -ContentType "application/json" `
         -Headers $adminHeaders `
         -Body (@{ name = "Director Financeiro $stamp"; hierarchyLevel = 1; grantsApprovalAuthority = $false } | ConvertTo-Json) | Out-Null
 
-    $depois = @(Invoke-RestMethod "$base/hr/positions" -Headers $hrHeaders) | Where-Object { $_.positionId -eq $script:authorityPositionId }
-    if ($depois.name -ne "Director Financeiro $stamp") { throw "o nome nao mudou" }
-    if (-not $depois.grantsApprovalAuthority) { throw "A MARCA DE AUTORIDADE FOI DESLIGADA PELA CORRECCAO -- BR-20 contornado" }
+    $nomeDepois = Invoke-Sql "select name from hr.position where id='$($script:authorityPositionId)'"
+    if ($nomeDepois -ne "Director Financeiro $stamp") { throw "o nome nao mudou: '$nomeDepois'" }
+
+    $marca = Invoke-Sql "select cast(grants_approval_authority as int) from hr.position where id='$($script:authorityPositionId)'"
+    if ($marca -ne "1") { throw "A MARCA DE AUTORIDADE FOI DESLIGADA PELA CORRECCAO -- BR-20 contornado" }
 
     "nome corrigido; a marca de autoridade ignorou o corpo do pedido"
 }
