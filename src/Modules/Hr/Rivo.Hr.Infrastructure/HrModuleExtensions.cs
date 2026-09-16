@@ -31,6 +31,10 @@ public static class HrModuleExtensions
         services.AddScoped<IHrStore, HrStore>();
         services.AddScoped<IEmployeeDirectory, EmployeeDirectory>();
 
+        // O que o Portal do Colaborador lê sobre o próprio (ADR-062). Contrato
+        // à parte do directório, porque a audiência é outra.
+        services.AddScoped<IEmployeeSelfService, EmployeeSelfService>();
+
         services.AddScoped<ListEmployees>();
         services.AddScoped<HireEmployee>();
         services.AddScoped<LinkEmployeeAccount>();

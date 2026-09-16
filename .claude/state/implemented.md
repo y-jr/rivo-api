@@ -1952,11 +1952,11 @@ Detalhe da decisão arquitectural em
 ## employee-portal (camada de composição — Fase 8, não módulo)
 
 **⚠ Não é um dos catorze módulos.** Segunda camada de composição, mesmo dia
-de `settings`. Portal do Colaborador, do documento de produto — só a parte
-de "o próprio" está feita; recibos, férias, assiduidade e o resto de
-`docs/rivo-suite-descricao-modulos.md` §11 continuam por fazer, cada um
-como incremento sobre este mecanismo. Vive em
-`src/Composition/EmployeePortal/`.
+de `settings`. Portal do Colaborador, do documento de produto. Vive em
+`src/Composition/EmployeePortal/`. **Perfil, assiduidade, férias, documentos
+e recibos estão feitos** (ADR-042 e ADR-062); o resto de
+`docs/rivo-suite-descricao-modulos.md` §11 — em especial **escrever** pelo
+portal, pedir férias ou justificar uma falta — continua por fazer.
 
 **2026-08-31 — `GET /portal/me`, decisão do utilizador (ADR-042).**
 "Próprio" resolve-se pelo vínculo Identity → Employee, **nunca por
@@ -2007,6 +2007,87 @@ confirmado por SQL), confirmado sem regressão.
 
 Detalhe da decisão em
 [decisions/adr-042](../decisions/adr-042-portal-colaborador-proprio.md).
+
+**2026-09-16 — as quatro leituras do próprio, decisão do utilizador
+(ADR-062).** Perguntado se as fazia antes ou depois do lançamento, respondeu
+**antes**. O ADR-061 tinha dado o perfil `Colaborador` na véspera, e o portal
+continuava a responder 404 a tudo o que não fosse o perfil:
+
+```
+GET /portal/me/attendance?from=&to=
+GET /portal/me/leave
+GET /portal/me/documents
+GET /portal/me/payslips
+```
+
+- **`hr` publica `IEmployeeSelfService`** (assiduidade, férias, documentos) e
+  **`payroll` publica `IPayrollSelfService`** (recibos). Recebem um
+  `employeeId` **já resolvido** e reutilizam os casos de uso administrativos
+  — `ListAttendance`, `ListLeave`, `ListEmployeeDocuments` —, sem consultas
+  paralelas que ficassem para trás.
+- **Nenhuma permissão nova, em nenhum dos dois módulos.** A autorização é o
+  vínculo, como em `/portal/me`, e `Colaborador` continua vazio.
+- **`GetMyRecords` não aceita `employeeId` em método nenhum.** A defesa é
+  estrutural em vez de vigiada: não há parâmetro por onde pedir a assiduidade
+  de outra pessoa. `NotLinked` decide **antes de ler** — o módulo não é
+  chamado —, e traduz-se em 403 e não 404.
+- **Assiduidade tem janela com omissão:** `from`/`to` omitidos são o mês
+  corrente, para o portal não puxar o histórico inteiro ao abrir.
+- **Só folhas aprovadas dão recibo**, e o filtro
+  (`ListApprovedItemsForEmployeeAsync`, novo em `IPayrollRunStore`) vive na
+  consulta e não em quem chama: um item em rascunho é um número por
+  confirmar. Os documentos dos itens vêm **em lote**
+  (`ListDocumentsForItemsAsync`), e o mais recente de cada item é o que conta
+  — um recibo reemitido substitui o anterior.
+- **Documentos são metadados, nunca conteúdo.** Descarregar continua a ser de
+  `documents`, com a sua própria permissão.
+
+`ProjectReferenceTests` passou a `["EmployeePortal"] = ["Hr", "Payroll"]` —
+duas dependências, ambas só por contrato publicado (`documents` não aparece,
+porque `hr` já compõe os ficheiros antes de devolver).
+
+**Nasceu `Rivo.Payroll.Application.Tests`**, que não existia — o módulo tinha
+testes de domínio e nenhum de aplicação: 6 casos sobre `PayrollSelfService`,
+incluindo o do recibo reemitido e o de o documento de um item não se colar a
+outro. `Rivo.EmployeePortal.Application.Tests` passou de 4 para 12, todos
+sobre a mesma propriedade: que o identificador que chega ao módulo é o do
+colaborador **ligado**, nunca o da conta.
+
+`verify-employee-portal.ps1` passou de 8 casos a 19, montados pelas rotas
+reais — RH marca a assiduidade, cria as férias, anexa o documento, abre a
+folha e leva-a pela governança toda (política, submissão, decisão em
+`approval`, aplicação em `payroll`). O caso 15 prova que uma folha em
+rascunho **não** aparece ao próprio e o 16 que aparece depois de aprovada; o
+caso 18 monta um **segundo** colaborador com dados seus e verifica que
+nenhuma das quatro leituras cruza os dois, com o perfil `Colaborador` vazio a
+chegar para as quatro. A suite passou a convidar com `Colaborador` onde usava
+`Cliente`.
+
+**A primeira corrida de CI apanhou três coisas que 1 273 testes não podiam.**
+A consulta dos recibos **não traduzia para SQL** — projectava
+`ApprovedPayrollItem` e ordenava pelas propriedades da projecção —, e a rota
+respondia **500 a qualquer colaborador com folha aprovada**; os testes de
+aplicação passavam porque o duplo da persistência não é EF. Dois casos da suite
+acusaram fugas de dados inexistentes por causa de `@($null).Count -eq 1` em
+PowerShell (`Invoke-RestMethod` sobre `[]` devolve `$null`), resolvido com
+`Get-RivoLista` em `_ambiente.ps1`. E descobriu-se que **`POST /hr/leave` nunca
+tinha sido exercitado por suite nenhuma**: o primeiro pedido de férias do
+projecto foi feito aqui, e recusou com 409 por falta de política de aprovação
+para `hr.leave_request` — configuração, não defeito, mas semanas sem
+verificação.
+
+A segunda volta mostrou outra: a suite **herdou as dependências do que o portal
+compõe**. Acrescentar um item à folha manda `payroll` pedir a `fiscal` o INSS e o
+IRT em vigor, e na CI as taxas só são configuradas por `verify-fiscal` — que
+corria depois. `verify-employee-portal` saiu do 5.º lugar para depois de
+`verify-fiscal`, e ganhou um caso final que desactiva as políticas que cria,
+porque `verify-payroll` corre a seguir e conta que não haja nenhuma.
+
+Suite confirmada **20/20 contra a stack local**, e `verify-payroll` a seguir sem
+regressão (só o caso 25, que é o K20 conhecido).
+
+Detalhe da decisão em
+[decisions/adr-062](../decisions/adr-062-leituras-do-proprio-no-portal.md).
 
 ## dashboard (camada de composição — Fase 8, não módulo)
 

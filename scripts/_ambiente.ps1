@@ -342,6 +342,48 @@ Está em `appsettings.Development.json` e no compose.
 .OUTPUTS
 O `userId` da conta criada.
 #>
+<#
+.SYNOPSIS
+Lê uma rota que devolve uma lista, e devolve sempre um array.
+
+.DESCRIPTION
+Existe por causa de uma armadilha do PowerShell que custou uma corrida de CI
+inteira a 2026-09-16, com **dois** casos a acusar dados de outra pessoa que não
+existiam:
+
+    "[]" | ConvertFrom-Json   ->  $null
+    @($null).Count            ->  1     # e nao 0
+
+`Invoke-RestMethod` sobre um corpo `[]` devolve `$null`, e o `@(...)` que
+normalmente garante um array transforma esse `$null` num array **de um
+elemento**. Quem escreveu `if ($lista.Count -ne 0) { throw ... }` está a testar
+o oposto do que quer: a lista vazia falha, e a lista com um elemento passa.
+
+Nenhuma suite tinha reparado porque nenhuma verificava uma lista **vazia** por
+este caminho -- verificavam contagens positivas, onde o defeito não se nota.
+
+.EXAMPLE
+    $recibos = Get-RivoLista "$base/portal/me/payslips" -Headers $ownHeaders
+    if ($recibos.Count -ne 0) { throw "esperado vazio" }
+#>
+function Get-RivoLista {
+    param(
+        [Parameter(Mandatory)][string]$Uri,
+        [hashtable]$Headers
+    )
+
+    $resposta = if ($Headers) {
+        Invoke-RestMethod $Uri -Headers $Headers
+    }
+    else {
+        Invoke-RestMethod $Uri
+    }
+
+    if ($null -eq $resposta) { return @() }
+
+    return @($resposta)
+}
+
 function New-RivoConta {
     param(
         [Parameter(Mandatory)][string]$Email,

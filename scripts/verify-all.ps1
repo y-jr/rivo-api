@@ -22,14 +22,20 @@ $suites = @(
     "verify-audit",
     "verify-hr",
 
-    # Camada de composicao (ADR-041/ADR-042), nao modulo -- so precisa de
-    # `identity` e `hr` de pe. Cria o seu proprio colaborador isolado
-    # ($stamp), por isso nao depende de estado deixado por `verify-hr`.
-    "verify-employee-portal",
-
     "verify-documents",
     "verify-notifications",
     "verify-fiscal",
+
+    # Camada de composicao (ADR-041/ADR-042), nao modulo. Cria o seu proprio
+    # colaborador isolado ($stamp), por isso nao depende de estado deixado por
+    # outra suite -- mas **depende de `fiscal` estar configurado**, e por isso
+    # corre a seguir a `verify-fiscal` e nao antes.
+    #
+    # Corria em 5.º lugar ate 2026-09-16, quando o ADR-062 lhe deu os recibos:
+    # acrescentar um item a folha manda `payroll` pedir a `fiscal` o INSS e o
+    # IRT em vigor, e sem taxa configurada isso recusa com 400. A suite passou a
+    # herdar as dependencias do que compoe -- que e o preco de compor.
+    "verify-employee-portal",
     "verify-commercial",
     "verify-finance",
     "verify-payables",
