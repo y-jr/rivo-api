@@ -131,6 +131,41 @@ para o conteúdo.
 - **A suite do portal passou a convidar com `Colaborador`** onde usava `Cliente`,
   que era o mais estreito antes do ADR-061 existir.
 
+## O que a primeira corrida de CI encontrou
+
+Seis casos falharam na primeira volta, e vale registar o que cada um era —
+porque nenhum dos três defeitos reais era visível nos 1 273 testes.
+
+**Um defeito de produção: a consulta dos recibos não traduzia para SQL.**
+`ListApprovedItemsForEmployeeAsync` projectava `ApprovedPayrollItem` e depois
+pedia ao SQL Server que ordenasse pelas propriedades desse registo. O EF não
+traduz isso, e a rota respondia **500 a qualquer colaborador com uma folha
+aprovada** — exactamente o caso que o portal existe para servir. Os seis testes
+de `PayrollSelfService` passavam, porque o duplo da persistência não é EF.
+Corrigido ordenando por `r.Year`/`r.Month` antes de projectar.
+
+**Uma armadilha do PowerShell que inventou fugas de dados.** Dois casos
+acusaram o colaborador de ver dados de colegas que não existiam:
+
+```
+"[]" | ConvertFrom-Json   ->  $null
+@($null).Count            ->  1     # e não 0
+```
+
+`Invoke-RestMethod` sobre `[]` devolve `$null`, e o `@(...)` que costuma garantir
+um array transforma-o num array de **um** elemento. `if ($lista.Count -ne 0) {
+throw }` testava o contrário do pretendido. Nenhuma das 22 suites tinha tropeçado
+nisto porque nenhuma verificava uma lista **vazia** por este caminho. Resolvido
+com `Get-RivoLista` em `_ambiente.ps1`, documentado onde vive.
+
+**E uma lacuna de cobertura descoberta por acidente: `POST /hr/leave` nunca
+tinha sido exercitado por suite nenhuma.** O primeiro pedido de férias da
+história do projecto foi feito por esta suite — e recusou com 409, porque pedir
+férias cria e submete o processo no mesmo acto, e não havia política de aprovação
+para `hr.leave_request`. Não é defeito: é configuração, e o próprio servidor o
+diz. Mas significa que o fluxo de férias esteve semanas sem uma única
+verificação.
+
 ## Risks
 
 - **O parâmetro ausente é uma convenção, não uma regra verificada.** Nada impede

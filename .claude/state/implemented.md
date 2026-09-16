@@ -2063,6 +2063,21 @@ nenhuma das quatro leituras cruza os dois, com o perfil `Colaborador` vazio a
 chegar para as quatro. A suite passou a convidar com `Colaborador` onde usava
 `Cliente`.
 
+**A primeira corrida de CI apanhou três coisas que 1 273 testes não podiam.**
+A consulta dos recibos **não traduzia para SQL** — projectava
+`ApprovedPayrollItem` e ordenava pelas propriedades da projecção —, e a rota
+respondia **500 a qualquer colaborador com folha aprovada**; os testes de
+aplicação passavam porque o duplo da persistência não é EF. Dois casos da suite
+acusaram fugas de dados inexistentes por causa de `@($null).Count -eq 1` em
+PowerShell (`Invoke-RestMethod` sobre `[]` devolve `$null`), resolvido com
+`Get-RivoLista` em `_ambiente.ps1`. E descobriu-se que **`POST /hr/leave` nunca
+tinha sido exercitado por suite nenhuma**: o primeiro pedido de férias do
+projecto foi feito aqui, e recusou com 409 por falta de política de aprovação
+para `hr.leave_request` — configuração, não defeito, mas semanas sem
+verificação.
+
+Suite confirmada **19/19 contra a stack local** depois das correcções.
+
 Detalhe da decisão em
 [decisions/adr-062](../decisions/adr-062-leituras-do-proprio-no-portal.md).
 

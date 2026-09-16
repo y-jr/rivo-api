@@ -44,9 +44,32 @@ function Get-Token {
 $adminHeaders = @{ Authorization = "Bearer " + (Get-Token $dotenv["BOOTSTRAP_ADMIN_EMAIL"] $dotenv["BOOTSTRAP_ADMIN_PASSWORD"]) }
 
 # Utilizador com perfil HR, para admitir o colaborador desta suite.
+#
+# **Colaborador com conta, e nao so uma conta**: desde os casos dos recibos, esta
+# e a conta que abre a folha salarial -- e `payroll` recusa quem nao esteja ligado
+# a um colaborador, porque quem abre a folha e o requerente do processo de
+# aprovacao (ADR-050). Com uma conta sem vinculo, o POST /payroll/runs devolvia
+# 400: "so um colaborador abre folhas".
 $hrEmail = "portal-rh-$stamp@rivo.ao"
-New-RivoConta -Email $hrEmail -Password $pass -AdminHeaders $adminHeaders -Perfil "HR" | Out-Null
-$hrHeaders = @{ Authorization = "Bearer " + (Get-Token $hrEmail $pass) }
+$hrConta = New-RivoColaboradorComConta -Email $hrEmail -Nome "RH Portal $stamp" `
+    -AdminHeaders $adminHeaders -Perfil "HR" -Password $pass
+$hrHeaders = $hrConta.Headers
+
+# Quem decide, para os dois processos que esta suite atravessa: o pedido de
+# ferias (caso 13) e a folha salarial (caso 16). Desde o ADR-050 quem decide
+# resolve-se do token, e por isso tem de ser uma conta ligada a um colaborador.
+$aprovadorConta = New-RivoColaboradorComConta -Email "portal-apr-$stamp@rivo.ao" `
+    -Nome "Aprovador Portal $stamp" -AdminHeaders $adminHeaders -Perfil "Admin"
+
+# Cargo sem autoridade de aprovacao (BR-20): o que a confere passaria ele proprio
+# por governanca, e nao e isso que se verifica aqui.
+$cargoAprovador = (Invoke-RestMethod "$base/hr/positions" -Method Post -ContentType "application/json" `
+        -Headers $adminHeaders `
+        -Body (@{ name = "Aprovador Portal $stamp"; hierarchyLevel = 2; grantsApprovalAuthority = $false } | ConvertTo-Json)).positionId
+
+Invoke-RestMethod "$base/hr/employees/$($aprovadorConta.EmployeeId)/positions" -Method Post `
+    -ContentType "application/json" -Headers $adminHeaders `
+    -Body (@{ positionId = $cargoAprovador } | ConvertTo-Json) | Out-Null
 
 Write-Host "`n=== Camada de composicao employee-portal ===`n"
 
@@ -166,7 +189,7 @@ Test-Case "10. Assiduidade marcada por RH aparece na leitura do proprio" {
         -Body (@{ employeeId = $script:ownEmployeeId; day = $script:hojeIso } | ConvertTo-Json) | Out-Null
 
     $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
-    $registos = @(Invoke-RestMethod "$base/portal/me/attendance" -Headers $ownHeaders)
+    $registos = Get-RivoLista "$base/portal/me/attendance" -Headers $ownHeaders
 
     if ($registos.Count -lt 1) { throw "nenhum registo, esperado o de hoje" }
     $doDia = $registos | Where-Object { $_.day -eq $script:hojeIso }
@@ -177,7 +200,7 @@ Test-Case "10. Assiduidade marcada por RH aparece na leitura do proprio" {
 
 Test-Case "11. Sem from/to, a janela por omissao e o mes corrente" {
     $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
-    $registos = @(Invoke-RestMethod "$base/portal/me/attendance" -Headers $ownHeaders)
+    $registos = Get-RivoLista "$base/portal/me/attendance" -Headers $ownHeaders
 
     $primeiroDoMes = (Get-Date -Year $script:hoje.Year -Month $script:hoje.Month -Day 1).ToString("yyyy-MM-dd")
     foreach ($r in $registos) {
@@ -189,8 +212,13 @@ Test-Case "11. Sem from/to, a janela por omissao e o mes corrente" {
 
 Test-Case "12. A janela pedida e respeitada -- um mes sem registos vem vazio" {
     $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
-    $registos = @(Invoke-RestMethod "$base/portal/me/attendance?from=2020-01-01&to=2020-01-31" -Headers $ownHeaders)
-    if ($registos.Count -ne 0) { throw "esperado vazio em Janeiro de 2020, obtido $($registos.Count)" }
+    $registos = Get-RivoLista "$base/portal/me/attendance?from=2020-01-01&to=2020-01-31" -Headers $ownHeaders
+    # A mensagem nomeia os dias: "obtido 1" sozinho nao distingue um registo
+    # verdadeiro de uma lista vazia mal contada, e foi exactamente essa a duvida
+    # que custou uma corrida de CI a 2026-09-16.
+    if ($registos.Count -ne 0) {
+        throw "esperado vazio em Janeiro de 2020, obtido $($registos.Count): $($registos.day -join ', ')"
+    }
 
     # Janela invertida e 400, e nao uma lista vazia: sem esta recusa, o ecra
     # leria a resposta como "nao tem marcacoes".
@@ -201,6 +229,16 @@ Test-Case "12. A janela pedida e respeitada -- um mes sem registos vem vazio" {
 }
 
 Test-Case "13. Pedido de ferias criado por RH aparece na leitura do proprio" {
+    # **Ninguem pede ferias sem politica de aprovacao.** `POST /hr/leave` cria o
+    # pedido e submete-o no mesmo acto; sem politica para `hr.leave_request`, a
+    # submissao recusa com 409 -- "e configuracao em falta, nao um problema do
+    # pedido", como o proprio servidor diz. Esta suite foi a primeira a exercitar
+    # a rota, e foi assim que se descobriu que nenhuma outra a tocava.
+    Clear-RivoApprovalPolicies -ProcessType "hr.leave_request" -Headers $adminHeaders
+    Invoke-RestMethod "$base/approval/policies" -Method Post -ContentType "application/json" `
+        -Headers $adminHeaders `
+        -Body (@{ processType = "hr.leave_request"; steps = @(@{ approverPositionId = $cargoAprovador }) } | ConvertTo-Json -Depth 5) | Out-Null
+
     $inicio = $script:hoje.AddDays(30)
     $fim = $inicio.AddDays(4)
     Invoke-RestMethod "$base/hr/leave" -Method Post -ContentType "application/json" -Headers $hrHeaders `
@@ -213,12 +251,17 @@ Test-Case "13. Pedido de ferias criado por RH aparece na leitura do proprio" {
         } | ConvertTo-Json) | Out-Null
 
     $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
-    $pedidos = @(Invoke-RestMethod "$base/portal/me/leave" -Headers $ownHeaders)
+    $pedidos = Get-RivoLista "$base/portal/me/leave" -Headers $ownHeaders
 
     $meu = $pedidos | Where-Object { $_.startsOn -eq $inicio.ToString("yyyy-MM-dd") }
     if (-not $meu) { throw "o pedido nao aparece: $($pedidos.Count) pedido(s)" }
     if ($meu.calendarDays -ne 5) { throw "dias de calendario esperados 5, obtido $($meu.calendarDays)" }
-    "1 pedido, 5 dias de calendario, estado '$($meu.status)'"
+
+    # O processo em `approval` chega ao portal: e o que permite ao ecra dizer
+    # "pendente de decisao" em vez de inventar um estado seu.
+    if (-not $meu.approvalRequestId) { throw "o pedido chegou sem approvalRequestId" }
+
+    "1 pedido, 5 dias de calendario, estado '$($meu.status)', com processo de aprovacao"
 }
 
 Test-Case "14. Documento anexado ao colaborador aparece, com metadados e sem conteudo" {
@@ -235,7 +278,7 @@ Test-Case "14. Documento anexado ao colaborador aparece, com metadados e sem con
         -Headers $hrHeaders -Body (@{ documentId = $documentId; category = "contrato" } | ConvertTo-Json) | Out-Null
 
     $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
-    $docs = @(Invoke-RestMethod "$base/portal/me/documents" -Headers $ownHeaders)
+    $docs = Get-RivoLista "$base/portal/me/documents" -Headers $ownHeaders
 
     $meu = $docs | Where-Object { $_.documentId -eq $documentId }
     if (-not $meu) { throw "o documento nao aparece na leitura do proprio" }
@@ -264,25 +307,18 @@ Test-Case "15. Folha em rascunho com item do proprio -- os recibos vem vazios" {
     if (-not $script:itemPortal) { throw "o item nao foi criado" }
 
     $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
-    $recibos = @(Invoke-RestMethod "$base/portal/me/payslips" -Headers $ownHeaders)
+    $recibos = Get-RivoLista "$base/portal/me/payslips" -Headers $ownHeaders
     if ($recibos.Count -ne 0) { throw "uma folha em rascunho apareceu ao proprio: $($recibos.Count) recibo(s)" }
     "folha Draft com item de 450000 -- e nada no portal"
 }
 
 Test-Case "16. Depois de aprovada, o recibo aparece com ano, mes e valores" {
-    # Fluxo real de governanca: cargo, aprovador com conta, politica, submissao,
-    # decisao em `approval`, e `payroll` a aplicar quando pergunta (ADR-050).
-    $aprovadorConta = New-RivoColaboradorComConta -Email "apr-portal-$stamp@rivo.ao" `
-        -Nome "Aprovador Portal $stamp" -AdminHeaders $adminHeaders -Perfil "Admin"
-    $cargoApr = (Invoke-RestMethod "$base/hr/positions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-            -Body (@{ name = "Aprovador Portal $stamp"; hierarchyLevel = 2; grantsApprovalAuthority = $false } | ConvertTo-Json)).positionId
-    Invoke-RestMethod "$base/hr/employees/$($aprovadorConta.EmployeeId)/positions" -Method Post `
-        -ContentType "application/json" -Headers $adminHeaders `
-        -Body (@{ positionId = $cargoApr } | ConvertTo-Json) | Out-Null
-
+    # Fluxo real de governanca, com o aprovador e o cargo do preambulo: politica,
+    # submissao, decisao em `approval`, e `payroll` a aplicar quando pergunta
+    # (ADR-050 -- quem decide resolve-se do token, nunca do corpo do pedido).
     Clear-RivoApprovalPolicies -ProcessType "payroll.payroll_run" -Headers $adminHeaders
     Invoke-RestMethod "$base/approval/policies" -Method Post -ContentType "application/json" -Headers $adminHeaders `
-        -Body (@{ processType = "payroll.payroll_run"; steps = @(@{ approverPositionId = $cargoApr }) } | ConvertTo-Json -Depth 5) | Out-Null
+        -Body (@{ processType = "payroll.payroll_run"; steps = @(@{ approverPositionId = $cargoAprovador }) } | ConvertTo-Json -Depth 5) | Out-Null
 
     $processo = (Invoke-RestMethod "$base/payroll/runs/$($script:runPortal)/submission" -Method Post -Headers $hrHeaders).approvalRequestId
     Invoke-RestMethod "$base/approval/requests/$processo/decisions" -Method Post -ContentType "application/json" `
@@ -291,7 +327,7 @@ Test-Case "16. Depois de aprovada, o recibo aparece com ano, mes e valores" {
     if ($folha.status -ne "Approved") { throw "a folha ficou em '$($folha.status)'" }
 
     $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
-    $recibos = @(Invoke-RestMethod "$base/portal/me/payslips" -Headers $ownHeaders)
+    $recibos = Get-RivoLista "$base/portal/me/payslips" -Headers $ownHeaders
     $meu = $recibos | Where-Object { $_.itemId -eq $script:itemPortal }
     if (-not $meu) { throw "o recibo aprovado nao aparece: $($recibos.Count) recibo(s)" }
     if ($meu.year -ne $script:hoje.Year -or $meu.month -ne $script:hoje.Month) { throw "periodo errado: $($meu.year)-$($meu.month)" }
@@ -315,7 +351,7 @@ Test-Case "17. Anexado o recibo, o documentId aparece no do proprio" {
         -Body (@{ documentId = $documentId; category = "recibo" } | ConvertTo-Json) | Out-Null
 
     $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
-    $recibos = @(Invoke-RestMethod "$base/portal/me/payslips" -Headers $ownHeaders)
+    $recibos = Get-RivoLista "$base/portal/me/payslips" -Headers $ownHeaders
     $meu = $recibos | Where-Object { $_.itemId -eq $script:itemPortal }
     if ($meu.documentId -ne $documentId) { throw "documentId '$($meu.documentId)' nao e o anexado '$documentId'" }
     "documentId=$documentId no recibo do proprio"
@@ -330,13 +366,13 @@ Test-Case "18. Cada colaborador ve so o seu -- o do colega nao aparece em nenhum
     Invoke-RestMethod "$base/hr/attendance/clock" -Method Post -ContentType "application/json" -Headers $hrHeaders `
         -Body (@{ employeeId = $colega.EmployeeId; day = $script:hojeIso } | ConvertTo-Json) | Out-Null
 
-    $registosColega = @(Invoke-RestMethod "$base/portal/me/attendance" -Headers $colega.Headers)
+    $registosColega = Get-RivoLista "$base/portal/me/attendance" -Headers $colega.Headers
     if ($registosColega.Count -ne 1) { throw "o colega devia ver 1 registo seu, ve $($registosColega.Count)" }
 
     # As ferias, os documentos e os recibos do primeiro nao lhe chegam.
-    if (@(Invoke-RestMethod "$base/portal/me/leave" -Headers $colega.Headers).Count -ne 0) { throw "o colega ve ferias que nao sao dele" }
-    if (@(Invoke-RestMethod "$base/portal/me/documents" -Headers $colega.Headers).Count -ne 0) { throw "o colega ve documentos que nao sao dele" }
-    if (@(Invoke-RestMethod "$base/portal/me/payslips" -Headers $colega.Headers).Count -ne 0) { throw "o colega ve recibos que nao sao dele" }
+    if ((Get-RivoLista "$base/portal/me/leave" -Headers $colega.Headers).Count -ne 0) { throw "o colega ve ferias que nao sao dele" }
+    if ((Get-RivoLista "$base/portal/me/documents" -Headers $colega.Headers).Count -ne 0) { throw "o colega ve documentos que nao sao dele" }
+    if ((Get-RivoLista "$base/portal/me/payslips" -Headers $colega.Headers).Count -ne 0) { throw "o colega ve recibos que nao sao dele" }
 
     # E o perfil Colaborador, sem permissao nenhuma, chega para o portal todo --
     # e a prova de que autoriza por vinculo (ADR-061).
@@ -344,7 +380,7 @@ Test-Case "18. Cada colaborador ve so o seu -- o do colega nao aparece em nenhum
     if ($perfilColega.employeeId -ne $colega.EmployeeId) { throw "o perfil do colega nao e o dele" }
 
     $ownHeaders = @{ Authorization = "Bearer " + (Get-Token $script:ownEmail $pass) }
-    if (@(Invoke-RestMethod "$base/portal/me/payslips" -Headers $ownHeaders).Count -lt 1) { throw "o primeiro deixou de ver o seu recibo" }
+    if ((Get-RivoLista "$base/portal/me/payslips" -Headers $ownHeaders).Count -lt 1) { throw "o primeiro deixou de ver o seu recibo" }
 
     "perfil Colaborador sem permissoes le as quatro, e so as suas"
 }

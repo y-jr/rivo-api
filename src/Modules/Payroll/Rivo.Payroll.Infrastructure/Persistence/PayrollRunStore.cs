@@ -39,17 +39,34 @@ public sealed class PayrollRunStore(PayrollDbContext context) : IPayrollRunStore
             .OrderByDescending(link => link.AttachedAt)
             .ToListAsync(cancellationToken);
 
+    /// <summary>
+    /// Itens aprovados do colaborador, do mais recente para o mais antigo.
+    ///
+    /// <para>
+    /// <strong>Ordena por <c>r.Year</c>/<c>r.Month</c> e não pela projecção.</strong>
+    /// A primeira versão projectava <c>ApprovedPayrollItem</c> antes de ordenar e
+    /// pedia ao SQL Server que ordenasse pelas propriedades desse registo — o EF
+    /// não traduz isso, e a rota respondia 500 a qualquer colaborador que tivesse
+    /// uma folha aprovada. Os testes de aplicação não o apanharam porque o duplo
+    /// da persistência não é EF: só a stack real o mostra.
+    /// </para>
+    /// </summary>
     public async Task<IReadOnlyList<ApprovedPayrollItem>> ListApprovedItemsForEmployeeAsync(
         Guid employeeId,
-        CancellationToken cancellationToken) =>
-        await context.Runs
+        CancellationToken cancellationToken)
+    {
+        var linhas = await context.Runs
             .AsNoTracking()
             .Where(r => r.Status == PayrollRunStatus.Approved)
             .SelectMany(
                 r => r.Items.Where(i => i.EmployeeId == employeeId),
-                (r, i) => new ApprovedPayrollItem(i, r.Year, r.Month))
-            .OrderByDescending(x => x.Year).ThenByDescending(x => x.Month)
+                (r, i) => new { Item = i, r.Year, r.Month })
+            .OrderByDescending(x => x.Year)
+            .ThenByDescending(x => x.Month)
             .ToListAsync(cancellationToken);
+
+        return [.. linhas.Select(l => new ApprovedPayrollItem(l.Item, l.Year, l.Month))];
+    }
 
     public async Task<IReadOnlyList<PayrollItemDocument>> ListDocumentsForItemsAsync(
         IReadOnlyList<Guid> payrollItemIds,
