@@ -20,7 +20,7 @@ namespace Rivo.Identity.Application.Authorization;
 
 /// <summary>
 /// Os sete Perfis de Acesso previstos no documento de produto, mais
-/// `Cliente` (ADR-043) e `SuperAdmin` (ADR-058).
+/// `Cliente` (ADR-043), `Colaborador` (ADR-061) e `SuperAdmin` (ADR-058).
 ///
 /// Perfil de Acesso responde a "o que este utilizador pode ver/fazer no
 /// sistema". <strong>Não confundir com Cargo</strong>, que é posição
@@ -64,6 +64,28 @@ public static class AccessProfiles
     /// esperaram pelos seus módulos.
     /// </summary>
     public const string Customer = "Cliente";
+
+    /// <summary>
+    /// Quem trabalha na empresa e não administra nada (ADR-061).
+    ///
+    /// <para>
+    /// <strong>É o perfil de toda a gente.</strong> Um programador, um
+    /// estagiário, um técnico — pessoas que precisam de ver a sua assiduidade,
+    /// os seus recibos e os seus documentos, e mais nada. Até 2026-09-16 não
+    /// existia: convidar um funcionário obrigava a dar-lhe um perfil de função
+    /// que não lhe pertence, ou <see cref="Customer"/>, que é a audiência
+    /// <em>externa</em> do Portal do Cliente.
+    /// </para>
+    ///
+    /// <para>
+    /// <strong>E é deliberadamente vazio.</strong> O Portal do Colaborador não
+    /// autoriza por permissão — autoriza por <em>vínculo</em>: quem vê é quem
+    /// está ligado àquele colaborador, e a ninguém mais (ADR-042). Dar-lhe
+    /// permissões de módulo seria dar acesso a dados de terceiros para
+    /// resolver um problema que o vínculo já resolve.
+    /// </para>
+    /// </summary>
+    public const string Employee = "Colaborador";
 
     /// <summary>
     /// Conta de bootstrap/operação, nunca de negócio (ADR-058). Ver a nota de
@@ -239,6 +261,15 @@ public static class AccessProfiles
             // para anexar ficheiros a um registo seu — não é pensada para
             // clientes especificamente.
             [Customer] = [DocumentPermissions.Write],
+
+            // Vazio, e é o ponto — ver a nota em `Employee`. O Portal do
+            // Colaborador autoriza por vínculo e não por permissão, por isso
+            // este perfil não precisa de nenhuma para fazer o que existe para
+            // fazer. Qualquer permissão aqui daria acesso a dados de terceiros.
+            //
+            // Não confundir com os perfis que estiveram vazios à espera do seu
+            // módulo: este está vazio por desenho, e assim deve ficar.
+            [Employee] = [],
 
             // Tudo o que `Admin` tem, mais a única permissão que nem `Admin`
             // tem: saltar a submissão a `approval` ao atribuir um Cargo com

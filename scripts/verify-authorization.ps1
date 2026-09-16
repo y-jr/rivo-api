@@ -87,15 +87,15 @@ Test-Case "2. Autenticado sem perfil adequado -> 403" {
 
 Test-Case "3. Autenticado com perfil adequado -> 200" {
     $roles = Invoke-RestMethod "$base/identity/roles" -Headers $adminHeaders
-    if ($roles.Count -ne 8) { throw "esperados 8 perfis, obtidos $($roles.Count)" }
-    "8 perfis devolvidos"
+    if ($roles.Count -ne 9) { throw "esperados 9 perfis, obtidos $($roles.Count)" }
+    "9 perfis devolvidos"
 }
 
 Test-Case "4. Seed nao cria perfis fora do catalogo" {
     # SuperAdmin (ADR-058) e semeado como os outros, mas nao e atribuivel em
     # runtime — por isso esta aqui e nao aparece em GET /identity/roles. A
     # assimetria e verificada pelo caso 4b.
-    $expected = @("Admin", "AssetManager", "Cliente", "Finance", "HR", "Manager", "ProjectManager", "Sales", "SuperAdmin")
+    $expected = @("Admin", "AssetManager", "Cliente", "Colaborador", "Finance", "HR", "Manager", "ProjectManager", "Sales", "SuperAdmin")
     $actual = (Invoke-RivoSql "select name from [identity].app_role order by name") -split "`n" | Where-Object { $_ }
     $diff = Compare-Object $expected $actual
     # `-join` e nao `Join-String`: este ultimo so existe a partir do PowerShell
@@ -103,7 +103,7 @@ Test-Case "4. Seed nao cria perfis fora do catalogo" {
     # havia algo a reportar, escondendo a divergencia atras de um erro de
     # cmdlet inexistente.
     if ($diff) { throw "divergencia: " + (($diff | ForEach-Object { $_.InputObject }) -join ",") }
-    "exactamente os 9 esperados"
+    "exactamente os 10 esperados"
 }
 
 Test-Case "4b. SuperAdmin nao e atribuivel nem visivel (ADR-058)" {
@@ -134,13 +134,13 @@ Test-Case "5. Seed repetido nao duplica" {
     if (-not $up) { throw "API nao voltou a responder" }
 
     $roleCount = (Invoke-RivoSql "select count(*) from [identity].app_role")
-    if ($roleCount -ne "9") { throw "perfis duplicados: $roleCount" }
+    if ($roleCount -ne "10") { throw "perfis duplicados: $roleCount" }
 
     # Duplicacao verificada directamente. O total de permissoes cresce a cada
     # modulo novo, por isso nao serve de asercao.
     $dupClaims = (Invoke-RivoSql "select count(*) from (select role_id, claim_type, claim_value from [identity].app_role_claim group by role_id, claim_type, claim_value having count(*)>1) d")
     if ($dupClaims -ne "0") { throw "$dupClaims permissoes duplicadas" }
-    "9 perfis, sem permissoes duplicadas apos segunda execucao"
+    "10 perfis, sem permissoes duplicadas apos segunda execucao"
 }
 
 Test-Case "6. Permissoes sobrevivem ao reinicio da stack" {
@@ -155,7 +155,7 @@ Test-Case "6. Permissoes sobrevivem ao reinicio da stack" {
     # O token anterior morreu com a sessao? Nao: a sessao esta em base de dados
     # e o volume persiste, por isso continua valida.
     $roles = Invoke-RestMethod "$base/identity/roles" -Headers $adminHeaders
-    if ($roles.Count -ne 8) { throw "esperados 8 perfis, obtidos $($roles.Count)" }
+    if ($roles.Count -ne 9) { throw "esperados 9 perfis, obtidos $($roles.Count)" }
     "autorizacao intacta apos restart"
 }
 

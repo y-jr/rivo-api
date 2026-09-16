@@ -64,7 +64,7 @@ Test-Case "1. Migrations aplicadas" {
 
 Test-Case "2. Seed criou os perfis" {
     $roles = Invoke-Sql "select count(*) from [identity].app_role"
-    if ($roles -ne "9") { throw "esperados 9 perfis, obtidos $roles" }
+    if ($roles -ne "10") { throw "esperados 10 perfis, obtidos $roles" }
 
     # Sem contagem absoluta de permissoes: cresce legitimamente a cada modulo
     # novo. Verifica-se que o Admin tem as que deve e que nenhuma se repete.
@@ -96,7 +96,13 @@ where r.name = 'HR' and c.claim_value = 'hr.positions.write'
     # de `projects`. Um oitavo, `Cliente`, nasceu vazio a 2026-09-03
     # (ADR-043) e saiu no mesmo dia, com o comprovativo de pagamento
     # (ADR-044) — a primeira permissao real de um perfil externo.
-    # **Nenhum dos oito perfis continua vazio.**
+    # **Nenhum dos oito perfis de funcao continua vazio.**
+    #
+    # O decimo, `Colaborador`, nasceu vazio a 2026-09-16 (ADR-061) e **assim
+    # deve ficar**. Nao esta a espera de modulo nenhum: o Portal do Colaborador
+    # autoriza por vinculo e nao por permissao, e dar-lhe permissoes de modulo
+    # seria dar acesso a dados de terceiros para resolver um problema que o
+    # vinculo ja resolve. E a unica excepcao legitima a frase acima.
     #
     # O nono, `SuperAdmin`, nasceu a 2026-09-12 (ADR-058) e nunca esteve
     # vazio: tem tudo o que o `Admin` tem mais `hr.positions.assign_direct`.
@@ -162,7 +168,7 @@ where r.name in ('Manager','Finance') and c.claim_value = 'approval.policies.wri
 "@
     if ($configuram -ne "0") { throw "Manager ou Finance gerem politicas de aprovacao" }
 
-    "9 perfis; Admin com $adminPerms permissoes; HR sem catalogo; Manager/Finance decidem sem configurar"
+    "10 perfis; Admin com $adminPerms permissoes; HR sem catalogo; Manager/Finance decidem sem configurar"
 }
 
 Test-Case "3. Seed criou o Admin" {
@@ -226,7 +232,7 @@ Test-Case "6. Segunda execucao nao duplica" {
 Test-Case "7. Admin executa operacoes administrativas" {
     $headers = @{ Authorization = "Bearer " + (Get-Token $adminEmail $adminPass) }
     $profiles = Invoke-RestMethod "$base/identity/roles" -Headers $headers
-    if ($profiles.Count -ne 8) { throw "esperados 8 perfis" }
+    if ($profiles.Count -ne 9) { throw "esperados 9 perfis" }
     $users = Invoke-RestMethod "$base/identity/users" -Headers $headers
     if ($users.Count -lt 2) { throw "esperados pelo menos 2 utilizadores" }
     "GET /roles e /users autorizados sem intervencao manual"
