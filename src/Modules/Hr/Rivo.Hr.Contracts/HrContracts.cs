@@ -264,3 +264,83 @@ public static class HrPermissions
         LifecycleWrite,
     ];
 }
+
+/// <summary>
+/// As leituras que o Portal do Colaborador faz sobre **o próprio** (ADR-062).
+///
+/// <para>
+/// <strong>Contrato à parte de <see cref="IEmployeeDirectory"/>, e de
+/// propósito.</strong> Aquele responde a «quem é este colaborador» e é
+/// consumido por quem resolve aprovadores ou mostra nomes. Este responde a
+/// «o que é que esta pessoa tem direito a ver de si própria» — audiência
+/// diferente, e a separação evita que um consumidor do primeiro ganhe, sem
+/// pedir, acesso a assiduidade e documentos.
+/// </para>
+///
+/// <para>
+/// <strong>Todos os métodos recebem <c>employeeId</c> e nunca o filtram
+/// sozinhos.</strong> Quem chama já resolveu «o próprio» a partir da conta
+/// autenticada (<see cref="IEmployeeDirectory.FindByUserIdAsync"/>); este
+/// contrato confia nesse identificador e devolve o que lhe pertence. É a mesma
+/// divisão do Portal do Cliente: a composição decide de quem se trata, o módulo
+/// devolve os dados dessa pessoa.
+/// </para>
+/// </summary>
+public interface IEmployeeSelfService
+{
+    /// <summary>Assiduidade do próprio, na janela pedida.</summary>
+    Task<IReadOnlyList<OwnAttendanceRecord>> ListAttendanceAsync(
+        Guid employeeId,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken);
+
+    /// <summary>Pedidos de férias do próprio, do mais recente para o mais antigo.</summary>
+    Task<IReadOnlyList<OwnLeaveRequest>> ListLeaveAsync(
+        Guid employeeId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Metadados dos documentos do próprio. <strong>Nunca conteúdo</strong> —
+    /// descarregar continua a ser de `documents`, com a sua própria permissão.
+    /// </summary>
+    Task<IReadOnlyList<OwnEmployeeDocument>> ListDocumentsAsync(
+        Guid employeeId,
+        CancellationToken cancellationToken);
+}
+
+/// <param name="ObservedHours">
+/// Duração observada entre entrada e saída. <strong>Não são horas pagas</strong> —
+/// converter isto em remuneração é de `payroll`.
+/// </param>
+public sealed record OwnAttendanceRecord(
+    Guid RecordId,
+    DateOnly Day,
+    DateTimeOffset? CheckedInAt,
+    DateTimeOffset? CheckedOutAt,
+    string Status,
+    string? Justification,
+    double? ObservedHours);
+
+/// <param name="CalendarDays">
+/// Dias de calendário, extremos incluídos. <strong>Não são dias úteis</strong> —
+/// descontar feriados exigiria um calendário de Angola que o sistema não tem.
+/// </param>
+/// <param name="ApprovalRequestId">O processo em `approval`, nulo enquanto não submetido.</param>
+public sealed record OwnLeaveRequest(
+    Guid LeaveId,
+    string Type,
+    DateOnly StartsOn,
+    DateOnly EndsOn,
+    int CalendarDays,
+    string Status,
+    string? Reason,
+    Guid? ApprovalRequestId);
+
+public sealed record OwnEmployeeDocument(
+    Guid DocumentId,
+    string Category,
+    string FileName,
+    string ContentType,
+    long SizeInBytes,
+    DateTimeOffset AttachedAt);

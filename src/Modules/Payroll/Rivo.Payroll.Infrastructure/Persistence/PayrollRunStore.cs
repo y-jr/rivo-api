@@ -39,6 +39,29 @@ public sealed class PayrollRunStore(PayrollDbContext context) : IPayrollRunStore
             .OrderByDescending(link => link.AttachedAt)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<ApprovedPayrollItem>> ListApprovedItemsForEmployeeAsync(
+        Guid employeeId,
+        CancellationToken cancellationToken) =>
+        await context.Runs
+            .AsNoTracking()
+            .Where(r => r.Status == PayrollRunStatus.Approved)
+            .SelectMany(
+                r => r.Items.Where(i => i.EmployeeId == employeeId),
+                (r, i) => new ApprovedPayrollItem(i, r.Year, r.Month))
+            .OrderByDescending(x => x.Year).ThenByDescending(x => x.Month)
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<PayrollItemDocument>> ListDocumentsForItemsAsync(
+        IReadOnlyList<Guid> payrollItemIds,
+        CancellationToken cancellationToken) =>
+        payrollItemIds.Count == 0
+            ? []
+            : await context.ItemDocuments
+                .AsNoTracking()
+                .Where(link => payrollItemIds.Contains(link.PayrollItemId))
+                .OrderByDescending(link => link.AttachedAt)
+                .ToListAsync(cancellationToken);
+
     public Task SaveChangesAsync(CancellationToken cancellationToken) =>
         context.SaveChangesAsync(cancellationToken);
 }

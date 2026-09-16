@@ -178,7 +178,7 @@ public class ProjectReferenceTests
         // `Identity`: a conta autenticada chega já resolvida (o `sub` do
         // token), lida directamente do `HttpContext` na camada Api, não por
         // contrato.
-        ["EmployeePortal"] = ["Hr"],
+        ["EmployeePortal"] = ["Hr", "Payroll"],
 
         // Terceira camada de composição — o Dashboard Executivo, primeiro
         // consumidor de `IReceivablesOverview`/`IPayablesOverview`.

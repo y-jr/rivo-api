@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Rivo.Payroll.Application;
 using Rivo.Payroll.Application.Abstractions;
 using Rivo.Payroll.Application.UseCases;
 using Rivo.Payroll.Contracts;
@@ -31,6 +32,10 @@ public static class PayrollModuleExtensions
             .UseSnakeCaseNamingConvention());
 
         services.AddScoped<IPayrollRunStore, PayrollRunStore>();
+
+        // Os recibos que o Portal do Colaborador mostra ao próprio (ADR-062).
+        // Primeiro contrato de leitura que `payroll` publica.
+        services.AddScoped<IPayrollSelfService, PayrollSelfService>();
 
         services.AddScoped<ListPayrollRuns>();
         services.AddScoped<GetPayrollRun>();

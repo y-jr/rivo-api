@@ -8,6 +8,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\Modules\Hr\Rivo.Hr.Contracts\Rivo.Hr.Contracts.csproj" />
+
+    <!--
+      `payroll` desde 2026-09-16 (ADR-062), para os recibos do próprio. É o
+      segundo módulo que este portal compõe, e continua a ser só pelo contrato
+      publicado: nem `documents` aparece aqui, porque `hr` já compõe os
+      ficheiros do colaborador antes de os devolver.
+    -->
+    <ProjectReference Include="..\..\..\Modules\Payroll\Rivo.Payroll.Contracts\Rivo.Payroll.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
