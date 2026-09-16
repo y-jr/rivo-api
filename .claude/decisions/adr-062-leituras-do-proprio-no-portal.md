@@ -158,6 +158,20 @@ throw }` testava o contrário do pretendido. Nenhuma das 22 suites tinha tropeç
 nisto porque nenhuma verificava uma lista **vazia** por este caminho. Resolvido
 com `Get-RivoLista` em `_ambiente.ps1`, documentado onde vive.
 
+**E a suite herdou as dependências do que o portal compõe.** Na segunda volta,
+os recibos falharam com 400 — `FiscalDataMissing`. Acrescentar um item à folha
+manda `payroll` pedir a `fiscal` o INSS e o IRT **em vigor à data do facto
+gerador**, e na CI a base é virgem: quem configura as taxas é `verify-fiscal`,
+que corria **depois**. Localmente passava, porque a base de desenvolvimento já
+as tinha — a pior forma de passar.
+
+`verify-employee-portal` corria em 5.º lugar desde 31·08, quando só precisava de
+`identity` e `hr`. Passou para depois de `verify-fiscal`, e o comentário na
+ordem diz porquê: **compor um módulo é herdar aquilo de que ele depende.** Ganhou
+também um caso final que desactiva as políticas que cria — `verify-payroll` corre
+depois e conta que não haja nenhuma, e deixar uma activa atrás de si fazia falhar
+uma suite alheia.
+
 **E uma lacuna de cobertura descoberta por acidente: `POST /hr/leave` nunca
 tinha sido exercitado por suite nenhuma.** O primeiro pedido de férias da
 história do projecto foi feito por esta suite — e recusou com 409, porque pedir

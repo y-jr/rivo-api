@@ -16,7 +16,17 @@ function Test-Case {
         Write-Host ("  PASSA  " + $Name + $(if ($detail) { "  -- $detail" } else { "" })) -ForegroundColor Green
     }
     catch {
-        Write-Host ("  FALHA  " + $Name + "  -- " + $_.Exception.Message) -ForegroundColor Red
+        # O corpo da resposta, e nao so o codigo. "400 (Bad Request)" sozinho nao
+        # diz qual das validacoes recusou, e custou uma volta de CI a 2026-09-16 --
+        # `ErrorDetails.Message` traz o ProblemDetails que o servidor escreveu.
+        $porque = $_.Exception.Message
+        if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+            $corpo = ($_.ErrorDetails.Message -replace '\s+', ' ')
+            if ($corpo.Length -gt 400) { $corpo = $corpo.Substring(0, 400) + "..." }
+            $porque += "  |  $corpo"
+        }
+
+        Write-Host ("  FALHA  " + $Name + "  -- " + $porque) -ForegroundColor Red
         $script:failures++
     }
 }
@@ -297,6 +307,16 @@ $script:runPortal = $null
 $script:itemPortal = $null
 
 Test-Case "15. Folha em rascunho com item do proprio -- os recibos vem vazios" {
+    # **Quem abre a folha tem de estar ligado a um colaborador** (ADR-050/057):
+    # `payroll` resolve o requerente do token e recusa com 400 se nao o achar.
+    # Verificado aqui, e nao presumido, porque um 400 do endpoint da folha nao
+    # distingue "conta sem vinculo" de "mes invalido" -- e a primeira hipotese
+    # levou meia hora de diagnose na CI a 2026-09-16.
+    $codigoVinculo = Get-StatusCode { Invoke-RestMethod "$base/portal/me" -Headers $hrHeaders }
+    if ($codigoVinculo -ne 200) {
+        throw "a conta que abre a folha nao tem colaborador ligado (GET /portal/me deu $codigoVinculo)"
+    }
+
     $r = Invoke-RestMethod "$base/payroll/runs" -Method Post -ContentType "application/json" -Headers $hrHeaders `
         -Body (@{ year = $script:hoje.Year; month = $script:hoje.Month } | ConvertTo-Json)
     $script:runPortal = $r.runId
@@ -316,6 +336,10 @@ Test-Case "16. Depois de aprovada, o recibo aparece com ano, mes e valores" {
     # Fluxo real de governanca, com o aprovador e o cargo do preambulo: politica,
     # submissao, decisao em `approval`, e `payroll` a aplicar quando pergunta
     # (ADR-050 -- quem decide resolve-se do token, nunca do corpo do pedido).
+    if (-not $script:runPortal -or -not $script:itemPortal) {
+        throw "sem folha ou item do caso 15 -- este caso depende dele"
+    }
+
     Clear-RivoApprovalPolicies -ProcessType "payroll.payroll_run" -Headers $adminHeaders
     Invoke-RestMethod "$base/approval/policies" -Method Post -ContentType "application/json" -Headers $adminHeaders `
         -Body (@{ processType = "payroll.payroll_run"; steps = @(@{ approverPositionId = $cargoAprovador }) } | ConvertTo-Json -Depth 5) | Out-Null
@@ -398,6 +422,27 @@ Test-Case "19. Vista sobrevive ao reinicio da stack" {
     $perfil = Invoke-RestMethod "$base/portal/me" -Headers $ownHeaders
     if ($perfil.employeeId -ne $script:ownEmployeeId) { throw "vinculo nao sobreviveu ao reinicio" }
     "employeeId=$($script:ownEmployeeId) intacto apos restart"
+}
+
+Test-Case "20. A suite nao deixa politicas activas atras de si" {
+    # Mesmo cuidado de `verify-payroll` (25), `verify-ledger` (45) e
+    # `verify-procurement` (58): esta suite passou a criar politicas -- uma para
+    # `hr.leave_request`, outra para `payroll.payroll_run` -- e `verify-payroll`
+    # corre depois a contar que nao haja nenhuma, para poder verificar a recusa
+    # sem politica. Deixar uma activa atras de si fazia falhar uma suite alheia,
+    # que e a pior forma de falhar.
+    foreach ($tipo in @("hr.leave_request", "payroll.payroll_run")) {
+        Get-RivoLista "$base/approval/policies" -Headers $adminHeaders |
+            Where-Object { $_.processType -eq $tipo -and $_.isActive } |
+            ForEach-Object {
+                Invoke-RestMethod "$base/approval/policies/$($_.policyId)/deactivation" `
+                    -Method Post -Headers $adminHeaders | Out-Null
+            }
+    }
+
+    $activas = Invoke-RivoSql "select count(*) from approval.policy where process_type in ('hr.leave_request', 'payroll.payroll_run') and is_active = 1"
+    if ($activas -ne "0") { throw "$activas politica(s) ficaram activas" }
+    "nenhuma politica de ferias ou de folha activa"
 }
 
 Write-Host ""

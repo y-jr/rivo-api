@@ -2076,7 +2076,15 @@ projecto foi feito aqui, e recusou com 409 por falta de política de aprovação
 para `hr.leave_request` — configuração, não defeito, mas semanas sem
 verificação.
 
-Suite confirmada **19/19 contra a stack local** depois das correcções.
+A segunda volta mostrou outra: a suite **herdou as dependências do que o portal
+compõe**. Acrescentar um item à folha manda `payroll` pedir a `fiscal` o INSS e o
+IRT em vigor, e na CI as taxas só são configuradas por `verify-fiscal` — que
+corria depois. `verify-employee-portal` saiu do 5.º lugar para depois de
+`verify-fiscal`, e ganhou um caso final que desactiva as políticas que cria,
+porque `verify-payroll` corre a seguir e conta que não haja nenhuma.
+
+Suite confirmada **20/20 contra a stack local**, e `verify-payroll` a seguir sem
+regressão (só o caso 25, que é o K20 conhecido).
 
 Detalhe da decisão em
 [decisions/adr-062](../decisions/adr-062-leituras-do-proprio-no-portal.md).
