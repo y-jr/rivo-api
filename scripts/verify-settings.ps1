@@ -46,13 +46,13 @@ $stamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 
 Write-Host "`n=== Camada de composicao settings ===`n"
 
-Test-Case "1. Vista mostra os oito Perfis de Acesso, cada um com as suas permissoes" {
+Test-Case "1. Vista mostra os nove Perfis de Acesso, cada um com as suas permissoes" {
     $overview = Invoke-RestMethod "$base/settings/overview" -Headers $adminHeaders
-    if ($overview.accessProfiles.Count -ne 8) { throw "esperados 8 perfis, obtidos $($overview.accessProfiles.Count)" }
+    if ($overview.accessProfiles.Count -ne 9) { throw "esperados 9 perfis, obtidos $($overview.accessProfiles.Count)" }
     $admin = $overview.accessProfiles | Where-Object { $_.name -eq "Admin" }
     if (-not $admin) { throw "perfil Admin nao apareceu" }
     if ($admin.permissions -notcontains "identity.roles.read") { throw "Admin sem identity.roles.read" }
-    "8 perfis; Admin com $($admin.permissions.Count) permissoes"
+    "9 perfis; Admin com $($admin.permissions.Count) permissoes"
 }
 
 Test-Case "2. Perfis vem ordenados por nome" {
@@ -196,7 +196,7 @@ Test-Case "12. Vista sobrevive ao reinicio da stack" {
 
     $adminHeaders2 = @{ Authorization = "Bearer " + (Get-Token $adminEmail $adminPass) }
     $overview = Invoke-RestMethod "$base/settings/overview" -Headers $adminHeaders2
-    if ($overview.accessProfiles.Count -ne 8) { throw "perfis nao sobreviveram: $($overview.accessProfiles.Count)" }
+    if ($overview.accessProfiles.Count -ne 9) { throw "perfis nao sobreviveram: $($overview.accessProfiles.Count)" }
     $grupo = $overview.approvalRulesByModule | Where-Object { $_.module -eq "settings" }
     $regra = $grupo.rules | Where-Object { $_.policyId -eq $script:policyId }
     if (-not $regra -or $regra.isActive) { throw "estado da politica nao sobreviveu ao reinicio" }
