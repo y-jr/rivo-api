@@ -408,7 +408,21 @@ public static class HrAuditActions
     /// transferência feita em dois passos, desligar seguido de ligar.
     /// </summary>
     public const string EmployeeAccountUnlinked = "hr.employee.account_unlinked";
+    /// <summary>
+    /// Correcção de dados de um colaborador (ADR-063). Distinta de
+    /// <see cref="EmployeeTransferred"/>: uma arruma um engano, a outra regista
+    /// uma decisão de organização, e quem lê a trilha precisa de as separar.
+    /// Guarda o valor anterior — uma correcção sem ele diz que algo mudou e não
+    /// o quê.
+    /// </summary>
+    public const string EmployeeCorrected = "hr.employee.corrected";
+
+    /// <summary>Mudança de departamento, com o anterior em <c>PreviousValue</c>.</summary>
+    public const string EmployeeTransferred = "hr.employee.transferred";
+
     public const string DepartmentCreated = "hr.department.created";
+    public const string DepartmentCorrected = "hr.department.corrected";
+    public const string PositionCorrected = "hr.position.corrected";
     public const string PositionCreated = "hr.position.created";
     public const string PositionAssigned = "hr.position.assigned";
 

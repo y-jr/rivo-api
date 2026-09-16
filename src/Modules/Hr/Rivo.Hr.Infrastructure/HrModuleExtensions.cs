@@ -44,6 +44,12 @@ public static class HrModuleExtensions
         services.AddScoped<CreateDepartment>();
         services.AddScoped<ListPositions>();
         services.AddScoped<CreatePosition>();
+
+        // As correcçoes (ADR-063).
+        services.AddScoped<CorrectEmployee>();
+        services.AddScoped<TransferEmployee>();
+        services.AddScoped<CorrectDepartment>();
+        services.AddScoped<CorrectPosition>();
         services.AddScoped<AssignPosition>();
         services.AddScoped<ApplyPositionApprovalOutcome>();
         services.AddScoped<ReconcilePendingAssignments>();

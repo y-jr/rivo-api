@@ -14,6 +14,8 @@ internal sealed class FakeHrStore : HrStoreParcial
 {
     private readonly List<Employee> _colaboradores = [];
     private readonly List<EmployeeAccountLink> _episodios = [];
+    private readonly List<Department> _departamentos = [];
+    private readonly List<Position> _cargos = [];
 
     public int Gravacoes { get; private set; }
 
@@ -44,8 +46,37 @@ internal sealed class FakeHrStore : HrStoreParcial
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Verdadeiro para qualquer identificador <strong>enquanto nenhum
+    /// departamento for registado</strong> — que é como os testes de admissão
+    /// sempre o usaram. A partir do momento em que um teste chama
+    /// <see cref="CriarDepartamento"/>, passa a responder pela lista, e um
+    /// identificador desconhecido deixa de existir.
+    /// </summary>
     public override Task<bool> DepartmentExistsAsync(Guid departmentId, CancellationToken cancellationToken) =>
-        Task.FromResult(true);
+        Task.FromResult(_departamentos.Count == 0 || _departamentos.Any(d => d.Id == departmentId));
+
+    public Department CriarDepartamento(string nome, Guid? managerId = null)
+    {
+        var departamento = Department.Create(nome, managerId);
+        _departamentos.Add(departamento);
+
+        return departamento;
+    }
+
+    public Position CriarCargo(string nome, int nivel = 5, bool confereAutoridade = false)
+    {
+        var cargo = Position.Create(nome, nivel, confereAutoridade);
+        _cargos.Add(cargo);
+
+        return cargo;
+    }
+
+    public override Task<Department?> FindDepartmentAsync(Guid departmentId, CancellationToken cancellationToken) =>
+        Task.FromResult(_departamentos.SingleOrDefault(d => d.Id == departmentId));
+
+    public override Task<Position?> FindPositionAsync(Guid positionId, CancellationToken cancellationToken) =>
+        Task.FromResult(_cargos.SingleOrDefault(p => p.Id == positionId));
 
     public override Task AddAccountLinkAsync(EmployeeAccountLink link, CancellationToken cancellationToken)
     {
