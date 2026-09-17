@@ -52,6 +52,12 @@ public interface IHrStore
 
     Task<bool> DepartmentExistsAsync(Guid departmentId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Rastreado, ao contrário de <see cref="ListDepartmentsAsync"/>: quem
+    /// procura um departamento por identificador vai alterá-lo.
+    /// </summary>
+    Task<Department?> FindDepartmentAsync(Guid departmentId, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<Department>> ListDepartmentsAsync(CancellationToken cancellationToken);
 
     Task AddDepartmentAsync(Department department, CancellationToken cancellationToken);

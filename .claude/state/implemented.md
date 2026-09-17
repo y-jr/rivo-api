@@ -80,6 +80,34 @@ definem-se, e sem elas nada lança. Ver a ressalva em cada secção.
 
 ## hr
 
+**2026-09-16 — as correcções, decisão do utilizador (ADR-063).** A testar o
+frontend em produção: «não dá pra atribuir nada a ninguém nem editar estes
+elementos». Eram duas coisas, e só uma era defeito — atribuir cargo existe (no
+ecrã de Cargos, onde ninguém o procura), mas **editar não existia em módulo
+nenhum**: `hr` tinha 14 GET, 26 POST, 1 DELETE e zero PUT/PATCH, e o sistema
+inteiro também.
+
+⚠ **O domínio já tinha os métodos** — `MoveToDepartment`, `Department.Rename`,
+`AssignManager` —, escritos na Fase 0 **com testes de domínio** e sem um único
+chamador. Faltavam as duas camadas de cima.
+
+- `PUT /hr/employees/{id}` (nome), `PUT /hr/departments/{id}` (nome e
+  responsável), `PUT /hr/positions/{id}` (nome e nível) — **os primeiros `PUT`
+  do projecto**; e `POST /hr/employees/{id}/department`, que é acto e não
+  correcção.
+- **A trilha distingue** `hr.employee.corrected` de `hr.employee.transferred`, e
+  todas guardam o valor anterior. Uma não-alteração não grava nem audita.
+- **`GrantsApprovalAuthority` não é editável** — nem no domínio, nem no contrato,
+  nem no ecrã. Ligá-la num cargo já atribuído daria autoridade a quem o ocupa sem
+  passar pela governança do BR-20. Verificado em três níveis, incluindo um caso
+  que manda a marca a falso no corpo e confirma que o servidor a ignora.
+- **O estado do colaborador continua fora:** desactivar é consequência da
+  cessação do contrato, que tem caminho e regras próprias.
+
+27 testes novos (12 de domínio, 15 de aplicação) e `verify-hr` de 39 para 50
+casos. 1 296 a passar. Detalhe em
+[decisions/adr-063](../decisions/adr-063-correccoes-em-hr.md).
+
 - Colaborador, Departamento, Cargo e Atribuição de Cargo — 2026-08-11
 - Contrato `EmployeeReference` / `IEmployeeDirectory` como **único** caminho de
   acesso a Colaborador a partir de outros módulos — 2026-08-11 — ADR-010

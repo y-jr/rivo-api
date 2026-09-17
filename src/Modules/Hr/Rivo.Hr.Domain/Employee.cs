@@ -58,6 +58,23 @@ public sealed class Employee
         return new Employee(Guid.CreateVersion7(), fullName.Trim(), departmentId, userId, hiredOn);
     }
 
+    /// <summary>
+    /// Corrige o nome. <strong>É correcção de dados, não mudança de pessoa</strong> —
+    /// existe para o erro de digitação e para o nome que muda por casamento, e
+    /// não altera nada do que o colaborador já fez.
+    ///
+    /// <para>
+    /// O que ficou <em>congelado</em> noutros documentos continua congelado: o
+    /// nome impresso numa factura é um retrato da altura (ADR-062 e a mesma
+    /// disciplina de <c>InvoicedParty</c>), e corrigir aqui não o reescreve lá.
+    /// </para>
+    /// </summary>
+    public void CorrectName(string fullName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fullName);
+        FullName = fullName.Trim();
+    }
+
     public void MoveToDepartment(Guid? departmentId) => DepartmentId = departmentId;
 
     public void LinkToUser(Guid? userId) => UserId = userId;

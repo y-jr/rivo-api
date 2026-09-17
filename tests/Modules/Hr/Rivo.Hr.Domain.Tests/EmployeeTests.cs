@@ -96,4 +96,40 @@ public class EmployeeTests
 
         Assert.Equal(userId, employee.UserId);
     }
+
+    [Theory]
+    [InlineData("Ana Kiala Correcta", "Ana Kiala Correcta")]
+    [InlineData("  Ana Kiala  ", "Ana Kiala")]
+    public void CorrectName_TrimsAndReplaces(string entrada, string esperado)
+    {
+        var employee = Employee.Hire("Ana Kaila", null, null, HiredOn);
+
+        employee.CorrectName(entrada);
+
+        Assert.Equal(esperado, employee.FullName);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public void CorrectName_RejectsEmpty(string? nome)
+    {
+        var employee = Employee.Hire("Ana Kiala", null, null, HiredOn);
+
+        // ThrowsAny: nulo levanta ArgumentNullException, vazio levanta
+        // ArgumentException, e as duas sao a mesma recusa para quem chama.
+        Assert.ThrowsAny<ArgumentException>(() => employee.CorrectName(nome!));
+        Assert.Equal("Ana Kiala", employee.FullName);
+    }
+
+    [Fact]
+    public void MoveToDepartment_AcceptsNullAsNoDepartment()
+    {
+        var employee = Employee.Hire("Ana Kiala", Guid.CreateVersion7(), null, HiredOn);
+
+        employee.MoveToDepartment(null);
+
+        Assert.Null(employee.DepartmentId);
+    }
 }
