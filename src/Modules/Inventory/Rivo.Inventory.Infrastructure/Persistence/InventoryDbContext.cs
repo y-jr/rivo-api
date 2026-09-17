@@ -103,6 +103,19 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
             count.Property(c => c.Status).HasConversion<string>().HasMaxLength(20);
             count.Property(c => c.CancellationReason).HasMaxLength(500);
 
+            // Governança da divergência (ADR-064). Nulos quando a contagem não
+            // precisou de decisão — que é o caso de todas as que existiam antes.
+            count.Property(c => c.SubmittedVarianceValue).HasPrecision(18, 4);
+
+            // **Consulta, não navegação.** `LinesWithVariance` filtra `Lines` em
+            // memória; sem isto o EF lê-a como uma segunda colecção de linhas e
+            // cria uma chave estrangeira sombra em `inventory_count_line` —
+            // apanhado ao gerar a migração do ADR-064, que trazia uma coluna
+            // `inventory_count_id` que ninguém pediu.
+            count.Ignore(c => c.LinesWithVariance);
+            count.HasIndex(c => c.ApprovalRequestId)
+                .HasDatabaseName("ix_inventory_count_approval_request");
+
             count.HasIndex(c => c.WarehouseId);
 
             // FK dentro do mesmo módulo (inventory → inventory), mesma nota
