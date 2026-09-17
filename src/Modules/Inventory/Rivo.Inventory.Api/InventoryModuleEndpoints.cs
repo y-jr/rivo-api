@@ -279,11 +279,22 @@ public static class InventoryModuleEndpoints
     private static async Task<IResult> OpenCountAsync(
         OpenCountRequest request,
         OpenInventoryCount openCount,
+        TimeProvider clock,
         HttpContext http,
         CancellationToken cancellationToken)
     {
+        // Omitida, a data da contagem é **hoje** — mesmo tratamento que a
+        // marcação de assiduidade dá ao dia omitido.
+        //
+        // Era `default(DateOnly)`, e ficava gravado `0001-01-01`. Passava
+        // despercebido enquanto o motivo do ajuste era o identificador da
+        // contagem; desde que o motivo passou a incluir a data (ADR-064), a
+        // contagem aberta sem data escrevia «Contagem de 0001-01-01» na lista de
+        // movimentos, à vista de quem a lesse.
+        var quando = request.OccurredOn ?? DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+
         var result = await openCount.ExecuteAsync(
-            request.WarehouseId, request.OccurredOn, BuildAuditContext(http), cancellationToken);
+            request.WarehouseId, quando, BuildAuditContext(http), cancellationToken);
 
         return result.Outcome switch
         {
@@ -458,7 +469,11 @@ public sealed record RegisterWarehouseRequest(string Code, string Name);
 
 public sealed record SetWarehouseStatusRequest(bool Active);
 
-public sealed record OpenCountRequest(Guid WarehouseId, DateOnly OccurredOn);
+/// <param name="OccurredOn">
+/// Data em que a contagem física aconteceu. Omitida, assume-se hoje — contar é
+/// um acto do dia, e uma contagem sem data era gravada com `0001-01-01`.
+/// </param>
+public sealed record OpenCountRequest(Guid WarehouseId, DateOnly? OccurredOn);
 
 public sealed record AddCountLineRequest(Guid ItemId, decimal CountedQuantity);
 

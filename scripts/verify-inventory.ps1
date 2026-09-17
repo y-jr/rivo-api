@@ -672,8 +672,9 @@ Test-Case "67. Cenario: artigo caro recebido, e uma contagem que encontra menos"
         -Headers $adminHeaders `
         -Body (@{ warehouseId = $script:govArmazem; quantity = 100; unitCost = 250; reason = "Recepcao inicial" } | ConvertTo-Json) | Out-Null
 
+    $script:govDia = [DateTime]::UtcNow.ToString("yyyy-MM-dd")
     $script:govCountId = (Invoke-RestMethod "$base/inventory/counts" -Method Post -ContentType "application/json" `
-            -Headers $adminHeaders -Body (@{ warehouseId = $script:govArmazem } | ConvertTo-Json)).countId
+            -Headers $adminHeaders -Body (@{ warehouseId = $script:govArmazem; occurredOn = $script:govDia } | ConvertTo-Json)).countId
 
     Invoke-RestMethod "$base/inventory/counts/$($script:govCountId)/lines" -Method Post -ContentType "application/json" `
         -Headers $adminHeaders `
@@ -773,7 +774,9 @@ Test-Case "72. O motivo do ajuste explica a divergencia, em vez de citar um iden
 
     # Era "Contagem 01a0b2c3-...", que cumpria a regra de exigir motivo sem
     # explicar nada a quem o lia.
-    foreach ($pedaco in @("esperado 100", "contado 60", "falta 40")) {
+    # A data entra na verificacao: sem ela, uma contagem aberta sem `occurredOn`
+    # gravava "Contagem de 0001-01-01" e o caso passava na mesma.
+    foreach ($pedaco in @("Contagem de $($script:govDia)", "esperado 100", "contado 60", "falta 40")) {
         if ($motivo -notmatch [regex]::Escape($pedaco)) { throw "o motivo nao diz '$pedaco': '$motivo'" }
     }
     "motivo: '$motivo'"
@@ -820,7 +823,21 @@ Test-Case "74. Sem alcada que cubra o valor, a contagem fecha e corrige como sem
     "sem alcada: fecha, corrige para 58, e a trilha diz que nao houve governanca"
 }
 
-Test-Case "75. A suite nao deixa politica de contagem activa atras de si" {
+Test-Case "75. Contagem aberta sem data assume hoje, e nao o ano 1" {
+    $hoje = [DateTime]::UtcNow.ToString("yyyy-MM-dd")
+    $semData = (Invoke-RestMethod "$base/inventory/counts" -Method Post -ContentType "application/json" `
+            -Headers $adminHeaders -Body (@{ warehouseId = $script:govArmazem } | ConvertTo-Json)).countId
+
+    $quando = (Invoke-RestMethod "$base/inventory/counts/$semData" -Headers $adminHeaders).occurredOn
+    if ($quando -notmatch [regex]::Escape($hoje)) { throw "data esperada $hoje, obtida '$quando'" }
+
+    Invoke-RestMethod "$base/inventory/counts/$semData/cancellation" -Method Post -ContentType "application/json" `
+        -Headers $adminHeaders -Body (@{ reason = "Contagem de verificacao" } | ConvertTo-Json) | Out-Null
+
+    "sem occurredOn: assume $hoje"
+}
+
+Test-Case "76. A suite nao deixa politica de contagem activa atras de si" {
     Clear-RivoApprovalPolicies -ProcessType "inventory.stock_count" -Headers $adminHeaders
 
     $activas = Invoke-Sql "select count(*) from approval.policy where process_type='inventory.stock_count' and is_active=1"
@@ -828,7 +845,7 @@ Test-Case "75. A suite nao deixa politica de contagem activa atras de si" {
     "nenhuma politica de contagem activa"
 }
 
-Test-Case "76. Dados sobrevivem ao reinicio da stack" {
+Test-Case "77. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)

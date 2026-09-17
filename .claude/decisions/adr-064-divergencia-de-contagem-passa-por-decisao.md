@@ -158,6 +158,21 @@ contornada: sem requerente não há contra quem verificar a segregação de fun�
   pendente não é nem aberta nem fechada, e dizer «fechada» seria repetir no
   ecrã a mentira que este ADR tirou do backend.
 
+### 7. E um defeito que este ADR tornou visível
+
+`POST /inventory/counts` aceitava o pedido sem `occurredOn` e gravava
+`0001-01-01`. Ninguém dava por isso: o front manda sempre a data, e o motivo do
+ajuste era o identificador da contagem.
+
+Desde que o motivo passou a incluir a data, uma contagem aberta sem ela escrevia
+**«Contagem de 0001-01-01»** na lista de movimentos, à vista de quem a lesse. A
+data omitida passa a ser **hoje**, como já acontece na marcação de assiduidade.
+
+Vale registar o mecanismo: tornar um dado visível é a forma mais barata de o
+validar. O defeito tinha semanas e nenhum teste o apanhava — o caso da suite
+passou a verificar a data, precisamente porque sem isso continuaria a passar com
+o ano 1.
+
 ## Risks
 
 - **Uma contagem pode ficar pendente indefinidamente**, e enquanto isso o stock
