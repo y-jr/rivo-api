@@ -11,6 +11,17 @@ public class InventoryCountTests
 
     private static InventoryCount Aberta() => InventoryCount.Open(Armazem, Hoje);
 
+    private static readonly DateTimeOffset Instante = new(2026, 9, 17, 9, 0, 0, TimeSpan.Zero);
+
+    /// <summary>Contagem aberta com uma linha divergente — o ponto de partida da governança.</summary>
+    private static InventoryCount ComUmaLinha(decimal esperado, decimal contado)
+    {
+        var contagem = Aberta();
+        contagem.AddLine(ItemA, contado, esperado);
+
+        return contagem;
+    }
+
     // --- Open ----------------------------------------------------------
 
     [Fact]
@@ -214,5 +225,88 @@ public class InventoryCountTests
         count.Cancel("Primeiro motivo");
 
         Assert.Throws<InvalidOperationException>(() => count.Cancel("Segundo motivo"));
+    }
+
+    // ── Governança da divergência (ADR-064) ────────────────────────────────
+
+    [Fact]
+    public void MarkSubmitted_RetemAContagemSemAFechar()
+    {
+        var contagem = ComUmaLinha(esperado: 10, contado: 4);
+        var processo = Guid.CreateVersion7();
+
+        contagem.MarkSubmitted(processo, varianceValue: 1_500m, Instante);
+
+        Assert.Equal(InventoryCountStatus.PendingApproval, contagem.Status);
+        Assert.Equal(processo, contagem.ApprovalRequestId);
+        Assert.Equal(1_500m, contagem.SubmittedVarianceValue);
+        Assert.Equal(Instante, contagem.SubmittedAt);
+    }
+
+    [Fact]
+    public void MarkSubmitted_SemLinhas_Recusa()
+    {
+        var contagem = Aberta();
+
+        Assert.Throws<InvalidOperationException>(
+            () => contagem.MarkSubmitted(Guid.CreateVersion7(), 1m, Instante));
+    }
+
+    [Fact]
+    public void PendenteDeDecisao_NaoAceitaLinhaNova()
+    {
+        var contagem = ComUmaLinha(esperado: 10, contado: 4);
+        contagem.MarkSubmitted(Guid.CreateVersion7(), 1_500m, Instante);
+
+        Assert.Throws<InvalidOperationException>(
+            () => contagem.AddLine(Guid.CreateVersion7(), 1, 0));
+    }
+
+    [Fact]
+    public void Close_APartirDePendente_EPermitido()
+    {
+        var contagem = ComUmaLinha(esperado: 10, contado: 4);
+        contagem.MarkSubmitted(Guid.CreateVersion7(), 1_500m, Instante);
+
+        contagem.Close();
+
+        Assert.Equal(InventoryCountStatus.Closed, contagem.Status);
+    }
+
+    [Fact]
+    public void MarkRefused_SoAPartirDePendente()
+    {
+        var aberta = ComUmaLinha(esperado: 10, contado: 4);
+
+        Assert.Throws<InvalidOperationException>(() => aberta.MarkRefused(Instante));
+    }
+
+    [Fact]
+    public void Recusada_NaoReabreENaoAceitaLinhas()
+    {
+        var contagem = ComUmaLinha(esperado: 10, contado: 4);
+        contagem.MarkSubmitted(Guid.CreateVersion7(), 1_500m, Instante);
+
+        contagem.MarkRefused(Instante);
+
+        Assert.Equal(InventoryCountStatus.Refused, contagem.Status);
+        Assert.Equal(Instante, contagem.SettledAt);
+        Assert.Throws<InvalidOperationException>(() => contagem.AddLine(Guid.CreateVersion7(), 1, 0));
+        Assert.Throws<InvalidOperationException>(() => contagem.Close());
+    }
+
+    [Fact]
+    public void LinesWithVariance_SoAsQueDivergem_DaMaiorFaltaParaAMaiorSobra()
+    {
+        var contagem = Aberta();
+        contagem.AddLine(Guid.CreateVersion7(), countedQuantity: 10, expectedQuantity: 10);
+        contagem.AddLine(Guid.CreateVersion7(), countedQuantity: 12, expectedQuantity: 10);
+        contagem.AddLine(Guid.CreateVersion7(), countedQuantity: 1, expectedQuantity: 10);
+
+        var divergentes = contagem.LinesWithVariance;
+
+        Assert.Equal(2, divergentes.Count);
+        Assert.Equal(-9, divergentes[0].Variance);
+        Assert.Equal(2, divergentes[1].Variance);
     }
 }

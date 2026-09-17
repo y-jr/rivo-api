@@ -1679,6 +1679,41 @@ Armazém/Transferência/Contagem em `inventory` e Alocação de Recursos em
 
 ## inventory
 
+**2026-09-17 — a divergência de contagem passa por decisão (ADR-064).** Pedido
+do utilizador: «resolve o problema da auditoria dos erros de contagem no
+inventário» — três problemas, confirmados por ele.
+
+1. **O motivo do ajuste era um identificador.** `"Contagem 01a0b2c3-…"` cumpria
+   a regra de «um Ajuste exige motivo» sem explicar nada. Passa a
+   `"Contagem de 2026-09-17: esperado 100, contado 60 (falta 40)"`, e a trilha do
+   ajuste leva `expectedQuantity` e `countedQuantity` além da diferença.
+2. **Nada passava por decisão.** Fechar corrigia o stock fosse a diferença de
+   uma unidade ou de mil. Agora o fecho submete a `approval` com o **valor** da
+   divergência (Σ |variância| × custo médio) e **retém os ajustes**: a contagem
+   fica `PendingApproval` e responde **202**. `POST /counts/{id}/decision`
+   aplica quando aprovada; recusada fica `Refused` e não reabre.
+3. **O fecho não dizia o que acontecera.** Passa a registar `linesCounted`,
+   `linesWithVariance`, `shortfall`, `surplus` e se houve alçada.
+
+⚠ **Não haver política aplicável não impede o fecho** — ao contrário de
+`payroll` e `procurement`. Uma folha por aprovar não paga ninguém; uma contagem
+por fechar deixa o stock do sistema a divergir do real. Nesse caso aplica-se, e
+a trilha regista `"approvalRequired":false` — a diferença entre não ter sido
+preciso e ter sido contornado.
+
+O limiar **não existe no código**: vive nas faixas de valor das políticas de
+`approval`, onde a empresa já define as outras alçadas. `inventory` continua a
+depender só de `Audit` — quem traduz conta em colaborador é o composition root.
+
+Migração `AddStockCountApproval` (quatro colunas nulas e um índice). 19 testes
+novos e `verify-inventory` de 66 casos para 75. 1 315 a passar.
+
+⚠ Ao gerar a migração, o EF leu a propriedade calculada `LinesWithVariance` como
+navegação e criou uma chave estrangeira sombra em `inventory_count_line`.
+Ignorada explicitamente no mapeamento, com a razão escrita lá.
+
+Detalhe em [decisions/adr-064](../decisions/adr-064-divergencia-de-contagem-passa-por-decisao.md).
+
 `InventoryItem` (SKU único, nome, unidade) nasceu esqueleto a 2026-08-29 —
 ver a secção `payroll` acima para esse lote. _2026-08-30 — **Movimento, com
 regra de negócio real, desbloqueado por ADR-039.**_

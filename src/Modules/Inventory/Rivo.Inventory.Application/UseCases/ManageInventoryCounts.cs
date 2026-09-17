@@ -140,16 +140,50 @@ public sealed class AddInventoryCountLine(IInventoryCountStore counts, IInventor
 }
 
 /// <summary>
-/// Fecha a contagem e gera, na mesma transacção, um Ajuste
-/// (<see cref="InventoryItem.RegisterAdjustment"/>) por cada linha com
-/// variância — tudo ou nada: se um item recusar o ajuste (por exemplo,
-/// ficou inactivo entretanto), nada fica gravado, nem sequer o fecho da
-/// contagem. Mesma disciplina de "Emitir passa a lançar, na mesma
-/// transacção" já usada em `finance`.
+/// Fecha a contagem — e, desde o ADR-064, é aqui que se decide se as
+/// divergências se aplicam já ou se passam por governança.
+///
+/// <para>
+/// <strong>Três caminhos, e o meio é o que é novo:</strong>
+/// </para>
+///
+/// <list type="number">
+///   <item>
+///     <strong>Sem divergências</strong> — fecha e não gera nada. Não há o que
+///     aprovar numa contagem que confirmou o sistema.
+///   </item>
+///   <item>
+///     <strong>Com divergências, e há alçada que as cubra</strong> — fica
+///     <see cref="InventoryCountStatus.PendingApproval"/> e <strong>o stock não
+///     muda</strong>. Uma falta de inventário acima da alçada é uma perda a
+///     explicar, não um número a arrumar em silêncio.
+///   </item>
+///   <item>
+///     <strong>Com divergências, e nenhuma alçada as cobre</strong> — fecha e
+///     aplica, como antes. Quem decide o que precisa de aprovação é quem
+///     configura as políticas; este módulo pergunta e obedece.
+///   </item>
+/// </list>
+///
+/// <para>
+/// Quando aplica, gera um Ajuste por cada linha com variância <strong>na mesma
+/// transacção</strong> — tudo ou nada: se um item recusar o ajuste (por
+/// exemplo, ficou inactivo entretanto), nada fica gravado, nem sequer o fecho.
+/// Mesma disciplina de "Emitir passa a lançar, na mesma transacção" de
+/// `finance`.
+/// </para>
 /// </summary>
-public sealed class CloseInventoryCount(IInventoryCountStore counts, IInventoryItemStore items, IAuditTrail audit, TimeProvider clock)
+public sealed class CloseInventoryCount(
+    IInventoryCountStore counts,
+    IInventoryItemStore items,
+    IInventoryApprovalSubmission approvals,
+    IAuditTrail audit,
+    TimeProvider clock)
 {
-    public async Task<CloseCountResult> ExecuteAsync(Guid countId, AuditContext context, CancellationToken cancellationToken)
+    public async Task<CloseCountResult> ExecuteAsync(
+        Guid countId,
+        AuditContext context,
+        CancellationToken cancellationToken)
     {
         var count = await counts.FindForUpdateAsync(countId, cancellationToken);
 
@@ -158,6 +192,82 @@ public sealed class CloseInventoryCount(IInventoryCountStore counts, IInventoryI
             return CloseCountResult.NotFound("Contagem não encontrada.");
         }
 
+        if (count.Status is not InventoryCountStatus.Open)
+        {
+            return CloseCountResult.Conflict($"Não é possível fechar: a contagem já está {count.Status}.");
+        }
+
+        if (count.Lines.Count == 0)
+        {
+            return CloseCountResult.Conflict("Uma contagem sem nenhuma linha não tem o que confirmar.");
+        }
+
+        var divergentes = count.LinesWithVariance;
+
+        // Sem divergências não há o que aprovar nem o que corrigir.
+        if (divergentes.Count == 0)
+        {
+            return await AplicarAsync(count, context, cancellationToken);
+        }
+
+        var valor = await ValorDaDivergenciaAsync(divergentes, cancellationToken);
+
+        // O actor do contexto é a conta autenticada — a mesma que a trilha
+        // regista. Sem ela não há quem requeira a decisão, e o caminho é o de
+        // sempre: aplicar, com a ausência de governança escrita na trilha.
+        if (!approvals.IsAvailable || context.ActorId is not { } requerente)
+        {
+            // Sem motor de governança, ou sem colaborador que possa requerer,
+            // aplica-se — e **fica escrito na trilha que não houve alçada**, que
+            // é a diferença entre não ter sido preciso e ter sido contornado.
+            return await AplicarAsync(count, context, cancellationToken, valorSemGovernanca: valor);
+        }
+
+        var submissao = await approvals.SubmitAsync(
+            count.Id,
+            requerente,
+            valor,
+            $"Contagem de {count.OccurredOn:yyyy-MM-dd}: {divergentes.Count} divergência(s)",
+            cancellationToken);
+
+        switch (submissao.Outcome)
+        {
+            case InventoryApprovalOutcome.Submitted:
+                count.MarkSubmitted(submissao.RequestId!.Value, valor, clock.GetUtcNow());
+                await counts.SaveChangesAsync(cancellationToken);
+
+                await audit.RecordAsync(
+                    new AuditRecord(
+                        InventoryAuditActions.CountSubmitted,
+                        InventoryAuditEntityTypes.Count,
+                        count.Id.ToString(),
+                        context,
+                        NewValue: $$"""{"approvalRequest":"{{count.ApprovalRequestId}}","varianceValue":{{valor}},"linesWithVariance":{{divergentes.Count}}}"""),
+                    cancellationToken);
+
+                return CloseCountResult.PendingApproval(count.ApprovalRequestId!.Value, valor);
+
+            case InventoryApprovalOutcome.Blocked:
+                // Há governança configurada e não foi cumprida. Aplicar aqui era
+                // decidir, por omissão, que a alçada não conta.
+                return CloseCountResult.Conflict(submissao.Reason!);
+
+            default:
+                return await AplicarAsync(count, context, cancellationToken, valorSemGovernanca: valor);
+        }
+    }
+
+    /// <summary>
+    /// Fecha e gera os ajustes. Chamado quando não houve divergências, quando
+    /// nenhuma alçada as cobria, e — por <see cref="ApplyInventoryCountDecision"/> —
+    /// quando foram aprovadas.
+    /// </summary>
+    internal async Task<CloseCountResult> AplicarAsync(
+        InventoryCount count,
+        AuditContext context,
+        CancellationToken cancellationToken,
+        decimal? valorSemGovernanca = null)
+    {
         try
         {
             count.Close();
@@ -167,10 +277,10 @@ public sealed class CloseInventoryCount(IInventoryCountStore counts, IInventoryI
             return CloseCountResult.Conflict(error.Message);
         }
 
-        var geradas = new List<(Guid MovementId, Guid ItemId, decimal Variance)>();
         var agora = clock.GetUtcNow();
+        var geradas = new List<AjusteGerado>();
 
-        foreach (var linha in count.Lines.Where(l => l.Variance != 0))
+        foreach (var linha in count.LinesWithVariance)
         {
             var item = await items.FindForUpdateAsync(linha.ItemId, cancellationToken);
 
@@ -184,17 +294,33 @@ public sealed class CloseInventoryCount(IInventoryCountStore counts, IInventoryI
             try
             {
                 movimento = item.RegisterAdjustment(
-                    count.WarehouseId, linha.Variance, $"Contagem {count.Id}", count.OccurredOn, agora);
+                    count.WarehouseId, linha.Variance, MotivoDoAjuste(count, linha), count.OccurredOn, agora);
             }
             catch (InvalidOperationException error)
             {
                 return CloseCountResult.Conflict($"Item {linha.ItemId}: {error.Message}");
             }
 
-            geradas.Add((movimento.Id, linha.ItemId, linha.Variance));
+            geradas.Add(new AjusteGerado(movimento.Id, linha.ItemId, linha.ExpectedQuantity, linha.CountedQuantity, linha.Variance));
         }
 
+        count.MarkSettled(agora);
         await counts.SaveChangesAsync(cancellationToken);
+
+        var faltas = geradas.Where(g => g.Variance < 0).Sum(g => -g.Variance);
+        var sobras = geradas.Where(g => g.Variance > 0).Sum(g => g.Variance);
+
+        // **O resumo da divergência vai no próprio evento de fecho.** Antes ia
+        // só o número de linhas divergentes, e quem auditava tinha de ir juntar
+        // os eventos de linha com os dos ajustes à mão para saber o que tinha
+        // acontecido. O detalhe de cada linha continua no evento do seu ajuste —
+        // aqui fica o que se lê num relance: quanto faltou, quanto sobrou, e
+        // quanto vale.
+        var governanca = valorSemGovernanca is { } v
+            ? $$""","varianceValue":{{v}},"approvalRequired":false"""
+            : count.ApprovalRequestId is { } pedido
+                ? $$""","approvalRequest":"{{pedido}}","approvalRequired":true"""
+                : string.Empty;
 
         await audit.RecordAsync(
             new AuditRecord(
@@ -202,22 +328,136 @@ public sealed class CloseInventoryCount(IInventoryCountStore counts, IInventoryI
                 InventoryAuditEntityTypes.Count,
                 count.Id.ToString(),
                 context,
-                NewValue: $$"""{"warehouseId":"{{count.WarehouseId}}","linesWithVariance":{{geradas.Count}}}"""),
+                NewValue: $$"""{"warehouseId":"{{count.WarehouseId}}","occurredOn":"{{count.OccurredOn:yyyy-MM-dd}}","linesCounted":{{count.Lines.Count}},"linesWithVariance":{{geradas.Count}},"shortfall":{{faltas}},"surplus":{{sobras}}{{governanca}}}"""),
             cancellationToken);
 
-        foreach (var (movementId, itemId, variance) in geradas)
+        foreach (var ajuste in geradas)
         {
+            // O ajuste passa a levar o esperado e o contado, e não só a
+            // diferença: quem lê a trilha do movimento vê de onde veio o número
+            // sem ter de ir buscar a linha da contagem.
             await audit.RecordAsync(
                 new AuditRecord(
                     InventoryAuditActions.MovementAdjustment,
                     InventoryAuditEntityTypes.Movement,
-                    movementId.ToString(),
+                    ajuste.MovementId.ToString(),
                     context,
-                    NewValue: $$"""{"itemId":"{{itemId}}","warehouseId":"{{count.WarehouseId}}","quantity":{{variance}},"countId":"{{count.Id}}"}"""),
+                    NewValue: $$"""{"itemId":"{{ajuste.ItemId}}","warehouseId":"{{count.WarehouseId}}","expectedQuantity":{{ajuste.Expected}},"countedQuantity":{{ajuste.Counted}},"quantity":{{ajuste.Variance}},"countId":"{{count.Id}}"}"""),
                 cancellationToken);
         }
 
         return CloseCountResult.Success([.. geradas.Select(g => g.MovementId)]);
+    }
+
+    /// <summary>
+    /// O motivo que fica gravado no Ajuste, e que aparece na lista de
+    /// movimentos.
+    ///
+    /// <para>
+    /// Era o identificador da contagem — <c>"Contagem 01a0b2c3-…"</c> —, que
+    /// cumpria a regra de «um Ajuste exige motivo» sem explicar nada a quem o
+    /// lia. Passa a dizer o que aconteceu: a data da contagem física, o que o
+    /// sistema esperava, o que se encontrou, e se foi falta ou sobra.
+    /// </para>
+    /// </summary>
+    private static string MotivoDoAjuste(InventoryCount count, InventoryCountLine linha)
+    {
+        var sentido = linha.Variance < 0 ? "falta" : "sobra";
+
+        return $"Contagem de {count.OccurredOn:yyyy-MM-dd}: esperado {linha.ExpectedQuantity:0.####}, "
+             + $"contado {linha.CountedQuantity:0.####} ({sentido} {Math.Abs(linha.Variance):0.####})";
+    }
+
+    /// <summary>
+    /// Quanto vale a divergência: soma de |variância| × custo médio do item.
+    ///
+    /// <para>
+    /// É este número que escolhe a faixa da política — uma falta de mil
+    /// unidades de um artigo barato não vale o mesmo que uma de dez de um
+    /// artigo caro, e é o valor, não a quantidade, que decide se alguém tem de
+    /// olhar para isto.
+    /// </para>
+    /// </summary>
+    private async Task<decimal> ValorDaDivergenciaAsync(
+        IReadOnlyList<InventoryCountLine> divergentes,
+        CancellationToken cancellationToken)
+    {
+        var total = 0m;
+
+        foreach (var linha in divergentes)
+        {
+            var item = await items.FindAsync(linha.ItemId, cancellationToken);
+            total += Math.Abs(linha.Variance) * (item?.AverageCost ?? 0m);
+        }
+
+        return total;
+    }
+
+    private sealed record AjusteGerado(
+        Guid MovementId, Guid ItemId, decimal Expected, decimal Counted, decimal Variance);
+}
+
+/// <summary>
+/// Pergunta a `approval` se a contagem já foi decidida e aplica o efeito deste
+/// lado (ADR-064).
+///
+/// <para>
+/// <strong>`approval` nunca empurra.</strong> Mesma disciplina de
+/// <c>ApplyPayrollDecision</c>: o módulo dono pergunta quando quer saber, e é
+/// ele que produz o efeito que reteve — aqui, gerar os ajustes que o fecho
+/// deixou por gerar.
+/// </para>
+/// </summary>
+public sealed class ApplyInventoryCountDecision(
+    IInventoryCountStore counts,
+    IInventoryApprovalSubmission approvals,
+    CloseInventoryCount fecho,
+    IAuditTrail audit,
+    TimeProvider clock)
+{
+    public async Task<CloseCountResult> ExecuteAsync(
+        Guid countId,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        var count = await counts.FindForUpdateAsync(countId, cancellationToken);
+
+        if (count is null)
+        {
+            return CloseCountResult.NotFound("Contagem não encontrada.");
+        }
+
+        if (count.Status is not InventoryCountStatus.PendingApproval)
+        {
+            // Já decidida, ou nunca submetida: não é erro, é a resposta.
+            return CloseCountResult.AlreadySettled(count.Status.ToString());
+        }
+
+        var estado = await approvals.GetStateAsync(count.ApprovalRequestId!.Value, cancellationToken);
+
+        switch (estado)
+        {
+            case InventoryApprovalState.Approved:
+                return await fecho.AplicarAsync(count, context, cancellationToken);
+
+            case InventoryApprovalState.Refused:
+                count.MarkRefused(clock.GetUtcNow());
+                await counts.SaveChangesAsync(cancellationToken);
+
+                await audit.RecordAsync(
+                    new AuditRecord(
+                        InventoryAuditActions.CountRefused,
+                        InventoryAuditEntityTypes.Count,
+                        count.Id.ToString(),
+                        context,
+                        NewValue: $$"""{"approvalRequest":"{{count.ApprovalRequestId}}","varianceValue":{{count.SubmittedVarianceValue}}}"""),
+                    cancellationToken);
+
+                return CloseCountResult.Refused();
+
+            default:
+                return CloseCountResult.StillPending();
+        }
     }
 }
 
@@ -309,7 +549,13 @@ public enum AddCountLineOutcome
     Conflict,
 }
 
-public sealed record CloseCountResult(CloseCountOutcome Outcome, IReadOnlyList<Guid>? GeneratedAdjustmentIds, string? Error)
+public sealed record CloseCountResult(
+    CloseCountOutcome Outcome,
+    IReadOnlyList<Guid>? GeneratedAdjustmentIds,
+    string? Error,
+    Guid? ApprovalRequestId = null,
+    decimal? VarianceValue = null,
+    string? SettledStatus = null)
 {
     public static CloseCountResult Success(IReadOnlyList<Guid> generatedAdjustmentIds) =>
         new(CloseCountOutcome.Closed, generatedAdjustmentIds, null);
@@ -317,6 +563,21 @@ public sealed record CloseCountResult(CloseCountOutcome Outcome, IReadOnlyList<G
     public static CloseCountResult NotFound(string error) => new(CloseCountOutcome.NotFound, null, error);
 
     public static CloseCountResult Conflict(string error) => new(CloseCountOutcome.Conflict, null, error);
+
+    /// <summary>
+    /// Submetida a decisão. <strong>Nenhum ajuste foi gerado</strong> — é o que
+    /// distingue este desfecho de <see cref="Success"/>, e é a razão de não
+    /// devolver lista nenhuma de movimentos.
+    /// </summary>
+    public static CloseCountResult PendingApproval(Guid approvalRequestId, decimal varianceValue) =>
+        new(CloseCountOutcome.PendingApproval, null, null, approvalRequestId, varianceValue);
+
+    public static CloseCountResult StillPending() => new(CloseCountOutcome.StillPending, null, null);
+
+    public static CloseCountResult Refused() => new(CloseCountOutcome.Refused, null, null);
+
+    public static CloseCountResult AlreadySettled(string status) =>
+        new(CloseCountOutcome.AlreadySettled, null, null, SettledStatus: status);
 }
 
 public enum CloseCountOutcome
@@ -326,6 +587,21 @@ public enum CloseCountOutcome
 
     /// <summary>Contagem já não está aberta, sem nenhuma linha, ou um item recusou o ajuste gerado. 409.</summary>
     Conflict,
+
+    /// <summary>
+    /// Submetida a decisão (ADR-064): o stock **não** mudou, e não há ajustes
+    /// para devolver. 202.
+    /// </summary>
+    PendingApproval,
+
+    /// <summary>Perguntou-se e ninguém decidiu ainda. Não é erro — é a resposta.</summary>
+    StillPending,
+
+    /// <summary>A divergência foi recusada. A contagem não se aplica e não reabre.</summary>
+    Refused,
+
+    /// <summary>Já decidida antes, ou nunca submetida. Devolve o estado em que está.</summary>
+    AlreadySettled,
 }
 
 public sealed record CancelCountResult(CancelCountOutcome Outcome, string? Error)
