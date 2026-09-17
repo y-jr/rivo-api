@@ -341,7 +341,7 @@ Test-Case "16. Cenario: uma conta com password, criada por convite" {
 Test-Case "17. Pedir recuperacao devolve 204, e o testemunho vai no correio" {
     $r = Invoke-WebRequest "$base/identity/password-recovery" -Method Post `
         -Body (@{ email = $script:recEmail } | ConvertTo-Json) -ContentType "application/json" -SkipHttpErrorCheck
-    if ($r.StatusCode -ne 204) { throw "esperado 204, obtido $($r.StatusCode): $($r.Content)" }
+    if ($r.StatusCode -ne 204) { throw "esperado 204, obtido $($r.StatusCode): $(Get-RivoCorpo $r)" }
 
     $onde = "where recipient_user_id='$($script:recId)' and type='identity.password_recovery'"
 
@@ -373,7 +373,8 @@ Test-Case "18. ⚠ Endereco sem conta devolve o MESMO 204, e nao envia nada" {
 
     # O corpo tambem tem de ser igual: um 204 com texto diferente revelava o
     # mesmo que um codigo diferente.
-    if ($r.Content) { throw "o 204 trouxe corpo: '$($r.Content)'" }
+    $corpo = Get-RivoCorpo $r
+    if ($corpo) { throw "o 204 trouxe corpo: '$corpo'" }
 
     $enviadas = Invoke-RivoSql "select count(*) from notifications.notification where type='identity.password_recovery' and message like '%$inexistente%'"
     if ($enviadas -ne "0") { throw "$enviadas notificacoes para um endereco sem conta" }
@@ -393,7 +394,7 @@ Test-Case "19. Concluir com o testemunho muda a password" {
     $corpo = @{ userId = $script:recId; token = $script:recTestemunho; password = "Rivo!Recuperada2026" } | ConvertTo-Json
     $r = Invoke-WebRequest "$base/identity/password-recovery/completion" -Method Post `
         -Body $corpo -ContentType "application/json" -SkipHttpErrorCheck
-    if ($r.StatusCode -ne 204) { throw "concluir devolveu $($r.StatusCode), esperado 204: $($r.Content)" }
+    if ($r.StatusCode -ne 204) { throw "concluir devolveu $($r.StatusCode), esperado 204: $(Get-RivoCorpo $r)" }
 
     # Entra com a nova...
     $token = Get-Token $script:recEmail "Rivo!Recuperada2026"
@@ -425,7 +426,10 @@ Test-Case "21. Testemunho invalido diz o mesmo que expirado" {
     $r = Invoke-WebRequest "$base/identity/password-recovery/completion" -Method Post `
         -Body $corpo -ContentType "application/json" -SkipHttpErrorCheck
     if ($r.StatusCode -ne 400) { throw "esperado 400, obtido $($r.StatusCode)" }
-    if ($r.Content -notmatch "inv[áa]lida ou expirada") { throw "a mensagem distingue os casos: $($r.Content)" }
+    # `Get-RivoCorpo` e nao `$r.Content`: num 400 o ASP.NET responde
+    # `application/problem+json`, e o PowerShell entrega esse corpo como bytes.
+    $texto = Get-RivoCorpo $r
+    if ($texto -notmatch "inv[áa]lida ou expirada") { throw "a mensagem distingue os casos: $texto" }
     "400 com a mensagem indistinta"
 }
 
