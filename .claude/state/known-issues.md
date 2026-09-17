@@ -254,6 +254,31 @@ ou do disco, ou um serviço compatível com S3.
   Fecha quando houver um arquivo na VPS, uma cópia no PC, uma no balde, e um
   ensaio de restauro feito.
 
+### K23 — Nenhum documento comercial se pode imprimir ou entregar
+
+- **Módulo:** `finance` (e, por consequência, o Portal do Cliente).
+- **Impacto:** factura, nota de crédito e recibo existem como **dados** — vêem-se
+  no ecrã, no extracto do cliente e pela API —, mas **não há ficheiro**. Nada que
+  se imprima, se anexe a um e-mail ou se entregue a quem comprou. Um cliente que
+  peça «mande-me a factura» não tem resposta possível hoje.
+- **Como se verificou:** não existe nenhuma biblioteca de geração de documentos
+  em nenhum `.csproj` do projecto — nem QuestPDF, nem iText, nem PdfSharp, nem
+  nada equivalente. Não é código por ligar: é trabalho por começar.
+- **Como se chegou aqui:** ninguém decidiu não o fazer. O SAF-T e a certificação
+  dominaram a conversa sobre facturação (K7, ADR-036), e a entrega do documento
+  ao cliente nunca foi escrita em lado nenhum — nem aqui, nem em
+  `pending-decisions.md`, nem no documento de produto. **Encontrado a
+  2026-09-16, por pergunta do utilizador:** «as facturas não são geradas, ou está
+  tudo funcional?»
+- **O que NÃO é:** não é a certificação da AGT (K7). São coisas independentes —
+  um PDF sem certificação continua a ser um documento sem validade fiscal, e a
+  menção que já vai congelada em cada factura continua a ter de lá aparecer.
+  Mas a certificação depende de terceiros e isto não.
+- **Seguimento:** decidir o âmbito (só factura? também recibo e nota de crédito?
+  envio por e-mail, que o canal já existe desde o K13?) e escolher a biblioteca.
+  Fecha quando um documento emitido produzir um ficheiro que uma pessoa
+  consegue abrir.
+
 ### ~~K13 — Notificações não são entregues fora da aplicação~~ — **FECHADO a 2026-09-15**
 
 Fechado por percurso completo feito por uma pessoa: convite criado, e-mail
