@@ -33,6 +33,7 @@ using Rivo.Notifications.Infrastructure;
 using Rivo.Identity.Infrastructure;
 using Rivo.Identity.Infrastructure.Persistence;
 using Rivo.Payroll.Api;
+using Rivo.Inventory.Application.Abstractions;
 using Rivo.Payroll.Application.Abstractions;
 using Rivo.Payroll.Infrastructure;
 using Rivo.Projects.Api;
@@ -184,6 +185,10 @@ builder.Services.AddScoped<IProcurementApprovalSubmission, ProcurementApprovalSu
 // E `payroll`, mesmo desenho — ver Composition/PayrollApprovalSubmission.
 // Esqueleto: sem cálculo de IRT/INSS, a folha submete-se pelo total bruto.
 builder.Services.AddScoped<IPayrollApprovalSubmission, PayrollApprovalSubmission>();
+
+// E `inventory`, desde o ADR-064: as divergencias de contagem acima da alcada
+// configurada passam por decisao antes de corrigirem o stock.
+builder.Services.AddScoped<IInventoryApprovalSubmission, InventoryApprovalSubmission>();
 
 var app = builder.Build();
 

@@ -649,7 +649,203 @@ Test-Case "65. Codigo de armazem e unico na base de dados" {
     "indice unico e a segunda linha; a verificacao no caso de uso e a primeira"
 }
 
-Test-Case "66. Dados sobrevivem ao reinicio da stack" {
+# --- Governanca das divergencias de contagem (ADR-064) ----------------------
+#
+# Ate 2026-09-17, fechar uma contagem corrigia o stock de imediato, fosse a
+# diferenca de uma unidade ou de mil. O motivo gravado no ajuste era o
+# identificador da contagem, que nao explica nada a quem o le.
+
+$script:govItemId = $null
+$script:govCountId = $null
+$script:govArmazem = $null
+$script:govAprovador = $null
+$script:govCargo = $null
+
+Test-Case "67. Cenario: artigo caro recebido, e uma contagem que encontra menos" {
+    $script:govArmazem = (Invoke-RestMethod "$base/inventory/warehouses" -Method Post -ContentType "application/json" `
+            -Headers $adminHeaders -Body (@{ code = "GOV-$stamp"; name = "Armazem Governanca $stamp" } | ConvertTo-Json)).warehouseId
+
+    $script:govItemId = (Invoke-RestMethod "$base/inventory/items" -Method Post -ContentType "application/json" `
+            -Headers $adminHeaders -Body (@{ sku = "GOV-$stamp"; name = "Artigo caro"; unit = "un" } | ConvertTo-Json)).itemId
+
+    Invoke-RestMethod "$base/inventory/items/$($script:govItemId)/movements/receipts" -Method Post -ContentType "application/json" `
+        -Headers $adminHeaders `
+        -Body (@{ warehouseId = $script:govArmazem; quantity = 100; unitCost = 250; reason = "Recepcao inicial" } | ConvertTo-Json) | Out-Null
+
+    $script:govDia = [DateTime]::UtcNow.ToString("yyyy-MM-dd")
+    $script:govCountId = (Invoke-RestMethod "$base/inventory/counts" -Method Post -ContentType "application/json" `
+            -Headers $adminHeaders -Body (@{ warehouseId = $script:govArmazem; occurredOn = $script:govDia } | ConvertTo-Json)).countId
+
+    Invoke-RestMethod "$base/inventory/counts/$($script:govCountId)/lines" -Method Post -ContentType "application/json" `
+        -Headers $adminHeaders `
+        -Body (@{ itemId = $script:govItemId; countedQuantity = 60 } | ConvertTo-Json) | Out-Null
+
+    "100 recebidas a 250; contadas 60 -- falta de 40, que vale 10 000"
+}
+
+Test-Case "68. Com alcada configurada, fechar NAO corrige o stock -- fica pendente de decisao" {
+    # Alcada: quem decide e um colaborador com cargo, como em todos os outros
+    # processos (ADR-050).
+    $script:govAprovador = New-RivoColaboradorComConta -Email "inv-apr-$stamp@rivo.ao" `
+        -Nome "Aprovador Inventario $stamp" -AdminHeaders $adminHeaders -Perfil "Admin"
+
+    $script:govCargo = (Invoke-RestMethod "$base/hr/positions" -Method Post -ContentType "application/json" `
+            -Headers $adminHeaders `
+            -Body (@{ name = "Aprovador Inventario $stamp"; hierarchyLevel = 2; grantsApprovalAuthority = $false } | ConvertTo-Json)).positionId
+
+    Invoke-RestMethod "$base/hr/employees/$($script:govAprovador.EmployeeId)/positions" -Method Post `
+        -ContentType "application/json" -Headers $adminHeaders `
+        -Body (@{ positionId = $script:govCargo } | ConvertTo-Json) | Out-Null
+
+    Clear-RivoApprovalPolicies -ProcessType "inventory.stock_count" -Headers $adminHeaders
+    Invoke-RestMethod "$base/approval/policies" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+        -Body (@{ processType = "inventory.stock_count"; steps = @(@{ approverPositionId = $script:govCargo }) } | ConvertTo-Json -Depth 5) | Out-Null
+
+    # O Admin do bootstrap nao tem colaborador ligado, e quem submete tem de ter
+    # (ADR-057). Quem fecha esta contagem e o aprovador -- que neste caso nao
+    # pode decidir sobre o proprio pedido (BR-2), e por isso a decisao vem a
+    # seguir por outra conta.
+    $quemFecha = New-RivoColaboradorComConta -Email "inv-conta-$stamp@rivo.ao" `
+        -Nome "Contador Inventario $stamp" -AdminHeaders $adminHeaders -Perfil "Admin"
+
+    $resposta = Invoke-WebRequest "$base/inventory/counts/$($script:govCountId)/close" -Method Post `
+        -Headers $quemFecha.Headers -SkipHttpErrorCheck
+    if ($resposta.StatusCode -ne 202) { throw "esperado 202, obtido $($resposta.StatusCode): $($resposta.Content)" }
+
+    $corpo = $resposta.Content | ConvertFrom-Json
+    if (-not $corpo.approvalRequestId) { throw "202 sem processo de aprovacao" }
+    if ([decimal]$corpo.varianceValue -ne 10000) { throw "valor da divergencia esperado 10000, obtido $($corpo.varianceValue)" }
+
+    # **A propriedade central: o stock nao mudou.**
+    $item = Invoke-RestMethod "$base/inventory/items/$($script:govItemId)" -Headers $adminHeaders
+    $noArmazem = $item.quantitiesByWarehouse | Where-Object { $_.warehouseId -eq $script:govArmazem }
+    if ([decimal]$noArmazem.quantityOnHand -ne 100) { throw "o stock foi corrigido antes da decisao: $($noArmazem.quantityOnHand)" }
+
+    $estado = (Invoke-RestMethod "$base/inventory/counts/$($script:govCountId)" -Headers $adminHeaders).status
+    if ($estado -ne "PendingApproval") { throw "estado esperado PendingApproval, obtido $estado" }
+
+    $script:govProcesso = $corpo.approvalRequestId
+    "202, divergencia de 10 000 submetida; armazem continua com 100"
+}
+
+Test-Case "69. A submissao fica na trilha, e distinta do fecho" {
+    $n = Invoke-Sql "select count(*) from audit.audit_event where action='inventory.count.submitted' and entity_id='$($script:govCountId)'"
+    if ($n -ne "1") { throw "$n registos de submissao, esperado 1" }
+
+    $fechos = Invoke-Sql "select count(*) from audit.audit_event where action='inventory.count.closed' and entity_id='$($script:govCountId)'"
+    if ($fechos -ne "0") { throw "a contagem aparece como fechada antes de ser decidida" }
+
+    $ajustes = Invoke-Sql "select count(*) from audit.audit_event where action='inventory.movement.adjustment' and new_value like '%$($script:govCountId)%'"
+    if ($ajustes -ne "0") { throw "$ajustes ajustes auditados antes da decisao" }
+
+    "submissao registada; nem fecho nem ajustes antes de decidir"
+}
+
+Test-Case "70. Enquanto ninguem decide, pedir a decisao devolve 202 e nao corrige nada" {
+    $resposta = Invoke-WebRequest "$base/inventory/counts/$($script:govCountId)/decision" -Method Post `
+        -Headers $adminHeaders -SkipHttpErrorCheck
+    if ($resposta.StatusCode -ne 202) { throw "esperado 202, obtido $($resposta.StatusCode)" }
+
+    $item = Invoke-RestMethod "$base/inventory/items/$($script:govItemId)" -Headers $adminHeaders
+    $noArmazem = $item.quantitiesByWarehouse | Where-Object { $_.warehouseId -eq $script:govArmazem }
+    if ([decimal]$noArmazem.quantityOnHand -ne 100) { throw "stock alterado sem decisao: $($noArmazem.quantityOnHand)" }
+    "202, e o armazem continua com 100"
+}
+
+Test-Case "71. Aprovada, a decisao aplica o ajuste que o fecho reteve" {
+    Invoke-RestMethod "$base/approval/requests/$($script:govProcesso)/decisions" -Method Post `
+        -ContentType "application/json" -Headers $script:govAprovador.Headers `
+        -Body (@{ action = "Approved"; notes = "Quebra confirmada em armazem." } | ConvertTo-Json) | Out-Null
+
+    $r = Invoke-RestMethod "$base/inventory/counts/$($script:govCountId)/decision" -Method Post -Headers $adminHeaders
+    if (@($r.generatedAdjustmentIds).Count -ne 1) { throw "esperado 1 ajuste, obtido $(@($r.generatedAdjustmentIds).Count)" }
+
+    $item = Invoke-RestMethod "$base/inventory/items/$($script:govItemId)" -Headers $adminHeaders
+    $noArmazem = $item.quantitiesByWarehouse | Where-Object { $_.warehouseId -eq $script:govArmazem }
+    if ([decimal]$noArmazem.quantityOnHand -ne 60) { throw "stock esperado 60 apos a decisao, obtido $($noArmazem.quantityOnHand)" }
+
+    $estado = (Invoke-RestMethod "$base/inventory/counts/$($script:govCountId)" -Headers $adminHeaders).status
+    if ($estado -ne "Closed") { throw "estado esperado Closed, obtido $estado" }
+    "aprovada; armazem passa a 60 e a contagem fecha"
+}
+
+Test-Case "72. O motivo do ajuste explica a divergencia, em vez de citar um identificador" {
+    $motivo = Invoke-Sql "select top 1 reason from inventory.stock_movement where item_id='$($script:govItemId)' and type='Adjustment' order by recorded_at desc"
+
+    # Era "Contagem 01a0b2c3-...", que cumpria a regra de exigir motivo sem
+    # explicar nada a quem o lia.
+    # A data entra na verificacao: sem ela, uma contagem aberta sem `occurredOn`
+    # gravava "Contagem de 0001-01-01" e o caso passava na mesma.
+    foreach ($pedaco in @("Contagem de $($script:govDia)", "esperado 100", "contado 60", "falta 40")) {
+        if ($motivo -notmatch [regex]::Escape($pedaco)) { throw "o motivo nao diz '$pedaco': '$motivo'" }
+    }
+    "motivo: '$motivo'"
+}
+
+Test-Case "73. O fecho resume a divergencia e o ajuste leva o esperado e o contado" {
+    $fecho = Invoke-Sql "select top 1 new_value from audit.audit_event where action='inventory.count.closed' and entity_id='$($script:govCountId)' order by occurred_at desc"
+    foreach ($campo in @('"linesCounted":1', '"linesWithVariance":1', '"shortfall":40', '"surplus":0', '"approvalRequired":true')) {
+        if ($fecho -notmatch [regex]::Escape($campo)) { throw "o fecho nao regista $campo -- '$fecho'" }
+    }
+
+    $ajuste = Invoke-Sql "select top 1 new_value from audit.audit_event where action='inventory.movement.adjustment' and new_value like '%$($script:govCountId)%' order by occurred_at desc"
+    foreach ($campo in @('"expectedQuantity":100', '"countedQuantity":60', '"quantity":-40')) {
+        if ($ajuste -notmatch [regex]::Escape($campo)) { throw "o ajuste nao regista $campo -- '$ajuste'" }
+    }
+
+    "fecho com faltas e sobras; ajuste com esperado, contado e diferenca"
+}
+
+Test-Case "74. Sem alcada que cubra o valor, a contagem fecha e corrige como sempre" {
+    # A politica activa exige decisao; desactiva-se, e uma divergencia nova passa
+    # a aplicar-se de imediato. E o que distingue este processo dos outros: nao
+    # haver politica nao e impedimento, e "isto nao precisa de aprovacao".
+    Clear-RivoApprovalPolicies -ProcessType "inventory.stock_count" -Headers $adminHeaders
+
+    $contagem = (Invoke-RestMethod "$base/inventory/counts" -Method Post -ContentType "application/json" `
+            -Headers $adminHeaders -Body (@{ warehouseId = $script:govArmazem } | ConvertTo-Json)).countId
+
+    Invoke-RestMethod "$base/inventory/counts/$contagem/lines" -Method Post -ContentType "application/json" `
+        -Headers $adminHeaders -Body (@{ itemId = $script:govItemId; countedQuantity = 58 } | ConvertTo-Json) | Out-Null
+
+    $r = Invoke-RestMethod "$base/inventory/counts/$contagem/close" -Method Post -Headers $adminHeaders
+    if (@($r.generatedAdjustmentIds).Count -ne 1) { throw "esperado 1 ajuste imediato" }
+
+    $item = Invoke-RestMethod "$base/inventory/items/$($script:govItemId)" -Headers $adminHeaders
+    $noArmazem = $item.quantitiesByWarehouse | Where-Object { $_.warehouseId -eq $script:govArmazem }
+    if ([decimal]$noArmazem.quantityOnHand -ne 58) { throw "stock esperado 58, obtido $($noArmazem.quantityOnHand)" }
+
+    # E fica escrito que nao houve alcada -- a diferenca entre nao ter sido
+    # preciso e ter sido contornado.
+    $fecho = Invoke-Sql "select top 1 new_value from audit.audit_event where action='inventory.count.closed' and entity_id='$contagem' order by occurred_at desc"
+    if ($fecho -notmatch [regex]::Escape('"approvalRequired":false')) { throw "o fecho nao regista a ausencia de alcada: '$fecho'" }
+
+    "sem alcada: fecha, corrige para 58, e a trilha diz que nao houve governanca"
+}
+
+Test-Case "75. Contagem aberta sem data assume hoje, e nao o ano 1" {
+    $hoje = [DateTime]::UtcNow.ToString("yyyy-MM-dd")
+    $semData = (Invoke-RestMethod "$base/inventory/counts" -Method Post -ContentType "application/json" `
+            -Headers $adminHeaders -Body (@{ warehouseId = $script:govArmazem } | ConvertTo-Json)).countId
+
+    $quando = (Invoke-RestMethod "$base/inventory/counts/$semData" -Headers $adminHeaders).occurredOn
+    if ($quando -notmatch [regex]::Escape($hoje)) { throw "data esperada $hoje, obtida '$quando'" }
+
+    Invoke-RestMethod "$base/inventory/counts/$semData/cancellation" -Method Post -ContentType "application/json" `
+        -Headers $adminHeaders -Body (@{ reason = "Contagem de verificacao" } | ConvertTo-Json) | Out-Null
+
+    "sem occurredOn: assume $hoje"
+}
+
+Test-Case "76. A suite nao deixa politica de contagem activa atras de si" {
+    Clear-RivoApprovalPolicies -ProcessType "inventory.stock_count" -Headers $adminHeaders
+
+    $activas = Invoke-Sql "select count(*) from approval.policy where process_type='inventory.stock_count' and is_active=1"
+    if ($activas -ne "0") { throw "$activas politica(s) ficaram activas" }
+    "nenhuma politica de contagem activa"
+}
+
+Test-Case "77. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)

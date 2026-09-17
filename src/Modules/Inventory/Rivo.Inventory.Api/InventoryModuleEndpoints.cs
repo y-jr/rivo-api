@@ -68,6 +68,11 @@ public static class InventoryModuleEndpoints
         group.MapPost("/counts/{countId:guid}/close", CloseCountAsync)
             .RequireAuthorization(InventoryPermissions.ItemsWrite);
 
+        // Pergunta a `approval` se a divergência já foi decidida e aplica o efeito
+        // deste lado (ADR-064). Mesma disciplina de `payroll`: `approval` nunca empurra.
+        group.MapPost("/counts/{countId:guid}/decision", ApplyCountDecisionAsync)
+            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+
         // Nunca DELETE (BR-14) — cancelar é o que existe para um engano.
         group.MapPost("/counts/{countId:guid}/cancellation", CancelCountAsync)
             .RequireAuthorization(InventoryPermissions.ItemsWrite);
@@ -274,11 +279,22 @@ public static class InventoryModuleEndpoints
     private static async Task<IResult> OpenCountAsync(
         OpenCountRequest request,
         OpenInventoryCount openCount,
+        TimeProvider clock,
         HttpContext http,
         CancellationToken cancellationToken)
     {
+        // Omitida, a data da contagem é **hoje** — mesmo tratamento que a
+        // marcação de assiduidade dá ao dia omitido.
+        //
+        // Era `default(DateOnly)`, e ficava gravado `0001-01-01`. Passava
+        // despercebido enquanto o motivo do ajuste era o identificador da
+        // contagem; desde que o motivo passou a incluir a data (ADR-064), a
+        // contagem aberta sem data escrevia «Contagem de 0001-01-01» na lista de
+        // movimentos, à vista de quem a lesse.
+        var quando = request.OccurredOn ?? DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+
         var result = await openCount.ExecuteAsync(
-            request.WarehouseId, request.OccurredOn, BuildAuditContext(http), cancellationToken);
+            request.WarehouseId, quando, BuildAuditContext(http), cancellationToken);
 
         return result.Outcome switch
         {
@@ -324,13 +340,55 @@ public static class InventoryModuleEndpoints
     {
         var result = await closeCount.ExecuteAsync(countId, BuildAuditContext(http), cancellationToken);
 
-        return result.Outcome switch
+        return Responder(result);
+    }
+
+    private static async Task<IResult> ApplyCountDecisionAsync(
+        Guid countId,
+        ApplyInventoryCountDecision applyDecision,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        Responder(await applyDecision.ExecuteAsync(countId, BuildAuditContext(http), cancellationToken));
+
+    /// <summary>
+    /// Traduz o desfecho do fecho e o da decisão — são o mesmo tipo porque são o
+    /// mesmo acto, chegado por caminhos diferentes (ADR-064).
+    /// </summary>
+    private static IResult Responder(CloseCountResult result) =>
+        result.Outcome switch
         {
-            CloseCountOutcome.Closed => Results.Ok(new { generatedAdjustmentIds = result.GeneratedAdjustmentIds }),
+            CloseCountOutcome.Closed =>
+                Results.Ok(new { generatedAdjustmentIds = result.GeneratedAdjustmentIds }),
+
+            // 202 e não 200: aceite, e **nada foi corrigido no stock**. Devolver
+            // 200 com uma lista vazia de ajustes diria que a contagem se aplicou
+            // e não gerou nada, que é outra coisa.
+            CloseCountOutcome.PendingApproval => Results.Accepted(
+                $"/inventory/counts/{{countId}}",
+                new
+                {
+                    approvalRequestId = result.ApprovalRequestId,
+                    varianceValue = result.VarianceValue,
+                    detalhe = "A divergência excede a alçada configurada e foi submetida a decisão. "
+                            + "O stock não foi corrigido.",
+                }),
+
+            CloseCountOutcome.StillPending => Results.Accepted(
+                $"/inventory/counts/{{countId}}",
+                new { detalhe = "A decisão ainda não foi tomada. O stock continua por corrigir." }),
+
+            CloseCountOutcome.Refused => Results.Ok(new
+            {
+                detalhe = "A divergência foi recusada em decisão. A contagem não se aplica, e não reabre — "
+                        + "para tentar de novo, conte outra vez.",
+            }),
+
+            CloseCountOutcome.AlreadySettled => Results.Ok(new { estado = result.SettledStatus }),
+
             CloseCountOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+
             _ => Results.Conflict(new { erro = result.Error }),
         };
-    }
 
     private static async Task<IResult> CancelCountAsync(
         Guid countId,
@@ -411,7 +469,11 @@ public sealed record RegisterWarehouseRequest(string Code, string Name);
 
 public sealed record SetWarehouseStatusRequest(bool Active);
 
-public sealed record OpenCountRequest(Guid WarehouseId, DateOnly OccurredOn);
+/// <param name="OccurredOn">
+/// Data em que a contagem física aconteceu. Omitida, assume-se hoje — contar é
+/// um acto do dia, e uma contagem sem data era gravada com `0001-01-01`.
+/// </param>
+public sealed record OpenCountRequest(Guid WarehouseId, DateOnly? OccurredOn);
 
 public sealed record AddCountLineRequest(Guid ItemId, decimal CountedQuantity);
 

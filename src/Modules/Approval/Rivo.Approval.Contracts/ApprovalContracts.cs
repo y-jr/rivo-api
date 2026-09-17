@@ -218,8 +218,24 @@ public static class ApprovalProcessTypes
     /// </summary>
     public const string PayrollRun = "payroll.payroll_run";
 
+    /// <summary>
+    /// Divergência encontrada numa contagem de inventário (ADR-064). O valor é
+    /// o da divergência — |variância| × custo médio, somado —, e não o do stock
+    /// contado: o que se decide é a perda ou o ganho, não o armazém.
+    ///
+    /// <para>
+    /// <strong>É o único processo em que não haver política aplicável não é
+    /// impedimento.</strong> Nos outros, a ausência de alçada recusa o pedido;
+    /// aqui significa que a divergência está abaixo do que a empresa quis
+    /// vigiar, e a contagem aplica-se. A razão está no ADR-064: uma contagem
+    /// por fechar deixa o sistema a divergir do armazém real, que é a situação
+    /// que ela existe para terminar.
+    /// </para>
+    /// </summary>
+    public const string StockCount = "inventory.stock_count";
+
     public static readonly IReadOnlyList<string> All =
-        [PositionAssignment, LeaveRequest, PaymentRequest, PurchaseRequisition, PayrollRun];
+        [PositionAssignment, LeaveRequest, PaymentRequest, PurchaseRequisition, PayrollRun, StockCount];
 }
 
 /// <summary>

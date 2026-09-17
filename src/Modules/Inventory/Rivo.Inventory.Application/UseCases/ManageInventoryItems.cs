@@ -178,6 +178,16 @@ public static class InventoryAuditActions
     public const string WarehouseDeactivated = "inventory.warehouse.deactivated";
     public const string WarehouseReactivated = "inventory.warehouse.reactivated";
     public const string CountOpened = "inventory.count.opened";
+
+    /// <summary>
+    /// A divergência foi submetida a decisão (ADR-064) e **o stock não mudou**.
+    /// Distinta de <see cref="CountClosed"/> de propósito: quem lê a trilha
+    /// precisa de saber que houve um momento em que a correcção esteve retida.
+    /// </summary>
+    public const string CountSubmitted = "inventory.count.submitted";
+
+    /// <summary>A divergência foi recusada em decisão. A contagem não se aplicou.</summary>
+    public const string CountRefused = "inventory.count.refused";
     public const string CountLineAdded = "inventory.count.line_added";
     public const string CountClosed = "inventory.count.closed";
     public const string CountCancelled = "inventory.count.cancelled";

@@ -74,7 +74,10 @@ se aplicável).
   de zero — recusada, não truncada, e nunca compensada com quantidade que
   exista noutro armazém do mesmo item.
 - Um Ajuste exige motivo — uma correcção de contagem sem explicação não se
-  aceita.
+  aceita. **Desde 2026-09-16 (ADR-064) o motivo gerado pelo fecho de uma
+  contagem descreve a divergência** («Contagem de 2026-09-17: esperado 100,
+  contado 60 (falta 40)») em vez de citar o identificador da contagem, que
+  cumpria a regra sem a servir.
 - Um item inactivo não aceita Recepção, Saída, Ajuste nem Transferência
   novos. Um armazém inactivo também não aceita nenhum dos quatro.
 - **Transferência é atómica** (decisão confirmada 2026-08-31): move uma
@@ -94,6 +97,15 @@ se aplicável).
   `QuantityOnHandAt`, nunca recalculada no fecho) e a quantidade contada —
   variância é a diferença. O mesmo item não se conta duas vezes na mesma
   sessão.
+- **2026-09-17 — a divergência passa por decisão (ADR-064).** Fechar uma
+  contagem com divergências submete-as a `approval` com o **valor** da
+  divergência (Σ |variância| × custo médio) e **retém os ajustes**: a contagem
+  fica `PendingApproval` e o stock não muda até alguém decidir. Aprovada,
+  `POST /inventory/counts/{id}/decision` aplica; recusada, fica `Refused` e não
+  reabre. ⚠ **Não haver política aplicável não impede o fecho** — ao contrário
+  de `payroll` e `procurement`, porque uma contagem por fechar deixa o stock do
+  sistema a divergir do real; nesse caso aplica-se e a trilha regista
+  `approvalRequired:false`.
 - Fechar uma contagem sem nenhuma linha não tem o que confirmar — recusado.
   Fechar uma contagem com linhas gera, **na mesma transacção**, um Ajuste por
   cada linha com variância diferente de zero (mesma disciplina de "emitir

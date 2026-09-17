@@ -62,6 +62,31 @@ public sealed class InventoryCount
     /// <summary>Motivo do cancelamento — só preenchido quando <see cref="Status"/> é <see cref="InventoryCountStatus.Cancelled"/>.</summary>
     public string? CancellationReason { get; private set; }
 
+    /// <summary>
+    /// O processo em `approval` que decide esta contagem. Nulo quando a
+    /// contagem não precisou de governança — porque não tinha divergências, ou
+    /// porque nenhuma alçada configurada cobria o valor em causa (ADR-064).
+    ///
+    /// <para>
+    /// Mesmo desenho de <c>PayrollRun.ApprovalRequestId</c>: um ponteiro, e não
+    /// uma cópia do estado da decisão. Quem quer saber se já foi decidida
+    /// pergunta a `approval`; este lado nunca guarda a resposta dele.
+    /// </para>
+    /// </summary>
+    public Guid? ApprovalRequestId { get; private set; }
+
+    /// <summary>
+    /// Valor absoluto da divergência que foi submetida a decisão — a soma de
+    /// |variância| × custo médio de cada item. Congelado na submissão, porque é
+    /// com este número que a alçada foi escolhida e é por ele que a decisão será
+    /// lida depois.
+    /// </summary>
+    public decimal? SubmittedVarianceValue { get; private set; }
+
+    public DateTimeOffset? SubmittedAt { get; private set; }
+
+    public DateTimeOffset? SettledAt { get; private set; }
+
     public IReadOnlyList<InventoryCountLine> Lines => _lines;
 
     /// <summary>Concorrência optimista (ADR-025). O domínio nunca lhe toca.</summary>
@@ -116,10 +141,20 @@ public sealed class InventoryCount
     /// (<c>CloseInventoryCount</c>), porque isso exige tocar no agregado
     /// <see cref="InventoryItem"/> de cada linha, fora do alcance deste
     /// agregado.
+    ///
+    /// <para>
+    /// Fecha-se a partir de <see cref="InventoryCountStatus.Open"/> — quando não
+    /// houve divergências ou nenhuma alçada as cobria — ou de
+    /// <see cref="InventoryCountStatus.PendingApproval"/>, depois de aprovada
+    /// (ADR-064). Nos dois casos é este acto que autoriza os ajustes.
+    /// </para>
     /// </summary>
     public void Close()
     {
-        EnsureOpen("fechar");
+        if (Status is not (InventoryCountStatus.Open or InventoryCountStatus.PendingApproval))
+        {
+            throw new InvalidOperationException($"Não é possível fechar: a contagem já está {Status}.");
+        }
 
         if (_lines.Count == 0)
         {
@@ -128,6 +163,71 @@ public sealed class InventoryCount
 
         Status = InventoryCountStatus.Closed;
     }
+
+    /// <summary>
+    /// Marca a contagem como submetida a decisão, retendo os ajustes até
+    /// alguém decidir (ADR-064).
+    ///
+    /// <para>
+    /// <strong>Nada foi corrigido no stock quando isto acontece.</strong> É a
+    /// diferença que a governança existe para impor: uma divergência de
+    /// inventário acima da alçada é uma perda a explicar, não um número a
+    /// arrumar em silêncio.
+    /// </para>
+    /// </summary>
+    public void MarkSubmitted(Guid approvalRequestId, decimal varianceValue, DateTimeOffset submittedAt)
+    {
+        EnsureOpen("submeter a decisão");
+
+        if (approvalRequestId == Guid.Empty)
+        {
+            throw new ArgumentException("A submissão precisa do processo de aprovação.", nameof(approvalRequestId));
+        }
+
+        if (_lines.Count == 0)
+        {
+            throw new InvalidOperationException("Uma contagem sem nenhuma linha não tem o que aprovar.");
+        }
+
+        Status = InventoryCountStatus.PendingApproval;
+        ApprovalRequestId = approvalRequestId;
+        SubmittedVarianceValue = varianceValue;
+        SubmittedAt = submittedAt;
+    }
+
+    /// <summary>
+    /// A decisão foi recusada: a contagem fica por aplicar, e é facto histórico
+    /// (BR-14).
+    ///
+    /// <para>
+    /// <strong>Não volta a Aberta, e é deliberado.</strong> Reabrir deixaria
+    /// alguém acrescentar linhas a uma sessão de contagem física que já
+    /// terminou, e apresentar ao aprovador seguinte números diferentes dos que o
+    /// primeiro recusou. Quem quiser tentar de novo conta outra vez — que é o
+    /// que se faz quando uma contagem é posta em causa.
+    /// </para>
+    /// </summary>
+    public void MarkRefused(DateTimeOffset settledAt)
+    {
+        if (Status is not InventoryCountStatus.PendingApproval)
+        {
+            throw new InvalidOperationException(
+                $"Só uma contagem pendente de decisão se recusa. Esta está {Status}.");
+        }
+
+        Status = InventoryCountStatus.Refused;
+        SettledAt = settledAt;
+    }
+
+    /// <summary>Registada a data em que a decisão aprovada foi aplicada.</summary>
+    public void MarkSettled(DateTimeOffset settledAt) => SettledAt = settledAt;
+
+    /// <summary>
+    /// Divergências que geram correcção de stock, da maior falta para a maior
+    /// sobra — a ordem em que alguém as quer ler quando há muitas.
+    /// </summary>
+    public IReadOnlyList<InventoryCountLine> LinesWithVariance =>
+        [.. _lines.Where(l => l.Variance != 0).OrderBy(l => l.Variance)];
 
     /// <summary>Cancela uma contagem aberta por engano. Exige motivo — mesma disciplina de um Ajuste sem explicação.</summary>
     public void Cancel(string reason)
@@ -155,6 +255,20 @@ public sealed class InventoryCount
 public enum InventoryCountStatus
 {
     Open,
+
+    /// <summary>
+    /// Submetida a decisão, com os ajustes **retidos** (ADR-064). O stock ainda
+    /// não mudou, e é isso que distingue este estado de <see cref="Closed"/>.
+    /// </summary>
+    PendingApproval,
+
     Closed,
+
+    /// <summary>
+    /// A decisão recusou a divergência. A contagem não se aplica e não reabre —
+    /// quem quiser tentar de novo conta outra vez.
+    /// </summary>
+    Refused,
+
     Cancelled,
 }

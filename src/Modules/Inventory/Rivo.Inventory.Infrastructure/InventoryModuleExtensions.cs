@@ -50,6 +50,7 @@ public static class InventoryModuleExtensions
         services.AddScoped<OpenInventoryCount>();
         services.AddScoped<AddInventoryCountLine>();
         services.AddScoped<CloseInventoryCount>();
+        services.AddScoped<ApplyInventoryCountDecision>();
         services.AddScoped<CancelInventoryCount>();
         services.AddScoped<GetStockValuationByPeriod>();
 
