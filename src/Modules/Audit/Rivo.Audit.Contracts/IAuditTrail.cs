@@ -94,6 +94,28 @@ public static class AuditActions
     /// </summary>
     public const string PasswordReset = "identity.user.password_reset";
 
+    /// <summary>
+    /// Alguém pediu a recuperação da sua password por correio (ADR-065).
+    ///
+    /// <para>
+    /// **Registado mesmo quando o endereço não tem conta** — aí o
+    /// <c>entity_id</c> é o próprio endereço tentado, porque não há
+    /// identificador que registar. Uma sequência destes contra endereços
+    /// diferentes é exactamente o que se quer poder ver depois, e é a única
+    /// pista que sobra de uma rota que responde sempre o mesmo a quem a chama.
+    /// </para>
+    /// </summary>
+    public const string PasswordRecoveryRequested = "identity.user.password_recovery_requested";
+
+    /// <summary>A recuperação chegou ao fim: a password foi mudada por quem recebeu o testemunho.</summary>
+    public const string PasswordRecoveryCompleted = "identity.user.password_recovery_completed";
+
+    /// <summary>
+    /// Testemunho de recuperação recusado — já usado, expirado, ou adivinhado.
+    /// Fica na trilha por ser o rasto de uma tentativa que não passou.
+    /// </summary>
+    public const string PasswordRecoveryFailed = "identity.user.password_recovery_failed";
+
     public const string AccountDeactivated = "identity.user.deactivated";
     public const string AccountReactivated = "identity.user.reactivated";
 

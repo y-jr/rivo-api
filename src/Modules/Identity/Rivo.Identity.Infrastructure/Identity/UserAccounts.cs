@@ -153,6 +153,62 @@ public sealed class UserAccounts(
             : PasswordChangeOutcome.Rejected([.. result.Errors.Select(error => error.Description)]);
     }
 
+    public async Task<PasswordRecoveryStart> BeginPasswordRecoveryAsync(
+        string email,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var user = await users.FindByEmailAsync(email.Trim());
+
+        if (user is null)
+        {
+            return PasswordRecoveryStart.NaoEncontrado();
+        }
+
+        // **Uma conta desactivada não recupera acesso.** Foi desactivada
+        // precisamente para deixar de entrar, e repor a password por correio
+        // seria uma porta lateral para a reactivar sem que ninguém decidisse.
+        if (!IsActive(user, DateTimeOffset.UtcNow))
+        {
+            return PasswordRecoveryStart.NaoEncontrado();
+        }
+
+        var token = await users.GeneratePasswordResetTokenAsync(user);
+
+        return PasswordRecoveryStart.Encontrado(user.Id, token);
+    }
+
+    public async Task<PasswordChangeOutcome> CompletePasswordRecoveryAsync(
+        Guid userId,
+        string token,
+        string password,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var user = await users.FindByIdAsync(userId.ToString());
+
+        if (user is null)
+        {
+            return PasswordChangeOutcome.UserNotFound();
+        }
+
+        // Ao contrário do convite, **não** se exige que a conta esteja sem
+        // password: recuperar é para quem tem uma e a perdeu. O que continua a
+        // valer é a conta estar activa — uma desactivada não volta por aqui.
+        if (!IsActive(user, DateTimeOffset.UtcNow))
+        {
+            return PasswordChangeOutcome.Rejected(["Esta conta está desactivada."]);
+        }
+
+        var result = await users.ResetPasswordAsync(user, token, password);
+
+        return result.Succeeded
+            ? PasswordChangeOutcome.Changed()
+            : PasswordChangeOutcome.Rejected([.. result.Errors.Select(error => error.Description)]);
+    }
+
     public async Task<AuthenticatedAccount?> FindByExternalLoginAsync(
         string provider,
         string providerKey,

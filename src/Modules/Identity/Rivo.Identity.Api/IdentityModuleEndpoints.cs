@@ -55,6 +55,12 @@ public static class IdentityModuleEndpoints
         // único, com prazo, e entregue só no endereço de correio da conta.
         var aceitarConvite = group.MapPost("/invitations/acceptance", AcceptInvitationAsync);
 
+        // Recuperar a password é público pela mesma razão, e mais forte: quem a
+        // perdeu não tem como se autenticar de forma nenhuma (ADR-065). As duas
+        // rotas do par respondem sem revelar se o endereço tem conta.
+        var pedirRecuperacao = group.MapPost("/password-recovery", RecoverPasswordAsync);
+        var concluirRecuperacao = group.MapPost("/password-recovery/completion", CompletePasswordRecoveryAsync);
+
         if (!string.IsNullOrWhiteSpace(rateLimitPolicy))
         {
             entrar.RequireRateLimiting(rateLimitPolicy);
@@ -63,6 +69,13 @@ public static class IdentityModuleEndpoints
             // Também com tecto: é a outra rota pública que aceita adivinhação,
             // e um testemunho tentado à bruta é tão password como a outra.
             aceitarConvite.RequireRateLimiting(rateLimitPolicy);
+
+            // O par da recuperação, pelas duas razões juntas: o pedido é um
+            // gerador de correio que não exige autenticação — sem tecto,
+            // enche a caixa de alguém a partir de fora —, e a conclusão aceita
+            // testemunhos adivinhados como qualquer outra.
+            pedirRecuperacao.RequireRateLimiting(rateLimitPolicy);
+            concluirRecuperacao.RequireRateLimiting(rateLimitPolicy);
         }
 
         // Convidar é acto de quem administra contas — a mesma permissão de
@@ -212,6 +225,71 @@ public static class IdentityModuleEndpoints
                 new Dictionary<string, string[]> { ["convite"] = [.. result.Errors] }),
 
             _ => Results.Problem("Resultado inesperado ao convidar."),
+        };
+    }
+
+    /// <summary>
+    /// Pede a recuperação da password de um endereço.
+    ///
+    /// <para>
+    /// <strong>Responde 204 sempre</strong> — endereço com conta, sem conta, ou
+    /// com conta desactivada. É a decisão de segurança desta rota: distinguir os
+    /// casos daria a quem chega um verificador de quem trabalha na empresa.
+    /// </para>
+    /// </summary>
+    private static async Task<IResult> RecoverPasswordAsync(
+        RecoverPasswordRequest request,
+        RecoverPassword recoverPassword,
+        IConfiguration configuration,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email))
+        {
+            // Corpo vazio é engano de quem chama, e não uma tentativa: aqui
+            // recusa-se, porque não há endereço nenhum sobre o qual mentir.
+            return Results.ValidationProblem(
+                new Dictionary<string, string[]> { ["email"] = ["Indique o endereço de correio."] });
+        }
+
+        var linkBase = configuration["Frontend:BaseUrl"];
+
+        if (string.IsNullOrWhiteSpace(linkBase))
+        {
+            // 501, como o convite: a capacidade não está configurada neste
+            // ambiente, e não é defeito do pedido.
+            return Results.Problem(
+                "Recuperar a password exige `Frontend:BaseUrl` configurado — é para lá que a ligação aponta.",
+                statusCode: StatusCodes.Status501NotImplemented);
+        }
+
+        await recoverPassword.ExecuteAsync(
+            request.Email, linkBase, BuildAuditContext(http), cancellationToken);
+
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> CompletePasswordRecoveryAsync(
+        CompletePasswordRecoveryRequest request,
+        CompletePasswordRecovery completeRecovery,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var outcome = await completeRecovery.ExecuteAsync(
+            request.UserId, request.Token, request.Password, BuildAuditContext(http), cancellationToken);
+
+        return outcome.Result switch
+        {
+            PasswordChangeResult.Changed => Results.NoContent(),
+
+            // Conta inexistente devolve o mesmo que testemunho inválido — mesma
+            // disciplina do convite: quem tenta não fica a saber que
+            // identificadores existem.
+            PasswordChangeResult.UserNotFound => Results.ValidationProblem(
+                new Dictionary<string, string[]> { ["recuperacao"] = ["Ligação inválida ou expirada."] }),
+
+            _ => Results.ValidationProblem(
+                new Dictionary<string, string[]> { ["recuperacao"] = [.. outcome.Errors] }),
         };
     }
 

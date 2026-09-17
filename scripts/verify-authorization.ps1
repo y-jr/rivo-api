@@ -319,6 +319,148 @@ Test-Case "15. Aceitar o convite abre a conta -- uma vez so" {
     "204, entra com o perfil Finance, e repetir da 400"
 }
 
+
+# --- Recuperacao de password pelo proprio (ADR-065) -------------------------
+#
+# O «esqueceu a senha?» do ecra de entrada. Esteve desactivado desde a mockup,
+# com um comentario no codigo a dizer que o backend nao tinha nem pedido nem
+# reposicao.
+
+$script:recEmail = "recuperacao-$stamp@rivo.ao"
+$script:recId = $null
+
+Test-Case "16. Cenario: uma conta com password, criada por convite" {
+    $script:recId = New-RivoConta -Email $script:recEmail -Password "Rivo!Original2026" `
+        -AdminHeaders $adminHeaders -Perfil "Colaborador"
+
+    $token = Get-Token $script:recEmail "Rivo!Original2026"
+    if (-not $token) { throw "a conta nao entra com a password original" }
+    "conta criada e a entrar com a password original"
+}
+
+Test-Case "17. Pedir recuperacao devolve 204, e o testemunho vai no correio" {
+    $r = Invoke-WebRequest "$base/identity/password-recovery" -Method Post `
+        -Body (@{ email = $script:recEmail } | ConvertTo-Json) -ContentType "application/json" -SkipHttpErrorCheck
+    if ($r.StatusCode -ne 204) { throw "esperado 204, obtido $($r.StatusCode): $($r.Content)" }
+
+    $onde = "where recipient_user_id='$($script:recId)' and type='identity.password_recovery'"
+
+    $destino = Invoke-RivoSql "select action_url from notifications.notification $onde"
+    if (-not $destino) { throw "nao foi enfileirada notificacao de recuperacao" }
+    if ($destino -notmatch "/recuperar\?u=$($script:recId)&t=") { throw "destino sem a ligacao: $destino" }
+
+    # O testemunho nao fica no corpo -- e o corpo e o que se le em texto simples.
+    $mensagem = Invoke-RivoSql "select message from notifications.notification $onde"
+    if ($mensagem -match "&t=") { throw "o testemunho ficou no corpo da mensagem" }
+
+    # E pedida para sair da aplicacao: quem perdeu a password nao entra para a
+    # ler lá dentro. O tipo esta na lista dos que exigem entrega.
+    $estado = Invoke-RivoSql "select delivery_status from notifications.notification $onde"
+    if ($estado -eq "NotRequired") { throw "a recuperacao nasceu NotRequired -- nunca sai" }
+
+    "204, destino com a ligacao, corpo sem testemunho, entrega pedida (estado=$estado)"
+}
+
+Test-Case "18. ⚠ Endereco sem conta devolve o MESMO 204, e nao envia nada" {
+    # A propriedade central do ADR-065. Se a resposta distinguisse, esta rota --
+    # que e publica por necessidade -- servia para descobrir quem trabalha na
+    # empresa.
+    $inexistente = "nao-existe-$stamp@exemplo.ao"
+
+    $r = Invoke-WebRequest "$base/identity/password-recovery" -Method Post `
+        -Body (@{ email = $inexistente } | ConvertTo-Json) -ContentType "application/json" -SkipHttpErrorCheck
+    if ($r.StatusCode -ne 204) { throw "esperado 204 para endereco inexistente, obtido $($r.StatusCode)" }
+
+    # O corpo tambem tem de ser igual: um 204 com texto diferente revelava o
+    # mesmo que um codigo diferente.
+    if ($r.Content) { throw "o 204 trouxe corpo: '$($r.Content)'" }
+
+    $enviadas = Invoke-RivoSql "select count(*) from notifications.notification where type='identity.password_recovery' and message like '%$inexistente%'"
+    if ($enviadas -ne "0") { throw "$enviadas notificacoes para um endereco sem conta" }
+
+    # Mas fica na trilha, com o endereco tentado -- e a unica pista que sobra.
+    $trilha = Invoke-RivoSql "select count(*) from audit.audit_event where action='identity.user.password_recovery_requested' and entity_id='$inexistente'"
+    if ($trilha -ne "1") { throw "$trilha registos na trilha para o endereco tentado, esperado 1" }
+
+    "204 identico e sem corpo; nada enviado; tentativa na trilha"
+}
+
+Test-Case "19. Concluir com o testemunho muda a password" {
+    $ligacao = Invoke-RivoSql "select action_url from notifications.notification where recipient_user_id='$($script:recId)' and type='identity.password_recovery'"
+    if ($ligacao -notmatch "t=([A-Za-z0-9_-]+)") { throw "nao se extraiu o testemunho" }
+    $script:recTestemunho = $Matches[1]
+
+    $corpo = @{ userId = $script:recId; token = $script:recTestemunho; password = "Rivo!Recuperada2026" } | ConvertTo-Json
+    $r = Invoke-WebRequest "$base/identity/password-recovery/completion" -Method Post `
+        -Body $corpo -ContentType "application/json" -SkipHttpErrorCheck
+    if ($r.StatusCode -ne 204) { throw "concluir devolveu $($r.StatusCode), esperado 204: $($r.Content)" }
+
+    # Entra com a nova...
+    $token = Get-Token $script:recEmail "Rivo!Recuperada2026"
+    if (-not $token) { throw "nao entra com a password nova" }
+
+    # ...e a antiga deixou de servir.
+    $antiga = try { Get-Token $script:recEmail "Rivo!Original2026" } catch { $null }
+    if ($antiga) { throw "a password antiga continua a entrar" }
+
+    "204; entra com a nova e a antiga deixou de servir"
+}
+
+Test-Case "20. O testemunho e de uso unico" {
+    $corpo = @{ userId = $script:recId; token = $script:recTestemunho; password = "Rivo!Terceira2026" } | ConvertTo-Json
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/identity/password-recovery/completion" -Method Post -Body $corpo -ContentType "application/json"
+    }
+    if ($code -ne 400) { throw "repetir devolveu $code, esperado 400" }
+
+    # A recusa fica na trilha: e o rasto de uma ligacao ja usada.
+    $falhas = Invoke-RivoSql "select count(*) from audit.audit_event where action='identity.user.password_recovery_failed' and entity_id='$($script:recId)'"
+    if ([int]$falhas -lt 1) { throw "a tentativa recusada nao ficou na trilha" }
+
+    "400 na segunda vez, e a recusa na trilha"
+}
+
+Test-Case "21. Testemunho invalido diz o mesmo que expirado" {
+    $corpo = @{ userId = $script:recId; token = "testemunho-inventado"; password = "Rivo!Qualquer2026" } | ConvertTo-Json
+    $r = Invoke-WebRequest "$base/identity/password-recovery/completion" -Method Post `
+        -Body $corpo -ContentType "application/json" -SkipHttpErrorCheck
+    if ($r.StatusCode -ne 400) { throw "esperado 400, obtido $($r.StatusCode)" }
+    if ($r.Content -notmatch "inv[áa]lida ou expirada") { throw "a mensagem distingue os casos: $($r.Content)" }
+    "400 com a mensagem indistinta"
+}
+
+Test-Case "22. Conta desactivada nao recupera acesso" {
+    $desactivada = "desactivada-$stamp@rivo.ao"
+    $id = New-RivoConta -Email $desactivada -Password "Rivo!Desactivada2026" `
+        -AdminHeaders $adminHeaders -Perfil "Colaborador"
+
+    Invoke-RestMethod "$base/identity/users/$id/status" -Method Post -ContentType "application/json" `
+        -Headers $adminHeaders -Body (@{ active = $false } | ConvertTo-Json) | Out-Null
+
+    # Responde o mesmo 204 -- nao se revela que a conta existe mas esta fechada.
+    $r = Invoke-WebRequest "$base/identity/password-recovery" -Method Post `
+        -Body (@{ email = $desactivada } | ConvertTo-Json) -ContentType "application/json" -SkipHttpErrorCheck
+    if ($r.StatusCode -ne 204) { throw "esperado 204, obtido $($r.StatusCode)" }
+
+    # E nao sai correio: foi desactivada para deixar de entrar, e repor a
+    # password por correio era uma porta lateral para a reactivar.
+    $enviadas = Invoke-RivoSql "select count(*) from notifications.notification where recipient_user_id='$id' and type='identity.password_recovery'"
+    if ($enviadas -ne "0") { throw "$enviadas notificacoes para uma conta desactivada" }
+
+    "204 igual, e nenhuma ligacao enviada"
+}
+
+Test-Case "23. Pedir sem endereco e recusado com 400" {
+    # Aqui recusa-se: sem endereco nenhum nao ha nada sobre o que mentir, e um
+    # 204 a um corpo vazio esconderia um engano de quem chama.
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/identity/password-recovery" -Method Post `
+            -Body (@{ email = "" } | ConvertTo-Json) -ContentType "application/json"
+    }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "400 com endereco vazio"
+}
+
 Write-Host ""
 if ($failures -gt 0) {
     Write-Host "$failures teste(s) falharam." -ForegroundColor Red

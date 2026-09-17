@@ -70,6 +70,32 @@ internal sealed class FakeUserAccounts : IUserAccounts
             ? PasswordChangeOutcome.Changed()
             : PasswordChangeOutcome.Rejected(["Convite inválido ou expirado."]));
 
+    /// <summary>Endereços que este duplo reconhece como tendo conta activa.</summary>
+    public HashSet<string> ComConta { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Os endereços por que a recuperação foi pedida, por ordem.</summary>
+    public List<string> RecuperacoesPedidas { get; } = [];
+
+    public Guid ContaDaRecuperacao { get; set; } = Guid.NewGuid();
+
+    public Task<PasswordRecoveryStart> BeginPasswordRecoveryAsync(
+        string email, CancellationToken cancellationToken)
+    {
+        RecuperacoesPedidas.Add(email);
+
+        return Task.FromResult(ComConta.Contains(email.Trim())
+            ? PasswordRecoveryStart.Encontrado(ContaDaRecuperacao, RecoveryToken)
+            : PasswordRecoveryStart.NaoEncontrado());
+    }
+
+    public Task<PasswordChangeOutcome> CompletePasswordRecoveryAsync(
+        Guid userId, string token, string password, CancellationToken cancellationToken) =>
+        Task.FromResult(token == RecoveryToken
+            ? PasswordChangeOutcome.Changed()
+            : PasswordChangeOutcome.Rejected(["Ligação inválida ou expirada."]));
+
+    public const string RecoveryToken = "testemunho-de-recuperacao";
+
     public Task<AuthenticatedAccount?> FindByExternalLoginAsync(
         string provider, string providerKey, CancellationToken cancellationToken) =>
         Task.FromResult(_linkedAccount);
