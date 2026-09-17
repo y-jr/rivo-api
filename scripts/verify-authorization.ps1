@@ -435,7 +435,7 @@ Test-Case "22. Conta desactivada nao recupera acesso" {
         -AdminHeaders $adminHeaders -Perfil "Colaborador"
 
     Invoke-RestMethod "$base/identity/users/$id/status" -Method Post -ContentType "application/json" `
-        -Headers $adminHeaders -Body (@{ active = $false } | ConvertTo-Json) | Out-Null
+        -Headers $adminHeaders -Body (@{ active = $false; reason = "Verificacao da recuperacao de password" } | ConvertTo-Json) | Out-Null
 
     # Responde o mesmo 204 -- nao se revela que a conta existe mas esta fechada.
     $r = Invoke-WebRequest "$base/identity/password-recovery" -Method Post `

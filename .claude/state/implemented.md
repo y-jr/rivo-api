@@ -62,7 +62,7 @@ POST /identity/password-recovery/completion   → 204 | 400
 
 11 testes de aplicação novos e `verify-authorization` de 15 para 23 casos — o 18
 verifica que o 204 do endereço inexistente é o mesmo, sem corpo, e que nada foi
-enviado. 1 333 a passar. Detalhe em
+enviado. 1 307 a passar nesta base (1 333 com o ADR-064 já integrado). Detalhe em
 [decisions/adr-065](../decisions/adr-065-recuperacao-de-password-pelo-proprio.md).
 
 - Autenticação por JWT bearer com sessão persistida — 2026-08-10 — ADR-013
