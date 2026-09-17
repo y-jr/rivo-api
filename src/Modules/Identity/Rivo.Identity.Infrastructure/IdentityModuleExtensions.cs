@@ -104,6 +104,8 @@ public static class IdentityModuleExtensions
         // Convite (ADR-059), no lugar do registo público que saiu.
         services.AddScoped<InviteUser>();
         services.AddScoped<AcceptInvitation>();
+        services.AddScoped<RecoverPassword>();
+        services.AddScoped<CompletePasswordRecovery>();
         services.AddScoped<LogOut>();
         services.AddScoped<ListUsers>();
         services.AddScoped<AssignAccessProfile>();

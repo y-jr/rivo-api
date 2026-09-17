@@ -150,7 +150,63 @@ public sealed class UserAccounts(
 
         return result.Succeeded
             ? PasswordChangeOutcome.Changed()
-            : PasswordChangeOutcome.Rejected([.. result.Errors.Select(error => error.Description)]);
+            : PasswordChangeOutcome.Rejected(Traduzir(result, "Convite inválido ou expirado."));
+    }
+
+    public async Task<PasswordRecoveryStart> BeginPasswordRecoveryAsync(
+        string email,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var user = await users.FindByEmailAsync(email.Trim());
+
+        if (user is null)
+        {
+            return PasswordRecoveryStart.NaoEncontrado();
+        }
+
+        // **Uma conta desactivada não recupera acesso.** Foi desactivada
+        // precisamente para deixar de entrar, e repor a password por correio
+        // seria uma porta lateral para a reactivar sem que ninguém decidisse.
+        if (!IsActive(user, DateTimeOffset.UtcNow))
+        {
+            return PasswordRecoveryStart.NaoEncontrado();
+        }
+
+        var token = await users.GeneratePasswordResetTokenAsync(user);
+
+        return PasswordRecoveryStart.Encontrado(user.Id, token);
+    }
+
+    public async Task<PasswordChangeOutcome> CompletePasswordRecoveryAsync(
+        Guid userId,
+        string token,
+        string password,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var user = await users.FindByIdAsync(userId.ToString());
+
+        if (user is null)
+        {
+            return PasswordChangeOutcome.UserNotFound();
+        }
+
+        // Ao contrário do convite, **não** se exige que a conta esteja sem
+        // password: recuperar é para quem tem uma e a perdeu. O que continua a
+        // valer é a conta estar activa — uma desactivada não volta por aqui.
+        if (!IsActive(user, DateTimeOffset.UtcNow))
+        {
+            return PasswordChangeOutcome.Rejected(["Esta conta está desactivada."]);
+        }
+
+        var result = await users.ResetPasswordAsync(user, token, password);
+
+        return result.Succeeded
+            ? PasswordChangeOutcome.Changed()
+            : PasswordChangeOutcome.Rejected(Traduzir(result, "Ligação inválida ou expirada."));
     }
 
     public async Task<AuthenticatedAccount?> FindByExternalLoginAsync(
@@ -240,6 +296,34 @@ public sealed class UserAccounts(
     /// dados.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Traduz o desfecho de uma reposição de password para mensagens que se
+    /// possam mostrar.
+    ///
+    /// <para>
+    /// <strong>O ASP.NET Identity responde <c>"Invalid token."</c>, em inglês</strong>
+    /// — e isso ia em bruto para o ecrã, num produto que fala português. Pior:
+    /// um erro de testemunho e um erro de password são coisas diferentes para
+    /// quem está a olhar, e iam misturados na mesma lista.
+    /// </para>
+    ///
+    /// <para>
+    /// Os erros de <strong>testemunho</strong> passam a uma frase única e
+    /// deliberadamente vaga — inválido, expirado e já usado dizem o mesmo, para
+    /// não ensinar a distingui-los. Os de <strong>password</strong> passam como
+    /// vêm: ali a especificidade ajuda quem está a escolher uma.
+    /// </para>
+    /// </summary>
+    private static IReadOnlyList<string> Traduzir(IdentityResult result, string mensagemDeTestemunho)
+    {
+        var doTestemunho = result.Errors.Any(
+            error => error.Code.Contains("Token", StringComparison.OrdinalIgnoreCase));
+
+        return doTestemunho
+            ? [mensagemDeTestemunho]
+            : [.. result.Errors.Select(error => error.Description)];
+    }
+
     private static bool IsActive(ApplicationUser user, DateTimeOffset now) =>
         user.LockoutEnd is not { } fim || fim <= now.AddYears(50);
 

@@ -25,7 +25,12 @@ public sealed class Notifier(INotificationStore store, TimeProvider clock) : INo
     /// nada, sem um único erro em lado nenhum.
     /// </para>
     /// </summary>
-    private static readonly HashSet<string> ExigemEntrega = [NotificationTypes.UserInvited];
+    /// <summary>
+    /// Tipos que **não existem sem entrega externa**: quem os recebe não está
+    /// dentro da aplicação para os ler lá.
+    /// </summary>
+    private static readonly HashSet<string> ExigemEntrega =
+        [NotificationTypes.UserInvited, NotificationTypes.PasswordRecovery];
 
     public async Task QueueAsync(NotificationRequest request, CancellationToken cancellationToken)
     {

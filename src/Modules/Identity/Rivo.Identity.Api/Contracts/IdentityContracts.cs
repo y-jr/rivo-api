@@ -7,6 +7,14 @@ namespace Rivo.Identity.Api.Contracts;
 public sealed record InviteUserRequest(string Email, string Profile);
 
 /// <param name="Token">O testemunho do convite, como veio na ligacao.</param>
+/// <param name="Email">
+/// O endereço de quem perdeu a password. A resposta é a mesma tenha ou não conta
+/// (ADR-065).
+/// </param>
+public sealed record RecoverPasswordRequest(string Email);
+
+public sealed record CompletePasswordRecoveryRequest(Guid UserId, string Token, string Password);
+
 public sealed record AcceptInvitationRequest(Guid UserId, string Token, string Password);
 
 public sealed record LoginRequest(string Email, string Password);

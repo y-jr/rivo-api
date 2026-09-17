@@ -71,6 +71,13 @@ public static class NotificationTypes
     /// </summary>
     public const string UserInvited = "identity.user_invited";
 
+    /// <summary>
+    /// Recuperação de password pedida pelo próprio (ADR-065). Como o convite,
+    /// **não existe sem entrega externa**: quem perdeu a password não entra na
+    /// aplicação para ler a notificação lá dentro.
+    /// </summary>
+    public const string PasswordRecovery = "identity.password_recovery";
+
     /// <summary>O cliente escreveu — avisa o vendedor responsável (ADR-045).</summary>
     public const string MessagingNewMessage = "messaging.conversation.message_received";
 }

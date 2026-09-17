@@ -344,6 +344,40 @@ O `userId` da conta criada.
 #>
 <#
 .SYNOPSIS
+O corpo de uma resposta como texto, venha ele como texto ou como bytes.
+
+.DESCRIPTION
+Terceira armadilha do PowerShell a custar uma corrida de CI, a 2026-09-17.
+
+`Invoke-WebRequest` decide se `.Content` é `string` ou `byte[]` **pelo
+Content-Type da resposta**. Para `application/json` dá texto; para
+`application/problem+json` — que é o que o ASP.NET devolve em qualquer 400 —
+dá um array de bytes. Um `-match` contra esse array compara o padrão com
+"123 34 116 121 112 101 ..." e falha sempre, seja qual for a mensagem.
+
+O sintoma é cruel: a asserção falha e a mensagem de erro mostra a lista de
+bytes, que ninguém lê como sendo a resposta correcta escrita de outra maneira.
+
+.EXAMPLE
+    $r = Invoke-WebRequest "$base/rota" -Method Post -SkipHttpErrorCheck
+    if ((Get-RivoCorpo $r) -notmatch "expirada") { throw "mensagem errada" }
+#>
+function Get-RivoCorpo {
+    param([Parameter(Mandatory)]$Resposta)
+
+    $conteudo = $Resposta.Content
+
+    if ($null -eq $conteudo) { return "" }
+
+    if ($conteudo -is [byte[]]) {
+        return [System.Text.Encoding]::UTF8.GetString($conteudo)
+    }
+
+    return [string]$conteudo
+}
+
+<#
+.SYNOPSIS
 Lê uma rota que devolve uma lista, e devolve sempre um array.
 
 .DESCRIPTION

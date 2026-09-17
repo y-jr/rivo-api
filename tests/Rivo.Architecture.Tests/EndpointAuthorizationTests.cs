@@ -55,6 +55,19 @@ public class EndpointAuthorizationTests
         // convite na caixa de correio da conta. Sem ele, nada acontece.
         "POST /identity/invitations/acceptance",
 
+        // O par da recuperação de password (ADR-065). Público pela razão mais
+        // forte de todas: quem perdeu a password não tem **nenhuma** forma de se
+        // autenticar, e uma recuperação que exigisse autenticação não recuperava
+        // nada.
+        //
+        // O pedido responde 204 a qualquer endereço, com conta ou sem ela — é
+        // deliberado, e é o que impede que esta rota sirva para descobrir quem
+        // trabalha na empresa. A conclusão exige o testemunho, que é de uso
+        // único, tem prazo, e só existe na caixa de correio da conta. As duas
+        // têm tecto de pedidos, como o login.
+        "POST /identity/password-recovery",
+        "POST /identity/password-recovery/completion",
+
         // Sonda de disponibilidade. Não revela dados: apenas se a aplicação
         // está viva e se alcança a base de dados.
         "GET /health",

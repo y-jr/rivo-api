@@ -33,6 +33,46 @@ definem-se, e sem elas nada lança. Ver a ressalva em cada secção.
 
 ## identity
 
+**2026-09-17 — recuperação de password pelo próprio (ADR-065).** O botão
+«Esqueceu a senha?» existia no login desde a maquete, **desactivado**, com um
+comentário a dizer que o backend não tinha nem pedido nem reposição. Passou a
+ter:
+
+```
+POST /identity/password-recovery              → 204, sempre
+POST /identity/password-recovery/completion   → 204 | 400
+```
+
+- **204 para tudo** — endereço com conta, desconhecido, ou conta desactivada. É a
+  decisão central: uma rota pública que distinguisse os casos seria um
+  verificador de quem trabalha na empresa. A excepção é o corpo vazio, recusado
+  com 400 porque não há endereço sobre o qual mentir.
+- **O mecanismo já existia**: o convite (ADR-059) gera o testemunho com
+  `GeneratePasswordResetTokenAsync` — o de reposição de password, usado ali
+  porque era o que estava à mão. Faltava a metade que começa em quem perdeu a
+  password.
+- **Uma conta desactivada não recupera acesso**; uma conta **sem** password
+  recupera (é quem perdeu o convite).
+- **A trilha registra o que a resposta esconde**: três acções novas, e quando não
+  há conta o `entity_id` é **o endereço tentado** — a única pista que sobra de
+  uma rota que responde sempre o mesmo.
+- O tipo `identity.password_recovery` entra na lista dos que **exigem entrega
+  externa**, ao lado do convite: enfileirá-lo sem `SendEmail` rebenta em vez de
+  ficar calado.
+
+11 testes de aplicação novos e `verify-authorization` de 15 para 23 casos — o 18
+verifica que o 204 do endereço inexistente é o mesmo, sem corpo, e que nada foi
+enviado. 1 337 a passar, já com o ADR-064 integrado nesta base.
+
+⚠ **Contar localmente dá 1 333, e os registos usam sempre o número da CI.** Os 4
+testes de concorrência de `Notifications.Infrastructure` correm sobre
+Testcontainers e falham sem Docker a correr — não são regressão. O "1 307"
+escrito aqui antes era uma soma local à qual faltavam exactamente esses 4; o
+valor certo para o ADR-065 sozinho era 1 311.
+
+Detalhe em
+[decisions/adr-065](../decisions/adr-065-recuperacao-de-password-pelo-proprio.md).
+
 - Autenticação por JWT bearer com sessão persistida — 2026-08-10 — ADR-013
 - Sessão como entidade de domínio, com IP, user agent, expiração absoluta e
   revogação — 2026-08-10 — ADR-013

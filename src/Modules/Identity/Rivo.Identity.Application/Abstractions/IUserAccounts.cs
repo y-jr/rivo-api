@@ -8,6 +8,23 @@ namespace Rivo.Identity.Application.Abstractions;
 /// (architecture/dependency-rules.md). Esta interface é a fronteira: expõe só
 /// o que os casos de uso precisam, em vez do UserManager inteiro.
 /// </summary>
+/// <param name="Found">
+/// Falso para endereço desconhecido **e** para conta desactivada. Quem chama não
+/// deve distinguir os dois na resposta — ver
+/// <see cref="IUserAccounts.BeginPasswordRecoveryAsync"/>.
+/// </param>
+/// <param name="Token">
+/// O testemunho, presente só quando <paramref name="Found"/> é verdadeiro.
+/// <strong>Vai para o endereço de correio, nunca para a resposta HTTP.</strong>
+/// </param>
+public sealed record PasswordRecoveryStart(bool Found, Guid? UserId, string? Token)
+{
+    public static PasswordRecoveryStart NaoEncontrado() => new(false, null, null);
+
+    public static PasswordRecoveryStart Encontrado(Guid userId, string token) =>
+        new(true, userId, token);
+}
+
 public interface IUserAccounts
 {
     /// <summary>
@@ -49,6 +66,43 @@ public interface IUserAccounts
     /// </para>
     /// </summary>
     Task<PasswordChangeOutcome> AcceptInvitationAsync(
+        Guid userId,
+        string token,
+        string password,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Começa uma recuperação de password pelo endereço de correio (ADR-065).
+    ///
+    /// <para>
+    /// <strong>Nunca diz se o endereço tem conta.</strong> Devolve
+    /// <see cref="PasswordRecoveryStart.Found"/> a falso tanto para um endereço
+    /// desconhecido como para uma conta desactivada — e quem chama responde o
+    /// mesmo nos dois casos. Uma resposta que distinguisse os dois transformava
+    /// esta rota, que é pública por necessidade, num verificador de quem
+    /// trabalha na empresa.
+    /// </para>
+    ///
+    /// <para>
+    /// Uma conta **sem** password recupera normalmente: é o caso de quem perdeu
+    /// o convite, e é melhor do que obrigar quem administra a convidar outra vez.
+    /// </para>
+    /// </summary>
+    Task<PasswordRecoveryStart> BeginPasswordRecoveryAsync(
+        string email,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Consome o testemunho e fixa a password nova.
+    ///
+    /// <para>
+    /// Distinto de <see cref="AcceptInvitationAsync"/>, que recusa contas que
+    /// já tenham password — aqui é precisamente o caso normal. O testemunho é o
+    /// mesmo mecanismo: uso único, com prazo, e entregue só no endereço da
+    /// conta.
+    /// </para>
+    /// </summary>
+    Task<PasswordChangeOutcome> CompletePasswordRecoveryAsync(
         Guid userId,
         string token,
         string password,
