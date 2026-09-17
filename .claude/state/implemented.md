@@ -62,7 +62,15 @@ POST /identity/password-recovery/completion   → 204 | 400
 
 11 testes de aplicação novos e `verify-authorization` de 15 para 23 casos — o 18
 verifica que o 204 do endereço inexistente é o mesmo, sem corpo, e que nada foi
-enviado. 1 307 a passar nesta base (1 333 com o ADR-064 já integrado). Detalhe em
+enviado. 1 337 a passar, já com o ADR-064 integrado nesta base.
+
+⚠ **Contar localmente dá 1 333, e os registos usam sempre o número da CI.** Os 4
+testes de concorrência de `Notifications.Infrastructure` correm sobre
+Testcontainers e falham sem Docker a correr — não são regressão. O "1 307"
+escrito aqui antes era uma soma local à qual faltavam exactamente esses 4; o
+valor certo para o ADR-065 sozinho era 1 311.
+
+Detalhe em
 [decisions/adr-065](../decisions/adr-065-recuperacao-de-password-pelo-proprio.md).
 
 - Autenticação por JWT bearer com sessão persistida — 2026-08-10 — ADR-013
