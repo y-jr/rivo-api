@@ -668,7 +668,7 @@ Test-Case "67. Cenario: artigo caro recebido, e uma contagem que encontra menos"
     $script:govItemId = (Invoke-RestMethod "$base/inventory/items" -Method Post -ContentType "application/json" `
             -Headers $adminHeaders -Body (@{ sku = "GOV-$stamp"; name = "Artigo caro"; unit = "un" } | ConvertTo-Json)).itemId
 
-    Invoke-RestMethod "$base/inventory/items/$($script:govItemId)/receipts" -Method Post -ContentType "application/json" `
+    Invoke-RestMethod "$base/inventory/items/$($script:govItemId)/movements/receipts" -Method Post -ContentType "application/json" `
         -Headers $adminHeaders `
         -Body (@{ warehouseId = $script:govArmazem; quantity = 100; unitCost = 250; reason = "Recepcao inicial" } | ConvertTo-Json) | Out-Null
 

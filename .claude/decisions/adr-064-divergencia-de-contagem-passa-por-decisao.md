@@ -124,7 +124,19 @@ linha continua no evento do seu ajuste, ligado por `countId`: pôr tudo aqui dar
 um JSON gigante numa contagem de quinhentos artigos, e a trilha é
 append-only (BR-14) — o que lá entra não se corrige depois.
 
-### 5. Quem submete é o colaborador ligado à conta que fechou
+### 5. Primeiro pergunta-se se há alçada; só depois quem requer
+
+A ordem das duas perguntas é uma decisão, e custou uma corrida de CI a aprender.
+A primeira versão exigia o colaborador ligado **antes** de perguntar se havia
+sequer política configurada — e assim uma conta administrativa sem ficha de
+pessoal, incluindo o Admin de arranque, deixava de conseguir fechar contagens
+num sistema onde ninguém tinha configurado governança nenhuma. A CI apanhou-o
+num caso que existia desde Agosto.
+
+Sem alçada activa para `inventory.stock_count`, nem se pergunta quem requer:
+devolve-se `NoApplicablePolicy` e a contagem aplica-se.
+
+### 6. Quem submete é o colaborador ligado à conta que fechou
 
 Resolvido no composition root, que já conhece `hr` — `inventory` continua a
 depender só de `Audit`. Sem colaborador ligado, a submissão é **bloqueada** e não

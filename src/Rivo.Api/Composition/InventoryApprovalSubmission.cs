@@ -26,6 +26,7 @@ namespace Rivo.Api.Composition;
 /// </summary>
 public sealed class InventoryApprovalSubmission(
     IApprovalGateway gateway,
+    IApprovalPolicyCatalogue policies,
     IEmployeeDirectory employees,
     TimeProvider clock) : IInventoryApprovalSubmission
 {
@@ -38,18 +39,35 @@ public sealed class InventoryApprovalSubmission(
         string summary,
         CancellationToken cancellationToken)
     {
-        // Quem requer resolve-se do vínculo, nunca de um identificador
-        // declarado (ADR-057). Sem colaborador ligado não há contra quem
-        // verificar a segregação de funções, e a submissão fica bloqueada — não
-        // se aplica a correcção em silêncio só porque quem fechou não tem ficha.
+        // **Primeiro pergunta-se se há governança configurada, e só depois quem
+        // requer.** A ordem importa: sem alçada nenhuma para contagens, quem
+        // fecha não precisa de estar ligado a um colaborador — e exigi-lo
+        // partia o fluxo normal de quem administra o sistema sem ter ficha de
+        // pessoal, incluindo o Admin de arranque. Apanhado pela CI, que fechou
+        // uma contagem com o Admin do bootstrap e recebeu 409.
+        var configuradas = await policies.ListAsync(cancellationToken);
+        var haAlcada = configuradas.Any(
+            p => p.ProcessType == ApprovalProcessTypes.StockCount && p.IsActive);
+
+        if (!haAlcada)
+        {
+            return InventoryApprovalSubmissionResult.NoApplicablePolicy(
+                "Não há alçada configurada para divergências de contagem.");
+        }
+
+        // Há governança, e agora sim: quem requer resolve-se do vínculo, nunca
+        // de um identificador declarado (ADR-057). Sem colaborador ligado não há
+        // contra quem verificar a segregação de funções (BR-2), e a correcção
+        // não se aplica em silêncio só porque quem fechou não tem ficha.
         var colaborador = await employees.FindByUserIdAsync(
             requestedByUserId, clock.GetUtcNow(), cancellationToken);
 
         if (colaborador is null)
         {
             return InventoryApprovalSubmissionResult.Blocked(
-                "Esta conta não está associada a nenhum colaborador, e uma divergência de "
-                + "inventário só se submete a decisão em nome de quem a encontrou.");
+                "Há alçada configurada para divergências de contagem, e esta conta não está "
+                + "associada a nenhum colaborador — não há em nome de quem submeter a decisão. "
+                + "Ligue a conta a um colaborador em Administração › Utilizadores.");
         }
 
         var result = await gateway.SubmitAsync(
