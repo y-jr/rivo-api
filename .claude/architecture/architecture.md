@@ -154,6 +154,40 @@ AGT e SAF-T AO (`fiscal`), reconciliação bancária e câmbio (`finance`),
 e-mail (`notifications`), gateway de pagamento (`finance`/AR), object storage
 (`documents`), modelos de IA (analytics).
 
+**O que já está construído, a 2026-09-18.** A distinção importa: o mapa acima é
+o destino, e metade dele ainda não tem código.
+
+O K23 mostrou porque é que vale a pena escrevê-la. Não ficou invisível por
+alguém confundir o destino com o construído — ficou invisível porque **a entrega
+do documento ao cliente não estava no mapa nenhum**: nem aqui, nem em
+`known-issues`, nem em `pending-decisions`, nem no documento de produto. Uma
+tabela de estado não encontra o que ninguém escreveu, mas torna visível o que
+está escrito e não existe.
+
+| Integração | Estado | Onde vive o adaptador |
+|---|---|---|
+| **E-mail (SMTP)** | ✅ a funcionar | `Rivo.Api/Notifications` — MailKit. No host e não em `notifications`, porque o endereço vive em `identity` (ADR-059) |
+| **Identidade Google** | ✅ a funcionar | `Rivo.Identity.Infrastructure` — valida o `id_token` contra as chaves do provider (ADR-032) |
+| **Storage de ficheiros** | ✅ a funcionar, em sistema de ficheiros | `Rivo.Documents.Infrastructure` — dois adaptadores, escolhidos por configuração. O de Azure Blob existe e não está em uso; por isso K11 continua aberto |
+| **Composição de PDF** | ✅ a funcionar | `Rivo.Finance.Infrastructure/Documents` — QuestPDF. Não é integração com serviço externo, mas é dependência externa com licença, e por isso entra aqui (ADR-066) |
+| **AGT / SAF-T AO** | ❌ por começar | K7 (cadeia de `Hash`) e K2 (regras de cálculo). O modelo de dados está fixado pelo XSD; a submissão não existe |
+| **Gateway de pagamento** | ❌ por decidir | mercado angolano, sem candidato escolhido |
+| **Taxa de câmbio** | ❌ por decidir | candidato: BNA |
+| **Modelos de IA** | ❌ por decidir | `analytics` responde hoje com agregação, sem modelo |
+
+**Duas coisas que a entrega de documentos fiscais mostrou sobre este mapa**
+(ADR-066):
+
+- **Uma notificação e uma entrega não são a mesma integração.** Uma notificação
+  dirige-se a um *utilizador* da aplicação e não leva anexos; entregar uma
+  factura dirige-se a um *endereço* — o cliente pode não ter conta — e o anexo é
+  o ponto. Partilham o servidor de SMTP e mais nada, e `finance` declara o seu
+  próprio contrato de entrega em vez de passar por `notifications`.
+- **Uma dependência externa pode falhar só no contentor.** Pedir uma fonte da
+  Microsoft numa imagem Linux respondia `200` em desenvolvimento e `500` em
+  produção. Um adaptador para serviço externo não é a única coisa que precisa de
+  ser verificada no ambiente onde vai correr.
+
 ## Segurança
 
 Parte da arquitectura, não camada acrescentada depois. Ver
