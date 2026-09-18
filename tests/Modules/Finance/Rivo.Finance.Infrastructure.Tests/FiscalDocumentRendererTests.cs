@@ -134,23 +134,47 @@ public sealed class FiscalDocumentRendererTests
     /// <strong>A propriedade que sustenta "compor uma vez".</strong>
     ///
     /// <para>
-    /// Se a composição não fosse determinística, guardar o primeiro ficheiro
-    /// deixaria de ser equivalente a compor de novo — e a promessa de que duas
-    /// impressões saem iguais passava a depender do arquivo em vez do
-    /// compositor. Este teste é o que impede que uma alteração futura (uma data
-    /// de geração impressa, um identificador aleatório) a quebre em silêncio.
+    /// Se a composição não fosse determinística, recompor um documento — o que
+    /// acontece quando o ficheiro arquivado desaparece (K12) — dava um papel
+    /// diferente do que circulou.
+    /// </para>
+    ///
+    /// <para>
+    /// <strong>Há um segundo de espera, e é o ponto do teste.</strong> Este teste
+    /// já existiu sem ela: passava localmente, porque as duas composições caíam no
+    /// mesmo segundo, e falhava na CI quando atravessavam a fronteira. A causa era
+    /// o <c>/CreationDate</c> que o QuestPDF grava por omissão com o instante da
+    /// composição. Sem a espera, o teste voltaria a mentir das duas maneiras:
+    /// passaria com o defeito presente e seria intermitente.
     /// </para>
     /// </summary>
     [Fact]
-    public void MesmoDocumento_ProduzOsMesmosBytes()
+    public async Task MesmoDocumento_ProduzOsMesmosBytes_MesmoComTempoPeloMeio()
     {
         var compositor = new FiscalDocumentRenderer();
         var printout = new FiscalDocumentPrintout(Emitente(), Factura());
 
         var primeira = compositor.Render(printout);
+
+        await Task.Delay(TimeSpan.FromMilliseconds(1100));
+
         var segunda = compositor.Render(printout);
 
         Assert.Equal(primeira, segunda);
+    }
+
+    /// <summary>
+    /// Duas instâncias diferentes do compositor também dão o mesmo papel — o
+    /// determinismo não depende de estado guardado na instância.
+    /// </summary>
+    [Fact]
+    public void CompositoresDiferentes_ProduzemOsMesmosBytes()
+    {
+        var printout = new FiscalDocumentPrintout(Emitente(), Factura());
+
+        Assert.Equal(
+            new FiscalDocumentRenderer().Render(printout),
+            new FiscalDocumentRenderer().Render(printout));
     }
 
     /// <summary>

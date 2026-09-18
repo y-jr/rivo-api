@@ -53,9 +53,17 @@ nada que se imprimisse ou entregasse; agora produzem PDF, arquivado em
 **As propriedades que os testes guardam:**
 
 - **Duas descargas do mesmo documento dao bytes identicos.** Compoe-se uma vez,
-  guarda-se, e daí em diante devolve-se o mesmo ficheiro. Ha um teste de
-  determinismo do compositor para que uma alteracao futura — uma data de geracao
-  impressa, um identificador aleatorio — nao quebre isto em silencio.
+  guarda-se, e daí em diante devolve-se o mesmo ficheiro.
+
+  ⚠ **O teste de determinismo que escrevi para guardar isto mentia.** Passava
+  localmente e falhou na CI: o QuestPDF grava `/CreationDate` e `/ModDate` com o
+  instante da composicao, e as duas composicoes do teste caiam no mesmo segundo
+  nesta maquina. Duas correccoes: as datas dos metadados passaram a vir da **data
+  do documento** — o que tambem e mais correcto, porque a data de criacao do
+  ficheiro nao significa nada num documento fiscal reimpresso —, e o teste ganhou
+  um segundo de espera entre as duas composicoes, para a falha nao poder voltar a
+  esconder-se atras do relogio. **A intermitencia era o defeito maior:** um teste
+  que passa metade das vezes e pior do que nenhum.
 - **Uma anulada nao sai com o aspecto de uma boa.** A anulacao vai em destaque no
   topo. O papel anterior a anulacao fica, porque foi ele que circulou (BR-14):
   ha no maximo dois ficheiros por documento, distinguidos por
