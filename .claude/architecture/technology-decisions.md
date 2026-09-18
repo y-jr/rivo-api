@@ -33,6 +33,11 @@ _Última actualização: 2026-08-15._
 | Tempo real | WebSockets | Documento de produto |
 | API | REST | Documento de produto |
 | Storage de documentos | Object storage compatível com S3 (ou equivalente) | `docs` §2.2 — inferência |
+| Adaptadores de storage implementados | Sistema de ficheiros (activo na VPS) e Azure Blob Storage (`Azure.Storage.Blobs`, `Azure.Identity`), escolhidos por configuração | ADR-031; o caminho de Blob sobreviveu ao ADR-027 e é a resposta pronta para K11 |
+| Entrega de e-mail | MailKit sobre SMTP, no host e não em `notifications` — o módulo guarda `RecipientUserId` e o endereço vive em `identity` | ADR-059; K13 fechou a 2026-09-15 com uma pessoa a receber a mensagem |
+| Identidade federada | Google, por validação do `id_token` contra as chaves públicas do provider | ADR-032 |
+| Documentação da API | OpenAPI gerado, com Swagger UI atrás de interruptor | ADR-038 |
+| Composição de documentos fiscais | QuestPDF, licença **Community** — gratuita abaixo de 1 000 000 USD de receita anual bruta. Sem `FontFamily`: a imagem de runtime é Linux e não traz fontes da Microsoft | ADR-066 |
 | Isolamento de integrações | Anti-Corruption Layer por integração | `docs` §2.1 |
 | Alojamento e CD | VPS com Docker Compose, publicado por SSH em `push` para `main` | ADR-031 |
 | Gestão de segredos | Ficheiro `.env` na máquina de destino, fora do repositório | ADR-031 |
@@ -48,8 +53,9 @@ avançar, decidir explicitamente e registar ADR.
 - Mecanismo geral de despacho de eventos entre módulos (o worker de
   `notifications` resolve só o caso dele).
 - Mecanismo de MFA.
-- Provider de e-mail transaccional — o canal actual escreve em log (K13).
-- Serviço de object storage para `documents` — hoje é sistema de ficheiros.
+- Serviço de object storage para `documents` — hoje é sistema de ficheiros na
+  VPS. O adaptador de Azure Blob existe e não está em uso; **K11 (anexos sem
+  cifra em repouso) continua aberto por causa disso.**
 - Utilizador de base de dados restrito aos schemas do Rivo — a base de dados é
   partilhada com outros sistemas (ADR-029).
 - Cópia de segurança do volume de documentos da VPS (ADR-031).
