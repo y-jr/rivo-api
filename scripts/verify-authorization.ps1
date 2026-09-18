@@ -465,6 +465,94 @@ Test-Case "23. Pedir sem endereco e recusado com 400" {
     "400 com endereco vazio"
 }
 
+Test-Case "24. O login diz quanta inactividade a sessao tolera" {
+    # Sem isto o cliente so conhece o prazo absoluto do token e nao tem como
+    # avisar antes de expulsar alguem por inactividade (ADR-067).
+    $body = @{ email = $plainEmail; password = $pass } | ConvertTo-Json
+    $r = Invoke-RestMethod "$base/identity/login" -Method Post -Body $body -ContentType "application/json"
+
+    if ($null -eq $r.idleTimeoutSeconds) { throw "a resposta do login nao traz idleTimeoutSeconds" }
+    if ($r.idleTimeoutSeconds -le 0) { throw "tolerancia nao positiva: $($r.idleTimeoutSeconds)" }
+
+    # O tecto absoluto tem de ser maior do que a tolerancia, senao a inactividade
+    # nunca teria efeito.
+    $absoluto = [DateTimeOffset]::Parse($r.expiresAt)
+    if ($absoluto -le [DateTimeOffset]::UtcNow.AddSeconds($r.idleTimeoutSeconds)) {
+        throw "tecto absoluto ($absoluto) nao ultrapassa a tolerancia de $($r.idleTimeoutSeconds)s"
+    }
+
+    "tolerancia de $($r.idleTimeoutSeconds)s, tecto em $absoluto"
+}
+
+Test-Case "25. Quem decide aprovacoes recebe tolerancia mais curta" {
+    # O requisito: 15 min para perfis decisorios. Resolvido pela permissao de
+    # decidir aprovacoes, nao pelo nome do perfil.
+    $body = @{ email = $adminEmail; password = $pass } | ConvertTo-Json
+    $decisor = Invoke-RestMethod "$base/identity/login" -Method Post -Body $body -ContentType "application/json"
+
+    $body = @{ email = $plainEmail; password = $pass } | ConvertTo-Json
+    $comum = Invoke-RestMethod "$base/identity/login" -Method Post -Body $body -ContentType "application/json"
+
+    if ($decisor.idleTimeoutSeconds -ge $comum.idleTimeoutSeconds) {
+        throw "decisor tolera $($decisor.idleTimeoutSeconds)s e comum tolera $($comum.idleTimeoutSeconds)s; esperava-se menos para o decisor"
+    }
+
+    "decisor $($decisor.idleTimeoutSeconds)s < comum $($comum.idleTimeoutSeconds)s"
+}
+
+Test-Case "26. A lista de sessoes mostra o prazo que vale, nao so o absoluto" {
+    $sessoes = Invoke-RestMethod "$base/identity/me/sessions" -Headers $plainHeaders
+    $actual = @($sessoes | Where-Object { $_.isCurrent })
+
+    if ($actual.Count -ne 1) { throw "esperava uma sessao corrente, obtive $($actual.Count)" }
+
+    $s = $actual[0]
+    if ($null -eq $s.effectiveExpiry) { throw "sem effectiveExpiry" }
+    if ($null -eq $s.lastSeenAt) { throw "sem lastSeenAt" }
+
+    # Recem-usada, o prazo que vale e o de inactividade — logo anterior ao tecto.
+    if ([DateTimeOffset]::Parse($s.effectiveExpiry) -ge [DateTimeOffset]::Parse($s.expiresAt)) {
+        throw "effectiveExpiry ($($s.effectiveExpiry)) devia ser anterior ao tecto ($($s.expiresAt))"
+    }
+
+    "prazo efectivo $($s.effectiveExpiry), tecto $($s.expiresAt)"
+}
+
+Test-Case "27. Actividade empurra o prazo de inactividade para a frente" {
+    # **Este caso e o unico que prova a coisa toda a funcionar**: o gancho por
+    # pedido, a escrita condicional na base de dados, e o calculo do prazo.
+    #
+    # A espera e de 65 segundos porque a escrita e agrupada numa janela de 60 —
+    # gravar a cada pedido custaria uma escrita por leitura de pagina. Com menos
+    # de 60s o pedido nao escreve nada e o teste passaria sem provar nada.
+    $antes = @(Invoke-RestMethod "$base/identity/me/sessions" -Headers $plainHeaders |
+        Where-Object { $_.isCurrent })[0]
+
+    Start-Sleep -Seconds 65
+
+    # Um pedido autenticado qualquer serve: o que marca actividade e o gancho de
+    # validacao do token, nao um endpoint especial.
+    Invoke-RestMethod "$base/identity/me" -Headers $plainHeaders | Out-Null
+
+    $depois = @(Invoke-RestMethod "$base/identity/me/sessions" -Headers $plainHeaders |
+        Where-Object { $_.isCurrent })[0]
+
+    $antesPrazo = [DateTimeOffset]::Parse($antes.effectiveExpiry)
+    $depoisPrazo = [DateTimeOffset]::Parse($depois.effectiveExpiry)
+
+    if ($depoisPrazo -le $antesPrazo) {
+        throw "o prazo nao andou para a frente: antes $antesPrazo, depois $depoisPrazo"
+    }
+
+    # O tecto absoluto **nao** se move. Sem isto, um cliente que faca um pedido
+    # por minuto mantinha uma sessao viva para sempre.
+    if ([DateTimeOffset]::Parse($depois.expiresAt) -ne [DateTimeOffset]::Parse($antes.expiresAt)) {
+        throw "o tecto absoluto mexeu-se: antes $($antes.expiresAt), depois $($depois.expiresAt)"
+    }
+
+    "prazo de $antesPrazo para $depoisPrazo, tecto intacto"
+}
+
 Write-Host ""
 if ($failures -gt 0) {
     Write-Host "$failures teste(s) falharam." -ForegroundColor Red

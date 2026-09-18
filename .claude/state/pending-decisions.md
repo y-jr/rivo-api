@@ -81,11 +81,16 @@ re-litigação:
       expiração e revogação (ADR-013).
 - [x] ~~Idioma do código~~ — código em inglês; comentários e comunicações
       externas em português.
-- [ ] **⚠ Expiração por inactividade.** Só existe expiração absoluta. O
-      requisito de 15 min para perfis decisórios **não está satisfeito**.
-      Implementá-lo exige escrita por pedido ou estratégia de janela.
-- [ ] **Refresh token.** Sem ele, expirada a sessão o utilizador volta a
-      autenticar-se. Revisitar se a duração se revelar incómoda.
+- [x] ~~**Expiração por inactividade**~~ — **ADR-067** (2026-09-19). A sessão
+      passou a ter dois prazos: tecto absoluto de 12h e inactividade que desliza,
+      30 min por omissão e 15 para quem tem autoridade de decisão. A escrita é
+      condicional e agrupada numa janela de 60s, que era a alternativa que esta
+      linha antecipava.
+- [x] ~~**Refresh token**~~ — **ADR-067**: deixou de ser necessário. A duração era
+      incómoda por o prazo ser absoluto e curto; com o tecto longo e a
+      inactividade a deslizar, quem trabalha não é expulso. Fechado por
+      desnecessário, não por errado — se a janela de 12h do portador se revelar
+      larga para uma auditoria, volta à mesa com um problema concreto.
 - [ ] Mecanismo concreto de MFA.
 - [x] ~~Catálogo de Perfis de Acesso~~ — os 7 perfis semeados; permissões como
       role claims (ADR-014).
@@ -413,6 +418,11 @@ re-litigação:
 
 - [ ] Expiração de sessão: uniforme ou por perfil? (referência de partida:
       15 min para perfis decisórios)
+
+      **O ADR-067 não responde a isto — torna-o configurável.** A implementação
+      distingue por permissão (`approval.requests.decide`) com os valores da
+      referência, e tanto os valores como a lista de permissões decisórias estão
+      em configuração. Responder deixou de exigir alteração de código.
 - [ ] Os 7 perfis de acesso são suficientes, ou é preciso granularidade por
       operação?
 - [ ] Mecanismo concreto de garantia append-only em `audit`.

@@ -31,7 +31,7 @@ public class ManageAccountsTests
     }
 
     private static Session Sessao(Guid userId, DateTimeOffset criadaEm) =>
-        Session.Start(userId, "10.0.0.1", "curl", criadaEm, TimeSpan.FromHours(1));
+        Session.Start(userId, "10.0.0.1", "curl", criadaEm, TimeSpan.FromHours(1), TimeSpan.FromMinutes(30));
 
     // --- Mudar a própria password
 

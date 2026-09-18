@@ -12,8 +12,6 @@ public sealed class JwtAccessTokenIssuer(IOptions<JwtOptions> options) : IAccess
 {
     private readonly JwtOptions _options = options.Value;
 
-    public TimeSpan SessionLifetime => TimeSpan.FromMinutes(_options.SessionLifetimeMinutes);
-
     public AccessToken Issue(AuthenticatedAccount account, Guid sessionId, DateTimeOffset expiresAt)
     {
         var claims = new List<Claim>

@@ -13,8 +13,9 @@ public interface IAccessTokenIssuer
     /// </param>
     AccessToken Issue(AuthenticatedAccount account, Guid sessionId, DateTimeOffset expiresAt);
 
-    /// <summary>Duração configurada para a sessão e para o token que a acompanha.</summary>
-    TimeSpan SessionLifetime { get; }
+    // `SessionLifetime` esteve aqui e saiu (ADR-067). Quanto tempo uma sessão
+    // dura é regra de autorização, não formato de token — vive em
+    // `ISessionPolicy`, que também sabe que o limite depende de quem entra.
 }
 
 public sealed record AccessToken(string Value, DateTimeOffset ExpiresAt);

@@ -51,7 +51,7 @@ public sealed class LogIn(
             return LogInResult.Failed();
         }
 
-        var token = await sessions.IssueAsync(
+        var sessao = await sessions.IssueAsync(
             account,
             AuthenticationMethods.Password,
             ipAddress,
@@ -59,13 +59,22 @@ public sealed class LogIn(
             correlationId,
             cancellationToken);
 
-        return LogInResult.Success(token.Value, token.ExpiresAt);
+        return LogInResult.Success(sessao);
     }
 }
 
-public sealed record LogInResult(bool Succeeded, string? AccessToken, DateTimeOffset? ExpiresAt)
+/// <param name="IdleTimeoutSeconds">
+/// Quanta inactividade a sessao tolera. Vai para o cliente para ele poder avisar
+/// antes de expulsar alguem — ver <see cref="IssuedSession"/>.
+/// </param>
+public sealed record LogInResult(
+    bool Succeeded,
+    string? AccessToken,
+    DateTimeOffset? ExpiresAt,
+    int? IdleTimeoutSeconds = null)
 {
-    public static LogInResult Success(string token, DateTimeOffset expiresAt) => new(true, token, expiresAt);
+    public static LogInResult Success(IssuedSession sessao) => new(
+        true, sessao.Token.Value, sessao.Token.ExpiresAt, sessao.IdleTimeoutSeconds);
 
     /// <summary>
     /// Sem detalhe do motivo: distinguir "utilizador inexistente" de "password

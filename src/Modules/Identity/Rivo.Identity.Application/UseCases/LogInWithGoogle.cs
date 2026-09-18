@@ -75,7 +75,7 @@ public sealed class LogInWithGoogle(
             }
         }
 
-        var token = await sessions.IssueAsync(
+        var sessao = await sessions.IssueAsync(
             account,
             AuthenticationMethods.Google,
             ipAddress,
@@ -83,7 +83,7 @@ public sealed class LogInWithGoogle(
             correlationId,
             cancellationToken);
 
-        return GoogleLogInResult.Success(token.Value, token.ExpiresAt);
+        return GoogleLogInResult.Success(sessao);
     }
 
     /// <summary>
@@ -145,10 +145,14 @@ public sealed class LogInWithGoogle(
 public sealed record GoogleLogInResult(
     GoogleLogInOutcome Outcome,
     string? AccessToken,
-    DateTimeOffset? ExpiresAt)
+    DateTimeOffset? ExpiresAt,
+    int? IdleTimeoutSeconds = null)
 {
-    public static GoogleLogInResult Success(string token, DateTimeOffset expiresAt) =>
-        new(GoogleLogInOutcome.Succeeded, token, expiresAt);
+    public static GoogleLogInResult Success(IssuedSession sessao) => new(
+        GoogleLogInOutcome.Succeeded,
+        sessao.Token.Value,
+        sessao.Token.ExpiresAt,
+        sessao.IdleTimeoutSeconds);
 
     /// <summary>
     /// Sem detalhe do motivo: distinguir "token inválido" de "não há conta com

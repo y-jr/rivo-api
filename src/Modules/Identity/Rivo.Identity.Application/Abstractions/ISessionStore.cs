@@ -32,4 +32,30 @@ public interface ISessionStore
 
     /// <summary>Persiste alterações a uma sessão já materializada (ex.: revogação).</summary>
     Task SaveChangesAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Marca actividade numa sessão, se a marca anterior já for antiga o
+    /// suficiente para valer a escrita.
+    ///
+    /// <para>
+    /// <strong>Escrita directa, sem rastreio e sem tocar no contador de
+    /// concorrência</strong> — e isso é o ponto, não uma optimização. Se passasse
+    /// pelo caminho normal, dois pedidos em paralelo do mesmo utilizador
+    /// colidiriam no <c>version</c> e um deles falharia. Perder uma marca de
+    /// actividade não é conflito nenhum: o outro pedido já a escreveu.
+    /// </para>
+    ///
+    /// <para>
+    /// A condição da janela vai na própria instrução, para que duas chamadas
+    /// simultâneas não escrevam duas vezes.
+    /// </para>
+    /// </summary>
+    /// <param name="resolution">
+    /// Só escreve se <c>last_seen_at</c> for anterior a <c>now - resolution</c>.
+    /// </param>
+    Task TouchAsync(
+        Guid sessionId,
+        DateTimeOffset now,
+        TimeSpan resolution,
+        CancellationToken cancellationToken);
 }

@@ -337,7 +337,7 @@ public static class IdentityModuleEndpoints
 
         // 401 sem detalhe: não revelar se o endereço existe.
         return result.Succeeded
-            ? Results.Ok(new LoginResponse(result.AccessToken!, result.ExpiresAt!.Value))
+            ? Results.Ok(new LoginResponse(result.AccessToken!, result.ExpiresAt!.Value, result.IdleTimeoutSeconds!.Value))
             : Results.Unauthorized();
     }
 
@@ -366,7 +366,7 @@ public static class IdentityModuleEndpoints
         return result.Outcome switch
         {
             GoogleLogInOutcome.Succeeded =>
-                Results.Ok(new LoginResponse(result.AccessToken!, result.ExpiresAt!.Value)),
+                Results.Ok(new LoginResponse(result.AccessToken!, result.ExpiresAt!.Value, result.IdleTimeoutSeconds!.Value)),
 
             // 501 e não 401: neste ambiente o Google não está ligado de todo.
             // Um 401 mandaria procurar o defeito na conta de quem tentou, que
