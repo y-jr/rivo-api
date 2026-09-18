@@ -346,7 +346,85 @@ Test-Case "22. Determinacao do limiar de isencao devolve 30.000 Kz para os dois 
     "alimentacao=30.000, transporte=30.000"
 }
 
-Test-Case "23. Dados sobrevivem ao reinicio da stack" {
+Test-Case "23. Sem identidade fiscal declarada o GET devolve 404" {
+    # 404 e nao um objecto de campos vazios: "a empresa nao declarou quem e" e
+    # "a empresa chama-se nada" sao estados diferentes.
+    $code = Get-StatusCode { Invoke-RestMethod "$base/fiscal/tax-entity" -Headers $adminHeaders }
+    if ($code -ne 404) { throw "esperado 404 antes de declarar, obtido $code" }
+    "404 antes de declarar"
+}
+
+Test-Case "24. Declarar a identidade fiscal responde 201" {
+    $body = @{
+        companyName = "Rivo Verificacao, Lda."
+        taxRegistrationNumber = "5000000001"
+        addressDetail = "Rua Principal 1"
+        city = "Luanda"
+        country = "AO"
+        email = "geral@rivo.ao"
+    } | ConvertTo-Json
+
+    $resp = Invoke-WebRequest "$base/fiscal/tax-entity" -Method Put -Body $body -ContentType "application/json" -Headers $adminHeaders
+    if ($resp.StatusCode -ne 201) { throw "esperado 201 na primeira declaracao, obtido $($resp.StatusCode)" }
+
+    $perfil = Invoke-RestMethod "$base/fiscal/tax-entity" -Headers $adminHeaders
+    if ($perfil.companyName -ne "Rivo Verificacao, Lda.") { throw "razao social: $($perfil.companyName)" }
+    if ($perfil.taxRegistrationNumber -ne "5000000001") { throw "NIF: $($perfil.taxRegistrationNumber)" }
+    "201 e o perfil le-se de volta"
+}
+
+Test-Case "25. Corrigir a identidade fiscal responde 200, nao 201" {
+    # A distincao existe para quem configura ver se criou ou corrigiu.
+    $body = @{
+        companyName = "Rivo Verificacao, S.A."
+        taxRegistrationNumber = "5000000001"
+        addressDetail = "Rua Principal 1"
+        city = "Benguela"
+        country = "AO"
+    } | ConvertTo-Json
+
+    $resp = Invoke-WebRequest "$base/fiscal/tax-entity" -Method Put -Body $body -ContentType "application/json" -Headers $adminHeaders
+    if ($resp.StatusCode -ne 200) { throw "esperado 200 na correccao, obtido $($resp.StatusCode)" }
+
+    $perfil = Invoke-RestMethod "$base/fiscal/tax-entity" -Headers $adminHeaders
+    if ($perfil.city -ne "Benguela") { throw "correccao nao pegou: $($perfil.city)" }
+
+    # Os opcionais omitidos ficam limpos — o que o utilizador apagou fica apagado.
+    if ($null -ne $perfil.email) { throw "email devia ter ficado vazio, esta '$($perfil.email)'" }
+    "200 na correccao, cidade e opcionais actualizados"
+}
+
+Test-Case "26. Identidade fiscal sem razao social e recusada" {
+    $body = @{
+        companyName = "   "
+        taxRegistrationNumber = "5000000001"
+        addressDetail = "Rua Principal 1"
+        city = "Luanda"
+        country = "AO"
+    } | ConvertTo-Json
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/fiscal/tax-entity" -Method Put -Body $body -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 400) { throw "esperado 400, obtido $code" }
+    "400 sem razao social"
+}
+
+Test-Case "27. Sales nao declara a identidade fiscal da empresa" {
+    # Quem muda o NIF do emitente muda o que vai impresso em todos os
+    # documentos emitidos a partir desse momento. Fica com Admin.
+    $body = @{
+        companyName = "Nao Devia Passar"
+        taxRegistrationNumber = "9999999999"
+        addressDetail = "Rua X"
+        city = "Luanda"
+        country = "AO"
+    } | ConvertTo-Json
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/fiscal/tax-entity" -Method Put -Body $body -ContentType "application/json" -Headers $salesHeaders }
+    if ($code -ne 403) { throw "Sales declarou a identidade fiscal: esperado 403, obtido $code" }
+    "403 para Sales"
+}
+
+Test-Case "28. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
@@ -360,7 +438,11 @@ Test-Case "23. Dados sobrevivem ao reinicio da stack" {
 
     $alimentacao = Invoke-RestMethod "$base/fiscal/subsidy-exemptions/determination?kind=FoodAllowance&taxPointDate=2026-08-31" -Headers $adminHeaders
     if ($alimentacao.amount -ne 30000) { throw "limiar de alimentacao perdido ou alterado: $($alimentacao.amount)" }
-    "determinacao de IVA, IRT e limiares de subsidio intactas apos restart"
+
+    $perfil = Invoke-RestMethod "$base/fiscal/tax-entity" -Headers $adminHeaders
+    if ($perfil.companyName -ne "Rivo Verificacao, S.A.") { throw "identidade fiscal perdida: $($perfil.companyName)" }
+
+    "determinacao de IVA, IRT, limiares de subsidio e identidade fiscal intactas apos restart"
 }
 
 Write-Host ""

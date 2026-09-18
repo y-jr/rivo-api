@@ -54,7 +54,72 @@ public static class FiscalModuleEndpoints
         group.MapGet("/subsidy-exemptions/determination", DetermineSubsidyExemptionAsync)
             .RequireAuthorization(FiscalPermissions.RatesRead);
 
+        // --- A identidade fiscal da empresa (ADR-066) ---
+        //
+        // `GET` e `PUT`, e não `POST`: é um recurso singular que se declara uma
+        // vez e se corrige depois, não uma colecção onde se acrescentam
+        // registos. A mesma leitura de verbo do ADR-063 — corrigir é `PUT`.
+        group.MapGet("/tax-entity", GetTaxEntityAsync)
+            .RequireAuthorization(FiscalPermissions.TaxEntityRead);
+
+        group.MapPut("/tax-entity", DeclareTaxEntityAsync)
+            .RequireAuthorization(FiscalPermissions.TaxEntityWrite);
+
         return endpoints;
+    }
+
+    /// <summary>
+    /// A identidade fiscal, ou <c>404</c> se ainda não houver.
+    ///
+    /// <para>
+    /// <strong>404 e não um objecto vazio.</strong> "A empresa não declarou quem
+    /// é" e "a empresa chama-se nada" são estados diferentes, e um corpo com
+    /// campos em branco confundia-os. O ecrã de configuração trata o 404 como
+    /// "por preencher", que é o que ele é.
+    /// </para>
+    /// </summary>
+    private static async Task<IResult> GetTaxEntityAsync(
+        GetTaxEntityProfile query,
+        CancellationToken cancellationToken)
+    {
+        var perfil = await query.ExecuteAsync(cancellationToken);
+
+        return perfil is null
+            ? Results.NotFound(new { erro = "A identidade fiscal da empresa ainda não foi declarada." })
+            : Results.Ok(perfil);
+    }
+
+    private static async Task<IResult> DeclareTaxEntityAsync(
+        TaxEntityRequest request,
+        DeclareTaxEntityProfile declare,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await declare.ExecuteAsync(
+            new TaxEntityProfileInput(
+                request.CompanyName,
+                request.TaxRegistrationNumber,
+                request.AddressDetail,
+                request.City,
+                request.Country,
+                request.BusinessName,
+                request.PostalCode,
+                request.Email,
+                request.Phone,
+                request.SoftwareValidationNumber),
+            BuildAuditContext(http),
+            cancellationToken);
+
+        return result.Outcome switch
+        {
+            // 201 na primeira vez, 200 nas seguintes: quem configura o sistema
+            // vê a diferença entre ter criado e ter corrigido.
+            TaxEntityProfileOutcome.Declared => Results.Created("/fiscal/tax-entity", result.Profile),
+            TaxEntityProfileOutcome.Corrected => Results.Ok(result.Profile),
+            TaxEntityProfileOutcome.Invalid =>
+                Results.ValidationProblem(new Dictionary<string, string[]> { ["emitente"] = [result.Error!] }),
+            _ => Results.Problem("Resultado inesperado ao declarar a identidade fiscal."),
+        };
     }
 
     private static async Task<IResult> ListAsync(
@@ -320,3 +385,24 @@ public sealed record IntroduceSubsidyExemptionVersionRequest(
     DateOnly EffectiveFrom,
     DateOnly? EffectiveTo,
     string LegalInstrument);
+
+/// <summary>
+/// A identidade fiscal da empresa, como o cliente a envia.
+///
+/// <para>
+/// Os cinco primeiros campos são obrigatórios porque são os que o
+/// <c>Header</c> do SAF-T exige e os que um documento impresso não pode omitir.
+/// Os restantes melhoram o documento e não o invalidam se faltarem.
+/// </para>
+/// </summary>
+public sealed record TaxEntityRequest(
+    string CompanyName,
+    string TaxRegistrationNumber,
+    string AddressDetail,
+    string City,
+    string Country,
+    string? BusinessName = null,
+    string? PostalCode = null,
+    string? Email = null,
+    string? Phone = null,
+    string? SoftwareValidationNumber = null);

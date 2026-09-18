@@ -52,6 +52,12 @@ public static class FiscalModuleExtensions
         services.AddScoped<GetSubsidyExemptionSchedule>();
         services.AddScoped<IntroduceSubsidyExemptionVersion>();
 
+        // A identidade fiscal da empresa — o `Header` do SAF-T (ADR-066).
+        services.AddScoped<ITaxEntityProfileStore, TaxEntityProfileStore>();
+        services.AddScoped<ITaxEntityDirectory, TaxEntityDirectory>();
+        services.AddScoped<GetTaxEntityProfile>();
+        services.AddScoped<DeclareTaxEntityProfile>();
+
         // Cada módulo regista as policies das suas permissões (ADR-014).
         services.AddAuthorization(options =>
         {

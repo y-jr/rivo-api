@@ -85,7 +85,18 @@ public sealed record CustomerReference(
     string TaxId,
     CustomerStatus Status,
     BillingAddress BillingAddress,
-    Guid? AssignedToEmployeeId = null);
+    Guid? AssignedToEmployeeId = null,
+
+    /// <param name="Email">
+    /// Endereco de contacto, quando o cliente tem um.
+    ///
+    /// <para>
+    /// Entrou com o ADR-066: entregar a factura por correio precisa de saber
+    /// para onde. Opcional porque no dominio tambem o e — ha clientes que so
+    /// existem em papel, e o sistema nao deve inventar um endereco para eles.
+    /// </para>
+    /// </param>
+    string? Email = null);
 
 /// <param name="Country">ISO 3166-1 alpha-2. `AO` para Angola.</param>
 public sealed record BillingAddress(string Detail, string City, string Country);

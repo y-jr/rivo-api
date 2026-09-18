@@ -43,6 +43,17 @@ public static class FinanceModuleEndpoints
         group.MapGet("/sales-invoices/{invoiceId:guid}/balance", BalanceAsync)
             .RequireAuthorization(FinancePermissions.InvoicesRead);
 
+        // --- O papel dos documentos (ADR-066, fecha o K23) ---
+        //
+        // `/document` devolve o PDF; `/delivery` envia-o ao cliente. Dois
+        // recursos e não um parâmetro, porque são actos diferentes com
+        // permissões diferentes — ver `FinancePermissions.DocumentsDeliver`.
+        group.MapGet("/sales-invoices/{invoiceId:guid}/document", GetInvoiceDocumentAsync)
+            .RequireAuthorization(FinancePermissions.InvoicesRead);
+
+        group.MapPost("/sales-invoices/{invoiceId:guid}/delivery", DeliverInvoiceAsync)
+            .RequireAuthorization(FinancePermissions.DocumentsDeliver);
+
         // Nota de crédito. **Anular não é a mesma coisa:** anular apaga a
         // factura inteira do mapa de dívida; creditar reduz o que ela pede e
         // deixa rasto do quanto e do porquê.
@@ -61,6 +72,12 @@ public static class FinanceModuleEndpoints
         group.MapPost("/credit-notes/{creditNoteId:guid}/cancellation", CancelCreditNoteAsync)
             .RequireAuthorization(FinancePermissions.InvoicesCancel);
 
+        group.MapGet("/credit-notes/{creditNoteId:guid}/document", GetCreditNoteDocumentAsync)
+            .RequireAuthorization(FinancePermissions.InvoicesRead);
+
+        group.MapPost("/credit-notes/{creditNoteId:guid}/delivery", DeliverCreditNoteAsync)
+            .RequireAuthorization(FinancePermissions.DocumentsDeliver);
+
         // Recibos.
         group.MapGet("/receipts", ListReceiptsAsync)
             .RequireAuthorization(FinancePermissions.ReceiptsRead);
@@ -75,6 +92,12 @@ public static class FinanceModuleEndpoints
         // anulação, não de registo.
         group.MapPost("/receipts/{receiptId:guid}/cancellation", CancelReceiptAsync)
             .RequireAuthorization(FinancePermissions.InvoicesCancel);
+
+        group.MapGet("/receipts/{receiptId:guid}/document", GetReceiptDocumentAsync)
+            .RequireAuthorization(FinancePermissions.ReceiptsRead);
+
+        group.MapPost("/receipts/{receiptId:guid}/delivery", DeliverReceiptAsync)
+            .RequireAuthorization(FinancePermissions.DocumentsDeliver);
 
         // Pedidos de confirmação de pagamento (ADR-044) — a submissão em si
         // não tem endpoint aqui: passa sempre pelo Portal do Cliente, que
@@ -103,6 +126,129 @@ public static class FinanceModuleEndpoints
         return saldo is null
             ? Results.NotFound(new { erro = "Factura não encontrada." })
             : Results.Ok(saldo);
+    }
+
+    // --- O papel dos documentos (ADR-066) ---
+    //
+    // Seis rotas, dois handlers genéricos. Factura, nota de crédito e recibo
+    // diferem no tipo e em mais nada aqui — a projecção comum está no caso de
+    // uso, e repetir a tradução HTTP três vezes só criava três sítios para ela
+    // divergir.
+
+    private static Task<IResult> GetInvoiceDocumentAsync(
+        Guid invoiceId,
+        IssueFiscalDocumentFile ficheiros,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        DocumentoAsync(FiscalDocumentKind.SalesInvoice, invoiceId, ficheiros, http, cancellationToken);
+
+    private static Task<IResult> GetCreditNoteDocumentAsync(
+        Guid creditNoteId,
+        IssueFiscalDocumentFile ficheiros,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        DocumentoAsync(FiscalDocumentKind.CreditNote, creditNoteId, ficheiros, http, cancellationToken);
+
+    private static Task<IResult> GetReceiptDocumentAsync(
+        Guid receiptId,
+        IssueFiscalDocumentFile ficheiros,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        DocumentoAsync(FiscalDocumentKind.Receipt, receiptId, ficheiros, http, cancellationToken);
+
+    private static Task<IResult> DeliverInvoiceAsync(
+        Guid invoiceId,
+        DeliverFiscalDocument entrega,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        EntregaAsync(FiscalDocumentKind.SalesInvoice, invoiceId, entrega, http, cancellationToken);
+
+    private static Task<IResult> DeliverCreditNoteAsync(
+        Guid creditNoteId,
+        DeliverFiscalDocument entrega,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        EntregaAsync(FiscalDocumentKind.CreditNote, creditNoteId, entrega, http, cancellationToken);
+
+    private static Task<IResult> DeliverReceiptAsync(
+        Guid receiptId,
+        DeliverFiscalDocument entrega,
+        HttpContext http,
+        CancellationToken cancellationToken) =>
+        EntregaAsync(FiscalDocumentKind.Receipt, receiptId, entrega, http, cancellationToken);
+
+    private static async Task<IResult> DocumentoAsync(
+        FiscalDocumentKind kind,
+        Guid documentId,
+        IssueFiscalDocumentFile ficheiros,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await ficheiros.ExecuteAsync(
+            kind, documentId, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            FiscalDocumentFileOutcome.Ready => Results.File(
+                result.Content!,
+                "application/pdf",
+                result.FileName,
+
+                // `inline` e não `attachment`: o caso corrente é ver o documento
+                // antes de decidir se se envia. O browser guarda-o com o nome
+                // certo de qualquer maneira, se o utilizador quiser.
+                enableRangeProcessing: false),
+
+            FiscalDocumentFileOutcome.DocumentNotFound =>
+                Results.NotFound(new { erro = "Documento não encontrado." }),
+
+            // 501 e não 500: a capacidade existe, falta configurar quem emite.
+            // Mesma leitura do 501 em `hr` e `procurement` — é estado de
+            // configuração, não avaria.
+            FiscalDocumentFileOutcome.IssuerNotDeclared => Results.Problem(
+                "A identidade fiscal da empresa não foi declarada. "
+                + "Sem emitente não há documento fiscal — ver PUT /fiscal/tax-entity.",
+                statusCode: StatusCodes.Status501NotImplemented),
+
+            _ => Results.Problem("Resultado inesperado ao compor o documento."),
+        };
+    }
+
+    private static async Task<IResult> EntregaAsync(
+        FiscalDocumentKind kind,
+        Guid documentId,
+        DeliverFiscalDocument entrega,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await entrega.ExecuteAsync(
+            kind, documentId, BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            FiscalDocumentDeliveryOutcome.Sent => Results.Ok(new { enviadoPara = result.SentTo }),
+
+            FiscalDocumentDeliveryOutcome.DocumentNotFound =>
+                Results.NotFound(new { erro = "Documento não encontrado." }),
+
+            // 409: o documento está bem, o que falta é a quem enviar. Não é o
+            // pedido que está malformado — é o cliente que não tem endereço, ou
+            // não há cliente nenhum (consumidor final).
+            FiscalDocumentDeliveryOutcome.NoRecipient =>
+                Results.Conflict(new { erro = result.Error }),
+
+            FiscalDocumentDeliveryOutcome.IssuerNotDeclared => Results.Problem(
+                "A identidade fiscal da empresa não foi declarada — ver PUT /fiscal/tax-entity.",
+                statusCode: StatusCodes.Status501NotImplemented),
+
+            // 503: o correio é dependência externa e falhou. A mensagem do
+            // servidor sobe para quem clicou poder agir.
+            FiscalDocumentDeliveryOutcome.DeliveryFailed => Results.Problem(
+                result.Error,
+                statusCode: StatusCodes.Status503ServiceUnavailable),
+
+            _ => Results.Problem("Resultado inesperado ao entregar o documento."),
+        };
     }
 
     private static async Task<IResult> ListCreditNotesAsync(

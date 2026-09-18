@@ -163,6 +163,7 @@
   </Folder>
   <Folder Name="/tests/Finance/">
     <Project Path="tests/Modules/Finance/Rivo.Finance.Application.Tests/Rivo.Finance.Application.Tests.csproj" />
+    <Project Path="tests/Modules/Finance/Rivo.Finance.Infrastructure.Tests/Rivo.Finance.Infrastructure.Tests.csproj" />
     <Project Path="tests/Modules/Finance/Rivo.Finance.Domain.Tests/Rivo.Finance.Domain.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/Fiscal/">

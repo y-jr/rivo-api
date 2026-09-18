@@ -512,7 +512,82 @@ Test-Case "28. Quem emite nao credita, quem recebe nao emite" {
     "403 nas duas direccoes"
 }
 
-Test-Case "29. Dados sobrevivem ao reinicio da stack" {
+Test-Case "29. A factura produz um PDF, e duas descargas dao o mesmo ficheiro" {
+    # Fecha o K23. Antes disto, factura, nota de credito e recibo existiam como
+    # dados e nao havia nada que se imprimisse ou entregasse.
+    $r1 = Invoke-WebRequest "$base/finance/sales-invoices/$($script:cicloId)/document" -Headers $adminHeaders
+    if ($r1.StatusCode -ne 200) { throw "esperado 200, obtido $($r1.StatusCode)" }
+
+    $tipo = $r1.Headers["Content-Type"]
+    if ($tipo -notlike "application/pdf*") { throw "Content-Type: $tipo" }
+
+    # Os primeiros quatro bytes de um PDF sao sempre %PDF. Sem isto, um corpo de
+    # erro servido com o tipo certo passava por documento.
+    $bytes = $r1.Content
+    if ($bytes.Length -lt 1024) { throw "PDF com $($bytes.Length) bytes, demasiado pequeno" }
+    $magia = [System.Text.Encoding]::ASCII.GetString($bytes, 0, 4)
+    if ($magia -ne "%PDF") { throw "nao comeca por %PDF mas por '$magia'" }
+
+    # A segunda descarga tem de devolver o MESMO ficheiro: um documento fiscal
+    # reimpresso nao pode sair diferente.
+    $r2 = Invoke-WebRequest "$base/finance/sales-invoices/$($script:cicloId)/document" -Headers $adminHeaders
+    $h1 = [Convert]::ToBase64String([System.Security.Cryptography.SHA256]::HashData($bytes))
+    $h2 = [Convert]::ToBase64String([System.Security.Cryptography.SHA256]::HashData($r2.Content))
+    if ($h1 -ne $h2) { throw "duas descargas deram ficheiros diferentes" }
+
+    "PDF de $($bytes.Length) bytes, identico na segunda descarga"
+}
+
+Test-Case "30. O recibo e a nota de credito tambem produzem PDF" {
+    $rg = Invoke-WebRequest "$base/finance/receipts/$($script:reciboId)/document" -Headers $adminHeaders
+    if ($rg.StatusCode -ne 200) { throw "recibo: esperado 200, obtido $($rg.StatusCode)" }
+    if ([System.Text.Encoding]::ASCII.GetString($rg.Content, 0, 4) -ne "%PDF") { throw "recibo nao e PDF" }
+
+    # A nota foi anulada pelo caso 26 — o papel tem de sair mesmo assim, e com a
+    # anulacao impressa (o aspecto verifica-se em teste unitario).
+    $nc = Invoke-WebRequest "$base/finance/credit-notes/$($script:notaId)/document" -Headers $adminHeaders
+    if ($nc.StatusCode -ne 200) { throw "nota: esperado 200, obtido $($nc.StatusCode)" }
+    if ([System.Text.Encoding]::ASCII.GetString($nc.Content, 0, 4) -ne "%PDF") { throw "nota nao e PDF" }
+
+    "recibo e nota de credito em PDF"
+}
+
+Test-Case "31. A factura anulada da papel diferente da viva" {
+    # A factura do caso 12 esta anulada. Entregar uma anulada com o aspecto de
+    # uma boa e pior do que nao a entregar, por isso o papel tem de diferir.
+    $anulada = Invoke-WebRequest "$base/finance/sales-invoices/$($script:invoiceId)/document" -Headers $adminHeaders
+    if ($anulada.StatusCode -ne 200) { throw "esperado 200, obtido $($anulada.StatusCode)" }
+
+    $viva = Invoke-WebRequest "$base/finance/sales-invoices/$($script:cicloId)/document" -Headers $adminHeaders
+
+    $ha = [Convert]::ToBase64String([System.Security.Cryptography.SHA256]::HashData($anulada.Content))
+    $hv = [Convert]::ToBase64String([System.Security.Cryptography.SHA256]::HashData($viva.Content))
+    if ($ha -eq $hv) { throw "a anulada e a viva deram o mesmo ficheiro" }
+
+    "papeis distintos"
+}
+
+Test-Case "32. Enviar a um cliente sem endereco responde 409 e nao envia nada" {
+    # O cliente desta suite foi criado sem email, de proposito: assim a CI
+    # verifica a recusa sem mandar correio real para um endereco inventado.
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/sales-invoices/$($script:cicloId)/delivery" -Method Post -Headers $salesHeaders }
+    if ($code -ne 409) { throw "esperado 409 sem endereco, obtido $code" }
+    "409 sem endereco registado"
+}
+
+Test-Case "33. Quem le o documento nao o envia" {
+    # A permissao de entrega e propria: descarregar e interno, enviar tem efeito
+    # fora do sistema. O perfil Finance le e nao entrega.
+    $r = Invoke-WebRequest "$base/finance/sales-invoices/$($script:cicloId)/document" -Headers $financeHeaders
+    if ($r.StatusCode -ne 200) { throw "Finance nao conseguiu ler o documento: $($r.StatusCode)" }
+
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/sales-invoices/$($script:cicloId)/delivery" -Method Post -Headers $financeHeaders }
+    if ($code -ne 403) { throw "Finance entregou o documento: esperado 403, obtido $code" }
+
+    "Finance le (200) e nao entrega (403)"
+}
+
+Test-Case "34. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
@@ -522,7 +597,14 @@ Test-Case "29. Dados sobrevivem ao reinicio da stack" {
     if ($f.number -ne "FT $serie/1") { throw "factura perdida" }
     if ($f.status -ne "Cancelled") { throw "estado perdido: $($f.status)" }
     if ($f.grossTotal -ne 115500) { throw "totais perdidos: $($f.grossTotal)" }
-    "FT $serie/1 intacta e anulada apos restart"
+
+    # O papel ja composto tem de continuar a sair igual depois do reinicio: o
+    # ficheiro esta em disco e a linha que lhe aponta na base de dados.
+    $doc = Invoke-WebRequest "$base/finance/sales-invoices/$($script:cicloId)/document" -Headers $adminHeaders
+    if ($doc.StatusCode -ne 200) { throw "documento perdido apos restart: $($doc.StatusCode)" }
+    if ([System.Text.Encoding]::ASCII.GetString($doc.Content, 0, 4) -ne "%PDF") { throw "documento corrompido apos restart" }
+
+    "FT $serie/1 intacta e anulada apos restart, e o PDF continua a sair"
 }
 
 Write-Host ""

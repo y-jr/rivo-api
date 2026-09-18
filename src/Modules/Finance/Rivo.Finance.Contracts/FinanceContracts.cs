@@ -463,9 +463,22 @@ public static class FinancePermissions
     /// </summary>
     public const string BudgetsApprove = "finance.budgets.approve";
 
+    /// <summary>
+    /// Entregar um documento fiscal ao cliente, por correio (ADR-066).
+    ///
+    /// <para>
+    /// <strong>Permissao propria, e nao a de leitura.</strong> Descarregar o
+    /// papel e um acto interno; envia-lo faz sair correio para uma pessoa de
+    /// fora, com o documento anexado. E a mesma distincao que separa
+    /// <see cref="PaymentsRequest"/> de <see cref="PaymentsExecute"/>: ver nao e
+    /// fazer acontecer.
+    /// </para>
+    /// </summary>
+    public const string DocumentsDeliver = "finance.documents.deliver";
+
     public static readonly IReadOnlyList<string> All =
     [
-        InvoicesRead, InvoicesWrite, InvoicesCancel, SeriesWrite,
+        InvoicesRead, InvoicesWrite, InvoicesCancel, SeriesWrite, DocumentsDeliver,
         ReceiptsRead, ReceiptsWrite,
         PayablesRead, PayablesWrite, PaymentsRequest, PaymentsExecute,
         LedgerRead, LedgerWrite, LedgerClose,
@@ -476,9 +489,15 @@ public static class FinancePermissions
     /// O que um perfil de facturação recebe: emitir e consultar — incluindo os
     /// recibos, para saber o que está pago — **sem** registar recebimentos,
     /// sem creditar e sem anular.
+    ///
+    /// <para>
+    /// <c>DocumentsDeliver</c> entrou com o ADR-066: quem emite a factura é quem
+    /// a manda ao cliente. Separar as duas coisas obrigaria a interromper outra
+    /// pessoa para concluir o acto comercial mais corrente que existe.
+    /// </para>
     /// </summary>
     public static readonly IReadOnlyList<string> ForBilling =
-        [InvoicesRead, InvoicesWrite, ReceiptsRead];
+        [InvoicesRead, InvoicesWrite, ReceiptsRead, DocumentsDeliver];
 
     /// <summary>
     /// O que um perfil de tesouraria recebe: ver o que é devido, registar o que

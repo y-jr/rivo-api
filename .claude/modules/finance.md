@@ -27,6 +27,7 @@ principais do monólito modular (ADR-001).
 | Conceito | Notas |
 |---|---|
 | Factura de Venda / Recebimento | AR; cliente pertence a `commercial` |
+| Ficheiro de Documento Fiscal | o PDF de uma factura, nota de credito ou recibo (ADR-066). Compoe-se uma vez e congela — duas impressoes saem iguais. Guardado em `documents`; o emitente vem de `fiscal` por contrato. No maximo dois por documento: antes e depois da anulacao |
 | Factura de Compra | AP; fornecedor pertence a `procurement` |
 | Pedido de Pagamento | estado limitado a `elegível` / `executado` — **sem passos de aprovação embutidos** |
 | Execução de Pagamento | só criável se `approval` confirmar decisão "Aprovado", revalidada no momento |

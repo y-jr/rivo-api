@@ -254,6 +254,28 @@ ou do disco, ou um serviço compatível com S3.
   Fecha quando houver um arquivo na VPS, uma cópia no PC, uma no balde, e um
   ensaio de restauro feito.
 
+### ~~K23 — Nenhum documento comercial se pode imprimir ou entregar~~ — **FECHADO a 2026-09-18, ADR-066**
+
+Factura, nota de credito e recibo produzem PDF, arquivado em `documents` e
+entregavel por correio ao cliente. Ver ADR-066.
+
+**Duas coisas que o fecho obrigou a resolver e que nao estavam previstas:**
+
+1. **O sistema nao sabia quem era.** Nao existia em codigo nenhum o nome, o
+   NIF nem a sede da empresa emitente — so os do cliente de cada documento.
+   Uma factura sem emitente identificado nao e um documento. `fiscal` ganhou
+   `TaxEntityProfile`, que e o `Header` do SAF-T.
+2. **A fonte pedida nao existe no contentor.** Pedir Calibri fazia o endpoint
+   responder 200 na maquina de quem o escreveu e 500 em producao — a imagem de
+   runtime do .NET e Linux e nao traz fontes da Microsoft. Apanhado por teste
+   antes do deploy.
+
+**O que continua aberto e nao e isto:** a certificacao da AGT (K7) e as regras
+de calculo fiscal (K2). Um PDF sem certificacao continua a ser um documento sem
+validade fiscal.
+
+<details><summary>O registo original</summary>
+
 ### K23 — Nenhum documento comercial se pode imprimir ou entregar
 
 - **Módulo:** `finance` (e, por consequência, o Portal do Cliente).
@@ -278,6 +300,11 @@ ou do disco, ou um serviço compatível com S3.
   envio por e-mail, que o canal já existe desde o K13?) e escolher a biblioteca.
   Fecha quando um documento emitido produzir um ficheiro que uma pessoa
   consegue abrir.
+
+**Como foi decidido, a 2026-09-18:** os três documentos, com envio por e-mail,
+e QuestPDF sob licença Community. Ver ADR-066.
+
+</details>
 
 ### ~~K13 — Notificações não são entregues fora da aplicação~~ — **FECHADO a 2026-09-15**
 

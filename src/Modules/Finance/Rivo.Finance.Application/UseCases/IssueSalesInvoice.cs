@@ -283,6 +283,28 @@ public static class FinanceAuditActions
     public const string CreditNoteIssued = "finance.credit_note.issued";
     public const string CreditNoteCancelled = "finance.credit_note.cancelled";
 
+    /// <summary>
+    /// O papel de um documento foi composto pela primeira vez (ADR-066).
+    ///
+    /// <para>
+    /// Registra-se porque a partir daqui existe um ficheiro que pode ter
+    /// circulado. O <c>NewValue</c> leva o SHA-256, que é o que permite dizer
+    /// mais tarde se um PDF que alguém apresenta é o que este sistema produziu.
+    /// </para>
+    /// </summary>
+    public const string FiscalDocumentFileGenerated = "finance.fiscal_document.file_generated";
+
+    /// <summary>
+    /// O documento foi enviado ao cliente (ADR-066).
+    ///
+    /// <para>
+    /// <strong>É acção com efeito fora do sistema</strong> — saiu correio para
+    /// uma pessoa. Fica com o endereço de destino: sem ele, não se pode responder
+    /// a «mas vocês mandaram para onde?».
+    /// </para>
+    /// </summary>
+    public const string FiscalDocumentDelivered = "finance.fiscal_document.delivered";
+
     public const string ReceiptRegistered = "finance.receipt.registered";
 
     /// <summary>

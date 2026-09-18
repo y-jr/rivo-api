@@ -14,12 +14,39 @@ public sealed class FiscalDbContext(DbContextOptions<FiscalDbContext> options) :
 
     public DbSet<SubsidyExemptionSchedule> SubsidyExemptionSchedules => Set<SubsidyExemptionSchedule>();
 
+    public DbSet<TaxEntityProfile> TaxEntityProfiles => Set<TaxEntityProfile>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
 
         // Um schema por domínio, ownership exclusivo (ADR-002).
         builder.HasDefaultSchema(Schema);
+
+        builder.Entity<TaxEntityProfile>(profile =>
+        {
+            profile.ToTable("tax_entity_profile");
+            profile.HasKey(p => p.Id);
+
+            // Concorrência optimista (ADR-002, ADR-025).
+            profile.Property(p => p.Version).IsConcurrencyToken();
+
+            profile.Property(p => p.CompanyName).HasMaxLength(200).IsRequired();
+            profile.Property(p => p.BusinessName).HasMaxLength(200);
+
+            // 30 e não menos: o XSD do SAF-T não fixa o comprimento do NIF e há
+            // regimes que o escrevem com prefixo. Guardar folga custa nada e
+            // truncar um identificador fiscal estraga o documento.
+            profile.Property(p => p.TaxRegistrationNumber).HasMaxLength(30).IsRequired();
+
+            profile.Property(p => p.AddressDetail).HasMaxLength(200).IsRequired();
+            profile.Property(p => p.City).HasMaxLength(100).IsRequired();
+            profile.Property(p => p.PostalCode).HasMaxLength(20);
+            profile.Property(p => p.Country).HasMaxLength(100).IsRequired();
+            profile.Property(p => p.Email).HasMaxLength(200);
+            profile.Property(p => p.Phone).HasMaxLength(40);
+            profile.Property(p => p.SoftwareValidationNumber).HasMaxLength(50);
+        });
 
         builder.Entity<TaxRateSchedule>(schedule =>
         {

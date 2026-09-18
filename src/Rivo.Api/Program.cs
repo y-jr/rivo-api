@@ -176,6 +176,22 @@ builder.Services.AddScoped<IHrApprovalSubmission, HrApprovalSubmission>();
 // ciclo que o ADR-034 fechou. Ver Composition/FinancePaymentApproval.
 builder.Services.AddScoped<IPaymentApproval, FinancePaymentApproval>();
 
+// O papel dos documentos fiscais (ADR-066, fecha o K23). Duas ligações que só
+// existem aqui:
+//
+//   - guardar o PDF passa por `documents`, e `Rivo.Documents.Contracts` não
+//     pode receber `AuditContext` porque é um assembly sem dependências
+//     (ADR-017). Ver Composition/FiscalDocumentArchive;
+//   - entregá-lo por correio é o servidor de SMTP, que vive no host e não em
+//     `notifications` — um anexo para um endereço não é uma notificação para um
+//     utilizador. Ver Composition/SmtpFiscalDocumentDelivery.
+builder.Services.AddScoped<IFiscalDocumentArchive, FiscalDocumentArchive>();
+builder.Services.AddScoped<IFiscalDocumentDelivery, SmtpFiscalDocumentDelivery>();
+
+// O adaptador de entrega recebe as opções de SMTP directamente: precisa do
+// valor, não de o observar a mudar.
+builder.Services.AddScoped(_ => smtp ?? new SmtpOptions());
+
 // E `procurement`, para a requisição interna. Aqui não há ciclo a quebrar —
 // `approval` não lê `procurement` — mas mantém-se a inversão para que o módulo
 // continue a não saber qual é o motor de governança.

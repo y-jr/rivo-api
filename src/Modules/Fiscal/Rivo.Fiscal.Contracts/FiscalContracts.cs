@@ -296,5 +296,65 @@ public static class FiscalPermissions
     /// </summary>
     public const string RatesWrite = "fiscal.rates.write";
 
-    public static readonly IReadOnlyList<string> All = [RatesRead, RatesWrite];
+    /// <summary>
+    /// Ler a identidade fiscal da empresa.
+    ///
+    /// <para>
+    /// Separada de <see cref="RatesRead"/> porque é outra coisa: as taxas são o
+    /// catálogo com que se calcula, isto é quem a empresa é. E é leitura larga
+    /// de propósito — qualquer ecrã que mostre um documento emitido precisa do
+    /// cabeçalho.
+    /// </para>
+    /// </summary>
+    public const string TaxEntityRead = "fiscal.tax_entity.read";
+
+    /// <summary>
+    /// Declarar ou corrigir a identidade fiscal da empresa.
+    ///
+    /// <para>
+    /// <strong>Apenas Admin</strong>, pela mesma razão de
+    /// <see cref="RatesWrite"/> e com um alcance ainda maior: quem muda o NIF do
+    /// emitente muda o que vai impresso em todos os documentos emitidos a partir
+    /// desse momento.
+    /// </para>
+    /// </summary>
+    public const string TaxEntityWrite = "fiscal.tax_entity.write";
+
+    public static readonly IReadOnlyList<string> All =
+        [RatesRead, RatesWrite, TaxEntityRead, TaxEntityWrite];
+}
+
+/// <summary>
+/// A identidade fiscal da empresa, para quem precisa de a imprimir.
+///
+/// <para>
+/// Publicada em Contracts porque <c>finance</c> a lê para compor o cabeçalho dos
+/// documentos que emite — pelo contrato, nunca por leitura de tabela (ADR-010).
+/// Os nomes seguem os do <c>Header</c> do SAF-T AO.
+/// </para>
+/// </summary>
+public sealed record TaxEntityProfileView(
+    string CompanyName,
+    string? BusinessName,
+    string TaxRegistrationNumber,
+    string AddressDetail,
+    string City,
+    string? PostalCode,
+    string Country,
+    string? Email,
+    string? Phone,
+    string? SoftwareValidationNumber);
+
+/// <summary>
+/// Por onde os outros módulos perguntam quem emite.
+///
+/// <para>
+/// Devolve <c>null</c> quando a identidade ainda não foi declarada. Não é um
+/// erro do chamador: é um sistema por configurar, e quem chama decide o que
+/// fazer com isso — no caso de <c>finance</c>, recusar gerar o ficheiro.
+/// </para>
+/// </summary>
+public interface ITaxEntityDirectory
+{
+    Task<TaxEntityProfileView?> FindAsync(CancellationToken cancellationToken);
 }

@@ -46,12 +46,32 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
 
     public DbSet<DepartmentCostForecast> CostForecasts => Set<DepartmentCostForecast>();
 
+    public DbSet<FiscalDocumentFile> FiscalDocumentFiles => Set<FiscalDocumentFile>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
 
         // Um schema por domínio, ownership exclusivo (ADR-002).
         builder.HasDefaultSchema(Schema);
+
+        builder.Entity<FiscalDocumentFile>(file =>
+        {
+            file.ToTable("fiscal_document_file");
+            file.HasKey(f => f.Id);
+
+            file.Property(f => f.Version).IsConcurrencyToken();
+            file.Property(f => f.Kind).HasConversion<string>().HasMaxLength(20);
+
+            // SHA-256 em hexadecimal minúsculo: 64 caracteres, sempre.
+            file.Property(f => f.ContentHash).HasMaxLength(64).IsRequired();
+
+            // No máximo um ficheiro por documento e por estado de anulação — a
+            // invariante que sustenta "compor uma vez". Sem este índice, duas
+            // chamadas em paralelo criavam dois papéis do mesmo documento e a
+            // promessa de reimpressão idêntica caía.
+            file.HasIndex(f => new { f.Kind, f.SourceDocumentId, f.ReflectsCancellation }).IsUnique();
+        });
 
         builder.Entity<DocumentSeries>(series =>
         {
