@@ -8,6 +8,7 @@ using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Application.UseCases;
 using Rivo.Finance.Contracts;
 using Rivo.Finance.Domain;
+using Rivo.Finance.Infrastructure.Documents;
 using Rivo.Finance.Infrastructure.Persistence;
 
 namespace Rivo.Finance.Infrastructure;
@@ -51,6 +52,16 @@ public static class FinanceModuleExtensions
         services.AddScoped<ListReceipts>();
         services.AddScoped<GetReceipt>();
         services.AddScoped<GetInvoiceBalance>();
+
+        // O papel dos documentos fiscais (ADR-066, fecha o K23).
+        //
+        // `IFiscalDocumentArchive` e `IFiscalDocumentDelivery` **não** se
+        // registam aqui: são invertidos e ligados no composition root, como
+        // `IPaymentApproval`.
+        services.AddScoped<IFiscalDocumentFileStore, FiscalDocumentFileStore>();
+        services.AddScoped<IFiscalDocumentRenderer, FiscalDocumentRenderer>();
+        services.AddScoped<IssueFiscalDocumentFile>();
+        services.AddScoped<DeliverFiscalDocument>();
 
         // O contrato publicado de AR para composição (Fase 8, ADR-041) —
         // primeiro consumidor previsto, o Dashboard Executivo.

@@ -32,6 +32,7 @@ fiscal angolano são específicas o suficiente para ter domínio próprio.
 | Declaração Fiscal | IVA / IRT / INSS / AGT, por período |
 | Exportação SAF-T | por período; ficheiro via `documents` |
 | Requisitos de Documento Fiscal | numeração, campos obrigatórios, classificações |
+| Identidade Fiscal da Empresa | o `Header` do SAF-T — quem emite. Singular (ADR-003), declarada e corrigida por `PUT /fiscal/tax-entity`, só Admin. Entrou com o ADR-066: até aí o sistema conhecia o cliente de cada documento e não conhecia a si próprio |
 
 ## Possui
 

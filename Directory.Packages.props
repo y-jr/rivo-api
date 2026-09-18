@@ -1,5 +1,4 @@
 <Project>
-
   <!--
     Gestão central de versões de pacotes.
 
@@ -16,10 +15,8 @@
     A partir daqui, um `.csproj` declara *que* pacote usa; a versão é decidida
     aqui, num sítio só.
   -->
-
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-
     <!--
       Uma versão declarada num `.csproj` passa a ser erro, e não aviso
       silenciosamente ignorado. Sem isto, um projecto novo podia continuar a
@@ -27,14 +24,13 @@
     -->
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
-
   <!-- Persistência. -->
   <ItemGroup>
     <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.10" />
+    <PackageVersion Include="QuestPDF" Version="2026.9.0" />
   </ItemGroup>
-
   <!-- Identidade e autenticação. -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.10" />
@@ -43,7 +39,6 @@
     <PackageVersion Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.22.0" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.22.0" />
   </ItemGroup>
-
   <!-- API e documentação. -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.6" />
@@ -52,13 +47,11 @@
     <PackageVersion Include="Microsoft.OpenApi" Version="2.11.0" />
     <PackageVersion Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
   </ItemGroup>
-
   <!-- Azure (ADR-027). -->
   <ItemGroup>
     <PackageVersion Include="Azure.Identity" Version="1.21.0" />
     <PackageVersion Include="Azure.Storage.Blobs" Version="12.29.1" />
   </ItemGroup>
-
   <!--
     Entrega de correio (ADR-059).
 
@@ -71,12 +64,10 @@
   <ItemGroup>
     <PackageVersion Include="MailKit" Version="4.17.0" />
   </ItemGroup>
-
   <!-- Testes de integração (ADR-026). -->
   <ItemGroup>
     <PackageVersion Include="Testcontainers.MsSql" Version="4.14.0" />
   </ItemGroup>
-
   <!-- Testes (ADR-022). -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
@@ -84,5 +75,4 @@
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
-
 </Project>

@@ -240,6 +240,16 @@ public static class FiscalAuditActions
     public const string IncomeTaxScheduleVersionIntroduced = "fiscal.income_tax_schedule.version_introduced";
 
     public const string SubsidyExemptionVersionIntroduced = "fiscal.subsidy_exemption.version_introduced";
+
+    /// <summary>A identidade fiscal da empresa foi declarada pela primeira vez.</summary>
+    public const string TaxEntityDeclared = "fiscal.tax_entity.declared";
+
+    /// <summary>
+    /// A identidade fiscal foi corrigida. Distinta da declaracao de proposito:
+    /// a primeira e arranque, a segunda muda o que sai impresso de agora em
+    /// diante.
+    /// </summary>
+    public const string TaxEntityCorrected = "fiscal.tax_entity.corrected";
 }
 
 public static class FiscalAuditEntityTypes
@@ -249,4 +259,6 @@ public static class FiscalAuditEntityTypes
     public const string IncomeTaxSchedule = "fiscal.income_tax_schedule";
 
     public const string SubsidyExemptionSchedule = "fiscal.subsidy_exemption_schedule";
+
+    public const string TaxEntityProfile = "fiscal.tax_entity_profile";
 }

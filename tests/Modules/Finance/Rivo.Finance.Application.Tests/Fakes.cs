@@ -1039,3 +1039,134 @@ internal sealed class FakeEmployeeDirectory : Rivo.Hr.Contracts.IEmployeeDirecto
         CancellationToken cancellationToken) =>
         throw new NotSupportedException("O teste não previu uma chamada a HireAsync.");
 }
+
+/// <summary>
+/// A identidade fiscal do emitente. Por omissão **não existe** — o caso que mais
+/// importa testar é o sistema sem ela configurada.
+/// </summary>
+internal sealed class FakeTaxEntityDirectory(TaxEntityProfileView? profile = null) : ITaxEntityDirectory
+{
+    public int Calls { get; private set; }
+
+    public Task<TaxEntityProfileView?> FindAsync(CancellationToken cancellationToken)
+    {
+        Calls++;
+        return Task.FromResult(profile);
+    }
+
+    public static TaxEntityProfileView Emitente() => new(
+        "Rivo Testes, Lda.",
+        null,
+        "5000000000",
+        "Rua Principal 1",
+        "Luanda",
+        null,
+        "AO",
+        null,
+        null,
+        null);
+}
+
+/// <summary>
+/// Compositor de papel que devolve bytes previsíveis e conta quantas vezes foi
+/// chamado.
+///
+/// <para>
+/// A contagem é o ponto: «compor uma vez» só se verifica confirmando que a
+/// segunda descarga <strong>não</strong> passou por aqui.
+/// </para>
+/// </summary>
+internal sealed class FakeFiscalDocumentRenderer : IFiscalDocumentRenderer
+{
+    public int Calls { get; private set; }
+
+    public List<FiscalDocumentPrintout> Printouts { get; } = [];
+
+    public byte[] Render(FiscalDocumentPrintout printout)
+    {
+        Calls++;
+        Printouts.Add(printout);
+
+        // Conteúdo que identifica o documento composto, para os testes poderem
+        // distinguir dois papéis diferentes sem interpretar PDF.
+        return System.Text.Encoding.UTF8.GetBytes(
+            $"{printout.Document.Title}|{printout.Document.Number}|anulado={printout.Document.Cancelled}");
+    }
+}
+
+/// <summary>
+/// Arquivo em memória. <see cref="Perder"/> simula o ficheiro órfão do K12: a
+/// linha existe e o conteúdo desapareceu.
+/// </summary>
+internal sealed class FakeFiscalDocumentArchive : IFiscalDocumentArchive
+{
+    private readonly Dictionary<Guid, byte[]> _conteudos = [];
+
+    public int Stores { get; private set; }
+
+    public Task<ArchivedDocument> StoreAsync(
+        string fileName,
+        byte[] content,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        Stores++;
+
+        var id = Guid.CreateVersion7();
+        _conteudos[id] = content;
+
+        return Task.FromResult(new ArchivedDocument(id, $"hash-{content.Length}"));
+    }
+
+    public Task<byte[]?> FetchAsync(Guid documentId, CancellationToken cancellationToken) =>
+        Task.FromResult(_conteudos.GetValueOrDefault(documentId));
+
+    public void Perder(Guid documentId) => _conteudos.Remove(documentId);
+}
+
+internal sealed class FakeFiscalDocumentFileStore : IFiscalDocumentFileStore
+{
+    private readonly List<FiscalDocumentFile> _ficheiros = [];
+
+    public int SaveCount { get; private set; }
+
+    public IReadOnlyList<FiscalDocumentFile> Ficheiros => _ficheiros;
+
+    public Task<FiscalDocumentFile?> FindAsync(
+        FiscalDocumentKind kind,
+        Guid sourceDocumentId,
+        bool reflectsCancellation,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(_ficheiros.FirstOrDefault(
+            f => f.Kind == kind
+                && f.SourceDocumentId == sourceDocumentId
+                && f.ReflectsCancellation == reflectsCancellation));
+
+    public Task AddAsync(FiscalDocumentFile file, CancellationToken cancellationToken)
+    {
+        _ficheiros.Add(file);
+        return Task.CompletedTask;
+    }
+
+    public Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        SaveCount++;
+        return Task.CompletedTask;
+    }
+}
+
+internal sealed class FakeFiscalDocumentDelivery(string? erro = null) : IFiscalDocumentDelivery
+{
+    public List<FiscalDocumentDelivery> Sent { get; } = [];
+
+    public Task<FiscalDocumentDeliveryResult> SendAsync(
+        FiscalDocumentDelivery delivery,
+        CancellationToken cancellationToken)
+    {
+        Sent.Add(delivery);
+
+        return Task.FromResult(erro is null
+            ? FiscalDocumentDeliveryResult.Ok()
+            : FiscalDocumentDeliveryResult.Failed(erro));
+    }
+}

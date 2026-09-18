@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Testa a composição do papel dos documentos fiscais (ADR-066).
+
+    A camada Infrastructure de `finance` é onde vive o compositor de PDF, e é a
+    única parte dela que se testa sem base de dados: o compositor recebe um
+    `FiscalDocumentPrintout` e devolve bytes, sem tocar em EF nem no relógio.
+
+    Não há aqui Testcontainers nem SQL Server — de propósito. Um teste que
+    precisa de Docker falha na máquina de quem não o tem a correr, e esta parte
+    não precisa.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Modules\Finance\Rivo.Finance.Infrastructure\Rivo.Finance.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

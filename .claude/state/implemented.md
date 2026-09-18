@@ -31,6 +31,56 @@ definem-se, e sem elas nada lança. Ver a ressalva em cada secção.
 - <funcionalidade> — <data> — <nota breve, ADR relacionado se aplicável>
 ```
 
+## finance & fiscal
+
+**2026-09-18 — o documento fiscal passa a existir como ficheiro (ADR-066).**
+Fecha o K23. Factura, nota de credito e recibo existiam como dados e nao havia
+nada que se imprimisse ou entregasse; agora produzem PDF, arquivado em
+`documents` com categoria propria, e entregavel por correio ao cliente.
+
+**O que o trabalho obrigou a descobrir:**
+
+- **O sistema nao sabia quem era.** Nao existia em codigo o nome, o NIF nem a
+  sede da empresa emitente — so os do cliente, congelados em cada documento.
+  `fiscal` ganhou `TaxEntityProfile`, que e o `Header` do SAF-T, com os nomes de
+  campo do XSD para o mapeamento da exportacao ser directo quando chegar.
+  Singular e com chave constante, porque o ADR-003 fixou empresa unica.
+- **A fonte pedida nao existe no contentor.** Calibri fazia o endpoint responder
+  200 localmente e 500 em producao — a imagem de runtime do .NET e Linux. O
+  compositor passou a usar a fonte embutida no QuestPDF, que existe em qualquer
+  ambiente. Apanhado por teste, antes do deploy.
+
+**As propriedades que os testes guardam:**
+
+- **Duas descargas do mesmo documento dao bytes identicos.** Compoe-se uma vez,
+  guarda-se, e daí em diante devolve-se o mesmo ficheiro. Ha um teste de
+  determinismo do compositor para que uma alteracao futura — uma data de geracao
+  impressa, um identificador aleatorio — nao quebre isto em silencio.
+- **Uma anulada nao sai com o aspecto de uma boa.** A anulacao vai em destaque no
+  topo. O papel anterior a anulacao fica, porque foi ele que circulou (BR-14):
+  ha no maximo dois ficheiros por documento, distinguidos por
+  `ReflectsCancellation`.
+- **Sem emitente declarado nao ha documento** — 501, que e configuracao em falta
+  e nao avaria.
+- **O destinatario le-se do Cliente, nunca do pedido.** Mesma razao do ADR-057.
+  Sem endereco registado, 409 com a razao; a trilha registra a tentativa com o
+  destino, tenha corrido bem ou mal.
+
+Duas inversoes e **zero direccoes novas** na tabela de dependencias:
+`IFiscalDocumentArchive` (guardar, porque `Rivo.Documents.Contracts` nao pode
+receber `AuditContext` — ADR-017) e `IFiscalDocumentDelivery` (correio, que vive
+no host).
+
+QuestPDF sob licenca **Community** — gratuita abaixo de 1 000 000 USD de receita
+anual bruta. A declaracao esta no construtor estatico do compositor, com o
+limiar escrito: e a linha de codigo com consequencia contratual.
+
+33 testes novos (1 370 na CI). `verify-fiscal` de 23 para 28 casos,
+`verify-finance` de 29 para 34 — incluindo a comparacao de hash entre duas
+descargas e o 409 do cliente sem endereco, que verifica a recusa **sem** a CI
+mandar correio real para um endereco inventado. Detalhe em
+[decisions/adr-066](../decisions/adr-066-documento-fiscal-em-ficheiro.md).
+
 ## identity
 
 **2026-09-17 — recuperação de password pelo próprio (ADR-065).** O botão
