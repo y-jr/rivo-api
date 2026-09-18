@@ -42,6 +42,26 @@ function Get-Token {
     return (Invoke-RestMethod "$base/identity/login" -Method Post -Body $body -ContentType "application/json").accessToken
 }
 
+# A sessao de onde este pedido vem.
+#
+# Existe porque escrevi a versao inline e caiu na armadilha que o
+# `_ambiente.ps1` documenta: `@(pipeline)[0]` devolveu a lista inteira, e
+# `[DateTimeOffset]::Parse` recebeu tres datas coladas numa string. A forma
+# segura e em passos -- buscar a lista com `Get-RivoLista`, filtrar, confirmar
+# que ha exactamente uma, e so depois indexar.
+function Get-SessaoCorrente {
+    param([Parameter(Mandatory)][hashtable]$Headers)
+
+    $todas = Get-RivoLista -Uri "$base/identity/me/sessions" -Headers $Headers
+    $correntes = @($todas | Where-Object { $_.isCurrent })
+
+    if ($correntes.Count -ne 1) {
+        throw "esperava exactamente uma sessao corrente, obtive $($correntes.Count) de $($todas.Count)"
+    }
+
+    return $correntes[0]
+}
+
 Write-Host "`n=== Autorização por perfis ===`n"
 
 $pass = "Rivo!Password2026"
@@ -501,12 +521,7 @@ Test-Case "25. Quem decide aprovacoes recebe tolerancia mais curta" {
 }
 
 Test-Case "26. A lista de sessoes mostra o prazo que vale, nao so o absoluto" {
-    $sessoes = Invoke-RestMethod "$base/identity/me/sessions" -Headers $plainHeaders
-    $actual = @($sessoes | Where-Object { $_.isCurrent })
-
-    if ($actual.Count -ne 1) { throw "esperava uma sessao corrente, obtive $($actual.Count)" }
-
-    $s = $actual[0]
+    $s = Get-SessaoCorrente $plainHeaders
     if ($null -eq $s.effectiveExpiry) { throw "sem effectiveExpiry" }
     if ($null -eq $s.lastSeenAt) { throw "sem lastSeenAt" }
 
@@ -522,11 +537,10 @@ Test-Case "27. Actividade empurra o prazo de inactividade para a frente" {
     # **Este caso e o unico que prova a coisa toda a funcionar**: o gancho por
     # pedido, a escrita condicional na base de dados, e o calculo do prazo.
     #
-    # A espera e de 65 segundos porque a escrita e agrupada numa janela de 60 —
+    # A espera e de 65 segundos porque a escrita e agrupada numa janela de 60 --
     # gravar a cada pedido custaria uma escrita por leitura de pagina. Com menos
     # de 60s o pedido nao escreve nada e o teste passaria sem provar nada.
-    $antes = @(Invoke-RestMethod "$base/identity/me/sessions" -Headers $plainHeaders |
-        Where-Object { $_.isCurrent })[0]
+    $antes = Get-SessaoCorrente $plainHeaders
 
     Start-Sleep -Seconds 65
 
@@ -534,8 +548,7 @@ Test-Case "27. Actividade empurra o prazo de inactividade para a frente" {
     # validacao do token, nao um endpoint especial.
     Invoke-RestMethod "$base/identity/me" -Headers $plainHeaders | Out-Null
 
-    $depois = @(Invoke-RestMethod "$base/identity/me/sessions" -Headers $plainHeaders |
-        Where-Object { $_.isCurrent })[0]
+    $depois = Get-SessaoCorrente $plainHeaders
 
     $antesPrazo = [DateTimeOffset]::Parse($antes.effectiveExpiry)
     $depoisPrazo = [DateTimeOffset]::Parse($depois.effectiveExpiry)
