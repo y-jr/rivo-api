@@ -8,10 +8,15 @@ namespace Rivo.Finance.Application.Abstractions;
 ///
 /// <para>
 /// É a forma que torna o compositor testável sem base de dados: dá-se-lhe um
-/// <see cref="FiscalDocumentPrintout"/> e ele devolve bytes. E é a forma que
-/// torna o papel <strong>determinístico</strong>: dois pedidos com o mesmo
-/// printout produzem o mesmo ficheiro, o que é a propriedade de que um documento
-/// fiscal precisa.
+/// <see cref="FiscalDocumentPrintout"/> e ele devolve bytes.
+/// </para>
+///
+/// <para>
+/// <strong>Não basta para o papel ser determinístico, e isso custou uma falha de
+/// CI.</strong> Passar tudo por aqui elimina a base de dados e o relógio da
+/// composição, mas o gerador de PDF grava datas próprias no ficheiro — ver a nota
+/// sobre <c>WithMetadata</c> no compositor. O determinismo é propriedade do
+/// compositor, não desta forma; esta só o torna possível.
 /// </para>
 /// </summary>
 /// <param name="Issuer">

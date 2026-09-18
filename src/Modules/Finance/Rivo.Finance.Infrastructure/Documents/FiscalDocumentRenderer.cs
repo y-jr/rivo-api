@@ -17,9 +17,16 @@ namespace Rivo.Finance.Infrastructure.Documents;
 ///
 /// <para>
 /// <strong>Nada aqui vai à base de dados nem ao relógio.</strong> Recebe o
-/// printout e devolve bytes, o que torna a composição determinística e testável:
-/// o mesmo printout dá sempre o mesmo documento, que é a propriedade de que uma
-/// segunda impressão precisa.
+/// printout e devolve bytes: o mesmo printout dá sempre o mesmo documento, que é
+/// a propriedade de que uma segunda impressão precisa.
+/// </para>
+///
+/// <para>
+/// Não veio de graça. A primeira versão <em>parecia</em> determinística e não
+/// era: o QuestPDF grava `/CreationDate` e `/ModDate` com o instante da
+/// composição, e o teste que devia apanhá-lo passava localmente por as duas
+/// composições caírem no mesmo segundo. Ver a nota em <c>WithMetadata</c>, em
+/// <see cref="Render"/>.
 /// </para>
 /// </summary>
 public sealed class FiscalDocumentRenderer : IFiscalDocumentRenderer
@@ -89,7 +96,27 @@ public sealed class FiscalDocumentRenderer : IFiscalDocumentRenderer
             page.Header().Element(e => Cabecalho(e, printout));
             page.Content().PaddingVertical(10).Element(e => Corpo(e, doc, comImposto));
             page.Footer().Element(e => Rodape(e, printout));
-        })).GeneratePdf();
+        }))
+
+        // As datas dos metadados vêm do **documento**, não do relógio.
+        //
+        // O QuestPDF grava `/CreationDate` e `/ModDate` no PDF, e por omissão põe
+        // lá o instante da composição. Isso fazia duas composições do mesmo
+        // documento diferirem em dois campos — e foi assim que um teste de
+        // determinismo passou localmente (as duas no mesmo segundo) e falhou na
+        // CI (a atravessar a fronteira do segundo).
+        //
+        // Fixá-las na data do documento não é só higiene de teste: a data de
+        // criação do ficheiro não tem significado nenhum num documento fiscal
+        // reimpresso, e ter lá «hoje» num PDF de uma factura de Março é mais
+        // enganador do que útil. Assim o papel de um documento é sempre o mesmo
+        // papel, byte por byte, independentemente de quando foi composto.
+        .WithMetadata(new DocumentMetadata
+        {
+            CreationDate = doc.IssuedOn.ToDateTime(TimeOnly.MinValue),
+            ModifiedDate = doc.IssuedOn.ToDateTime(TimeOnly.MinValue),
+        })
+        .GeneratePdf();
     }
 
     private static void Cabecalho(IContainer container, FiscalDocumentPrintout printout)

@@ -187,7 +187,13 @@ ambientes**.
 ## Consequences
 
 - Factura, nota de crédito e recibo imprimem-se e entregam-se. O K23 fecha.
-- A composição é determinística, e há um teste que o impede de deixar de ser.
+- A composição e deterministica **depois de uma correccao**, e ha um teste com
+  um segundo de espera a guarda-la. A primeira versao nao era: o QuestPDF grava
+  `/CreationDate` e `/ModDate` com o instante da composicao, e o teste que devia
+  apanhar isso passava localmente por as duas composicoes cairem no mesmo
+  segundo. Falhou na CI. As datas dos metadados passaram a vir da data do
+  documento — o que tambem e mais correcto: a data de criacao do ficheiro nao tem
+  significado num documento fiscal reimpresso.
 - `fiscal` passa a saber quem a empresa é — primeiro passo real para a exportação
   SAF-T, que precisa exactamente destes campos no `Header`.
 - Os documentos ficam arquivados em `documents` com categoria própria
