@@ -26,7 +26,24 @@ public sealed record LoginRequest(string Email, string Password);
 /// </param>
 public sealed record GoogleLoginRequest(string IdToken);
 
-public sealed record LoginResponse(string AccessToken, DateTimeOffset ExpiresAt);
+/// <param name="ExpiresAt">
+/// O tecto absoluto da sessao. **Nao e quando o utilizador vai ser expulso** —
+/// uma sessao parada morre antes, por inactividade.
+/// </param>
+/// <param name="IdleTimeoutSeconds">
+/// Quanta inactividade a sessao tolera (ADR-067). O cliente deve usar isto para
+/// avisar antes de expulsar: a inactividade passou a ser a causa mais comum de
+/// fim de sessao, e e a unica que o utilizador pode evitar.
+///
+/// <para>
+/// Depende de quem entra: quem tem autoridade para decidir aprovacoes recebe um
+/// limite mais curto, por requisito.
+/// </para>
+/// </param>
+public sealed record LoginResponse(
+    string AccessToken,
+    DateTimeOffset ExpiresAt,
+    int IdleTimeoutSeconds);
 
 /// <summary>Identidade do utilizador autenticado, para o cliente se orientar.</summary>
 public sealed record CurrentUserResponse(

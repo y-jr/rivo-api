@@ -91,6 +91,54 @@ mandar correio real para um endereco inventado. Detalhe em
 
 ## identity
 
+**2026-09-19 — a sessao passa a ter dois prazos (ADR-067).** A sessao tinha um so,
+60 minutos absolutos, e isso dava o pior dos dois mundos ao mesmo tempo: expulsava
+quem estava a trabalhar -- a hora em ponto, a meio de um formulario, sem aviso e
+sem forma de renovar -- e nao protegia de quem tinha saido da secretaria.
+
+Agora sao dois, e a sessao morre no primeiro:
+
+- **tecto absoluto**, 12h por omissao, que nao desliza;
+- **inactividade**, 30 min por omissao e **15 para quem tem autoridade de
+  decisao**, que desliza a cada pedido.
+
+O segundo era o requisito que faltava, e e mais restritivo do que o que havia --
+nao menos.
+
+**Tres decisoes que valem a pena reter:**
+
+- **A tolerancia resolve-se por permissao, nao por nome de perfil.** Quem tem
+  `approval.requests.decide` recebe o limite curto. Uma lista de nomes de perfil
+  sobrevive mal: um perfil renomeado sai dela em silencio, e um perfil novo com
+  autoridade de decisao nao entra.
+- **A marca de actividade e escrita condicional, fora do rastreio do EF.** O
+  `pending-decisions` antecipava o problema ("exige escrita por pedido ou
+  estrategia de janela"): com uma janela de 60s escreve-se no maximo uma vez por
+  minuto e por sessao. E fora do rastreio porque, se passasse pelo contador de
+  concorrencia, dois pedidos paralelos do mesmo utilizador colidiam e um falhava
+  -- perder uma marca de actividade nao e conflito nenhum.
+- **A chave de configuracao antiga faz o arranque falhar.**
+  `Jwt:SessionLifetimeMinutes` passou a `Session:AbsoluteLifetimeMinutes`, e a
+  antiga esta no `docker-compose.yml`. Ignora-la em silencio deixaria quem a
+  configurou convencido de que continua a mandar -- e a ter 12 horas onde pediu
+  uma.
+
+**Um detalhe da migracao que teria dado um incidente:** os valores por omissao que
+o EF gerou eram 0 segundos de tolerancia e `0001-01-01` de ultima actividade, o
+que matava **todas** as sessoes abertas no instante do deploy. Passaram a 1800s e
+`SYSDATETIMEOFFSET()`.
+
+O *refresh token* sai das pendencias por deixar de ser necessario. O token expira
+no tecto absoluto e a inactividade e verificada no servidor a cada pedido; um token
+curto obrigaria a um mecanismo de renovacao para dar a mesma garantia.
+
+26 testes novos (1 397 na CI). `verify-authorization` de 24 para 28 casos --
+incluindo um que espera 65 segundos para provar que o prazo desliza de facto, com a
+escrita na base de dados pelo meio. E o unico que prova a coisa toda ligada.
+Detalhe em [decisions/adr-067](../decisions/adr-067-sessao-com-dois-prazos.md).
+
+## identity
+
 **2026-09-17 — recuperação de password pelo próprio (ADR-065).** O botão
 «Esqueceu a senha?» existia no login desde a maquete, **desactivado**, com um
 comentário a dizer que o backend não tinha nem pedido nem reposição. Passou a

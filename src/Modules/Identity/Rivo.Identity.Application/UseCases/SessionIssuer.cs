@@ -27,6 +27,7 @@ namespace Rivo.Identity.Application.UseCases;
 public sealed class SessionIssuer(
     ISessionStore sessions,
     IAccessTokenIssuer tokens,
+    ISessionPolicy policy,
     IAuditTrail audit,
     TimeProvider clock)
 {
@@ -39,7 +40,7 @@ public sealed class SessionIssuer(
     /// e obtido na camada API, que é quem conhece o transporte.
     /// </param>
     /// <param name="correlationId">Liga as acções deste pedido entre módulos.</param>
-    public async Task<AccessToken> IssueAsync(
+    public async Task<IssuedSession> IssueAsync(
         AuthenticatedAccount account,
         string method,
         string ipAddress,
@@ -52,11 +53,21 @@ public sealed class SessionIssuer(
             ipAddress: ipAddress,
             userAgent: userAgent,
             now: clock.GetUtcNow(),
-            lifetime: tokens.SessionLifetime);
+            lifetime: policy.AbsoluteLifetime,
+
+            // A tolerância a inactividade depende de quem se autentica: quem
+            // decide aprovações tem um limite mais curto. Resolvida aqui, no
+            // login, e congelada na sessão — ver `Session.IdleTimeoutSeconds`
+            // para a razão de não ser lida da configuração a cada pedido.
+            idleTimeout: policy.IdleTimeoutFor(account.Permissions));
 
         await sessions.AddAsync(session, cancellationToken);
         await sessions.SaveChangesAsync(cancellationToken);
 
+        // O prazo do token e o tecto absoluto da sessao, nao o de inactividade.
+        // A inactividade e verificada no servidor a cada pedido, e um token com
+        // prazo curto obrigaria a um mecanismo de renovacao para dar o mesmo
+        // resultado -- mais pecas para a mesma garantia.
         var token = tokens.Issue(account, session.Id, session.ExpiresAt);
 
         await audit.RecordAsync(
@@ -72,6 +83,27 @@ public sealed class SessionIssuer(
                 NewValue: $$"""{"method":"{{method}}"}"""),
             cancellationToken);
 
-        return token;
+        return new IssuedSession(token, session.IdleTimeoutSeconds, session.EffectiveExpiry);
     }
 }
+
+/// <summary>
+/// O que sai de um login: o token, e o que o cliente precisa de saber para nao
+/// expulsar ninguem de surpresa.
+///
+/// <para>
+/// <strong>A janela de inactividade vai para o cliente de proposito.</strong> Sem
+/// ela, o cliente so conhece o prazo absoluto do token e nao tem como avisar
+/// antes de a sessao morrer por inactividade -- que passa a ser a causa mais
+/// comum de expulsao. Avisar e o que separa "a sessao expirou" de "perdi o que
+/// estava a escrever".
+/// </para>
+/// </summary>
+/// <param name="EffectiveExpiry">
+/// O mais proximo dos dois prazos no momento da emissao. No login e sempre o de
+/// inactividade, porque a sessao acaba de nascer.
+/// </param>
+public sealed record IssuedSession(
+    AccessToken Token,
+    int IdleTimeoutSeconds,
+    DateTimeOffset EffectiveExpiry);

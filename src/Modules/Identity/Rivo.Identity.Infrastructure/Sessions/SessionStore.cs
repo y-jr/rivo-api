@@ -48,4 +48,35 @@ public sealed class SessionStore(RivoIdentityDbContext context) : ISessionStore
 
     public async Task SaveChangesAsync(CancellationToken cancellationToken) =>
         await context.SaveChangesAsync(cancellationToken);
+
+    /// <summary>
+    /// Um `UPDATE` condicional, e nada mais.
+    ///
+    /// <para>
+    /// Sem <c>ExecuteUpdate</c> isto seria ler a sessão rastreada, chamar
+    /// <c>Touch</c> e gravar — três coisas onde só é preciso uma, e com o
+    /// contador de concorrência pelo meio a transformar dois pedidos paralelos
+    /// numa falha. Ver a nota no contrato.
+    /// </para>
+    ///
+    /// <para>
+    /// A condição da janela está no <c>Where</c> e não em C# de propósito: assim
+    /// duas chamadas simultâneas resolvem-se na base de dados — a segunda não
+    /// encontra linha para actualizar — em vez de ambas decidirem que sim.
+    /// </para>
+    /// </summary>
+    public async Task TouchAsync(
+        Guid sessionId,
+        DateTimeOffset now,
+        TimeSpan resolution,
+        CancellationToken cancellationToken)
+    {
+        var limite = now - resolution;
+
+        await context.Sessions
+            .Where(session => session.Id == sessionId && session.LastSeenAt < limite)
+            .ExecuteUpdateAsync(
+                updates => updates.SetProperty(session => session.LastSeenAt, now),
+                cancellationToken);
+    }
 }

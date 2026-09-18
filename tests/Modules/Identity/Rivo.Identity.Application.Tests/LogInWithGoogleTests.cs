@@ -36,7 +36,7 @@ public class LogInWithGoogleTests
         var sessions = new FakeSessionStore();
         var tokens = new FakeAccessTokenIssuer();
 
-        var issuer = new SessionIssuer(sessions, tokens, audit, TimeProvider.System);
+        var issuer = new SessionIssuer(sessions, tokens, new FakeSessionPolicy(), audit, TimeProvider.System);
         var useCase = new LogInWithGoogle(
             new FakeExternalIdentityVerifier(identity, configured), accounts, issuer, audit);
 

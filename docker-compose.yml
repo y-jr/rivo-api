@@ -99,8 +99,22 @@ services:
 
       Jwt__Issuer: ${JWT_ISSUER:-rivo-api}
       Jwt__Audience: ${JWT_AUDIENCE:-rivo-client}
-      Jwt__SessionLifetimeMinutes: ${JWT_SESSION_LIFETIME_MINUTES:-60}
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?defina JWT_SIGNING_KEY no .env}
+
+      # Prazos de sessão (ADR-067). Dois, e não um:
+      #
+      #   - o absoluto é o tecto, e é longo porque não há razão para interromper
+      #     quem está a trabalhar;
+      #   - o de inactividade desliza a cada pedido, e é ele que desliga uma
+      #     secretária abandonada.
+      #
+      # `JWT_SESSION_LIFETIME_MINUTES` deixou de existir. Se ainda estiver no
+      # `.env`, a API **recusa arrancar** com uma mensagem a dizer o que mudou —
+      # é deliberado: ignorá-la em silêncio deixaria quem a configurou
+      # convencido de que continua a mandar na duração.
+      Session__AbsoluteLifetimeMinutes: ${SESSION_ABSOLUTE_LIFETIME_MINUTES:-720}
+      Session__IdleTimeoutMinutes: ${SESSION_IDLE_TIMEOUT_MINUTES:-30}
+      Session__DecisionIdleTimeoutMinutes: ${SESSION_DECISION_IDLE_TIMEOUT_MINUTES:-15}
 
       # Utilizadores iniciais. Admin e decisor usam o mesmo mecanismo — são
       # apenas entradas diferentes da mesma lista, com perfis diferentes.

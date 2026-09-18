@@ -250,11 +250,31 @@ internal sealed class FakeSessionStore : ISessionStore
     }
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>
+    /// As marcas de actividade pedidas. Guardadas em vez de aplicadas porque o
+    /// que ha para verificar e <em>se</em> a marca foi pedida, e com que janela.
+    /// </summary>
+    public List<(Guid SessionId, DateTimeOffset At, TimeSpan Resolution)> Touches { get; } = [];
+
+    public Task TouchAsync(
+        Guid sessionId,
+        DateTimeOffset now,
+        TimeSpan resolution,
+        CancellationToken cancellationToken)
+    {
+        Touches.Add((sessionId, now, resolution));
+
+        // O duplo imita a instrucao condicional real: so mexe na sessao se a
+        // marca anterior ja for antiga o suficiente.
+        Added.FirstOrDefault(s => s.Id == sessionId)?.Touch(now, resolution);
+
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class FakeAccessTokenIssuer : IAccessTokenIssuer
 {
-    public TimeSpan SessionLifetime => TimeSpan.FromHours(1);
 
     /// <summary>Sessões para que se emitiu token. É o que prova que o caminho desaguou no ADR-013.</summary>
     public List<Guid> IssuedForSessions { get; } = [];
@@ -301,4 +321,26 @@ internal sealed class FakeNotifier : Rivo.Notifications.Contracts.INotifier
 internal sealed class RelogioFixo(DateTimeOffset agora) : TimeProvider
 {
     public override DateTimeOffset GetUtcNow() => agora;
+}
+
+/// <summary>
+/// Politica de sessao fixa, para os testes que so precisam de uma sessao valida.
+///
+/// <para>
+/// A tolerancia decisoria e distinta da geral de proposito: e o que permite
+/// verificar que quem decide aprovacoes recebe o limite curto.
+/// </para>
+/// </summary>
+internal sealed class FakeSessionPolicy(
+    TimeSpan? absoluta = null,
+    TimeSpan? geral = null,
+    TimeSpan? decisoria = null,
+    string permissaoDecisoria = "approval.requests.decide") : ISessionPolicy
+{
+    public TimeSpan AbsoluteLifetime { get; } = absoluta ?? TimeSpan.FromHours(12);
+
+    public TimeSpan IdleTimeoutFor(IReadOnlyList<string> permissions) =>
+        permissions.Contains(permissaoDecisoria, StringComparer.OrdinalIgnoreCase)
+            ? decisoria ?? TimeSpan.FromMinutes(15)
+            : geral ?? TimeSpan.FromMinutes(30);
 }

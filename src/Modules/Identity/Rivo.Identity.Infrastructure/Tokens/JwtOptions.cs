@@ -28,13 +28,14 @@ public sealed class JwtOptions
     [Required]
     public string Audience { get; init; } = string.Empty;
 
-    /// <summary>
-    /// Duração da sessão e do token que a acompanha.
-    ///
-    /// Nota: isto é expiração <em>absoluta</em>. A expiração por inactividade
-    /// que os requisitos preveem (15 min para perfis decisórios) ainda não está
-    /// implementada — ver state/pending-decisions.md.
-    /// </summary>
-    [Range(1, 24 * 60)]
-    public int SessionLifetimeMinutes { get; init; } = 60;
+    // A duração da sessão esteve aqui e saiu (ADR-067).
+    //
+    // Não era assunto do token: o token é um portador com prazo, a sessão é a
+    // autorização — e a sessão passou a ter **dois** prazos, o absoluto e o de
+    // inactividade. Vivem em `SessionPolicyOptions`, secção `Session`.
+    //
+    // A chave antiga `Jwt:SessionLifetimeMinutes` faz o arranque **falhar**, de
+    // propósito, em vez de ser ignorada em silêncio: quem a tiver no `.env` ficaria
+    // convencido de que continua a mandar na duração. Ver
+    // `IdentityModuleExtensions`.
 }

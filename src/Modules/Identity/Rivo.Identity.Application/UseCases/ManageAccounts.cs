@@ -252,6 +252,8 @@ public sealed class ListOwnSessions(ISessionStore sessions, TimeProvider clock)
                     s.CreatedAt,
                     s.ExpiresAt,
                     s.RevokedAt,
+                    s.LastSeenAt,
+                    s.EffectiveExpiry,
                     s.IsActiveAt(agora),
 
                     // Marcar a corrente evita o engano mais fácil desta lista:
@@ -265,6 +267,14 @@ public sealed class ListOwnSessions(ISessionStore sessions, TimeProvider clock)
 /// ⚠ Atrás de proxy é o do proxy, não o do cliente — ver o K8.
 /// </param>
 /// <param name="IsCurrent">Verdadeiro para a sessão de onde este pedido veio.</param>
+/// <param name="ExpiresAt">
+/// O tecto absoluto. **Nao e quando a sessao vai morrer** — ver
+/// <paramref name="EffectiveExpiry"/>.
+/// </param>
+/// <param name="EffectiveExpiry">
+/// O prazo que vale: o mais proximo entre o tecto e a expiracao por inactividade
+/// (ADR-067). E este que um ecra deve mostrar a quem pergunta «ate quando?».
+/// </param>
 public sealed record SessionView(
     Guid SessionId,
     string IpAddress,
@@ -272,6 +282,8 @@ public sealed record SessionView(
     DateTimeOffset CreatedAt,
     DateTimeOffset ExpiresAt,
     DateTimeOffset? RevokedAt,
+    DateTimeOffset LastSeenAt,
+    DateTimeOffset EffectiveExpiry,
     bool IsActive,
     bool IsCurrent);
 

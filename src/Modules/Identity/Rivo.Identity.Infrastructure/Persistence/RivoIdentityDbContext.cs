@@ -45,6 +45,12 @@ public sealed class RivoIdentityDbContext(DbContextOptions<RivoIdentityDbContext
             // autenticado: procura por utilizador e filtra as ainda activas.
             session.HasIndex(entity => new { entity.UserId, entity.ExpiresAt });
 
+            // Expiração por inactividade (ADR-067). `last_seen_at` é escrito por
+            // instrução condicional, fora do rastreio e sem tocar no `version` —
+            // ver `SessionStore.TouchAsync` para a razão.
+            session.Property(entity => entity.LastSeenAt).IsRequired();
+            session.Property(entity => entity.IdleTimeoutSeconds).IsRequired();
+
             // Sem FK para app_user por opção: a sessão é um facto histórico e
             // deve sobreviver à remoção lógica da conta, tal como a auditoria.
         });

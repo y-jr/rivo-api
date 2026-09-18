@@ -6,10 +6,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
+using Rivo.Identity.Application;
 using Rivo.Identity.Application.Abstractions;
 using Rivo.Identity.Application.Authorization;
 using Rivo.Identity.Application.UseCases;
 using Rivo.Identity.Contracts;
+using Rivo.Identity.Domain.Sessions;
 using Rivo.Identity.Infrastructure.Identity;
 using Rivo.Identity.Infrastructure.Persistence;
 using Rivo.Identity.Infrastructure.Sessions;
@@ -78,6 +80,49 @@ public static class IdentityModuleExtensions
             .ValidateDataAnnotations()
             // Falha no arranque, não no primeiro login.
             .ValidateOnStart();
+
+        // A chave antiga desapareceu e não pode desaparecer em silêncio.
+        //
+        // `Jwt:SessionLifetimeMinutes` mandava na duração da sessão até ao
+        // ADR-067 e está no `docker-compose.yml` com um valor por omissão. Quem
+        // a tiver no `.env` da máquina ficaria convencido de que continua a
+        // mandar, e passaria a ter 12 horas onde pediu uma. Falhar no arranque é
+        // a única forma de essa pessoa saber.
+        if (configuration[$"{JwtOptions.SectionName}:SessionLifetimeMinutes"] is not null)
+        {
+            throw new InvalidOperationException(
+                $"'{JwtOptions.SectionName}:SessionLifetimeMinutes' deixou de existir (ADR-067). "
+                + $"A duração da sessão passou a '{SessionPolicyOptions.SectionName}:"
+                + $"{nameof(SessionPolicyOptions.AbsoluteLifetimeMinutes)}', e há agora um "
+                + $"prazo separado de inactividade em '{SessionPolicyOptions.SectionName}:"
+                + $"{nameof(SessionPolicyOptions.IdleTimeoutMinutes)}'.");
+        }
+
+        // Os prazos da sessão (ADR-067). Singleton porque são configuração lida
+        // uma vez: o gancho de validação precisa deles a cada pedido e não vale
+        // reconstruí-los por pedido.
+        //
+        // Sem `ValidateOnStart` e sem anotações: os valores por omissão são
+        // válidos e a secção pode não existir. O que não pode é ficar a zero, e
+        // isso é imposto abaixo.
+        var sessao = configuration.GetSection(SessionPolicyOptions.SectionName)
+            .Get<SessionPolicyOptions>() ?? new SessionPolicyOptions();
+
+        if (sessao.AbsoluteLifetimeMinutes <= 0
+            || sessao.IdleTimeoutMinutes <= 0
+            || sessao.DecisionIdleTimeoutMinutes <= 0
+            || sessao.ActivityResolutionSeconds <= 0)
+        {
+            // Falha no arranque e não no primeiro login. Uma sessão com prazo
+            // zero seria um sistema onde ninguém consegue entrar, e descobri-lo
+            // pela cara de quem tenta é pior do que o contentor não subir.
+            throw new InvalidOperationException(
+                "Os prazos de sessão têm de ser positivos "
+                + $"(secção '{SessionPolicyOptions.SectionName}').");
+        }
+
+        services.AddSingleton(sessao);
+        services.AddScoped<ISessionPolicy, SessionPolicy>();
 
         services.AddSingleton(TimeProvider.System);
 
@@ -188,13 +233,43 @@ public static class IdentityModuleExtensions
 
                         var sessions = context.HttpContext.RequestServices.GetRequiredService<ISessionStore>();
                         var clock = context.HttpContext.RequestServices.GetRequiredService<TimeProvider>();
+                        var politica = context.HttpContext.RequestServices
+                            .GetRequiredService<SessionPolicyOptions>();
 
+                        var agora = clock.GetUtcNow();
                         var session = await sessions.FindAsync(id, context.HttpContext.RequestAborted);
 
-                        if (session is null || !session.IsActiveAt(clock.GetUtcNow()))
+                        if (session is null)
                         {
                             context.Fail("Sessão terminada ou expirada.");
+                            return;
                         }
+
+                        // A mensagem distingue os três motivos. «Terminou por
+                        // inactividade» é accionável — volta a entrar e
+                        // continuas; «foi terminada» é outra conversa, e pode
+                        // querer dizer que alguém desactivou a conta.
+                        if (session.EndReasonAt(agora) is { } motivo)
+                        {
+                            context.Fail(motivo switch
+                            {
+                                SessionEndReason.Idle => "Sessão terminada por inactividade.",
+                                SessionEndReason.Revoked => "Sessão terminada.",
+                                _ => "Sessão expirada.",
+                            });
+
+                            return;
+                        }
+
+                        // A sessão serve: marca actividade. É isto que faz o
+                        // prazo de inactividade deslizar — e é escrita
+                        // condicional, agrupada por janela, para não custar um
+                        // `UPDATE` por pedido. Ver `ISessionStore.TouchAsync`.
+                        await sessions.TouchAsync(
+                            id,
+                            agora,
+                            TimeSpan.FromSeconds(politica.ActivityResolutionSeconds),
+                            context.HttpContext.RequestAborted);
                     },
                 };
             });
