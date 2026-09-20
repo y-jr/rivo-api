@@ -68,6 +68,16 @@ public sealed class PayrollRun
             throw new ArgumentOutOfRangeException(nameof(month), "O mês tem de estar entre 1 e 12.");
         }
 
+        // O limite é o de `DateTime.DaysInMonth`, que `PeriodEndDate` usa: um
+        // ano fora deste intervalo não falha aqui, falha mais tarde, a
+        // determinar o facto gerador — e nessa altura já há itens e talvez
+        // uma submissão a perder. Ano 0 é o caso concreto: um campo numérico
+        // sem `min` deixa passar, e só rebenta quando alguém tenta calcular.
+        if (year is < 1 or > 9999)
+        {
+            throw new ArgumentOutOfRangeException(nameof(year), "O ano tem de estar entre 1 e 9999.");
+        }
+
         return new PayrollRun(Guid.CreateVersion7(), year, month, openedByEmployeeId);
     }
 
