@@ -194,7 +194,9 @@ public sealed class ApprovalGateway(
             r.TotalSteps,
             [.. r.PendingAssignments.Select(a => a.ApproverEmployeeId)],
             [.. r.Decisions.Select(d => new ApprovalDecisionView(
-                d.DecidedByEmployeeId, d.Action.ToString(), d.DecidedAt, d.Step, d.Notes))]);
+                d.DecidedByEmployeeId, d.Action.ToString(), d.DecidedAt, d.Step, d.Notes))],
+            r.RequestedByEmployeeId,
+            r.SubmittedAt);
 }
 
 /// <summary>

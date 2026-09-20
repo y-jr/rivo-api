@@ -153,6 +153,12 @@ public enum SubmissionOutcome
 /// <param name="PendingApprovers">
 /// Quem falta decidir agora. Vazio quando o processo terminou.
 /// </param>
+/// <param name="RequestedByEmployeeId">
+/// Quem submeteu — a listagem não tinha isto, e mostrava só
+/// <see cref="SourceReference"/> em bruto, um identificador que só o módulo
+/// de origem sabe ler.
+/// </param>
+/// <param name="SubmittedAt">Quando foi submetido, pela mesma razão.</param>
 public sealed record ApprovalStatusView(
     Guid RequestId,
     string ProcessType,
@@ -162,7 +168,9 @@ public sealed record ApprovalStatusView(
     int CurrentStep,
     int TotalSteps,
     IReadOnlyList<Guid> PendingApprovers,
-    IReadOnlyList<ApprovalDecisionView> Decisions);
+    IReadOnlyList<ApprovalDecisionView> Decisions,
+    Guid RequestedByEmployeeId,
+    DateTimeOffset SubmittedAt);
 
 public sealed record ApprovalDecisionView(
     Guid DecidedByEmployeeId,
