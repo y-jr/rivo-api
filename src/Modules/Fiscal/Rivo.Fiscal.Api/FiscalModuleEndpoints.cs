@@ -26,6 +26,12 @@ public static class FiscalModuleEndpoints
         group.MapPost("/tax-rates/{scheduleId:guid}/versions", IntroduceAsync)
             .RequireAuthorization(FiscalPermissions.RatesWrite);
 
+        // Fecha a versão corrente, para desbloquear a que lhe sucede — a
+        // resposta a "feche a anterior primeiro" que a introdução devolve
+        // numa sobreposição.
+        group.MapPost("/tax-rates/{scheduleId:guid}/versions/{versionId:guid}/closure", CloseVersionAsync)
+            .RequireAuthorization(FiscalPermissions.RatesWrite);
+
         // Determinação: o que `commercial` e `finance` fazem por contrato, aqui
         // exposto para se poder conferir o que a emissão vai receber.
         group.MapGet("/tax-rates/determination", DetermineAsync)
@@ -39,6 +45,9 @@ public static class FiscalModuleEndpoints
         group.MapPost("/income-tax-schedule/versions", IntroduceIncomeTaxScheduleVersionAsync)
             .RequireAuthorization(FiscalPermissions.RatesWrite);
 
+        group.MapPost("/income-tax-schedule/versions/{versionId:guid}/closure", CloseIncomeTaxScheduleVersionAsync)
+            .RequireAuthorization(FiscalPermissions.RatesWrite);
+
         group.MapGet("/income-tax-schedule/determination", DetermineIncomeTaxAsync)
             .RequireAuthorization(FiscalPermissions.RatesRead);
 
@@ -49,6 +58,9 @@ public static class FiscalModuleEndpoints
         // colectável de IRT de todas as folhas calculadas a partir da data
         // escolhida (ADR-011 §5).
         group.MapPost("/subsidy-exemptions/versions", IntroduceSubsidyExemptionVersionAsync)
+            .RequireAuthorization(FiscalPermissions.RatesWrite);
+
+        group.MapPost("/subsidy-exemptions/versions/{versionId:guid}/closure", CloseSubsidyExemptionVersionAsync)
             .RequireAuthorization(FiscalPermissions.RatesWrite);
 
         group.MapGet("/subsidy-exemptions/determination", DetermineSubsidyExemptionAsync)
@@ -184,6 +196,20 @@ public static class FiscalModuleEndpoints
         };
     }
 
+    private static async Task<IResult> CloseVersionAsync(
+        Guid scheduleId,
+        Guid versionId,
+        CloseVersionRequest request,
+        CloseTaxRateVersion closeVersion,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await closeVersion.ExecuteAsync(
+            scheduleId, versionId, request.EffectiveTo, BuildAuditContext(http), cancellationToken);
+
+        return CloseVersionResponse(result.Outcome, result.Error);
+    }
+
     private static async Task<IResult> DetermineAsync(
         ITaxDetermination determination,
         string taxCode,
@@ -284,6 +310,19 @@ public static class FiscalModuleEndpoints
         };
     }
 
+    private static async Task<IResult> CloseIncomeTaxScheduleVersionAsync(
+        Guid versionId,
+        CloseVersionRequest request,
+        CloseIncomeTaxScheduleVersion closeVersion,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        var result = await closeVersion.ExecuteAsync(
+            versionId, request.EffectiveTo, BuildAuditContext(http), cancellationToken);
+
+        return CloseVersionResponse(result.Outcome, result.Error);
+    }
+
     private static async Task<IResult> GetSubsidyExemptionScheduleAsync(
         SubsidyKind kind,
         GetSubsidyExemptionSchedule getSchedule,
@@ -345,6 +384,44 @@ public static class FiscalModuleEndpoints
             _ => Results.Problem("Resultado inesperado ao introduzir o limiar de isenção."),
         };
     }
+
+    private static async Task<IResult> CloseSubsidyExemptionVersionAsync(
+        Guid versionId,
+        CloseSubsidyExemptionVersionRequest request,
+        CloseSubsidyExemptionVersion closeVersion,
+        HttpContext http,
+        CancellationToken cancellationToken)
+    {
+        if (!Enum.IsDefined(request.Kind))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["kind"] = ["Subsídio desconhecido."],
+            });
+        }
+
+        var result = await closeVersion.ExecuteAsync(
+            request.Kind, versionId, request.EffectiveTo, BuildAuditContext(http), cancellationToken);
+
+        return CloseVersionResponse(result.Outcome, result.Error);
+    }
+
+    private static IResult CloseVersionResponse(CloseVersionOutcome outcome, string? error) => outcome switch
+    {
+        CloseVersionOutcome.Closed => Results.NoContent(),
+
+        CloseVersionOutcome.NotFound => Results.NotFound(new { erro = "Versão não encontrada." }),
+
+        // 409: já fechada — o pedido está bem formado, colide com o estado.
+        CloseVersionOutcome.Conflict =>
+            Results.Problem(error, statusCode: StatusCodes.Status409Conflict),
+
+        // 400: vigência invertida (fecha antes de começar).
+        CloseVersionOutcome.Rejected =>
+            Results.ValidationProblem(new Dictionary<string, string[]> { ["vigencia"] = [error!] }),
+
+        _ => Results.Problem("Resultado inesperado ao fechar a versão."),
+    };
 
     private static async Task<IResult> DetermineSubsidyExemptionAsync(
         ISubsidyExemptionDetermination determination,
@@ -409,6 +486,11 @@ public sealed record IntroduceSubsidyExemptionVersionRequest(
     DateOnly EffectiveFrom,
     DateOnly? EffectiveTo,
     string LegalInstrument);
+
+/// <param name="EffectiveTo">A partir de quando deixa de valer. Inclusivo.</param>
+public sealed record CloseVersionRequest(DateOnly EffectiveTo);
+
+public sealed record CloseSubsidyExemptionVersionRequest(SubsidyKind Kind, DateOnly EffectiveTo);
 
 /// <summary>
 /// A identidade fiscal da empresa, como o cliente a envia.

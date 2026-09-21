@@ -124,3 +124,66 @@ public enum IntroduceScheduleVersionOutcome
     /// <summary>Colide com uma vigência existente — 409.</summary>
     Overlaps,
 }
+
+/// <summary>
+/// Dá um fim a uma versão de escalões sem fim previsto, para desbloquear a
+/// introdução da que lhe sucede — mesma razão de
+/// <c>CloseTaxRateVersion</c> em <c>ManageTaxRates</c>.
+/// </summary>
+public sealed class CloseIncomeTaxScheduleVersion(IIncomeTaxScheduleStore store, IAuditTrail audit)
+{
+    public async Task<CloseIncomeTaxVersionResult> ExecuteAsync(
+        Guid versionId,
+        DateOnly effectiveTo,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        var tabela = await store.FindForUpdateAsync(cancellationToken);
+
+        if (tabela is null)
+        {
+            return CloseIncomeTaxVersionResult.NotFound();
+        }
+
+        try
+        {
+            tabela.CloseVersion(versionId, effectiveTo);
+        }
+        catch (KeyNotFoundException)
+        {
+            return CloseIncomeTaxVersionResult.NotFound();
+        }
+        catch (InvalidOperationException error)
+        {
+            return CloseIncomeTaxVersionResult.Conflict(error.Message);
+        }
+        catch (ArgumentException error)
+        {
+            return CloseIncomeTaxVersionResult.Rejected(error.Message);
+        }
+
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                FiscalAuditActions.IncomeTaxScheduleVersionClosed,
+                FiscalAuditEntityTypes.IncomeTaxSchedule,
+                tabela.Id.ToString(),
+                context,
+                NewValue: $$"""{"versionId":"{{versionId}}","effectiveTo":"{{effectiveTo:yyyy-MM-dd}}"}"""),
+            cancellationToken);
+
+        return CloseIncomeTaxVersionResult.Success();
+    }
+}
+
+public sealed record CloseIncomeTaxVersionResult(CloseVersionOutcome Outcome, string? Error)
+{
+    public static CloseIncomeTaxVersionResult Success() => new(CloseVersionOutcome.Closed, null);
+
+    public static CloseIncomeTaxVersionResult NotFound() => new(CloseVersionOutcome.NotFound, null);
+
+    public static CloseIncomeTaxVersionResult Rejected(string error) => new(CloseVersionOutcome.Rejected, error);
+
+    public static CloseIncomeTaxVersionResult Conflict(string error) => new(CloseVersionOutcome.Conflict, error);
+}

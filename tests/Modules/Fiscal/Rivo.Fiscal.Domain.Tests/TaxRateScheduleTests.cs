@@ -165,6 +165,49 @@ public class TaxRateScheduleTests
         Assert.Equal("NOR", serie.Code);
     }
 
+    // --- Fechar uma versão corrente, para desbloquear a seguinte ----------
+
+    [Fact]
+    public void FecharVersaoCorrente_DeixaEntrarASeguinte()
+    {
+        var serie = Normal();
+        var versao = serie.Introduce(14m, Jan2026, null, "Lei n.º 14/23");
+
+        serie.CloseVersion(versao.Id, Jun2026);
+        serie.Introduce(17m, Jul2026, null, "Lei n.º 20/26");
+
+        Assert.Equal(Jun2026, versao.EffectiveTo);
+        Assert.Equal(14m, serie.InForceOn(new DateOnly(2026, 3, 1))!.Percentage);
+        Assert.Equal(17m, serie.InForceOn(new DateOnly(2026, 9, 1))!.Percentage);
+    }
+
+    [Fact]
+    public void FecharVersaoJaFechada_ERecusado()
+    {
+        var serie = Normal();
+        var versao = serie.Introduce(14m, Jan2026, Jun2026, "Lei n.º 14/23");
+
+        Assert.Throws<InvalidOperationException>(() => serie.CloseVersion(versao.Id, Jul2026));
+    }
+
+    [Fact]
+    public void FecharComDataAntesDeComecar_ERecusado()
+    {
+        var serie = Normal();
+        var versao = serie.Introduce(14m, Jan2026, null, "Lei n.º 14/23");
+
+        Assert.Throws<ArgumentException>(() => serie.CloseVersion(versao.Id, new DateOnly(2025, 12, 31)));
+    }
+
+    [Fact]
+    public void FecharVersaoInexistente_ERecusado()
+    {
+        var serie = Normal();
+        serie.Introduce(14m, Jan2026, null, "Lei n.º 14/23");
+
+        Assert.Throws<KeyNotFoundException>(() => serie.CloseVersion(Guid.NewGuid(), Jun2026));
+    }
+
     [Fact]
     public void ODominioNaoMexeNoContadorDeConcorrencia()
     {

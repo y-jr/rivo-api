@@ -114,6 +114,20 @@ public sealed class SubsidyExemptionSchedule
     /// </summary>
     public SubsidyExemptionVersion? InForceOn(DateOnly date) =>
         _versions.SingleOrDefault(version => version.IsInForceOn(date));
+
+    /// <summary>
+    /// Fecha uma versão sem fim previsto, para se poder introduzir a que lhe
+    /// sucede sem sobreposição — mesma razão de <see cref="TaxRateSchedule.CloseVersion"/>.
+    /// </summary>
+    public SubsidyExemptionVersion CloseVersion(Guid versionId, DateOnly effectiveTo)
+    {
+        var versao = _versions.FirstOrDefault(v => v.Id == versionId)
+            ?? throw new KeyNotFoundException($"Versão '{versionId}' não encontrada nesta série.");
+
+        versao.Close(effectiveTo);
+
+        return versao;
+    }
 }
 
 /// <summary>
@@ -165,5 +179,26 @@ public sealed class SubsidyExemptionVersion
         var acabaDepoisDoInicioDoOutro = EffectiveTo is null || EffectiveTo >= other.EffectiveFrom;
 
         return comecaAntesDoFimDoOutro && acabaDepoisDoInicioDoOutro;
+    }
+
+    /// <summary>
+    /// Dá um fim a uma versão corrente — mesma razão de
+    /// <see cref="TaxRateVersion.Close"/>.
+    /// </summary>
+    internal void Close(DateOnly effectiveTo)
+    {
+        if (EffectiveTo is not null)
+        {
+            throw new InvalidOperationException(
+                $"Esta versão já está fechada, desde {EffectiveTo:yyyy-MM-dd}.");
+        }
+
+        if (effectiveTo < EffectiveFrom)
+        {
+            throw new ArgumentException(
+                "A vigência não pode terminar antes de começar.", nameof(effectiveTo));
+        }
+
+        EffectiveTo = effectiveTo;
     }
 }

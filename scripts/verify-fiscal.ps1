@@ -445,6 +445,59 @@ Test-Case "28. Dados sobrevivem ao reinicio da stack" {
     "determinacao de IVA, IRT, limiares de subsidio e identidade fiscal intactas apos restart"
 }
 
+Test-Case "29. (preparacao) identificar a versao corrente para fechar" {
+    # A serie deste caso (script:scheduleId, caso 3) ja tem 5% ate Jun/2026 e
+    # 7% desde Jul/2026, sem fim -- exactamente o estado que "feche a anterior
+    # primeiro" (caso 6) pede para resolver.
+    $versoes = Invoke-Sql "select v.id from fiscal.tax_rate_version v join fiscal.tax_rate_schedule s on s.id=v.tax_rate_schedule_id where s.code='$codigo' and v.effective_to is null"
+    $script:versaoAbertaId = $versoes.Trim()
+    if (-not $script:versaoAbertaId) { throw "sem versao corrente para fechar" }
+    "versao corrente: $($script:versaoAbertaId)"
+}
+
+Test-Case "30. Fechar a versao corrente, e introduzir a que lhe sucede" {
+    $fechar = @{ effectiveTo = "2026-12-31" } | ConvertTo-Json
+    Invoke-RestMethod "$base/fiscal/tax-rates/$($script:scheduleId)/versions/$($script:versaoAbertaId)/closure" `
+        -Method Post -Body $fechar -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    $nova = @{ percentage = 9; effectiveFrom = "2027-01-01"; legalInstrument = "Lei 1/27" } | ConvertTo-Json
+    Invoke-RestMethod "$base/fiscal/tax-rates/$($script:scheduleId)/versions" -Method Post -Body $nova -ContentType "application/json" -Headers $adminHeaders | Out-Null
+
+    $r = Invoke-RestMethod "$base/fiscal/tax-rates/determination?taxCode=$codigo&taxPointDate=2027-02-01" -Headers $adminHeaders
+    if ($r.percentage -ne 9) { throw "esperado 9%, obtido $($r.percentage)" }
+    "fechada a 2026-12-31, 9% desde 2027-01-01"
+}
+
+Test-Case "31. Fechar uma versao ja fechada e recusado com 409" {
+    $fechar = @{ effectiveTo = "2027-06-30" } | ConvertTo-Json
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/fiscal/tax-rates/$($script:scheduleId)/versions/$($script:versaoAbertaId)/closure" `
+            -Method Post -Body $fechar -ContentType "application/json" -Headers $adminHeaders
+    }
+    if ($code -ne 409) { throw "esperado 409, obtido $code" }
+    "409 -- ja fechada, nao se reescreve o facto historico"
+}
+
+Test-Case "32. Fechar uma versao inexistente e recusado com 404" {
+    $fechar = @{ effectiveTo = "2027-06-30" } | ConvertTo-Json
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/fiscal/tax-rates/$($script:scheduleId)/versions/$([Guid]::NewGuid())/closure" `
+            -Method Post -Body $fechar -ContentType "application/json" -Headers $adminHeaders
+    }
+    if ($code -ne 404) { throw "esperado 404 para versao inexistente, obtido $code" }
+    "versao inexistente -- 404, nao 400 nem 500"
+}
+
+Test-Case "33. Sales nao fecha versao de taxa" {
+    $fechar = @{ effectiveTo = "2027-06-30" } | ConvertTo-Json
+    $code = Get-StatusCode {
+        Invoke-RestMethod "$base/fiscal/tax-rates/$($script:scheduleId)/versions/$([Guid]::NewGuid())/closure" `
+            -Method Post -Body $fechar -ContentType "application/json" -Headers $salesHeaders
+    }
+    if ($code -ne 403) { throw "esperado 403 para Sales, obtido $code" }
+    "mesma fiscal.rates.write que introduzir -- sem permissao propria para fechar"
+}
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host "$failures teste(s) falharam." -ForegroundColor Red; exit 1 }
 Write-Host "Todos os testes passaram." -ForegroundColor Green
