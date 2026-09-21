@@ -402,7 +402,7 @@ Test-Case "15. Sem politica configurada, submeter recusa e diz porque" {
         if (-not $_.Exception.Response) { throw }
         if ([int]$_.Exception.Response.StatusCode -ne 409) { throw "esperado 409, obtido $([int]$_.Exception.Response.StatusCode)" }
         $corpo = $_.ErrorDetails.Message | ConvertFrom-Json
-        if ($corpo.erro -notmatch "procurement.purchase_requisition") { throw "o erro nao nomeia o tipo de processo: $($corpo.erro)" }
+        if ($corpo.detail -notmatch "procurement.purchase_requisition") { throw "o erro nao nomeia o tipo de processo: $($corpo.detail)" }
     }
 
     # E a requisicao fica em rascunho: falhar a submissao nao pode fazer perder
@@ -636,7 +636,7 @@ Test-Case "29. De uma requisicao nao aprovada nao nasce ordem" {
         if (-not $_.Exception.Response) { throw }
         if ([int]$_.Exception.Response.StatusCode -ne 409) { throw "esperado 409, obtido $([int]$_.Exception.Response.StatusCode)" }
         $corpo = $_.ErrorDetails.Message | ConvertFrom-Json
-        if ($corpo.erro -notmatch "Cancelled") { throw "o erro nao diz em que estado esta: $($corpo.erro)" }
+        if ($corpo.detail -notmatch "Cancelled") { throw "o erro nao diz em que estado esta: $($corpo.detail)" }
     }
 
     $ordens = Invoke-Sql "select count(*) from procurement.purchase_order where requisition_id='$($script:canceladaId)'"
@@ -730,7 +730,7 @@ Test-Case "33. Encomendar acima do aprovado e recusado" {
         # se pede menos, se cancela uma ordem, ou se abre requisicao nova.
         $corpo = $_.ErrorDetails.Message | ConvertFrom-Json
         foreach ($n in @("1725000", "1000000", "725000", "800000")) {
-            if ($corpo.erro -notmatch $n) { throw "a mensagem nao diz $n : $($corpo.erro)" }
+            if ($corpo.detail -notmatch $n) { throw "a mensagem nao diz $n : $($corpo.detail)" }
         }
     }
 
@@ -930,7 +930,7 @@ Test-Case "44. Receber acima do encomendado e recusado" {
         if (-not $_.Exception.Response) { throw }
         if ([int]$_.Exception.Response.StatusCode -ne 409) { throw "esperado 409, obtido $([int]$_.Exception.Response.StatusCode)" }
         $corpo = $_.ErrorDetails.Message | ConvertFrom-Json
-        if ($corpo.erro -notmatch "Ratos e cabos") { throw "a mensagem nao nomeia a linha: $($corpo.erro)" }
+        if ($corpo.detail -notmatch "Ratos e cabos") { throw "a mensagem nao nomeia a linha: $($corpo.detail)" }
     }
 
     $recepcoes = Invoke-Sql "select count(*) from procurement.goods_receipt where purchase_order_id='$($script:ordemB)'"
@@ -991,7 +991,7 @@ Test-Case "48. Uma ordem com mercadoria recebida nao se cancela" {
         if (-not $_.Exception.Response) { throw }
         if ([int]$_.Exception.Response.StatusCode -ne 409) { throw "esperado 409, obtido $([int]$_.Exception.Response.StatusCode)" }
         $corpo = $_.ErrorDetails.Message | ConvertFrom-Json
-        if ($corpo.erro -notmatch "Anule primeiro") { throw "o erro nao diz o que fazer: $($corpo.erro)" }
+        if ($corpo.detail -notmatch "Anule primeiro") { throw "o erro nao diz o que fazer: $($corpo.detail)" }
     }
 
     $estado = Invoke-Sql "select status from procurement.purchase_order where id='$($script:ordemB)'"

@@ -122,7 +122,7 @@ Test-Case "9. Contrato resolve o cargo actual (ADR-010)" {
     $ref = Invoke-RestMethod "$base/hr/employees/$($script:employeeId)" -Headers $hrHeaders
     if ($ref.currentPosition -eq $null) { throw "cargo nao resolvido" }
     if ($ref.currentPosition.grantsApprovalAuthority -ne $false) { throw "marca de autoridade errada" }
-    if ($ref.displayName -ne "Ana Teste") { throw "nome errado" }
+    if ($ref.fullName -ne "Ana Teste") { throw "nome errado" }
     "EmployeeReference com cargo, estado e departamento"
 }
 
@@ -602,12 +602,12 @@ Test-Case "38. Perfil HR nao ve o historico de contas" {
 # PUT: nada se editava, e um nome mal escrito ficava mal escrito para sempre.
 
 Test-Case "40. Corrigir o nome de um colaborador, com o anterior na trilha" {
-    $antes = (Invoke-RestMethod "$base/hr/employees/$($script:employeeId)" -Headers $hrHeaders).displayName
+    $antes = (Invoke-RestMethod "$base/hr/employees/$($script:employeeId)" -Headers $hrHeaders).fullName
 
     Invoke-RestMethod "$base/hr/employees/$($script:employeeId)" -Method Put -ContentType "application/json" `
         -Headers $hrHeaders -Body (@{ fullName = "Ana Teste Corrigida" } | ConvertTo-Json) | Out-Null
 
-    $depois = (Invoke-RestMethod "$base/hr/employees/$($script:employeeId)" -Headers $hrHeaders).displayName
+    $depois = (Invoke-RestMethod "$base/hr/employees/$($script:employeeId)" -Headers $hrHeaders).fullName
     if ($depois -ne "Ana Teste Corrigida") { throw "o nome nao mudou: '$depois'" }
 
     # O valor anterior e o que torna a correccao auditavel: sem ele, fica a
@@ -625,7 +625,7 @@ Test-Case "41. Nome vazio e recusado, e nao apaga o que la estava" {
     }
     if ($code -ne 400) { throw "esperado 400, obtido $code" }
 
-    $nome = (Invoke-RestMethod "$base/hr/employees/$($script:employeeId)" -Headers $hrHeaders).displayName
+    $nome = (Invoke-RestMethod "$base/hr/employees/$($script:employeeId)" -Headers $hrHeaders).fullName
     if ($nome -ne "Ana Teste Corrigida") { throw "o nome foi alterado apesar da recusa: '$nome'" }
     "400, e o nome intacto"
 }
