@@ -34,6 +34,22 @@ public sealed class BadRequestHandler : IExceptionHandler
             return false;
         }
 
+        // Parâmetro obrigatório (query/rota) em falta: a mensagem do ASP.NET
+        // Core já nomeia o parâmetro ("Required parameter \"DateOnly from\"
+        // was not provided from query string.") e não expõe detalhe de
+        // implementação — ao contrário do erro de desserialização do corpo
+        // (abaixo), esta é seguro devolver tal como está.
+        if (badRequest.Message.Contains("Required parameter", StringComparison.Ordinal))
+        {
+            await Results.Problem(
+                    title: "Parâmetro obrigatório em falta",
+                    detail: badRequest.Message,
+                    statusCode: badRequest.StatusCode)
+                .ExecuteAsync(httpContext);
+
+            return true;
+        }
+
         // Sem detalhe da excepção na resposta: a mensagem do desserializador
         // nomeia o tipo .NET e a posição no fluxo de bytes, que é informação
         // sobre a implementação e não sobre o pedido.

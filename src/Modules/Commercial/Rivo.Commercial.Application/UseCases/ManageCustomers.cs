@@ -41,7 +41,9 @@ public sealed class ListCustomers(ICustomerStore store)
             c.BillingAddress.City,
             c.BillingAddress.Country,
             c.UserId,
-            c.AssignedToEmployeeId))];
+            c.AssignedToEmployeeId,
+            c.Email,
+            c.Phone))];
     }
 }
 
@@ -59,7 +61,9 @@ public sealed record CustomerListItem(
     string City,
     string Country,
     Guid? UserId,
-    Guid? AssignedToEmployeeId);
+    Guid? AssignedToEmployeeId,
+    string? Email,
+    string? Phone);
 
 public sealed class GetCustomer(ICustomerStore store)
 {

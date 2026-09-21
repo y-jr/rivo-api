@@ -256,8 +256,32 @@ public static class HrModuleEndpoints
         // caminho que outros módulos usarão (ADR-010).
         var reference = await directory.FindAsync(employeeId, clock.GetUtcNow(), cancellationToken);
 
-        return reference is null ? Results.NotFound() : Results.Ok(reference);
+        if (reference is null)
+        {
+            return Results.NotFound();
+        }
+
+        // Mesmo nome de campo e mesma serialização de `status` que
+        // GET /hr/employees (EmployeeView) — a lista e o detalhe descrevem o
+        // mesmo colaborador e não podem divergir na forma. `DisplayName`
+        // mantém-se como está no contrato interno (EmployeeReference é usado
+        // por outros módulos via ADR-010); só a resposta HTTP é uniformizada.
+        return Results.Ok(new EmployeeDetailView(
+            reference.EmployeeId,
+            reference.DisplayName,
+            reference.Status.ToString(),
+            reference.DepartmentId,
+            reference.CurrentPosition,
+            reference.UserId));
     }
+
+    private sealed record EmployeeDetailView(
+        Guid EmployeeId,
+        string FullName,
+        string Status,
+        Guid? DepartmentId,
+        PositionReference? CurrentPosition,
+        Guid? UserId);
 
     private static async Task<IResult> HireEmployeeAsync(
         HireEmployeeRequest request,

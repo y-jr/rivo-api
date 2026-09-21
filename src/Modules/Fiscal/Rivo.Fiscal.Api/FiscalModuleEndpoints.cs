@@ -289,6 +289,14 @@ public static class FiscalModuleEndpoints
         GetSubsidyExemptionSchedule getSchedule,
         CancellationToken cancellationToken)
     {
+        if (!Enum.IsDefined(kind))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["kind"] = ["Subsídio desconhecido."],
+            });
+        }
+
         var serie = await getSchedule.ExecuteAsync(kind, cancellationToken);
 
         return serie is null
@@ -302,6 +310,14 @@ public static class FiscalModuleEndpoints
         HttpContext http,
         CancellationToken cancellationToken)
     {
+        if (!Enum.IsDefined(request.Kind))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["kind"] = ["Subsídio desconhecido."],
+            });
+        }
+
         var result = await introduceVersion.ExecuteAsync(
             request.Kind,
             request.Amount,
@@ -336,6 +352,14 @@ public static class FiscalModuleEndpoints
         DateOnly taxPointDate,
         CancellationToken cancellationToken)
     {
+        if (!Enum.IsDefined(kind))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["kind"] = ["Subsídio desconhecido."],
+            });
+        }
+
         var result = await determination.DetermineAsync(
             new SubsidyExemptionRequest(kind, taxPointDate), cancellationToken);
 
