@@ -96,7 +96,10 @@ public sealed record CustomerReference(
     /// existem em papel, e o sistema nao deve inventar um endereco para eles.
     /// </para>
     /// </param>
-    string? Email = null);
+    string? Email = null,
+
+    /// <param name="Phone">Telefone de contacto, quando o cliente tem um. Mesma razão do <c>Email</c> acima.</param>
+    string? Phone = null);
 
 /// <param name="Country">ISO 3166-1 alpha-2. `AO` para Angola.</param>
 public sealed record BillingAddress(string Detail, string City, string Country);

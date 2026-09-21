@@ -60,7 +60,8 @@ public sealed class CustomerDirectory(ICustomerStore store, RegisterCustomer reg
                 customer.BillingAddress.City,
                 customer.BillingAddress.Country),
             customer.AssignedToEmployeeId,
-            customer.Email);
+            customer.Email,
+            customer.Phone);
 
     /// <summary>
     /// Traduz o estado do domínio para o publicado. Os dois enumerados existem

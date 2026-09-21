@@ -70,10 +70,35 @@ public static class CommercialModuleEndpoints
     {
         var cliente = await getCustomer.ExecuteAsync(customerId, cancellationToken);
 
-        return cliente is null
-            ? Results.NotFound(new { erro = "Cliente não encontrado." })
-            : Results.Ok(cliente);
+        if (cliente is null)
+        {
+            return Results.NotFound(new { erro = "Cliente não encontrado." });
+        }
+
+        // `status` como texto, igual a GET /commercial/customers — a lista e o
+        // detalhe descrevem o mesmo cliente e não podem divergir na forma.
+        // `CustomerReference` mantém-se como está (contrato publicado a outros
+        // módulos, ADR-010); só a resposta HTTP é uniformizada.
+        return Results.Ok(new CustomerDetailView(
+            cliente.CustomerId,
+            cliente.Name,
+            cliente.TaxId,
+            cliente.Status.ToString(),
+            cliente.BillingAddress,
+            cliente.AssignedToEmployeeId,
+            cliente.Email,
+            cliente.Phone));
     }
+
+    private sealed record CustomerDetailView(
+        Guid CustomerId,
+        string Name,
+        string TaxId,
+        string Status,
+        BillingAddress BillingAddress,
+        Guid? AssignedToEmployeeId,
+        string? Email,
+        string? Phone);
 
     private static async Task<IResult> RegisterAsync(
         RegisterCustomerRequest request,

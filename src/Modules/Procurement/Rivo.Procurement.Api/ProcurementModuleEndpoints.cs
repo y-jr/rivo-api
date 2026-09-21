@@ -285,7 +285,7 @@ public static class ProcurementModuleEndpoints
                 Results.Problem(resultado.Error, statusCode: StatusCodes.Status501NotImplemented),
 
             SubmitRequisitionOutcome.SubmissionFailed or SubmitRequisitionOutcome.Rejected =>
-                Results.Conflict(new { erro = resultado.Error }),
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status409Conflict),
 
             _ => Results.Problem("Resultado inesperado ao submeter a requisição."),
         };
@@ -330,7 +330,8 @@ public static class ProcurementModuleEndpoints
         {
             CancelRequisitionOutcome.Cancelled => Results.NoContent(),
             CancelRequisitionOutcome.NotFound => Results.NotFound(new { erro = resultado.Error }),
-            CancelRequisitionOutcome.Rejected => Results.Conflict(new { erro = resultado.Error }),
+            CancelRequisitionOutcome.Rejected =>
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status409Conflict),
             _ => Results.Problem("Resultado inesperado ao cancelar a requisição."),
         };
     }
@@ -394,7 +395,7 @@ public static class ProcurementModuleEndpoints
             IssuePurchaseOrderOutcome.RequisitionNotApproved
                 or IssuePurchaseOrderOutcome.SupplierInactive
                 or IssuePurchaseOrderOutcome.ExceedsApproved =>
-                Results.Conflict(new { erro = resultado.Error }),
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status409Conflict),
 
             IssuePurchaseOrderOutcome.Rejected =>
                 Results.BadRequest(new { erro = resultado.Error }),
@@ -417,7 +418,8 @@ public static class ProcurementModuleEndpoints
         {
             CancelPurchaseOrderOutcome.Cancelled => Results.NoContent(),
             CancelPurchaseOrderOutcome.NotFound => Results.NotFound(new { erro = resultado.Error }),
-            CancelPurchaseOrderOutcome.Rejected => Results.Conflict(new { erro = resultado.Error }),
+            CancelPurchaseOrderOutcome.Rejected =>
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status409Conflict),
             _ => Results.Problem("Resultado inesperado ao cancelar a ordem de compra."),
         };
     }
@@ -499,7 +501,7 @@ public static class ProcurementModuleEndpoints
             RegisterGoodsReceiptOutcome.OrderNotOpen
                 or RegisterGoodsReceiptOutcome.LineNotInOrder
                 or RegisterGoodsReceiptOutcome.ExceedsOrdered =>
-                Results.Conflict(new { erro = resultado.Error }),
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status409Conflict),
 
             RegisterGoodsReceiptOutcome.Rejected =>
                 Results.BadRequest(new { erro = resultado.Error }),
@@ -522,7 +524,8 @@ public static class ProcurementModuleEndpoints
         {
             CancelGoodsReceiptOutcome.Cancelled => Results.NoContent(),
             CancelGoodsReceiptOutcome.NotFound => Results.NotFound(new { erro = resultado.Error }),
-            CancelGoodsReceiptOutcome.Rejected => Results.Conflict(new { erro = resultado.Error }),
+            CancelGoodsReceiptOutcome.Rejected =>
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status409Conflict),
             _ => Results.Problem("Resultado inesperado ao anular a recepção."),
         };
     }
