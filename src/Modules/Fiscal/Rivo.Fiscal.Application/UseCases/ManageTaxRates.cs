@@ -224,6 +224,90 @@ public enum IntroduceRateOutcome
     Overlaps,
 }
 
+/// <summary>
+/// Dá um fim a uma versão de taxa sem fim previsto, para desbloquear a
+/// introdução da que lhe sucede — é a resposta a "feche a anterior primeiro"
+/// que <see cref="TaxRateSchedule.Introduce"/> devolve numa sobreposição.
+///
+/// <para>
+/// <strong>Auditada por ADR-011 §5</strong>, mesma razão de
+/// <see cref="IntroduceTaxRate"/>: decide a partir de que data deixa de
+/// valer, o que é tão consequente quanto introduzir a versão em si.
+/// </para>
+/// </summary>
+public sealed class CloseTaxRateVersion(ITaxRateStore store, IAuditTrail audit)
+{
+    public async Task<CloseVersionResult> ExecuteAsync(
+        Guid scheduleId,
+        Guid versionId,
+        DateOnly effectiveTo,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        var serie = await store.FindByIdAsync(scheduleId, cancellationToken);
+
+        if (serie is null)
+        {
+            return CloseVersionResult.NotFound();
+        }
+
+        try
+        {
+            serie.CloseVersion(versionId, effectiveTo);
+        }
+        catch (KeyNotFoundException)
+        {
+            return CloseVersionResult.NotFound();
+        }
+        catch (InvalidOperationException error)
+        {
+            // Já fechada: o pedido está bem formado, colide com o estado —
+            // conflito, não erro de campo.
+            return CloseVersionResult.Conflict(error.Message);
+        }
+        catch (ArgumentException error)
+        {
+            return CloseVersionResult.Rejected(error.Message);
+        }
+
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                FiscalAuditActions.RateVersionClosed,
+                FiscalAuditEntityTypes.TaxRateSchedule,
+                serie.Id.ToString(),
+                context,
+                NewValue: $$"""{"versionId":"{{versionId}}","effectiveTo":"{{effectiveTo:yyyy-MM-dd}}"}"""),
+            cancellationToken);
+
+        return CloseVersionResult.Success();
+    }
+}
+
+public sealed record CloseVersionResult(CloseVersionOutcome Outcome, string? Error)
+{
+    public static CloseVersionResult Success() => new(CloseVersionOutcome.Closed, null);
+
+    public static CloseVersionResult NotFound() => new(CloseVersionOutcome.NotFound, null);
+
+    public static CloseVersionResult Rejected(string error) => new(CloseVersionOutcome.Rejected, error);
+
+    public static CloseVersionResult Conflict(string error) => new(CloseVersionOutcome.Conflict, error);
+}
+
+public enum CloseVersionOutcome
+{
+    Closed,
+    NotFound,
+
+    /// <summary>Campo mal preenchido. O chamador corrige o pedido — 400.</summary>
+    Rejected,
+
+    /// <summary>Já fechada — 409.</summary>
+    Conflict,
+}
+
 /// <summary>Traduções entre o vocabulário do domínio e o publicado.</summary>
 internal static class ManageTaxRatesMapping
 {
@@ -237,9 +321,15 @@ public static class FiscalAuditActions
 
     public const string RateIntroduced = "fiscal.tax_rate.introduced";
 
+    public const string RateVersionClosed = "fiscal.tax_rate.version_closed";
+
     public const string IncomeTaxScheduleVersionIntroduced = "fiscal.income_tax_schedule.version_introduced";
 
+    public const string IncomeTaxScheduleVersionClosed = "fiscal.income_tax_schedule.version_closed";
+
     public const string SubsidyExemptionVersionIntroduced = "fiscal.subsidy_exemption.version_introduced";
+
+    public const string SubsidyExemptionVersionClosed = "fiscal.subsidy_exemption.version_closed";
 
     /// <summary>A identidade fiscal da empresa foi declarada pela primeira vez.</summary>
     public const string TaxEntityDeclared = "fiscal.tax_entity.declared";

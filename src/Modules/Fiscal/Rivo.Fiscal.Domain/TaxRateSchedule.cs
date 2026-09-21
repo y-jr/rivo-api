@@ -162,6 +162,28 @@ public sealed class TaxRateSchedule
     /// </summary>
     public TaxRateVersion? InForceOn(DateOnly date) =>
         _versions.SingleOrDefault(version => version.IsInForceOn(date));
+
+    /// <summary>
+    /// Fecha uma versão sem fim previsto, para se poder introduzir a que lhe
+    /// sucede sem sobreposição — o próprio <see cref="Introduce"/> aponta para
+    /// isto quando recusa por sobreposição.
+    ///
+    /// <para>
+    /// Não é reescrever o histórico: os documentos emitidos com datas até
+    /// <paramref name="effectiveTo"/> continuam servidos por esta versão, tal
+    /// como estavam. Só deixa de valer para datas depois dela — exactamente o
+    /// que introduzir a próxima versão já faria, uma vez desbloqueado.
+    /// </para>
+    /// </summary>
+    public TaxRateVersion CloseVersion(Guid versionId, DateOnly effectiveTo)
+    {
+        var versao = _versions.FirstOrDefault(v => v.Id == versionId)
+            ?? throw new KeyNotFoundException($"Versão '{versionId}' não encontrada nesta série.");
+
+        versao.Close(effectiveTo);
+
+        return versao;
+    }
 }
 
 /// <summary>
@@ -226,5 +248,28 @@ public sealed class TaxRateVersion
         var acabaDepoisDoInicioDoOutro = EffectiveTo is null || EffectiveTo >= other.EffectiveFrom;
 
         return comecaAntesDoFimDoOutro && acabaDepoisDoInicioDoOutro;
+    }
+
+    /// <summary>
+    /// Dá um fim a uma versão corrente, para desbloquear a que lhe sucede.
+    /// Não se fecha uma versão já fechada — seria reescrever quando deixou de
+    /// vigorar, e essa data é ela própria facto histórico a partir do momento
+    /// em que a sucessora existe.
+    /// </summary>
+    internal void Close(DateOnly effectiveTo)
+    {
+        if (EffectiveTo is not null)
+        {
+            throw new InvalidOperationException(
+                $"Esta versão já está fechada, desde {EffectiveTo:yyyy-MM-dd}.");
+        }
+
+        if (effectiveTo < EffectiveFrom)
+        {
+            throw new ArgumentException(
+                "A vigência não pode terminar antes de começar.", nameof(effectiveTo));
+        }
+
+        EffectiveTo = effectiveTo;
     }
 }

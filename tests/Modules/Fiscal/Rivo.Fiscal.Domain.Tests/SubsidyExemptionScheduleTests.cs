@@ -107,6 +107,49 @@ public class SubsidyExemptionScheduleTests
             serie.Introduce(30_000m, Jul2026, Jan2026, "Confirmado pelo utilizador em 2026-08-30"));
     }
 
+    // --- Fechar uma versão corrente, para desbloquear a seguinte ----------
+
+    [Fact]
+    public void FecharVersaoCorrente_DeixaEntrarASeguinte()
+    {
+        var serie = Alimentacao();
+        var versao = serie.Introduce(30_000m, Jan2026, null, "Confirmado pelo utilizador em 2026-08-30");
+
+        serie.CloseVersion(versao.Id, Jun2026);
+        serie.Introduce(35_000m, Jul2026, null, "Revisão");
+
+        Assert.Equal(Jun2026, versao.EffectiveTo);
+        Assert.Equal(30_000m, serie.InForceOn(new DateOnly(2026, 3, 1))!.Amount);
+        Assert.Equal(35_000m, serie.InForceOn(new DateOnly(2026, 9, 1))!.Amount);
+    }
+
+    [Fact]
+    public void FecharVersaoJaFechada_ERecusado()
+    {
+        var serie = Alimentacao();
+        var versao = serie.Introduce(30_000m, Jan2026, Jun2026, "Confirmado pelo utilizador em 2026-08-30");
+
+        Assert.Throws<InvalidOperationException>(() => serie.CloseVersion(versao.Id, Jul2026));
+    }
+
+    [Fact]
+    public void FecharComDataAntesDeComecar_ERecusado()
+    {
+        var serie = Alimentacao();
+        var versao = serie.Introduce(30_000m, Jan2026, null, "Confirmado pelo utilizador em 2026-08-30");
+
+        Assert.Throws<ArgumentException>(() => serie.CloseVersion(versao.Id, new DateOnly(2025, 12, 31)));
+    }
+
+    [Fact]
+    public void FecharVersaoInexistente_ERecusado()
+    {
+        var serie = Alimentacao();
+        serie.Introduce(30_000m, Jan2026, null, "Confirmado pelo utilizador em 2026-08-30");
+
+        Assert.Throws<KeyNotFoundException>(() => serie.CloseVersion(Guid.NewGuid(), Jun2026));
+    }
+
     [Fact]
     public void ODominioNaoMexeNoContadorDeConcorrencia()
     {

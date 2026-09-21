@@ -34,6 +34,7 @@ public static class FiscalModuleExtensions
         services.AddScoped<ListTaxRates>();
         services.AddScoped<OpenTaxRateSchedule>();
         services.AddScoped<IntroduceTaxRate>();
+        services.AddScoped<CloseTaxRateVersion>();
 
         services.AddScoped<IIncomeTaxScheduleStore, IncomeTaxScheduleStore>();
 
@@ -42,6 +43,7 @@ public static class FiscalModuleExtensions
 
         services.AddScoped<GetIncomeTaxSchedule>();
         services.AddScoped<IntroduceIncomeTaxScheduleVersion>();
+        services.AddScoped<CloseIncomeTaxScheduleVersion>();
 
         services.AddScoped<ISubsidyExemptionStore, SubsidyExemptionStore>();
 
@@ -51,6 +53,7 @@ public static class FiscalModuleExtensions
 
         services.AddScoped<GetSubsidyExemptionSchedule>();
         services.AddScoped<IntroduceSubsidyExemptionVersion>();
+        services.AddScoped<CloseSubsidyExemptionVersion>();
 
         // A identidade fiscal da empresa — o `Header` do SAF-T (ADR-066).
         services.AddScoped<ITaxEntityProfileStore, TaxEntityProfileStore>();

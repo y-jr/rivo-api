@@ -139,3 +139,69 @@ public enum IntroduceSubsidyExemptionOutcome
     /// <summary>Colide com uma vigência existente — 409.</summary>
     Overlaps,
 }
+
+/// <summary>
+/// Dá um fim a uma versão de limiar sem fim previsto, para desbloquear a
+/// introdução da que lhe sucede — mesma razão de
+/// <c>CloseTaxRateVersion</c> em <c>ManageTaxRates</c>.
+/// </summary>
+public sealed class CloseSubsidyExemptionVersion(ISubsidyExemptionStore store, IAuditTrail audit)
+{
+    public async Task<CloseSubsidyExemptionVersionResult> ExecuteAsync(
+        Contracts.SubsidyKind kind,
+        Guid versionId,
+        DateOnly effectiveTo,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        var serie = await store.FindForUpdateAsync(SubsidyKindMapping.ToDomain(kind), cancellationToken);
+
+        if (serie is null)
+        {
+            return CloseSubsidyExemptionVersionResult.NotFound();
+        }
+
+        try
+        {
+            serie.CloseVersion(versionId, effectiveTo);
+        }
+        catch (KeyNotFoundException)
+        {
+            return CloseSubsidyExemptionVersionResult.NotFound();
+        }
+        catch (InvalidOperationException error)
+        {
+            return CloseSubsidyExemptionVersionResult.Conflict(error.Message);
+        }
+        catch (ArgumentException error)
+        {
+            return CloseSubsidyExemptionVersionResult.Rejected(error.Message);
+        }
+
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                FiscalAuditActions.SubsidyExemptionVersionClosed,
+                FiscalAuditEntityTypes.SubsidyExemptionSchedule,
+                serie.Id.ToString(),
+                context,
+                NewValue: $$"""{"kind":"{{kind}}","versionId":"{{versionId}}","effectiveTo":"{{effectiveTo:yyyy-MM-dd}}"}"""),
+            cancellationToken);
+
+        return CloseSubsidyExemptionVersionResult.Success();
+    }
+}
+
+public sealed record CloseSubsidyExemptionVersionResult(CloseVersionOutcome Outcome, string? Error)
+{
+    public static CloseSubsidyExemptionVersionResult Success() => new(CloseVersionOutcome.Closed, null);
+
+    public static CloseSubsidyExemptionVersionResult NotFound() => new(CloseVersionOutcome.NotFound, null);
+
+    public static CloseSubsidyExemptionVersionResult Rejected(string error) =>
+        new(CloseVersionOutcome.Rejected, error);
+
+    public static CloseSubsidyExemptionVersionResult Conflict(string error) =>
+        new(CloseVersionOutcome.Conflict, error);
+}

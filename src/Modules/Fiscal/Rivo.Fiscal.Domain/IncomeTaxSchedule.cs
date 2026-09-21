@@ -135,6 +135,20 @@ public sealed class IncomeTaxSchedule
     /// </summary>
     public IncomeTaxScheduleVersion? InForceOn(DateOnly date) =>
         _versions.SingleOrDefault(version => version.IsInForceOn(date));
+
+    /// <summary>
+    /// Fecha uma versão sem fim previsto, para se poder introduzir a que lhe
+    /// sucede sem sobreposição — mesma razão de <see cref="TaxRateSchedule.CloseVersion"/>.
+    /// </summary>
+    public IncomeTaxScheduleVersion CloseVersion(Guid versionId, DateOnly effectiveTo)
+    {
+        var versao = _versions.FirstOrDefault(v => v.Id == versionId)
+            ?? throw new KeyNotFoundException($"Versão '{versionId}' não encontrada nesta tabela.");
+
+        versao.Close(effectiveTo);
+
+        return versao;
+    }
 }
 
 /// <param name="LowerBound">O "excesso de" do escalão — 0 para o primeiro.</param>
@@ -228,6 +242,27 @@ public sealed class IncomeTaxScheduleVersion
         var escalao = SelectBracket(taxableIncome);
 
         return escalao.FixedPortion + (taxableIncome - escalao.LowerBound) * (escalao.Rate / 100m);
+    }
+
+    /// <summary>
+    /// Dá um fim a uma versão corrente — mesma razão de
+    /// <see cref="TaxRateVersion.Close"/>.
+    /// </summary>
+    internal void Close(DateOnly effectiveTo)
+    {
+        if (EffectiveTo is not null)
+        {
+            throw new InvalidOperationException(
+                $"Esta versão já está fechada, desde {EffectiveTo:yyyy-MM-dd}.");
+        }
+
+        if (effectiveTo < EffectiveFrom)
+        {
+            throw new ArgumentException(
+                "A vigência não pode terminar antes de começar.", nameof(effectiveTo));
+        }
+
+        EffectiveTo = effectiveTo;
     }
 }
 

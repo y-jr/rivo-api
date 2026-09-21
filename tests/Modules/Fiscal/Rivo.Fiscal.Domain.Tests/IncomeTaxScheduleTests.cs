@@ -152,6 +152,48 @@ public class IncomeTaxScheduleTests
             tabela.Introduce([new NewIncomeTaxBracket(0m, -1m, 0m)], Jan2026, null, "Lei n.º 14/25"));
     }
 
+    // --- Fechar uma versão corrente, para desbloquear a seguinte ----------
+
+    [Fact]
+    public void FecharVersaoCorrente_DeixaEntrarASeguinte()
+    {
+        var tabela = IncomeTaxSchedule.Open();
+        var versao = tabela.Introduce(TabelaB, Jan2026, null, "Lei n.º 14/25");
+
+        tabela.CloseVersion(versao.Id, Jun2026);
+        tabela.Introduce(TabelaB, Jul2026, null, "Lei n.º 20/26");
+
+        Assert.Equal(Jun2026, versao.EffectiveTo);
+        Assert.NotNull(tabela.InForceOn(new DateOnly(2026, 3, 1)));
+        Assert.NotNull(tabela.InForceOn(new DateOnly(2026, 9, 1)));
+    }
+
+    [Fact]
+    public void FecharVersaoJaFechada_ERecusado()
+    {
+        var tabela = IncomeTaxSchedule.Open();
+        var versao = tabela.Introduce(TabelaB, Jan2026, Jun2026, "Lei n.º 14/25");
+
+        Assert.Throws<InvalidOperationException>(() => tabela.CloseVersion(versao.Id, Jul2026));
+    }
+
+    [Fact]
+    public void FecharComDataAntesDeComecar_ERecusado()
+    {
+        var tabela = IncomeTaxSchedule.Open();
+        var versao = tabela.Introduce(TabelaB, Jan2026, null, "Lei n.º 14/25");
+
+        Assert.Throws<ArgumentException>(() => tabela.CloseVersion(versao.Id, new DateOnly(2025, 12, 31)));
+    }
+
+    [Fact]
+    public void FecharVersaoInexistente_ERecusado()
+    {
+        var tabela = ComTabelaB();
+
+        Assert.Throws<KeyNotFoundException>(() => tabela.CloseVersion(Guid.NewGuid(), Jun2026));
+    }
+
     [Fact]
     public void ODominioNaoMexeNoContadorDeConcorrencia()
     {
