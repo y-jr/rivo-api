@@ -17,33 +17,55 @@ public static class PayrollModuleEndpoints
         var group = endpoints.MapGroup("/payroll");
 
         group.MapGet("/runs", ListAsync)
-            .RequireAuthorization(PayrollPermissions.RunsRead);
+            .RequireAuthorization(PayrollPermissions.RunsRead)
+            .Produces<IReadOnlyList<PayrollRunView>>();
 
         group.MapGet("/runs/{runId:guid}", GetAsync)
-            .RequireAuthorization(PayrollPermissions.RunsRead);
+            .RequireAuthorization(PayrollPermissions.RunsRead)
+            .Produces<PayrollRunView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/runs", OpenAsync)
-            .RequireAuthorization(PayrollPermissions.RunsWrite);
+            .RequireAuthorization(PayrollPermissions.RunsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         group.MapPost("/runs/{runId:guid}/items", AddItemAsync)
-            .RequireAuthorization(PayrollPermissions.RunsWrite);
+            .RequireAuthorization(PayrollPermissions.RunsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/runs/{runId:guid}/submission", SubmitAsync)
-            .RequireAuthorization(PayrollPermissions.RunsWrite);
+            .RequireAuthorization(PayrollPermissions.RunsWrite)
+            .Produces(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status501NotImplemented);
 
         // Aplica a decisão de `approval`, se já houver uma. `payroll` pergunta;
         // `approval` nunca empurra — mesmo padrão de `procurement`.
         group.MapPost("/runs/{runId:guid}/decision", ApplyDecisionAsync)
-            .RequireAuthorization(PayrollPermissions.RunsRead);
+            .RequireAuthorization(PayrollPermissions.RunsRead)
+            .Produces(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Anexar exige permissão de escrita em folhas, não de documentos: está
         // a alterar-se o registo do item. O upload do ficheiro é que exige
         // `documents.write` — mesma separação de `hr`.
         group.MapPost("/runs/{runId:guid}/items/{itemId:guid}/documents", AttachDocumentAsync)
-            .RequireAuthorization(PayrollPermissions.RunsWrite);
+            .RequireAuthorization(PayrollPermissions.RunsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/runs/{runId:guid}/items/{itemId:guid}/documents", ListItemDocumentsAsync)
-            .RequireAuthorization(PayrollPermissions.RunsRead);
+            .RequireAuthorization(PayrollPermissions.RunsRead)
+            .Produces<IReadOnlyList<PayrollItemDocumentView>>();
 
         return endpoints;
     }

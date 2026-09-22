@@ -16,55 +16,93 @@ public static class FiscalModuleEndpoints
         var group = endpoints.MapGroup("/fiscal");
 
         group.MapGet("/tax-rates", ListAsync)
-            .RequireAuthorization(FiscalPermissions.RatesRead);
+            .RequireAuthorization(FiscalPermissions.RatesRead)
+            .Produces<IReadOnlyList<TaxRateScheduleView>>();
 
         // Escrita de taxa é configuração sensível: altera o valor de todas as
         // facturas emitidas a partir da data escolhida (ADR-011 §6).
         group.MapPost("/tax-rates", OpenScheduleAsync)
-            .RequireAuthorization(FiscalPermissions.RatesWrite);
+            .RequireAuthorization(FiscalPermissions.RatesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem();
 
         group.MapPost("/tax-rates/{scheduleId:guid}/versions", IntroduceAsync)
-            .RequireAuthorization(FiscalPermissions.RatesWrite);
+            .RequireAuthorization(FiscalPermissions.RatesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Fecha a versão corrente, para desbloquear a que lhe sucede — a
         // resposta a "feche a anterior primeiro" que a introdução devolve
         // numa sobreposição.
         group.MapPost("/tax-rates/{scheduleId:guid}/versions/{versionId:guid}/closure", CloseVersionAsync)
-            .RequireAuthorization(FiscalPermissions.RatesWrite);
+            .RequireAuthorization(FiscalPermissions.RatesWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Determinação: o que `commercial` e `finance` fazem por contrato, aqui
         // exposto para se poder conferir o que a emissão vai receber.
         group.MapGet("/tax-rates/determination", DetermineAsync)
-            .RequireAuthorization(FiscalPermissions.RatesRead);
+            .RequireAuthorization(FiscalPermissions.RatesRead)
+            .Produces<TaxDetermination>()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status501NotImplemented);
 
         group.MapGet("/income-tax-schedule", GetIncomeTaxScheduleAsync)
-            .RequireAuthorization(FiscalPermissions.RatesRead);
+            .RequireAuthorization(FiscalPermissions.RatesRead)
+            .Produces<IncomeTaxScheduleView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Escrita de escalões é configuração sensível: altera o IRT de todos
         // os recibos calculados a partir da data escolhida (ADR-011 §5).
         group.MapPost("/income-tax-schedule/versions", IntroduceIncomeTaxScheduleVersionAsync)
-            .RequireAuthorization(FiscalPermissions.RatesWrite);
+            .RequireAuthorization(FiscalPermissions.RatesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/income-tax-schedule/versions/{versionId:guid}/closure", CloseIncomeTaxScheduleVersionAsync)
-            .RequireAuthorization(FiscalPermissions.RatesWrite);
+            .RequireAuthorization(FiscalPermissions.RatesWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/income-tax-schedule/determination", DetermineIncomeTaxAsync)
-            .RequireAuthorization(FiscalPermissions.RatesRead);
+            .RequireAuthorization(FiscalPermissions.RatesRead)
+            .Produces<IncomeTaxDetermination>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/subsidy-exemptions", GetSubsidyExemptionScheduleAsync)
-            .RequireAuthorization(FiscalPermissions.RatesRead);
+            .RequireAuthorization(FiscalPermissions.RatesRead)
+            .Produces<SubsidyExemptionScheduleView>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Escrita de limiar é configuração sensível: altera a matéria
         // colectável de IRT de todas as folhas calculadas a partir da data
         // escolhida (ADR-011 §5).
         group.MapPost("/subsidy-exemptions/versions", IntroduceSubsidyExemptionVersionAsync)
-            .RequireAuthorization(FiscalPermissions.RatesWrite);
+            .RequireAuthorization(FiscalPermissions.RatesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/subsidy-exemptions/versions/{versionId:guid}/closure", CloseSubsidyExemptionVersionAsync)
-            .RequireAuthorization(FiscalPermissions.RatesWrite);
+            .RequireAuthorization(FiscalPermissions.RatesWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/subsidy-exemptions/determination", DetermineSubsidyExemptionAsync)
-            .RequireAuthorization(FiscalPermissions.RatesRead);
+            .RequireAuthorization(FiscalPermissions.RatesRead)
+            .Produces<SubsidyExemption>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // --- A identidade fiscal da empresa (ADR-066) ---
         //
@@ -72,10 +110,15 @@ public static class FiscalModuleEndpoints
         // vez e se corrige depois, não uma colecção onde se acrescentam
         // registos. A mesma leitura de verbo do ADR-063 — corrigir é `PUT`.
         group.MapGet("/tax-entity", GetTaxEntityAsync)
-            .RequireAuthorization(FiscalPermissions.TaxEntityRead);
+            .RequireAuthorization(FiscalPermissions.TaxEntityRead)
+            .Produces<TaxEntityProfileView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPut("/tax-entity", DeclareTaxEntityAsync)
-            .RequireAuthorization(FiscalPermissions.TaxEntityWrite);
+            .RequireAuthorization(FiscalPermissions.TaxEntityWrite)
+            .Produces<TaxEntityProfileView>(StatusCodes.Status200OK)
+            .Produces<TaxEntityProfileView>(StatusCodes.Status201Created)
+            .ProducesValidationProblem();
 
         return endpoints;
     }
