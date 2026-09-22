@@ -28,111 +28,183 @@ public static class LedgerEndpoints
 
         // ---- Plano de contas ----
         group.MapGet("/ledger/accounts", ListAccountsAsync)
-            .RequireAuthorization(FinancePermissions.LedgerRead);
+            .RequireAuthorization(FinancePermissions.LedgerRead)
+            .Produces<IReadOnlyList<LedgerAccountView>>();
 
         group.MapPost("/ledger/accounts", OpenAccountAsync)
-            .RequireAuthorization(FinancePermissions.LedgerWrite);
+            .RequireAuthorization(FinancePermissions.LedgerWrite)
+            .Produces<object>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/ledger/accounts/{accountId:guid}/deactivation", DeactivateAccountAsync)
-            .RequireAuthorization(FinancePermissions.LedgerWrite);
+            .RequireAuthorization(FinancePermissions.LedgerWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // ---- Diários ----
         group.MapGet("/ledger/journals", ListJournalsAsync)
-            .RequireAuthorization(FinancePermissions.LedgerRead);
+            .RequireAuthorization(FinancePermissions.LedgerRead)
+            .Produces<IReadOnlyList<JournalView>>();
 
         group.MapPost("/ledger/journals", OpenJournalAsync)
-            .RequireAuthorization(FinancePermissions.LedgerWrite);
+            .RequireAuthorization(FinancePermissions.LedgerWrite)
+            .Produces<object>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // ---- Lançamentos ----
         group.MapGet("/ledger/entries", ListEntriesAsync)
-            .RequireAuthorization(FinancePermissions.LedgerRead);
+            .RequireAuthorization(FinancePermissions.LedgerRead)
+            .Produces<IReadOnlyList<JournalEntryView>>();
 
         group.MapGet("/ledger/entries/{entryId:guid}", GetEntryAsync)
-            .RequireAuthorization(FinancePermissions.LedgerRead);
+            .RequireAuthorization(FinancePermissions.LedgerRead)
+            .Produces<JournalEntryView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/ledger/entries", PostEntryAsync)
-            .RequireAuthorization(FinancePermissions.LedgerWrite);
+            .RequireAuthorization(FinancePermissions.LedgerWrite)
+            .Produces<object>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/ledger/entries/{entryId:guid}/void", VoidEntryAsync)
-            .RequireAuthorization(FinancePermissions.LedgerWrite);
+            .RequireAuthorization(FinancePermissions.LedgerWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // ---- Períodos e fecho ----
         group.MapGet("/ledger/periods", ListPeriodsAsync)
-            .RequireAuthorization(FinancePermissions.LedgerRead);
+            .RequireAuthorization(FinancePermissions.LedgerRead)
+            .Produces<IReadOnlyList<AccountingPeriodView>>();
 
         group.MapPost("/ledger/periods", OpenPeriodAsync)
-            .RequireAuthorization(FinancePermissions.LedgerWrite);
+            .RequireAuthorization(FinancePermissions.LedgerWrite)
+            .Produces<object>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // **Fechar e reabrir são a mesma permissão, e mais restrita que
         // lançar.** Reabrir faz números já dados por definitivos voltarem a
         // mexer-se — é do mesmo calibre que abrir uma série de documento.
         group.MapPost("/ledger/periods/{fiscalYear:int}/{number:int}/closure", ClosePeriodAsync)
-            .RequireAuthorization(FinancePermissions.LedgerClose);
+            .RequireAuthorization(FinancePermissions.LedgerClose)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/ledger/periods/{fiscalYear:int}/{number:int}/reopening", ReopenPeriodAsync)
-            .RequireAuthorization(FinancePermissions.LedgerClose);
+            .RequireAuthorization(FinancePermissions.LedgerClose)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // ---- Balancete ----
         group.MapGet("/ledger/trial-balance", TrialBalanceAsync)
-            .RequireAuthorization(FinancePermissions.LedgerRead);
+            .RequireAuthorization(FinancePermissions.LedgerRead)
+            .Produces<TrialBalanceView>();
 
         // ---- Regras de postagem ----
         //
         // Definir uma regra decide como **todos** os documentos futuros lançam.
         // Fica com quem fecha períodos, não com quem lança um a um.
         group.MapGet("/ledger/posting-rules", ListPostingRulesAsync)
-            .RequireAuthorization(FinancePermissions.LedgerRead);
+            .RequireAuthorization(FinancePermissions.LedgerRead)
+            .Produces<IReadOnlyList<PostingRuleView>>();
 
         group.MapPost("/ledger/posting-rules", DefinePostingRuleAsync)
-            .RequireAuthorization(FinancePermissions.LedgerClose);
+            .RequireAuthorization(FinancePermissions.LedgerClose)
+            .Produces<object>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/ledger/posting-rules/{ruleId:guid}/deactivation", DeactivatePostingRuleAsync)
-            .RequireAuthorization(FinancePermissions.LedgerClose);
+            .RequireAuthorization(FinancePermissions.LedgerClose)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // ---- Versões do plano de contas ----
         group.MapGet("/ledger/chart-versions", ListChartVersionsAsync)
-            .RequireAuthorization(FinancePermissions.LedgerRead);
+            .RequireAuthorization(FinancePermissions.LedgerRead)
+            .Produces<IReadOnlyList<ChartOfAccountsVersionView>>();
 
         group.MapPost("/ledger/chart-versions", CreateChartVersionAsync)
-            .RequireAuthorization(FinancePermissions.LedgerClose);
+            .RequireAuthorization(FinancePermissions.LedgerClose)
+            .Produces<object>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // ---- Regras contabilísticas ----
         group.MapGet("/ledger/accounting-rules", ListAccountingRulesAsync)
-            .RequireAuthorization(FinancePermissions.LedgerRead);
+            .RequireAuthorization(FinancePermissions.LedgerRead)
+            .Produces<IReadOnlyList<AccountingRuleView>>();
 
         group.MapPost("/ledger/accounting-rules", CreateAccountingRuleAsync)
-            .RequireAuthorization(FinancePermissions.LedgerClose);
+            .RequireAuthorization(FinancePermissions.LedgerClose)
+            .Produces<object>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/ledger/accounting-rules/{ruleId:guid}/deactivation", DeactivateAccountingRuleAsync)
-            .RequireAuthorization(FinancePermissions.LedgerClose);
+            .RequireAuthorization(FinancePermissions.LedgerClose)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // ---- Planeamento ----
         group.MapGet("/planning/cost-centres", ListCostCentresAsync)
-            .RequireAuthorization(FinancePermissions.PlanningRead);
+            .RequireAuthorization(FinancePermissions.PlanningRead)
+            .Produces<IReadOnlyList<CostCentreView>>();
 
         group.MapPost("/planning/cost-centres", OpenCostCentreAsync)
-            .RequireAuthorization(FinancePermissions.PlanningWrite);
+            .RequireAuthorization(FinancePermissions.PlanningWrite)
+            .Produces<object>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/planning/budgets", ListBudgetsAsync)
-            .RequireAuthorization(FinancePermissions.PlanningRead);
+            .RequireAuthorization(FinancePermissions.PlanningRead)
+            .Produces<IReadOnlyList<BudgetView>>();
 
         group.MapPost("/planning/budgets", DraftBudgetAsync)
-            .RequireAuthorization(FinancePermissions.PlanningWrite);
+            .RequireAuthorization(FinancePermissions.PlanningWrite)
+            .Produces<object>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/planning/budgets/{budgetId:guid}/revision", ReviseBudgetAsync)
-            .RequireAuthorization(FinancePermissions.PlanningWrite);
+            .RequireAuthorization(FinancePermissions.PlanningWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // **Permissão própria, e é BR-8 na forma do catálogo:** quem elabora o
         // orçamento não é quem lhe dá força. Senão bastava subir o tecto para o
         // próprio pedido passar a caber.
         group.MapPost("/planning/budgets/{budgetId:guid}/approval", ApproveBudgetAsync)
-            .RequireAuthorization(FinancePermissions.BudgetsApprove);
+            .RequireAuthorization(FinancePermissions.BudgetsApprove)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/planning/cost-forecasts", ListForecastsAsync)
-            .RequireAuthorization(FinancePermissions.PlanningRead);
+            .RequireAuthorization(FinancePermissions.PlanningRead)
+            .Produces<IReadOnlyList<CostForecastView>>();
 
         group.MapPost("/planning/cost-forecasts", RecordForecastAsync)
-            .RequireAuthorization(FinancePermissions.PlanningWrite);
+            .RequireAuthorization(FinancePermissions.PlanningWrite)
+            .Produces<object>(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return endpoints;
     }
