@@ -134,6 +134,29 @@ Test-Case "1. Pedido pendente foi criado, com o requisitante certo" {
     "pedido $requestId, PendingApproval do lado de payroll"
 }
 
+Test-Case "1a. Requisitante atribuido ao proprio passo nao aparece na sua caixa (BR-2)" {
+    # $rh submeteu o pedido. Atribui-lo tambem ao cargo aprovador simula o
+    # caso real: uma pessoa que ocupa o cargo aprovador e tambem submete o
+    # pedido. BR-2 recusa-lhe sempre a decisao (ApprovalRequest.Decide) --
+    # aparecer em "pendingFor=$rh" seria a caixa de entrada prometer uma
+    # decisao que o servidor nunca vai deixar registar.
+    Invoke-RestMethod "$base/hr/employees/$rh/positions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+        -Body (@{ positionId = $cargo } | ConvertTo-Json) | Out-Null
+
+    $caixaDoRequisitante = Invoke-RestMethod "$base/approval/requests?pendingFor=$rh" -Headers $adminHeaders
+    if ($caixaDoRequisitante | Where-Object { $_.requestId -eq $requestId }) {
+        throw "o pedido apareceu na caixa de quem o submeteu"
+    }
+
+    # Controlo: o aprovador de facto continua a ve-lo -- o filtro nao ficou
+    # vazio para todos, so exclui o requisitante.
+    $caixaDoAprovador = Invoke-RestMethod "$base/approval/requests?pendingFor=$aprovador" -Headers $adminHeaders
+    if (-not ($caixaDoAprovador | Where-Object { $_.requestId -eq $requestId })) {
+        throw "o aprovador de facto deixou de ver o pedido"
+    }
+    "ausente da caixa do requisitante, presente na do aprovador de facto"
+}
+
 Test-Case "2. Quem nao submeteu nao cancela (K18)" {
     # $rh submeteu a folha (abriu-a com a sua conta) -- e quem approval regista como
     # RequestedByEmployeeId. $aprovador esta atribuido ao passo, mas nao e o
