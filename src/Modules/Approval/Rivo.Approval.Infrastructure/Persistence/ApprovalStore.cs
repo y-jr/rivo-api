@@ -59,8 +59,16 @@ public sealed class ApprovalStore(ApprovalDbContext context) : IApprovalStore
         {
             // A caixa de entrada: pedidos abertos em que esta pessoa tem uma
             // atribuição por decidir no passo em curso.
+            //
+            // Exclui quem submeteu o próprio pedido, mesmo que apareça
+            // atribuído ao passo em curso — BR-2 recusa-lhe sempre a decisão
+            // (ApprovalRequest.Decide, "nem sequer alguém atribuído por
+            // engano ao próprio pedido a contorna"), e mostrar aqui um
+            // pedido que a pessoa nunca vai conseguir decidir é a caixa de
+            // entrada a mentir sobre o que está mesmo pendente para ela.
             query = query.Where(r =>
                 (r.Status == ApprovalStatus.InProgress || r.Status == ApprovalStatus.ClarificationRequested)
+                && r.RequestedByEmployeeId != approver
                 && r.Assignments.Any(a =>
                     a.ApproverEmployeeId == approver
                     && !a.HasDecided
