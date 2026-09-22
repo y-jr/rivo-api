@@ -17,31 +17,48 @@ public static class FinanceModuleEndpoints
         var group = endpoints.MapGroup("/finance");
 
         group.MapGet("/series", ListSeriesAsync)
-            .RequireAuthorization(FinancePermissions.InvoicesRead);
+            .RequireAuthorization(FinancePermissions.InvoicesRead)
+            .Produces<IReadOnlyList<DocumentSeriesView>>();
 
         // Abrir uma série paralela é a forma óbvia de emitir fora da sequência
         // auditável. Permissão própria, só Admin.
         group.MapPost("/series", OpenSeriesAsync)
-            .RequireAuthorization(FinancePermissions.SeriesWrite);
+            .RequireAuthorization(FinancePermissions.SeriesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/sales-invoices", ListAsync)
-            .RequireAuthorization(FinancePermissions.InvoicesRead);
+            .RequireAuthorization(FinancePermissions.InvoicesRead)
+            .Produces<IReadOnlyList<SalesInvoiceSummary>>();
 
         group.MapGet("/sales-invoices/{invoiceId:guid}", GetAsync)
-            .RequireAuthorization(FinancePermissions.InvoicesRead);
+            .RequireAuthorization(FinancePermissions.InvoicesRead)
+            .Produces<SalesInvoiceView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/sales-invoices", IssueAsync)
-            .RequireAuthorization(FinancePermissions.InvoicesWrite);
+            .RequireAuthorization(FinancePermissions.InvoicesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status501NotImplemented);
 
         // Anular, nunca eliminar (BR-14). Não há DELETE nesta superfície, e a
         // permissão é distinta de emitir: desfazer não é a mesma autorização
         // que fazer.
         group.MapPost("/sales-invoices/{invoiceId:guid}/cancellation", CancelAsync)
-            .RequireAuthorization(FinancePermissions.InvoicesCancel);
+            .RequireAuthorization(FinancePermissions.InvoicesCancel)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // O saldo: o que falta receber, e de onde vem esse número.
         group.MapGet("/sales-invoices/{invoiceId:guid}/balance", BalanceAsync)
-            .RequireAuthorization(FinancePermissions.InvoicesRead);
+            .RequireAuthorization(FinancePermissions.InvoicesRead)
+            .Produces<InvoiceBalanceView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // --- O papel dos documentos (ADR-066, fecha o K23) ---
         //
@@ -49,69 +66,121 @@ public static class FinanceModuleEndpoints
         // recursos e não um parâmetro, porque são actos diferentes com
         // permissões diferentes — ver `FinancePermissions.DocumentsDeliver`.
         group.MapGet("/sales-invoices/{invoiceId:guid}/document", GetInvoiceDocumentAsync)
-            .RequireAuthorization(FinancePermissions.InvoicesRead);
+            .RequireAuthorization(FinancePermissions.InvoicesRead)
+            .Produces(StatusCodes.Status200OK, contentType: "application/pdf")
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status501NotImplemented);
 
         group.MapPost("/sales-invoices/{invoiceId:guid}/delivery", DeliverInvoiceAsync)
-            .RequireAuthorization(FinancePermissions.DocumentsDeliver);
+            .RequireAuthorization(FinancePermissions.DocumentsDeliver)
+            .Produces(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status501NotImplemented)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
         // Nota de crédito. **Anular não é a mesma coisa:** anular apaga a
         // factura inteira do mapa de dívida; creditar reduz o que ela pede e
         // deixa rasto do quanto e do porquê.
         group.MapGet("/credit-notes", ListCreditNotesAsync)
-            .RequireAuthorization(FinancePermissions.InvoicesRead);
+            .RequireAuthorization(FinancePermissions.InvoicesRead)
+            .Produces<IReadOnlyList<CreditNoteView>>();
 
         group.MapGet("/credit-notes/{creditNoteId:guid}", GetCreditNoteAsync)
-            .RequireAuthorization(FinancePermissions.InvoicesRead);
+            .RequireAuthorization(FinancePermissions.InvoicesRead)
+            .Produces<CreditNoteView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Emitir uma nota de crédito é devolver valor. Fica com a permissão de
         // anular, não com a de emitir: quem factura no dia-a-dia não decide
         // sozinho reduzir o que se cobra.
         group.MapPost("/credit-notes", IssueCreditNoteAsync)
-            .RequireAuthorization(FinancePermissions.InvoicesCancel);
+            .RequireAuthorization(FinancePermissions.InvoicesCancel)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status501NotImplemented);
 
         group.MapPost("/credit-notes/{creditNoteId:guid}/cancellation", CancelCreditNoteAsync)
-            .RequireAuthorization(FinancePermissions.InvoicesCancel);
+            .RequireAuthorization(FinancePermissions.InvoicesCancel)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/credit-notes/{creditNoteId:guid}/document", GetCreditNoteDocumentAsync)
-            .RequireAuthorization(FinancePermissions.InvoicesRead);
+            .RequireAuthorization(FinancePermissions.InvoicesRead)
+            .Produces(StatusCodes.Status200OK, contentType: "application/pdf")
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status501NotImplemented);
 
         group.MapPost("/credit-notes/{creditNoteId:guid}/delivery", DeliverCreditNoteAsync)
-            .RequireAuthorization(FinancePermissions.DocumentsDeliver);
+            .RequireAuthorization(FinancePermissions.DocumentsDeliver)
+            .Produces(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status501NotImplemented)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
         // Recibos.
         group.MapGet("/receipts", ListReceiptsAsync)
-            .RequireAuthorization(FinancePermissions.ReceiptsRead);
+            .RequireAuthorization(FinancePermissions.ReceiptsRead)
+            .Produces<IReadOnlyList<ReceiptView>>();
 
         group.MapGet("/receipts/{receiptId:guid}", GetReceiptAsync)
-            .RequireAuthorization(FinancePermissions.ReceiptsRead);
+            .RequireAuthorization(FinancePermissions.ReceiptsRead)
+            .Produces<ReceiptView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/receipts", RegisterReceiptAsync)
-            .RequireAuthorization(FinancePermissions.ReceiptsWrite);
+            .RequireAuthorization(FinancePermissions.ReceiptsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Estornar um recebimento faz a dívida voltar a existir. Permissão de
         // anulação, não de registo.
         group.MapPost("/receipts/{receiptId:guid}/cancellation", CancelReceiptAsync)
-            .RequireAuthorization(FinancePermissions.InvoicesCancel);
+            .RequireAuthorization(FinancePermissions.InvoicesCancel)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/receipts/{receiptId:guid}/document", GetReceiptDocumentAsync)
-            .RequireAuthorization(FinancePermissions.ReceiptsRead);
+            .RequireAuthorization(FinancePermissions.ReceiptsRead)
+            .Produces(StatusCodes.Status200OK, contentType: "application/pdf")
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status501NotImplemented);
 
         group.MapPost("/receipts/{receiptId:guid}/delivery", DeliverReceiptAsync)
-            .RequireAuthorization(FinancePermissions.DocumentsDeliver);
+            .RequireAuthorization(FinancePermissions.DocumentsDeliver)
+            .Produces(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status501NotImplemented)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
         // Pedidos de confirmação de pagamento (ADR-044) — a submissão em si
         // não tem endpoint aqui: passa sempre pelo Portal do Cliente, que
         // resolve "o próprio cliente" antes de chegar a `finance`.
         group.MapGet("/payment-claims", ListPaymentClaimsAsync)
-            .RequireAuthorization(FinancePermissions.ReceiptsRead);
+            .RequireAuthorization(FinancePermissions.ReceiptsRead)
+            .Produces<IReadOnlyList<PaymentClaimView>>();
 
         // Confirmar dispara o recibo (RegisterReceipt) — mesma permissão de
         // registar um, porque é o que isto faz de facto.
         group.MapPost("/payment-claims/{claimId:guid}/confirmation", ConfirmPaymentClaimAsync)
-            .RequireAuthorization(FinancePermissions.ReceiptsWrite);
+            .RequireAuthorization(FinancePermissions.ReceiptsWrite)
+            .Produces(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/payment-claims/{claimId:guid}/rejection", RejectPaymentClaimAsync)
-            .RequireAuthorization(FinancePermissions.ReceiptsWrite);
+            .RequireAuthorization(FinancePermissions.ReceiptsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         return endpoints;
     }
