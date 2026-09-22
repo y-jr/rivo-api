@@ -97,7 +97,7 @@ public static class ProcurementModuleEndpoints
         var fornecedor = await getSupplier.ExecuteAsync(supplierId, cancellationToken);
 
         return fornecedor is null
-            ? Results.NotFound(new { erro = "Fornecedor não encontrado." })
+            ? Results.Problem("Fornecedor não encontrado.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(fornecedor);
     }
 
@@ -123,14 +123,13 @@ public static class ProcurementModuleEndpoints
                     new { supplierId = resultado.SupplierId }),
 
             RegisterSupplierOutcome.DuplicateTaxId =>
-                Results.Conflict(new
-                {
-                    erro = "Já existe um fornecedor com este NIF.",
-                    supplierId = resultado.SupplierId,
-                }),
+                Results.Problem(
+                    "Já existe um fornecedor com este NIF.",
+                    statusCode: StatusCodes.Status409Conflict,
+                    extensions: new Dictionary<string, object?> { ["supplierId"] = resultado.SupplierId }),
 
             RegisterSupplierOutcome.Rejected =>
-                Results.BadRequest(new { erro = resultado.Error }),
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status400BadRequest),
 
             _ => Results.Problem("Resultado inesperado ao registar o fornecedor."),
         };
@@ -155,8 +154,10 @@ public static class ProcurementModuleEndpoints
         return resultado.Outcome switch
         {
             UpdateSupplierOutcome.Updated => Results.NoContent(),
-            UpdateSupplierOutcome.NotFound => Results.NotFound(new { erro = "Fornecedor não encontrado." }),
-            UpdateSupplierOutcome.Rejected => Results.BadRequest(new { erro = resultado.Error }),
+            UpdateSupplierOutcome.NotFound =>
+                Results.Problem("Fornecedor não encontrado.", statusCode: StatusCodes.Status404NotFound),
+            UpdateSupplierOutcome.Rejected =>
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status400BadRequest),
             _ => Results.Problem("Resultado inesperado ao actualizar o fornecedor."),
         };
     }
@@ -173,7 +174,7 @@ public static class ProcurementModuleEndpoints
 
         return encontrado
             ? Results.NoContent()
-            : Results.NotFound(new { erro = "Fornecedor não encontrado." });
+            : Results.Problem("Fornecedor não encontrado.", statusCode: StatusCodes.Status404NotFound);
     }
 
     private static async Task<IResult> ListRequisitionsAsync(
@@ -192,7 +193,7 @@ public static class ProcurementModuleEndpoints
         var requisicao = await getRequisition.ExecuteAsync(requisitionId, cancellationToken);
 
         return requisicao is null
-            ? Results.NotFound(new { erro = "Requisição não encontrada." })
+            ? Results.Problem("Requisição não encontrada.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(requisicao);
     }
 
@@ -209,11 +210,10 @@ public static class ProcurementModuleEndpoints
         // Quem requisita vem do token (ADR-057).
         if (request.RequestedByEmployeeId is not null)
         {
-            return Results.BadRequest(new
-            {
-                erro = "A requisição já não aceita requestedByEmployeeId. Quem requisita é a "
-                     + "conta autenticada, e tem de estar associada a um colaborador.",
-            });
+            return Results.Problem(
+                "A requisição já não aceita requestedByEmployeeId. Quem requisita é a "
+                    + "conta autenticada, e tem de estar associada a um colaborador.",
+                statusCode: StatusCodes.Status400BadRequest);
         }
 
         var contexto = BuildAuditContext(http);
@@ -247,10 +247,10 @@ public static class ProcurementModuleEndpoints
                     }),
 
             OpenRequisitionOutcome.RequesterNotFound =>
-                Results.NotFound(new { erro = resultado.Error }),
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status404NotFound),
 
             OpenRequisitionOutcome.Rejected =>
-                Results.BadRequest(new { erro = resultado.Error }),
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status400BadRequest),
 
             _ => Results.Problem("Resultado inesperado ao abrir a requisição."),
         };
@@ -277,7 +277,7 @@ public static class ProcurementModuleEndpoints
                     }),
 
             SubmitRequisitionOutcome.NotFound =>
-                Results.NotFound(new { erro = resultado.Error }),
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status404NotFound),
 
             // 501 e não 409: a capacidade não está ligada neste ambiente. Mesma
             // tradução que `hr` faz para o mesmo caso.
@@ -310,7 +310,7 @@ public static class ProcurementModuleEndpoints
                 Results.Accepted(value: new { estado = resultado.Status }),
 
             RequisitionDecisionOutcome.NotFound =>
-                Results.NotFound(new { erro = resultado.Error }),
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status404NotFound),
 
             _ => Results.Problem("Resultado inesperado ao aplicar a decisão."),
         };
@@ -329,7 +329,8 @@ public static class ProcurementModuleEndpoints
         return resultado.Outcome switch
         {
             CancelRequisitionOutcome.Cancelled => Results.NoContent(),
-            CancelRequisitionOutcome.NotFound => Results.NotFound(new { erro = resultado.Error }),
+            CancelRequisitionOutcome.NotFound =>
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status404NotFound),
             CancelRequisitionOutcome.Rejected =>
                 Results.Problem(resultado.Error, statusCode: StatusCodes.Status409Conflict),
             _ => Results.Problem("Resultado inesperado ao cancelar a requisição."),
@@ -351,7 +352,7 @@ public static class ProcurementModuleEndpoints
         var ordem = await getOrder.ExecuteAsync(purchaseOrderId, cancellationToken);
 
         return ordem is null
-            ? Results.NotFound(new { erro = "Ordem de compra não encontrada." })
+            ? Results.Problem("Ordem de compra não encontrada.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(ordem);
     }
 
@@ -387,7 +388,7 @@ public static class ProcurementModuleEndpoints
                     }),
 
             IssuePurchaseOrderOutcome.RequisitionNotFound or IssuePurchaseOrderOutcome.SupplierNotFound =>
-                Results.NotFound(new { erro = resultado.Error }),
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status404NotFound),
 
             // 409 nos três: é o estado que impede, e não o corpo do pedido.
             // `ExceedsApproved` em particular não é um pedido inválido — é
@@ -398,7 +399,7 @@ public static class ProcurementModuleEndpoints
                 Results.Problem(resultado.Error, statusCode: StatusCodes.Status409Conflict),
 
             IssuePurchaseOrderOutcome.Rejected =>
-                Results.BadRequest(new { erro = resultado.Error }),
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status400BadRequest),
 
             _ => Results.Problem("Resultado inesperado ao emitir a ordem de compra."),
         };
@@ -417,7 +418,8 @@ public static class ProcurementModuleEndpoints
         return resultado.Outcome switch
         {
             CancelPurchaseOrderOutcome.Cancelled => Results.NoContent(),
-            CancelPurchaseOrderOutcome.NotFound => Results.NotFound(new { erro = resultado.Error }),
+            CancelPurchaseOrderOutcome.NotFound =>
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status404NotFound),
             CancelPurchaseOrderOutcome.Rejected =>
                 Results.Problem(resultado.Error, statusCode: StatusCodes.Status409Conflict),
             _ => Results.Problem("Resultado inesperado ao cancelar a ordem de compra."),
@@ -438,7 +440,7 @@ public static class ProcurementModuleEndpoints
         var recepcao = await getReceipt.ExecuteAsync(goodsReceiptId, cancellationToken);
 
         return recepcao is null
-            ? Results.NotFound(new { erro = "Recepção não encontrada." })
+            ? Results.Problem("Recepção não encontrada.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(recepcao);
     }
 
@@ -462,11 +464,10 @@ public static class ProcurementModuleEndpoints
         // um campo novo e explícito, não este.
         if (request.ReceivedByEmployeeId is not null)
         {
-            return Results.BadRequest(new
-            {
-                erro = "A recepção já não aceita receivedByEmployeeId. Quem regista é a conta "
-                     + "autenticada, e tem de estar associada a um colaborador.",
-            });
+            return Results.Problem(
+                "A recepção já não aceita receivedByEmployeeId. Quem regista é a conta "
+                    + "autenticada, e tem de estar associada a um colaborador.",
+                statusCode: StatusCodes.Status400BadRequest);
         }
 
         var contexto = BuildAuditContext(http);
@@ -494,7 +495,7 @@ public static class ProcurementModuleEndpoints
                     new { goodsReceiptId = resultado.GoodsReceiptId, estado = "Registered" }),
 
             RegisterGoodsReceiptOutcome.OrderNotFound or RegisterGoodsReceiptOutcome.ReceiverNotFound =>
-                Results.NotFound(new { erro = resultado.Error }),
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status404NotFound),
 
             // 409 nos três: é o estado — da ordem, da linha, ou do acumulado
             // recebido — que impede, e não o corpo do pedido.
@@ -504,7 +505,7 @@ public static class ProcurementModuleEndpoints
                 Results.Problem(resultado.Error, statusCode: StatusCodes.Status409Conflict),
 
             RegisterGoodsReceiptOutcome.Rejected =>
-                Results.BadRequest(new { erro = resultado.Error }),
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status400BadRequest),
 
             _ => Results.Problem("Resultado inesperado ao registar a recepção."),
         };
@@ -523,7 +524,8 @@ public static class ProcurementModuleEndpoints
         return resultado.Outcome switch
         {
             CancelGoodsReceiptOutcome.Cancelled => Results.NoContent(),
-            CancelGoodsReceiptOutcome.NotFound => Results.NotFound(new { erro = resultado.Error }),
+            CancelGoodsReceiptOutcome.NotFound =>
+                Results.Problem(resultado.Error, statusCode: StatusCodes.Status404NotFound),
             CancelGoodsReceiptOutcome.Rejected =>
                 Results.Problem(resultado.Error, statusCode: StatusCodes.Status409Conflict),
             _ => Results.Problem("Resultado inesperado ao anular a recepção."),
