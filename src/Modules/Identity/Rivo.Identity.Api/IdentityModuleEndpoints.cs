@@ -47,19 +47,33 @@ public static class IdentityModuleEndpoints
         // é quem a empresa decidiu que tem.
         //
         // Quem substitui é o par de rotas de convite, abaixo.
-        var entrar = group.MapPost("/login", LogInAsync);
-        var entrarComGoogle = group.MapPost("/login/google", LogInWithGoogleAsync);
+        var entrar = group.MapPost("/login", LogInAsync)
+            .Produces<LoginResponse>()
+            .Produces(StatusCodes.Status401Unauthorized);
+
+        var entrarComGoogle = group.MapPost("/login/google", LogInWithGoogleAsync)
+            .Produces<LoginResponse>()
+            .Produces(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status501NotImplemented);
 
         // Aceitar um convite é público por necessidade: quem aceita ainda não
         // tem como se autenticar. O que o protege é o testemunho — de uso
         // único, com prazo, e entregue só no endereço de correio da conta.
-        var aceitarConvite = group.MapPost("/invitations/acceptance", AcceptInvitationAsync);
+        var aceitarConvite = group.MapPost("/invitations/acceptance", AcceptInvitationAsync)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem();
 
         // Recuperar a password é público pela mesma razão, e mais forte: quem a
         // perdeu não tem como se autenticar de forma nenhuma (ADR-065). As duas
         // rotas do par respondem sem revelar se o endereço tem conta.
-        var pedirRecuperacao = group.MapPost("/password-recovery", RecoverPasswordAsync);
-        var concluirRecuperacao = group.MapPost("/password-recovery/completion", CompletePasswordRecoveryAsync);
+        var pedirRecuperacao = group.MapPost("/password-recovery", RecoverPasswordAsync)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status501NotImplemented);
+
+        var concluirRecuperacao = group.MapPost("/password-recovery/completion", CompletePasswordRecoveryAsync)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem();
 
         if (!string.IsNullOrWhiteSpace(rateLimitPolicy))
         {
@@ -82,41 +96,74 @@ public static class IdentityModuleEndpoints
         // repor passwords e activar contas, e pela mesma razão: decide **quem**
         // uma pessoa é no sistema.
         group.MapPost("/invitations", InviteUserAsync)
-            .RequireAuthorization(IdentityPermissions.UsersWrite);
+            .RequireAuthorization(IdentityPermissions.UsersWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status501NotImplemented);
 
-        group.MapPost("/logout", LogOutAsync).RequireAuthorization();
-        group.MapGet("/me", GetCurrentUser).RequireAuthorization();
+        group.MapPost("/logout", LogOutAsync)
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status204NoContent);
+
+        group.MapGet("/me", GetCurrentUser)
+            .RequireAuthorization()
+            .Produces<CurrentUserResponse>();
 
         // Autorização declarada aqui, no endpoint. Os handlers não verificam
         // permissões: se o pedido chega ao handler, já está autorizado.
         group.MapGet("/users", ListUsersAsync)
-            .RequireAuthorization(IdentityPermissions.UsersRead);
+            .RequireAuthorization(IdentityPermissions.UsersRead)
+            .Produces<IReadOnlyList<UserSummary>>();
 
         group.MapGet("/roles", ListRoles)
-            .RequireAuthorization(IdentityPermissions.RolesRead);
+            .RequireAuthorization(IdentityPermissions.RolesRead)
+            .Produces<IReadOnlyList<AccessProfileView>>();
 
         group.MapPost("/users/{userId:guid}/roles", AssignRoleAsync)
-            .RequireAuthorization(IdentityPermissions.RolesAssign);
+            .RequireAuthorization(IdentityPermissions.RolesAssign)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
 
         // --- Conta própria. Só exigem sessão válida: o recurso é quem chama.
 
-        group.MapPost("/me/password", ChangePasswordAsync).RequireAuthorization();
-        group.MapGet("/me/sessions", ListSessionsAsync).RequireAuthorization();
+        group.MapPost("/me/password", ChangePasswordAsync)
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .ProducesValidationProblem();
+
+        group.MapGet("/me/sessions", ListSessionsAsync)
+            .RequireAuthorization()
+            .Produces<IReadOnlyList<SessionView>>()
+            .Produces(StatusCodes.Status401Unauthorized);
 
         group.MapPost("/me/sessions/{sessionId:guid}/revocation", RevokeSessionAsync)
-            .RequireAuthorization();
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // --- Contas de terceiros. Exigem permissão.
 
         group.MapPost("/users/{userId:guid}/password-reset", ResetPasswordAsync)
-            .RequireAuthorization(IdentityPermissions.UsersWrite);
+            .RequireAuthorization(IdentityPermissions.UsersWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesValidationProblem();
 
         group.MapPost("/users/{userId:guid}/status", SetStatusAsync)
-            .RequireAuthorization(IdentityPermissions.UsersWrite);
+            .RequireAuthorization(IdentityPermissions.UsersWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesValidationProblem();
 
         group.MapPost("/users/{userId:guid}/roles/{profile}/removal", RemoveRoleAsync)
-            .RequireAuthorization(IdentityPermissions.RolesAssign);
+            .RequireAuthorization(IdentityPermissions.RolesAssign)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         return endpoints;
     }

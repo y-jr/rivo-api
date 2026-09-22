@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Rivo.CustomerPortal.Application;
+using Rivo.Finance.Contracts;
 
 namespace Rivo.CustomerPortal.Api;
 
@@ -38,30 +39,67 @@ public static class CustomerPortalModuleEndpoints
         // consequência de estar autenticado, seja qual for o perfil. Nunca
         // aceita `customerId`: devolve sempre e só o cliente do próprio
         // chamador.
-        group.MapGet("/me", GetMyOverviewAsync).RequireAuthorization();
+        group.MapGet("/me", GetMyOverviewAsync)
+            .RequireAuthorization()
+            .Produces<MyOverviewView>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesValidationProblem();
 
-        group.MapGet("/me/statement", GetMyStatementAsync).RequireAuthorization();
+        group.MapGet("/me/statement", GetMyStatementAsync)
+            .RequireAuthorization()
+            .Produces<CustomerStatementView>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesValidationProblem();
 
         // Comprovativo de pagamento (ADR-044) — mesma disciplina de "o
         // próprio": nunca aceita `customerId`, resolve-o do token.
-        group.MapPost("/me/payment-claims", SubmitPaymentProofAsync).RequireAuthorization();
+        group.MapPost("/me/payment-claims", SubmitPaymentProofAsync)
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesValidationProblem();
 
-        group.MapGet("/me/payment-claims", ListMyPaymentClaimsAsync).RequireAuthorization();
+        group.MapGet("/me/payment-claims", ListMyPaymentClaimsAsync)
+            .RequireAuthorization()
+            .Produces<IReadOnlyList<PaymentClaimView>>()
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         // Mensagens à equipa comercial (ADR-045) — mesma disciplina de "o
         // próprio": nunca aceita `customerId`, resolve-o do token.
-        group.MapPost("/me/messages", SendMessageAsync).RequireAuthorization();
+        group.MapPost("/me/messages", SendMessageAsync)
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesValidationProblem();
 
-        group.MapGet("/me/messages", ListMyMessagesAsync).RequireAuthorization();
+        group.MapGet("/me/messages", ListMyMessagesAsync)
+            .RequireAuthorization()
+            .Produces<IReadOnlyList<Rivo.Messaging.Contracts.ConversationView>>()
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         // Tickets de suporte (ADR-046) — mesma disciplina de "o próprio".
         // Ao contrário de mensagens directas, o cliente pode ter vários
         // abertos ao mesmo tempo, por isso responder exige dizer a qual.
-        group.MapPost("/me/tickets", OpenTicketAsync).RequireAuthorization();
+        group.MapPost("/me/tickets", OpenTicketAsync)
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesValidationProblem();
 
-        group.MapPost("/me/tickets/{conversationId:guid}/messages", AddTicketMessageAsync).RequireAuthorization();
+        group.MapPost("/me/tickets/{conversationId:guid}/messages", AddTicketMessageAsync)
+            .RequireAuthorization()
+            .Produces(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesValidationProblem();
 
-        group.MapGet("/me/tickets", ListMyTicketsAsync).RequireAuthorization();
+        group.MapGet("/me/tickets", ListMyTicketsAsync)
+            .RequireAuthorization()
+            .Produces<IReadOnlyList<Rivo.Messaging.Contracts.ConversationView>>()
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         return endpoints;
     }

@@ -43,22 +43,32 @@ public static class SettingsModuleEndpoints
         // AccessProfiles.Catalogue em `identity`. Inventar uma permissão
         // própria duplicaria essa decisão em vez de a reflectir.
         group.MapGet("/overview", GetOverviewAsync)
-            .RequireAuthorization(IdentityPermissions.RolesRead, ApprovalPermissions.PoliciesRead);
+            .RequireAuthorization(IdentityPermissions.RolesRead, ApprovalPermissions.PoliciesRead)
+            .Produces<AdministrationOverview>();
 
         // Importação em massa via CSV (ADR-047): cada uma atrás da mesma
         // permissão de escrita que já protege o formulário normal da
         // entidade — sem permissão nova, a audiência é a mesma.
         group.MapPost("/import/customers", ImportCustomersAsync)
             .RequireAuthorization(CommercialPermissions.CustomersWrite)
-            .DisableAntiforgery();
+            .DisableAntiforgery()
+            .Produces<CsvImportSummary>()
+            .Produces(StatusCodes.Status400BadRequest)
+            .ProducesValidationProblem();
 
         group.MapPost("/import/employees", ImportEmployeesAsync)
             .RequireAuthorization(HrPermissions.EmployeesWrite)
-            .DisableAntiforgery();
+            .DisableAntiforgery()
+            .Produces<CsvImportSummary>()
+            .Produces(StatusCodes.Status400BadRequest)
+            .ProducesValidationProblem();
 
         group.MapPost("/import/suppliers", ImportSuppliersAsync)
             .RequireAuthorization(ProcurementPermissions.SuppliersWrite)
-            .DisableAntiforgery();
+            .DisableAntiforgery()
+            .Produces<CsvImportSummary>()
+            .Produces(StatusCodes.Status400BadRequest)
+            .ProducesValidationProblem();
 
         return endpoints;
     }

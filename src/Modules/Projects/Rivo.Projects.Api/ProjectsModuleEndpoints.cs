@@ -16,46 +16,86 @@ public static class ProjectsModuleEndpoints
         var group = endpoints.MapGroup("/projects");
 
         group.MapGet("/", ListAsync)
-            .RequireAuthorization(ProjectsPermissions.ProjectsRead);
+            .RequireAuthorization(ProjectsPermissions.ProjectsRead)
+            .Produces<IReadOnlyList<ProjectView>>();
 
         group.MapGet("/{projectId:guid}", GetAsync)
-            .RequireAuthorization(ProjectsPermissions.ProjectsRead);
+            .RequireAuthorization(ProjectsPermissions.ProjectsRead)
+            .Produces<ProjectView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/", OpenAsync)
-            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem();
 
         // Nunca eliminar — fechar é o que existe.
         group.MapPost("/{projectId:guid}/closure", CloseAsync)
-            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/{projectId:guid}/milestones", AddMilestoneAsync)
-            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/{projectId:guid}/milestones/{milestoneId:guid}/reached", ReachMilestoneAsync)
-            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/{projectId:guid}/tasks", AddTaskAsync)
-            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/{projectId:guid}/tasks/{taskId:guid}/assignment", AssignTaskAsync)
-            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/{projectId:guid}/tasks/{taskId:guid}/completion", CompleteTaskAsync)
-            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Nunca eliminar — cancelar é o que existe (BR-14).
         group.MapPost("/{projectId:guid}/tasks/{taskId:guid}/cancellation", CancelTaskAsync)
-            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Define ou revê o orçamento — o mesmo endpoint serve os dois casos.
         group.MapPost("/{projectId:guid}/budget", SetBudgetAsync)
-            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/{projectId:guid}/allocations", AllocateResourceAsync)
-            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/{projectId:guid}/allocations/{allocationId:guid}/end", EndAllocationAsync)
-            .RequireAuthorization(ProjectsPermissions.ProjectsWrite);
+            .RequireAuthorization(ProjectsPermissions.ProjectsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return endpoints;
     }

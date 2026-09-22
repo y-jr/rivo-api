@@ -45,7 +45,9 @@ public static class DashboardModuleEndpoints
         var group = endpoints.MapGroup("/dashboard");
 
         group.MapGet("/overview", GetOverviewAsync)
-            .RequireAuthorization(DashboardPermissions.OverviewRead);
+            .RequireAuthorization(DashboardPermissions.OverviewRead)
+            .Produces<ExecutiveOverviewView>()
+            .ProducesValidationProblem();
 
         return endpoints;
     }
