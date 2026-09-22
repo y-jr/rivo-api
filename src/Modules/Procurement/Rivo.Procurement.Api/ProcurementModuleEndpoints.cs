@@ -16,69 +16,118 @@ public static class ProcurementModuleEndpoints
         var group = endpoints.MapGroup("/procurement");
 
         group.MapGet("/suppliers", ListSuppliersAsync)
-            .RequireAuthorization(ProcurementPermissions.SuppliersRead);
+            .RequireAuthorization(ProcurementPermissions.SuppliersRead)
+            .Produces<IReadOnlyList<SupplierReference>>();
 
         group.MapGet("/suppliers/{supplierId:guid}", GetSupplierAsync)
-            .RequireAuthorization(ProcurementPermissions.SuppliersRead);
+            .RequireAuthorization(ProcurementPermissions.SuppliersRead)
+            .Produces<SupplierReference>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/suppliers", RegisterSupplierAsync)
-            .RequireAuthorization(ProcurementPermissions.SuppliersWrite);
+            .RequireAuthorization(ProcurementPermissions.SuppliersWrite)
+            .Produces(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/suppliers/{supplierId:guid}/details", UpdateSupplierAsync)
-            .RequireAuthorization(ProcurementPermissions.SuppliersWrite);
+            .RequireAuthorization(ProcurementPermissions.SuppliersWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Desactivar, nunca eliminar (BR-14). Não há DELETE nesta superfície.
         group.MapPost("/suppliers/{supplierId:guid}/status", SetSupplierStatusAsync)
-            .RequireAuthorization(ProcurementPermissions.SuppliersWrite);
+            .RequireAuthorization(ProcurementPermissions.SuppliersWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/requisitions", ListRequisitionsAsync)
-            .RequireAuthorization(ProcurementPermissions.RequisitionsRead);
+            .RequireAuthorization(ProcurementPermissions.RequisitionsRead)
+            .Produces<IReadOnlyList<RequisitionView>>();
 
         group.MapGet("/requisitions/{requisitionId:guid}", GetRequisitionAsync)
-            .RequireAuthorization(ProcurementPermissions.RequisitionsRead);
+            .RequireAuthorization(ProcurementPermissions.RequisitionsRead)
+            .Produces<RequisitionView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/requisitions", OpenRequisitionAsync)
-            .RequireAuthorization(ProcurementPermissions.RequisitionsWrite);
+            .RequireAuthorization(ProcurementPermissions.RequisitionsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Submeter é acto separado de abrir: é ele que congela o que se pede e
         // manda para decisão.
         group.MapPost("/requisitions/{requisitionId:guid}/submission", SubmitRequisitionAsync)
-            .RequireAuthorization(ProcurementPermissions.RequisitionsWrite);
+            .RequireAuthorization(ProcurementPermissions.RequisitionsWrite)
+            .Produces(StatusCodes.Status202Accepted)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status501NotImplemented);
 
         // Ler a decisão de `approval` e aplicá-la. Mesma forma que `hr` usa em
         // `/hr/leave/{id}/approval-outcome`.
         group.MapPost("/requisitions/{requisitionId:guid}/approval-outcome", ApplyDecisionAsync)
-            .RequireAuthorization(ProcurementPermissions.RequisitionsRead);
+            .RequireAuthorization(ProcurementPermissions.RequisitionsRead)
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status202Accepted)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/requisitions/{requisitionId:guid}/cancellation", CancelRequisitionAsync)
-            .RequireAuthorization(ProcurementPermissions.RequisitionsWrite);
+            .RequireAuthorization(ProcurementPermissions.RequisitionsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/orders", ListOrdersAsync)
-            .RequireAuthorization(ProcurementPermissions.OrdersRead);
+            .RequireAuthorization(ProcurementPermissions.OrdersRead)
+            .Produces<IReadOnlyList<PurchaseOrderView>>();
 
         group.MapGet("/orders/{purchaseOrderId:guid}", GetOrderAsync)
-            .RequireAuthorization(ProcurementPermissions.OrdersRead);
+            .RequireAuthorization(ProcurementPermissions.OrdersRead)
+            .Produces<PurchaseOrderView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // A ordem nasce da requisição, e a rota di-lo: nao ha `POST /orders`
         // avulso, porque nao ha ordem avulsa.
         group.MapPost("/requisitions/{requisitionId:guid}/orders", IssueOrderAsync)
-            .RequireAuthorization(ProcurementPermissions.OrdersWrite);
+            .RequireAuthorization(ProcurementPermissions.OrdersWrite)
+            .Produces(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/orders/{purchaseOrderId:guid}/cancellation", CancelOrderAsync)
-            .RequireAuthorization(ProcurementPermissions.OrdersWrite);
+            .RequireAuthorization(ProcurementPermissions.OrdersWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
         group.MapGet("/receipts", ListReceiptsAsync)
-            .RequireAuthorization(ProcurementPermissions.ReceiptsRead);
+            .RequireAuthorization(ProcurementPermissions.ReceiptsRead)
+            .Produces<IReadOnlyList<GoodsReceiptView>>();
 
         group.MapGet("/receipts/{goodsReceiptId:guid}", GetReceiptAsync)
-            .RequireAuthorization(ProcurementPermissions.ReceiptsRead);
+            .RequireAuthorization(ProcurementPermissions.ReceiptsRead)
+            .Produces<GoodsReceiptView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Recebe-se sempre contra uma ordem, e a rota di-lo — nao se recebe o
         // que nao se encomendou.
         group.MapPost("/orders/{purchaseOrderId:guid}/receipts", RegisterReceiptAsync)
-            .RequireAuthorization(ProcurementPermissions.ReceiptsWrite);
+            .RequireAuthorization(ProcurementPermissions.ReceiptsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/receipts/{goodsReceiptId:guid}/cancellation", CancelReceiptAsync)
-            .RequireAuthorization(ProcurementPermissions.ReceiptsWrite);
+            .RequireAuthorization(ProcurementPermissions.ReceiptsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return endpoints;
     }

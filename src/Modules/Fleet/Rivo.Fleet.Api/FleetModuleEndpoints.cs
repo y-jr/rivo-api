@@ -17,56 +17,102 @@ public static class FleetModuleEndpoints
         var group = endpoints.MapGroup("/fleet");
 
         group.MapGet("/vehicles", ListAsync)
-            .RequireAuthorization(FleetPermissions.VehiclesRead);
+            .RequireAuthorization(FleetPermissions.VehiclesRead)
+            .Produces<IReadOnlyList<VehicleView>>();
 
         group.MapGet("/vehicles/{vehicleId:guid}", GetAsync)
-            .RequireAuthorization(FleetPermissions.VehiclesRead);
+            .RequireAuthorization(FleetPermissions.VehiclesRead)
+            .Produces<VehicleView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/vehicles", RegisterAsync)
-            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+            .RequireAuthorization(FleetPermissions.VehiclesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Nunca eliminar — desactivar é o que existe.
         group.MapPost("/vehicles/{vehicleId:guid}/deactivation", DeactivateAsync)
-            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+            .RequireAuthorization(FleetPermissions.VehiclesWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/vehicles/{vehicleId:guid}/maintenance", OpenMaintenanceAsync)
-            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+            .RequireAuthorization(FleetPermissions.VehiclesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/vehicles/{vehicleId:guid}/maintenance/{maintenanceId:guid}/closure", CloseMaintenanceAsync)
-            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+            .RequireAuthorization(FleetPermissions.VehiclesWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/vehicles/{vehicleId:guid}/assignments", AssignAsync)
-            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+            .RequireAuthorization(FleetPermissions.VehiclesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/vehicles/{vehicleId:guid}/assignments/{assignmentId:guid}/closure", EndAssignmentAsync)
-            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+            .RequireAuthorization(FleetPermissions.VehiclesWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/vehicles/{vehicleId:guid}/maintenance-plans", SchedulePlanAsync)
-            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+            .RequireAuthorization(FleetPermissions.VehiclesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/vehicles/{vehicleId:guid}/maintenance-plans/{planId:guid}/cycles", CompletePlanCycleAsync)
-            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+            .RequireAuthorization(FleetPermissions.VehiclesWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Nunca eliminar — cancelar é o que existe.
         group.MapPost("/vehicles/{vehicleId:guid}/maintenance-plans/{planId:guid}/cancellation", CancelPlanAsync)
-            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+            .RequireAuthorization(FleetPermissions.VehiclesWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // O alerta: viaturas com plano devido, sem esperar por uma viatura
         // concreta — por isso vive fora de /vehicles/{id}.
         group.MapGet("/maintenance-plans/due", ListDuePlansAsync)
-            .RequireAuthorization(FleetPermissions.VehiclesRead);
+            .RequireAuthorization(FleetPermissions.VehiclesRead)
+            .Produces<IReadOnlyList<DueMaintenancePlanView>>();
 
         group.MapPost("/vehicles/{vehicleId:guid}/trips", RegisterTripAsync)
-            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+            .RequireAuthorization(FleetPermissions.VehiclesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/vehicles/{vehicleId:guid}/expenses", RegisterExpenseAsync)
-            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+            .RequireAuthorization(FleetPermissions.VehiclesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/vehicles/{vehicleId:guid}/documents", ListDocumentsAsync)
-            .RequireAuthorization(FleetPermissions.VehiclesRead);
+            .RequireAuthorization(FleetPermissions.VehiclesRead)
+            .Produces<IReadOnlyList<VehicleDocumentView>>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/vehicles/{vehicleId:guid}/documents", AttachDocumentAsync)
-            .RequireAuthorization(FleetPermissions.VehiclesWrite);
+            .RequireAuthorization(FleetPermissions.VehiclesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         return endpoints;
     }
