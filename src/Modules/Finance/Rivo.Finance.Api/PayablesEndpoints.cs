@@ -23,65 +23,109 @@ public static class PayablesEndpoints
 
         // ---- Tesouraria ----
         group.MapGet("/accounts", ListAccountsAsync)
-            .RequireAuthorization(FinancePermissions.PayablesRead);
+            .RequireAuthorization(FinancePermissions.PayablesRead)
+            .Produces<IReadOnlyList<BankAccountView>>();
 
         group.MapPost("/accounts", OpenAccountAsync)
-            .RequireAuthorization(FinancePermissions.PayablesWrite);
+            .RequireAuthorization(FinancePermissions.PayablesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem();
 
         group.MapPost("/accounts/{accountId:guid}/deposits", DepositAsync)
-            .RequireAuthorization(FinancePermissions.PayablesWrite);
+            .RequireAuthorization(FinancePermissions.PayablesWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Saída que não é pagamento a fornecedor — comissões, transferências
         // entre contas. O pagamento propriamente dito passa por
         // `/payment-requests/{id}/execution`, com a dupla barreira de BR-5.
         group.MapPost("/accounts/{accountId:guid}/withdrawals", WithdrawAsync)
-            .RequireAuthorization(FinancePermissions.PayablesWrite);
+            .RequireAuthorization(FinancePermissions.PayablesWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Fechar e reabrir. Nunca eliminar — BR-14.
         group.MapPost("/accounts/{accountId:guid}/closure", CloseAccountAsync)
-            .RequireAuthorization(FinancePermissions.PayablesWrite);
+            .RequireAuthorization(FinancePermissions.PayablesWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/accounts/{accountId:guid}/reopening", ReopenAccountAsync)
-            .RequireAuthorization(FinancePermissions.PayablesWrite);
+            .RequireAuthorization(FinancePermissions.PayablesWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // O extracto. Leitura, e por isso a mesma permissão de consultar
         // contas — ver o que se moveu não é poder mover.
         group.MapGet("/accounts/{accountId:guid}/statement", GetStatementAsync)
-            .RequireAuthorization(FinancePermissions.PayablesRead);
+            .RequireAuthorization(FinancePermissions.PayablesRead)
+            .Produces<AccountStatementView>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // ---- Contas a Pagar ----
         group.MapGet("/purchase-invoices", ListPurchaseInvoicesAsync)
-            .RequireAuthorization(FinancePermissions.PayablesRead);
+            .RequireAuthorization(FinancePermissions.PayablesRead)
+            .Produces<IReadOnlyList<PurchaseInvoiceView>>();
 
         group.MapGet("/purchase-invoices/{purchaseInvoiceId:guid}", GetPurchaseInvoiceAsync)
-            .RequireAuthorization(FinancePermissions.PayablesRead);
+            .RequireAuthorization(FinancePermissions.PayablesRead)
+            .Produces<PurchaseInvoiceView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // O 3-way match: encomendado, recebido e facturado, lado a lado. Só
         // leitura — não recusa nada, é quem decide que compara.
         group.MapGet("/purchase-invoices/{purchaseInvoiceId:guid}/match", GetPurchaseInvoiceMatchAsync)
-            .RequireAuthorization(FinancePermissions.PayablesRead);
+            .RequireAuthorization(FinancePermissions.PayablesRead)
+            .Produces<PurchaseInvoiceMatchView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/purchase-invoices", RegisterPurchaseInvoiceAsync)
-            .RequireAuthorization(FinancePermissions.PayablesWrite);
+            .RequireAuthorization(FinancePermissions.PayablesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // ---- Pedidos de pagamento ----
         group.MapGet("/payment-requests", ListPaymentRequestsAsync)
-            .RequireAuthorization(FinancePermissions.PayablesRead);
+            .RequireAuthorization(FinancePermissions.PayablesRead)
+            .Produces<IReadOnlyList<PaymentRequestView>>();
 
         group.MapGet("/payment-requests/{paymentRequestId:guid}", GetPaymentRequestAsync)
-            .RequireAuthorization(FinancePermissions.PayablesRead);
+            .RequireAuthorization(FinancePermissions.PayablesRead)
+            .Produces<PaymentRequestView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Pedir não é pagar. Quem pede não executa — ver FinancePermissions.
         group.MapPost("/payment-requests", CreatePaymentRequestAsync)
-            .RequireAuthorization(FinancePermissions.PaymentsRequest);
+            .RequireAuthorization(FinancePermissions.PaymentsRequest)
+            .Produces(StatusCodes.Status202Accepted)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status501NotImplemented);
 
         group.MapPost("/payment-requests/{paymentRequestId:guid}/cancellation", CancelPaymentRequestAsync)
-            .RequireAuthorization(FinancePermissions.PaymentsRequest);
+            .RequireAuthorization(FinancePermissions.PaymentsRequest)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // **O ponto de consistência forte do sistema.** A permissão abre a
         // porta; BR-1, BR-3 e BR-5 é que decidem.
         group.MapPost("/payment-requests/{paymentRequestId:guid}/execution", ExecutePaymentAsync)
-            .RequireAuthorization(FinancePermissions.PaymentsExecute);
+            .RequireAuthorization(FinancePermissions.PaymentsExecute)
+            .Produces(StatusCodes.Status200OK)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return endpoints;
     }
