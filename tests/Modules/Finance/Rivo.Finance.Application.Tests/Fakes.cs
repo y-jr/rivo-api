@@ -6,7 +6,7 @@ using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
 using Rivo.Fiscal.Contracts;
 using Rivo.Procurement.Contracts;
-using Rivo.SharedKernel;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.Tests;
 

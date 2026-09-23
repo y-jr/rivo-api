@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
-using Rivo.SharedKernel;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Infrastructure.Persistence;
 

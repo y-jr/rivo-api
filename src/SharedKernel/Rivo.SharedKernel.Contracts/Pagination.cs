@@ -1,4 +1,4 @@
-namespace Rivo.SharedKernel;
+namespace Rivo.SharedKernel.Contracts;
 
 /// <summary>
 /// A página pedida por um cliente numa listagem paginável.

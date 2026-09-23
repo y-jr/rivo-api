@@ -1,7 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.UseCases;
 using Rivo.Finance.Domain;
-using Rivo.SharedKernel;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.Tests;
 

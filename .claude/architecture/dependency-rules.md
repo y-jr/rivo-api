@@ -164,7 +164,15 @@ O resultado de uma resolução não trivial regista-se como ADR.
 Pode ser referenciado por módulos. Não depende de módulos nem de
 `Infrastructure`. Ver [domain/shared-concepts.md](../domain/shared-concepts.md).
 
-Continua vazio — nada foi ainda justificado para lá.
+**Primeira entrada: `PageRequest`/`Pagination` (ADR-068).** Vive em
+`Rivo.SharedKernel.Contracts` — só `Contracts`, sem `Domain` nem `Api`: não é
+módulo (sem agregado, sem regra de negócio) nem camada de composição (sem
+endpoint próprio). `ProjectDiscovery_FindsEveryModuleProject` verifica-o por
+essa camada mínima, não pela de um módulo comum.
+
+Cada módulo que o referencia precisa de o declarar explicitamente na sua
+linha de `Modules_ReferenceOnlyDeclaredDirections` — o SharedKernel não é
+excepção à regra de que uma direcção nova é decisão arquitectural.
 
 ## Capacidades transversais
 

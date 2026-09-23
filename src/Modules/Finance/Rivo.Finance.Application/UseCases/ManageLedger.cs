@@ -2,7 +2,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
 using Rivo.Hr.Contracts;
-using Rivo.SharedKernel;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.UseCases;
 
