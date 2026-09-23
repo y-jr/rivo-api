@@ -16,10 +16,14 @@ public static class HrModuleEndpoints
         var group = endpoints.MapGroup("/hr");
 
         group.MapGet("/employees", ListEmployeesAsync)
-            .RequireAuthorization(HrPermissions.EmployeesRead);
+            .RequireAuthorization(HrPermissions.EmployeesRead)
+            .Produces<IReadOnlyList<EmployeeView>>();
 
         group.MapPost("/employees", HireEmployeeAsync)
-            .RequireAuthorization(HrPermissions.EmployeesWrite);
+            .RequireAuthorization(HrPermissions.EmployeesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // --- Correcções (ADR-063) ---
         //
@@ -30,13 +34,21 @@ public static class HrModuleEndpoints
         // isso é PUT. A transferência de departamento, essa, continua a ser um
         // acto, e por isso tem sub-recurso e POST.
         group.MapPut("/employees/{employeeId:guid}", CorrectEmployeeAsync)
-            .RequireAuthorization(HrPermissions.EmployeesWrite);
+            .RequireAuthorization(HrPermissions.EmployeesWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/employees/{employeeId:guid}/department", TransferEmployeeAsync)
-            .RequireAuthorization(HrPermissions.EmployeesWrite);
+            .RequireAuthorization(HrPermissions.EmployeesWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/employees/{employeeId:guid}", GetEmployeeAsync)
-            .RequireAuthorization(HrPermissions.EmployeesRead);
+            .RequireAuthorization(HrPermissions.EmployeesRead)
+            .Produces<EmployeeDetailView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Liga uma conta de identity a um colaborador já admitido (ADR-051).
         //
@@ -46,47 +58,70 @@ public static class HrModuleEndpoints
         // ADR-050 é ele que determina quem decide aprovações, e portanto quem
         // o cria escolhe, indirectamente, quem aprova.
         group.MapPost("/employees/{employeeId:guid}/account", LinkEmployeeAccountAsync)
-            .RequireAuthorization(HrPermissions.EmployeesLinkAccount);
+            .RequireAuthorization(HrPermissions.EmployeesLinkAccount)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Desligar (ADR-052). Mesma permissão de ligar: desligar é uma perda
         // de capacidade, não um ganho, e exigir mais do que para ligar
         // atrasaria a correcção de um vínculo errado — que é resposta a
         // incidente, não operação de rotina.
         group.MapDelete("/employees/{employeeId:guid}/account", UnlinkEmployeeAccountAsync)
-            .RequireAuthorization(HrPermissions.EmployeesLinkAccount);
+            .RequireAuthorization(HrPermissions.EmployeesLinkAccount)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // O histórico do vínculo (ADR-053). Mesma permissão de o gerir, e não
         // `hr.employees.read`: expõe o mapa conta↔pessoa ao longo do tempo, que
         // é informação de segurança e não de organograma. Quem só precisa de
         // saber quem trabalha na empresa não precisa de saber com que conta.
         group.MapGet("/employees/{employeeId:guid}/account-history", GetAccountHistoryAsync)
-            .RequireAuthorization(HrPermissions.EmployeesLinkAccount);
+            .RequireAuthorization(HrPermissions.EmployeesLinkAccount)
+            .Produces<IReadOnlyList<EmployeeAccountLinkView>>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/departments", ListDepartmentsAsync)
-            .RequireAuthorization(HrPermissions.DepartmentsRead);
+            .RequireAuthorization(HrPermissions.DepartmentsRead)
+            .Produces<IReadOnlyList<DepartmentView>>();
 
         group.MapPost("/departments", CreateDepartmentAsync)
-            .RequireAuthorization(HrPermissions.DepartmentsWrite);
+            .RequireAuthorization(HrPermissions.DepartmentsWrite)
+            .Produces(StatusCodes.Status201Created);
 
         group.MapPut("/departments/{departmentId:guid}", CorrectDepartmentAsync)
-            .RequireAuthorization(HrPermissions.DepartmentsWrite);
+            .RequireAuthorization(HrPermissions.DepartmentsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/positions", ListPositionsAsync)
-            .RequireAuthorization(HrPermissions.PositionsRead);
+            .RequireAuthorization(HrPermissions.PositionsRead)
+            .Produces<IReadOnlyList<PositionView>>();
 
         // Catálogo de Cargos: só Admin. Quem controla a marca de autoridade
         // controla, indirectamente, quem pode vir a aprovar (ADR-015).
         group.MapPost("/positions", CreatePositionAsync)
-            .RequireAuthorization(HrPermissions.PositionsWrite);
+            .RequireAuthorization(HrPermissions.PositionsWrite)
+            .Produces(StatusCodes.Status201Created);
 
         // Corrigir o catálogo pede a mesma permissão que o criar, e por isso
         // fica fora do perfil HR (ADR-015).
         group.MapPut("/positions/{positionId:guid}", CorrectPositionAsync)
-            .RequireAuthorization(HrPermissions.PositionsWrite);
+            .RequireAuthorization(HrPermissions.PositionsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Atribuição: operação corrente de RH.
         group.MapPost("/employees/{employeeId:guid}/positions", AssignPositionAsync)
-            .RequireAuthorization(HrPermissions.PositionsAssign);
+            .RequireAuthorization(HrPermissions.PositionsAssign)
+            .Produces(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status202Accepted)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status501NotImplemented);
 
         // Atribuição directa, ignorando BR-20 mesmo quando o Cargo confere
         // autoridade de aprovação (ADR-058). Rota e permissão à parte da
@@ -94,114 +129,188 @@ public static class HrModuleEndpoints
         // `SuperAdmin` resolver o arranque circular do motor de aprovação, e
         // nenhum outro perfil — nem `Admin` — a tem.
         group.MapPost("/employees/{employeeId:guid}/positions/direct", AssignPositionDirectAsync)
-            .RequireAuthorization(HrPermissions.PositionsAssignDirect);
+            .RequireAuthorization(HrPermissions.PositionsAssignDirect)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Aplica a decisão já tomada em governança a uma atribuição pendente.
         //
         // É `hr` que pergunta: `approval` não pode modificar dados de negócio
         // do módulo de origem, por isso a promoção a efectiva parte daqui.
         group.MapPost("/position-assignments/{assignmentId:guid}/approval-outcome", ApplyApprovalOutcomeAsync)
-            .RequireAuthorization(HrPermissions.PositionsAssign);
+            .RequireAuthorization(HrPermissions.PositionsAssign)
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status202Accepted)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Anexar exige permissão de escrita em colaboradores, não de
         // documentos: está a alterar-se o registo do colaborador. O upload do
         // ficheiro é que exige `documents.write`.
         group.MapPost("/employees/{employeeId:guid}/documents", AttachDocumentAsync)
-            .RequireAuthorization(HrPermissions.EmployeesWrite);
+            .RequireAuthorization(HrPermissions.EmployeesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/employees/{employeeId:guid}/documents", ListEmployeeDocumentsAsync)
-            .RequireAuthorization(HrPermissions.EmployeesRead);
+            .RequireAuthorization(HrPermissions.EmployeesRead)
+            .Produces<IReadOnlyList<EmployeeDocumentView>>();
 
         // Contratos de trabalho. Permissão própria e não `employees.read`: a
         // lista traz a remuneração acordada, que é a informação mais sensível
         // do módulo.
         group.MapGet("/contracts", ListContractsAsync)
-            .RequireAuthorization(HrPermissions.ContractsRead);
+            .RequireAuthorization(HrPermissions.ContractsRead)
+            .Produces<IReadOnlyList<EmploymentContractView>>();
 
         group.MapPost("/contracts", DrawContractAsync)
-            .RequireAuthorization(HrPermissions.ContractsWrite);
+            .RequireAuthorization(HrPermissions.ContractsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/contracts/{contractId:guid}/termination", TerminateContractAsync)
-            .RequireAuthorization(HrPermissions.ContractsWrite);
+            .RequireAuthorization(HrPermissions.ContractsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Assiduidade.
         group.MapGet("/attendance", ListAttendanceAsync)
-            .RequireAuthorization(HrPermissions.AttendanceRead);
+            .RequireAuthorization(HrPermissions.AttendanceRead)
+            .Produces<IReadOnlyList<AttendanceView>>()
+            .ProducesValidationProblem();
 
         // Marcação de ponto: uma rota, porque é um botão só. Entrada ou saída,
         // decide o servidor consoante o dia já esteja aberto.
         group.MapPost("/attendance/clock", ClockAsync)
-            .RequireAuthorization(HrPermissions.AttendanceWrite);
+            .RequireAuthorization(HrPermissions.AttendanceWrite)
+            .Produces(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/attendance/absences", RecordAbsenceAsync)
-            .RequireAuthorization(HrPermissions.AttendanceWrite);
+            .RequireAuthorization(HrPermissions.AttendanceWrite)
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Férias e outras ausências planeadas. Passam por governança: um pedido
         // pendente **não é ausência** (mesmo princípio de BR-20).
         group.MapGet("/leave", ListLeaveAsync)
-            .RequireAuthorization(HrPermissions.LeaveRead);
+            .RequireAuthorization(HrPermissions.LeaveRead)
+            .Produces<IReadOnlyList<LeaveView>>();
 
         group.MapPost("/leave", RequestLeaveAsync)
-            .RequireAuthorization(HrPermissions.LeaveWrite);
+            .RequireAuthorization(HrPermissions.LeaveWrite)
+            .Produces(StatusCodes.Status202Accepted)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status501NotImplemented);
 
         group.MapPost("/leave/{leaveId:guid}/cancellation", CancelLeaveAsync)
-            .RequireAuthorization(HrPermissions.LeaveWrite);
+            .RequireAuthorization(HrPermissions.LeaveWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/leave/{leaveId:guid}/approval-outcome", ApplyLeaveOutcomeAsync)
-            .RequireAuthorization(HrPermissions.LeaveWrite);
+            .RequireAuthorization(HrPermissions.LeaveWrite)
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status202Accepted)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Benefícios: catálogo e adesões.
         group.MapGet("/benefits", ListBenefitsAsync)
-            .RequireAuthorization(HrPermissions.BenefitsRead);
+            .RequireAuthorization(HrPermissions.BenefitsRead)
+            .Produces<IReadOnlyList<BenefitView>>();
 
         group.MapPost("/benefits", CreateBenefitAsync)
-            .RequireAuthorization(HrPermissions.BenefitsWrite);
+            .RequireAuthorization(HrPermissions.BenefitsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem();
 
         group.MapGet("/benefits/enrolments", ListEnrolmentsAsync)
-            .RequireAuthorization(HrPermissions.BenefitsRead);
+            .RequireAuthorization(HrPermissions.BenefitsRead)
+            .Produces<IReadOnlyList<BenefitEnrolmentView>>();
 
         group.MapPost("/benefits/enrolments", EnrolAsync)
-            .RequireAuthorization(HrPermissions.BenefitsWrite);
+            .RequireAuthorization(HrPermissions.BenefitsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/benefits/enrolments/{enrolmentId:guid}/cancellation", CancelEnrolmentAsync)
-            .RequireAuthorization(HrPermissions.BenefitsWrite);
+            .RequireAuthorization(HrPermissions.BenefitsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Recrutamento: vagas e funil de candidatos.
         group.MapGet("/recruitment/openings", ListOpeningsAsync)
-            .RequireAuthorization(HrPermissions.RecruitmentRead);
+            .RequireAuthorization(HrPermissions.RecruitmentRead)
+            .Produces<IReadOnlyList<JobOpeningView>>();
 
         group.MapPost("/recruitment/openings", OpenOpeningAsync)
-            .RequireAuthorization(HrPermissions.RecruitmentWrite);
+            .RequireAuthorization(HrPermissions.RecruitmentWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/recruitment/openings/{openingId:guid}/closure", CloseOpeningAsync)
-            .RequireAuthorization(HrPermissions.RecruitmentWrite);
+            .RequireAuthorization(HrPermissions.RecruitmentWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/recruitment/candidates", ListCandidatesAsync)
-            .RequireAuthorization(HrPermissions.RecruitmentRead);
+            .RequireAuthorization(HrPermissions.RecruitmentRead)
+            .Produces<IReadOnlyList<CandidateView>>();
 
         group.MapPost("/recruitment/openings/{openingId:guid}/candidates", ApplyAsync)
-            .RequireAuthorization(HrPermissions.RecruitmentWrite);
+            .RequireAuthorization(HrPermissions.RecruitmentWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/recruitment/candidates/{candidateId:guid}/stage", AdvanceCandidateAsync)
-            .RequireAuthorization(HrPermissions.RecruitmentWrite);
+            .RequireAuthorization(HrPermissions.RecruitmentWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Contratar cria um Colaborador — por isso exige também escrita em
         // colaboradores, e não só em recrutamento.
         group.MapPost("/recruitment/candidates/{candidateId:guid}/hire", HireCandidateAsync)
-            .RequireAuthorization(HrPermissions.EmployeesWrite);
+            .RequireAuthorization(HrPermissions.EmployeesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Entrada e saída, conduzidas por checklist.
         group.MapGet("/lifecycle", ListLifecycleAsync)
-            .RequireAuthorization(HrPermissions.LifecycleRead);
+            .RequireAuthorization(HrPermissions.LifecycleRead)
+            .Produces<IReadOnlyList<LifecycleProcessView>>();
 
         group.MapPost("/lifecycle", StartLifecycleAsync)
-            .RequireAuthorization(HrPermissions.LifecycleWrite);
+            .RequireAuthorization(HrPermissions.LifecycleWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/lifecycle/{processId:guid}/tasks/{taskId:guid}/completion", CompleteTaskAsync)
-            .RequireAuthorization(HrPermissions.LifecycleWrite);
+            .RequireAuthorization(HrPermissions.LifecycleWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/lifecycle/{processId:guid}/completion", CompleteLifecycleAsync)
-            .RequireAuthorization(HrPermissions.LifecycleWrite);
+            .RequireAuthorization(HrPermissions.LifecycleWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return endpoints;
     }

@@ -17,35 +17,53 @@ public static class ApprovalModuleEndpoints
 
         // Políticas: configuração sensível — altera quem aprova o quê.
         group.MapGet("/policies", ListPoliciesAsync)
-            .RequireAuthorization(ApprovalPermissions.PoliciesRead);
+            .RequireAuthorization(ApprovalPermissions.PoliciesRead)
+            .Produces<IReadOnlyList<PolicyView>>();
 
         group.MapPost("/policies", CreatePolicyAsync)
-            .RequireAuthorization(ApprovalPermissions.PoliciesWrite);
+            .RequireAuthorization(ApprovalPermissions.PoliciesWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem();
 
         // Desactivar, nunca eliminar: os pedidos em curso guardam a política
         // que lhes foi aplicada (BR-6), e apagá-la deixava-os a apontar para o
         // nada.
         group.MapPost("/policies/{policyId:guid}/deactivation", DeactivatePolicyAsync)
-            .RequireAuthorization(ApprovalPermissions.PoliciesWrite);
+            .RequireAuthorization(ApprovalPermissions.PoliciesWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/requests", ListRequestsAsync)
-            .RequireAuthorization(ApprovalPermissions.RequestsRead);
+            .RequireAuthorization(ApprovalPermissions.RequestsRead)
+            .Produces<IReadOnlyList<ApprovalStatusView>>();
 
         group.MapGet("/requests/{requestId:guid}", GetRequestAsync)
-            .RequireAuthorization(ApprovalPermissions.RequestsRead);
+            .RequireAuthorization(ApprovalPermissions.RequestsRead)
+            .Produces<ApprovalStatusView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // A linha do tempo completa, para quem reconstroi o que aconteceu — e
         // nao so quem espera pela sua vez de decidir.
         group.MapGet("/requests/{requestId:guid}/history", GetHistoryAsync)
-            .RequireAuthorization(ApprovalPermissions.RequestsRead);
+            .RequireAuthorization(ApprovalPermissions.RequestsRead)
+            .Produces<ApprovalHistoryView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Decidir. A permissão abre a porta; quem decide de facto é o domínio,
         // que verifica BR-2, BR-4 e a atribuição ao passo em curso.
         group.MapPost("/requests/{requestId:guid}/decisions", DecideAsync)
-            .RequireAuthorization(ApprovalPermissions.RequestsDecide);
+            .RequireAuthorization(ApprovalPermissions.RequestsDecide)
+            .Produces<ApprovalStatusView>()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/requests/{requestId:guid}/cancellation", CancelAsync)
-            .RequireAuthorization(ApprovalPermissions.RequestsRead);
+            .RequireAuthorization(ApprovalPermissions.RequestsRead)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return endpoints;
     }
