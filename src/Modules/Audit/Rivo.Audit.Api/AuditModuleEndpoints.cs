@@ -13,7 +13,8 @@ public static class AuditModuleEndpoints
         var group = endpoints.MapGroup("/audit");
 
         group.MapGet("/entries", QueryAsync)
-            .RequireAuthorization(AuditPermissions.TrailRead);
+            .RequireAuthorization(AuditPermissions.TrailRead)
+            .Produces<IReadOnlyList<AuditEntryView>>();
 
         return endpoints;
     }

@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Rivo.EmployeePortal.Application;
+using Rivo.Hr.Contracts;
+using Rivo.Payroll.Contracts;
 
 namespace Rivo.EmployeePortal.Api;
 
@@ -32,15 +34,29 @@ public static class EmployeePortalModuleEndpoints
         // `employeeId`: devolve sempre e só o colaborador do próprio
         // chamador — para ver dados de terceiros, os endpoints de `hr` com
         // `hr.employees.read` continuam a ser o caminho.
-        group.MapGet("/me", GetMyProfileAsync).RequireAuthorization();
+        group.MapGet("/me", GetMyProfileAsync).RequireAuthorization()
+            .Produces<MyProfileView>()
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         // As mesmas regras valem para as quatro abaixo: autenticação e mais
         // nada, e nenhuma aceita `employeeId`. O 403 que devolvem é por falta
         // de vínculo, nunca por falta de permissão.
-        group.MapGet("/me/attendance", GetMyAttendanceAsync).RequireAuthorization();
-        group.MapGet("/me/leave", GetMyLeaveAsync).RequireAuthorization();
-        group.MapGet("/me/documents", GetMyDocumentsAsync).RequireAuthorization();
-        group.MapGet("/me/payslips", GetMyPayslipsAsync).RequireAuthorization();
+        group.MapGet("/me/attendance", GetMyAttendanceAsync).RequireAuthorization()
+            .Produces<IReadOnlyList<OwnAttendanceRecord>>()
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status403Forbidden);
+
+        group.MapGet("/me/leave", GetMyLeaveAsync).RequireAuthorization()
+            .Produces<IReadOnlyList<OwnLeaveRequest>>()
+            .ProducesProblem(StatusCodes.Status403Forbidden);
+
+        group.MapGet("/me/documents", GetMyDocumentsAsync).RequireAuthorization()
+            .Produces<IReadOnlyList<OwnEmployeeDocument>>()
+            .ProducesProblem(StatusCodes.Status403Forbidden);
+
+        group.MapGet("/me/payslips", GetMyPayslipsAsync).RequireAuthorization()
+            .Produces<IReadOnlyList<OwnPayslip>>()
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         return endpoints;
     }
