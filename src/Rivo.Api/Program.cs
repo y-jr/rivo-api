@@ -75,6 +75,7 @@ builder.Services.AddOpenApi(options =>
     options.AddOperationTransformer<BearerSecurityRequirementTransformer>();
     options.AddOperationTransformer<AuthorizedResponsesTransformer>();
     options.AddSchemaTransformer<EnumValuesSchemaTransformer>();
+    options.AddSchemaTransformer<AllowedValuesSchemaTransformer>();
 });
 
 // Origens de browser autorizadas (ADR-033). Concern do host e não de módulo:
