@@ -16,43 +16,64 @@ public static class CommercialModuleEndpoints
         var group = endpoints.MapGroup("/commercial");
 
         group.MapGet("/customers", ListAsync)
-            .RequireAuthorization(CommercialPermissions.CustomersRead);
+            .RequireAuthorization(CommercialPermissions.CustomersRead)
+            .Produces<IReadOnlyList<CustomerListItem>>();
 
         group.MapGet("/customers/{customerId:guid}", GetAsync)
-            .RequireAuthorization(CommercialPermissions.CustomersRead);
+            .RequireAuthorization(CommercialPermissions.CustomersRead)
+            .Produces<CustomerDetailView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/customers", RegisterAsync)
-            .RequireAuthorization(CommercialPermissions.CustomersWrite);
+            .RequireAuthorization(CommercialPermissions.CustomersWrite)
+            .Produces(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status409Conflict)
+            .ProducesValidationProblem();
 
         group.MapPost("/customers/{customerId:guid}/details", UpdateAsync)
-            .RequireAuthorization(CommercialPermissions.CustomersWrite);
+            .RequireAuthorization(CommercialPermissions.CustomersWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesValidationProblem();
 
         // Desactivar, nunca eliminar (BR-14). Não há DELETE nesta superfície, e
         // é a regra a aparecer na forma da API.
         group.MapPost("/customers/{customerId:guid}/status", SetStatusAsync)
-            .RequireAuthorization(CommercialPermissions.CustomersWrite);
+            .RequireAuthorization(CommercialPermissions.CustomersWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Liga uma conta de identity já registada a este cliente (ADR-043).
         // Mesma permissão de escrever no cliente — não há audiência própria
         // que a distinga de quem já gere clientes.
         group.MapPost("/customers/{customerId:guid}/account", LinkAccountAsync)
-            .RequireAuthorization(CommercialPermissions.CustomersWrite);
+            .RequireAuthorization(CommercialPermissions.CustomersWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
 
         // Desligar e histórico (ADR-055). Mesma permissão de ligar, e aqui a
         // justificação do ADR-043 mantém-se: ao contrário de `hr`, não há
         // audiência própria que distinga isto de quem já gere clientes — uma
         // conta de Cliente dá o portal do cliente, não autoridade de aprovação.
         group.MapDelete("/customers/{customerId:guid}/account", UnlinkAccountAsync)
-            .RequireAuthorization(CommercialPermissions.CustomersWrite);
+            .RequireAuthorization(CommercialPermissions.CustomersWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/customers/{customerId:guid}/account-history", GetAccountHistoryAsync)
-            .RequireAuthorization(CommercialPermissions.CustomersRead);
+            .RequireAuthorization(CommercialPermissions.CustomersRead)
+            .Produces<IReadOnlyList<CustomerAccountLinkView>>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // O vendedor responsável (ADR-045) — mesma permissão, mesma razão
         // que a ligação de conta: não há audiência própria que a distinga
         // de quem já gere clientes.
         group.MapPost("/customers/{customerId:guid}/owner", AssignOwnerAsync)
-            .RequireAuthorization(CommercialPermissions.CustomersWrite);
+            .RequireAuthorization(CommercialPermissions.CustomersWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         return endpoints;
     }

@@ -51,7 +51,10 @@ public static class EmailDebugEndpoints
     public static IEndpointRouteBuilder MapEmailDebug(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("/debug/email/test", SendTestEmailAsync)
-            .RequireAuthorization(IdentityPermissions.UsersWrite);
+            .RequireAuthorization(IdentityPermissions.UsersWrite)
+            .Produces(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status500InternalServerError)
+            .ProducesProblem(StatusCodes.Status501NotImplemented);
 
         return endpoints;
     }

@@ -37,7 +37,9 @@ public static class AnalyticsModuleEndpoints
         var group = endpoints.MapGroup("/analytics");
 
         group.MapGet("/overview", GetOverviewAsync)
-            .RequireAuthorization(AnalyticsPermissions.OverviewRead);
+            .RequireAuthorization(AnalyticsPermissions.OverviewRead)
+            .Produces<AnalyticsOverviewView>()
+            .ProducesValidationProblem();
 
         return endpoints;
     }
