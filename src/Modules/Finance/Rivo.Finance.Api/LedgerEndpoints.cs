@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Builder;
@@ -943,6 +944,7 @@ public sealed record LedgerAccountRequest(
     string Name,
 
     /// <summary>Uma das seis do SAF-T: `GR`, `GA`, `GM`, `AR`, `AA`, `AM`.</summary>
+    [property: AllowedValues("GR", "GA", "GM", "AR", "AA", "AM")]
     string Category,
 
     /// <summary>A conta agregadora. Obrigatória excepto no 1.º grau.</summary>
