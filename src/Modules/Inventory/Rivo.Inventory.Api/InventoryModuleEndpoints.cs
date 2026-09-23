@@ -16,69 +16,129 @@ public static class InventoryModuleEndpoints
         var group = endpoints.MapGroup("/inventory");
 
         group.MapGet("/items", ListAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsRead);
+            .RequireAuthorization(InventoryPermissions.ItemsRead)
+            .Produces<IReadOnlyList<InventoryItemView>>();
 
         group.MapGet("/items/{itemId:guid}", GetAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsRead);
+            .RequireAuthorization(InventoryPermissions.ItemsRead)
+            .Produces<InventoryItemView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/items", RegisterAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+            .RequireAuthorization(InventoryPermissions.ItemsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Desactivar, nunca eliminar — pode estar referenciado por recepções.
         group.MapPost("/items/{itemId:guid}/status", SetStatusAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+            .RequireAuthorization(InventoryPermissions.ItemsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/items/{itemId:guid}/movements/receipts", RegisterReceiptAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+            .RequireAuthorization(InventoryPermissions.ItemsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/items/{itemId:guid}/movements/issues", RegisterIssueAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+            .RequireAuthorization(InventoryPermissions.ItemsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/items/{itemId:guid}/movements/adjustments", RegisterAdjustmentAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+            .RequireAuthorization(InventoryPermissions.ItemsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/items/{itemId:guid}/movements/transfers", TransferAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+            .RequireAuthorization(InventoryPermissions.ItemsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/warehouses", ListWarehousesAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsRead);
+            .RequireAuthorization(InventoryPermissions.ItemsRead)
+            .Produces<IReadOnlyList<WarehouseView>>();
 
         group.MapGet("/warehouses/{warehouseId:guid}", GetWarehouseAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsRead);
+            .RequireAuthorization(InventoryPermissions.ItemsRead)
+            .Produces<WarehouseView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/warehouses", RegisterWarehouseAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+            .RequireAuthorization(InventoryPermissions.ItemsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Desactivar, nunca eliminar — pode estar referenciado por movimentos.
         group.MapPost("/warehouses/{warehouseId:guid}/status", SetWarehouseStatusAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+            .RequireAuthorization(InventoryPermissions.ItemsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapGet("/counts", ListCountsAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsRead);
+            .RequireAuthorization(InventoryPermissions.ItemsRead)
+            .Produces<IReadOnlyList<InventoryCountView>>();
 
         group.MapGet("/counts/{countId:guid}", GetCountAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsRead);
+            .RequireAuthorization(InventoryPermissions.ItemsRead)
+            .Produces<InventoryCountView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/counts", OpenCountAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+            .RequireAuthorization(InventoryPermissions.ItemsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/counts/{countId:guid}/lines", AddCountLineAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+            .RequireAuthorization(InventoryPermissions.ItemsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
+        // Fechar devolve 200 (aplicado / recusado / já resolvido) ou 202
+        // (submetido para decisão / decisão ainda pendente) consoante o
+        // desfecho — ver `Responder`, corpos diferentes por cada um.
         group.MapPost("/counts/{countId:guid}/close", CloseCountAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+            .RequireAuthorization(InventoryPermissions.ItemsWrite)
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status202Accepted)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Pergunta a `approval` se a divergência já foi decidida e aplica o efeito
         // deste lado (ADR-064). Mesma disciplina de `payroll`: `approval` nunca empurra.
         group.MapPost("/counts/{countId:guid}/decision", ApplyCountDecisionAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+            .RequireAuthorization(InventoryPermissions.ItemsWrite)
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status202Accepted)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Nunca DELETE (BR-14) — cancelar é o que existe para um engano.
         group.MapPost("/counts/{countId:guid}/cancellation", CancelCountAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsWrite);
+            .RequireAuthorization(InventoryPermissions.ItemsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapGet("/valuation", GetValuationAsync)
-            .RequireAuthorization(InventoryPermissions.ItemsRead);
+            .RequireAuthorization(InventoryPermissions.ItemsRead)
+            .Produces<IReadOnlyList<StockValuationEntry>>()
+            .ProducesValidationProblem();
 
         return endpoints;
     }

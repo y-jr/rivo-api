@@ -21,16 +21,28 @@ public static class MessagingModuleEndpoints
         // sempre pelo Portal do Cliente, que resolve "o próprio cliente"
         // antes de chegar a `messaging`.
         group.MapGet("/conversations", ListAsync)
-            .RequireAuthorization(MessagingPermissions.ConversationsRead);
+            .RequireAuthorization(MessagingPermissions.ConversationsRead)
+            .Produces<IReadOnlyList<ConversationSummaryView>>();
 
         group.MapGet("/conversations/{conversationId:guid}", GetAsync)
-            .RequireAuthorization(MessagingPermissions.ConversationsRead);
+            .RequireAuthorization(MessagingPermissions.ConversationsRead)
+            .Produces<ConversationView>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapPost("/conversations/{conversationId:guid}/messages", ReplyAsync)
-            .RequireAuthorization(MessagingPermissions.ConversationsWrite);
+            .RequireAuthorization(MessagingPermissions.ConversationsWrite)
+            .Produces(StatusCodes.Status201Created)
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPost("/conversations/{conversationId:guid}/closure", CloseAsync)
-            .RequireAuthorization(MessagingPermissions.ConversationsWrite);
+            .RequireAuthorization(MessagingPermissions.ConversationsWrite)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return endpoints;
     }

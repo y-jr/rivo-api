@@ -23,18 +23,27 @@ public static class DocumentsModuleEndpoints
             .RequireAuthorization(DocumentPermissions.Write)
             // Autenticação é por bearer token, não por cookie, logo não há
             // vector de CSRF que a antiforgery protegesse.
-            .DisableAntiforgery();
+            .DisableAntiforgery()
+            .Produces<DocumentDescriptor>(StatusCodes.Status201Created)
+            // Corpo `{ erro }` ad-hoc, não RFC 9457 — este módulo ainda não
+            // foi convertido (ver item #40 do levantamento de pendências).
+            .Produces(StatusCodes.Status400BadRequest);
 
         // Listagem do arquivo. Não substitui a listagem do contexto de origem:
         // quem procura os anexos de um colaborador pede-os a `hr` (ADR-009).
         group.MapGet("/", ListAsync)
-            .RequireAuthorization(DocumentPermissions.Read);
+            .RequireAuthorization(DocumentPermissions.Read)
+            .Produces<IReadOnlyList<DocumentDescriptor>>();
 
         group.MapGet("/{documentId:guid}", DownloadAsync)
-            .RequireAuthorization(DocumentPermissions.Read);
+            .RequireAuthorization(DocumentPermissions.Read)
+            .Produces(StatusCodes.Status200OK, contentType: "application/octet-stream")
+            .Produces(StatusCodes.Status404NotFound);
 
         group.MapGet("/{documentId:guid}/metadata", GetMetadataAsync)
-            .RequireAuthorization(DocumentPermissions.Read);
+            .RequireAuthorization(DocumentPermissions.Read)
+            .Produces<DocumentDescriptor>()
+            .Produces(StatusCodes.Status404NotFound);
 
         return endpoints;
     }
