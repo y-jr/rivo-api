@@ -15,12 +15,17 @@ public static class NotificationsModuleEndpoints
 
         // Só autenticação, sem permissão: o que limita o acesso é ser o
         // destinatário, e isso é invariante do domínio.
-        group.MapGet("/me", ListMineAsync).RequireAuthorization();
-        group.MapPost("/{notificationId:guid}/read", MarkAsReadAsync).RequireAuthorization();
+        group.MapGet("/me", ListMineAsync).RequireAuthorization()
+            .Produces<IReadOnlyList<NotificationView>>();
+
+        group.MapPost("/{notificationId:guid}/read", MarkAsReadAsync).RequireAuthorization()
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         // Rota propria em vez de um parametro no anterior: marcar uma e marcar
         // todas sao actos diferentes, e a forma diz qual foi.
-        group.MapPost("/read-all", MarkAllAsReadAsync).RequireAuthorization();
+        group.MapPost("/read-all", MarkAllAsReadAsync).RequireAuthorization()
+            .Produces(StatusCodes.Status200OK);
 
         return endpoints;
     }
