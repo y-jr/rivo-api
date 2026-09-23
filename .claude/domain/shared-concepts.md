@@ -33,7 +33,9 @@ importante do sistema.
 
 ## Conteúdo actual
 
-_(vazio — nada foi ainda justificado para o SharedKernel)_
+- **`PageRequest`/`Pagination`** (ADR-068) — a página pedida numa listagem
+  paginável. Primitiva estrutural sem dono de negócio, precisa por
+  praticamente todos os módulos com listagens que crescem sem limite.
 
 ## Candidatos plausíveis
 

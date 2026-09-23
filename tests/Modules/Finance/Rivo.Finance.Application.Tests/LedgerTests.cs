@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.UseCases;
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel;
 
 namespace Rivo.Finance.Application.Tests;
 
@@ -713,5 +714,63 @@ public class LedgerTests
         var resultado = await new PostDocument(store).PostAsync(posting, CancellationToken.None);
 
         Assert.Equal(DocumentPostingOutcome.Posted, resultado.Outcome);
+    }
+
+    // ---- paginação (ADR-068, item #10) ----
+
+    /// <summary>
+    /// Sem página pedida, a listagem continua a devolver tudo — é o que faz
+    /// a paginação aditiva em vez de uma mudança de contrato para quem já
+    /// consome esta rota.
+    /// </summary>
+    [Fact]
+    public async Task ListagemSemPagina_ContinuaADevolverTudo()
+    {
+        var (store, _, _, _) = Livros();
+
+        for (var dia = 1; dia <= 5; dia++)
+        {
+            await Lancar(store).ExecuteAsync(
+                "DIV", $"ARQ-{dia}", new DateOnly(2026, 8, dia), 2026, 8, $"Dia {dia}",
+                TransactionType.N, "contabilista@rivo.ao", Equilibrado(), Contexto, CancellationToken.None);
+        }
+
+        var (itens, total) = await new ListJournalEntries(store)
+            .ExecuteAsync(null, null, null, null, CancellationToken.None);
+
+        Assert.Equal(5, itens.Count);
+        Assert.Null(total);
+    }
+
+    /// <summary>
+    /// Com página pedida, a fatia vem na mesma ordem determinística da
+    /// listagem completa (data, depois id) — nunca a ordem em que os
+    /// lançamentos foram inseridos na base.
+    /// </summary>
+    [Fact]
+    public async Task ListagemComPagina_DevolveFatiaOrdenadaEOTotal()
+    {
+        var (store, _, _, _) = Livros();
+
+        for (var dia = 1; dia <= 5; dia++)
+        {
+            await Lancar(store).ExecuteAsync(
+                "DIV", $"ARQ-{dia}", new DateOnly(2026, 8, dia), 2026, 8, $"Dia {dia}",
+                TransactionType.N, "contabilista@rivo.ao", Equilibrado(), Contexto, CancellationToken.None);
+        }
+
+        var lista = new ListJournalEntries(store);
+
+        var (pagina1, total1) = await lista.ExecuteAsync(
+            null, null, null, new PageRequest(1, 2), CancellationToken.None);
+
+        Assert.Equal(5, total1);
+        Assert.Equal(["ARQ-1", "ARQ-2"], pagina1.Select(e => e.ArchivalNumber));
+
+        var (ultimaPagina, total3) = await lista.ExecuteAsync(
+            null, null, null, new PageRequest(3, 2), CancellationToken.None);
+
+        Assert.Equal(5, total3);
+        Assert.Equal(["ARQ-5"], ultimaPagina.Select(e => e.ArchivalNumber));
     }
 }

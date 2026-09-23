@@ -11,6 +11,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Rivo.Finance.Domain\Rivo.Finance.Domain.csproj" />
     <ProjectReference Include="..\Rivo.Finance.Contracts\Rivo.Finance.Contracts.csproj" />
+    <!-- PageRequest/Pagination (ADR-068) — primitiva estrutural sem dono de
+         negócio, não conceito de finance. -->
+    <ProjectReference Include="..\..\..\SharedKernel\Rivo.SharedKernel\Rivo.SharedKernel.csproj" />
     <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
     <!--
       Desde o ADR-057: resolver o colaborador a partir da conta autenticada.

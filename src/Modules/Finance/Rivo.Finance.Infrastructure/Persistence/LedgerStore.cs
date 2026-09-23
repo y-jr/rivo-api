@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel;
 
 namespace Rivo.Finance.Infrastructure.Persistence;
 
@@ -107,10 +108,11 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
             .AsNoTracking()
             .FirstOrDefaultAsync(e => e.ArchivalNumber == archivalNumber, cancellationToken);
 
-    public async Task<IReadOnlyList<JournalEntry>> ListEntriesAsync(
+    public async Task<(IReadOnlyList<JournalEntry> Items, int? TotalCount)> ListEntriesAsync(
         Guid? journalId,
         int? fiscalYear,
         int? period,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.JournalEntries.AsNoTracking().AsQueryable();
@@ -130,10 +132,18 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
             query = query.Where(e => e.Period == numero);
         }
 
-        return await query
-            .OrderBy(e => e.TransactionDate)
-            .ThenBy(e => e.Id)
-            .ToListAsync(cancellationToken);
+        query = query.OrderBy(e => e.TransactionDate).ThenBy(e => e.Id);
+
+        int? total = null;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            query = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        var itens = await query.ToListAsync(cancellationToken);
+        return (itens, total);
     }
 
     public async Task<bool> EntryExistsAsync(
