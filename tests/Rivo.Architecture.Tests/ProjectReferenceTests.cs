@@ -37,6 +37,12 @@ public class ProjectReferenceTests
         ["Audit"] = [],
         ["Notifications"] = [],
 
+        // SharedKernel (ADR-068) — primitivas estruturais sem dono de negócio
+        // (ver domain/shared-concepts.md). Não depende de módulo nenhum, pela
+        // mesma razão que `Audit`/`Notifications` não dependem: é fundacional,
+        // e qualquer dependência sua criaria um ciclo com quem a consome.
+        ["SharedKernel"] = [],
+
         // Só `audit`: introduzir uma versão de taxa é operação de dados
         // auditada (ADR-011 §5).
         //
@@ -78,7 +84,9 @@ public class ProjectReferenceTests
         // Resolver o colaborador a partir da conta autenticada exige ler `hr`,
         // e é por isso que a direcção passou a existir. `approval` continua
         // invertida por `IPaymentApproval`, e essa parte da nota mantém-se.
-        ["Finance"] = ["Audit", "Fiscal", "Commercial", "Procurement", "Documents", "Hr"],
+        // `SharedKernel` — 2026-09-23 (ADR-068): Skip/Take de paginação real
+        // usa `PageRequest`, primitiva sem dono de negócio.
+        ["Finance"] = ["Audit", "Fiscal", "Commercial", "Procurement", "Documents", "Hr", "SharedKernel"],
 
         // `procurement` é dono do Fornecedor e da Requisição Interna. Duas
         // direcções, e nenhuma delas é `approval`:
@@ -214,6 +222,15 @@ public class ProjectReferenceTests
     /// </summary>
     private static readonly HashSet<string> CamadasDeComposicao =
         new(StringComparer.Ordinal) { "Settings", "EmployeePortal", "Dashboard", "CustomerPortal", "Analytics" };
+
+    /// <summary>
+    /// SharedKernel (ADR-068): nem módulo (sem Domain — não tem agregado, não
+    /// tem regra de negócio), nem camada de composição (sem Api — não expõe
+    /// endpoint nenhum). Só publica contratos, e é só isso que
+    /// <see cref="ProjectDiscovery_FindsEveryModuleProject"/> exige dele.
+    /// </summary>
+    private static readonly HashSet<string> ProjectosDeKernel =
+        new(StringComparer.Ordinal) { "SharedKernel" };
 
     [Fact]
     public void Module_ReferencesAnotherModuleOnlyThroughItsContracts()
@@ -354,9 +371,11 @@ public class ProjectReferenceTests
         // se verifica que tem, pelo menos, Api.
         foreach (var module in DependenciasDeclaradas.Keys)
         {
-            var camadaMinima = CamadasDeComposicao.Contains(module)
-                ? RivoAssemblies.ApiLayer
-                : RivoAssemblies.DomainLayer;
+            var camadaMinima = ProjectosDeKernel.Contains(module)
+                ? RivoAssemblies.ContractsLayer
+                : CamadasDeComposicao.Contains(module)
+                    ? RivoAssemblies.ApiLayer
+                    : RivoAssemblies.DomainLayer;
 
             Assert.Contains(Projects, p => p.Module == module && p.Layer == camadaMinima);
         }

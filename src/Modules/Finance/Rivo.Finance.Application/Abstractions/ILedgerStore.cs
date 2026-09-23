@@ -1,4 +1,5 @@
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.Abstractions;
 
@@ -68,10 +69,15 @@ public interface ILedgerStore
     Task<JournalEntry?> FindEntryByArchivalNumberAsync(
         string archivalNumber, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<JournalEntry>> ListEntriesAsync(
+    /// <summary>
+    /// <paramref name="pagina"/> nulo devolve tudo, como antes de existir
+    /// paginação (ADR-068) — o total só vem preenchido quando há página.
+    /// </summary>
+    Task<(IReadOnlyList<JournalEntry> Items, int? TotalCount)> ListEntriesAsync(
         Guid? journalId,
         int? fiscalYear,
         int? period,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     /// <summary>

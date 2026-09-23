@@ -6,6 +6,7 @@ using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
 using Rivo.Fiscal.Contracts;
 using Rivo.Procurement.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.Tests;
 
@@ -827,9 +828,19 @@ internal sealed class FakeLedgerStore : ILedgerStore
         string archivalNumber, CancellationToken cancellationToken) =>
         Task.FromResult(_entries.FirstOrDefault(e => e.ArchivalNumber == archivalNumber));
 
-    public Task<IReadOnlyList<JournalEntry>> ListEntriesAsync(
-        Guid? journalId, int? fiscalYear, int? period, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<JournalEntry>>([.. _entries]);
+    public Task<(IReadOnlyList<JournalEntry> Items, int? TotalCount)> ListEntriesAsync(
+        Guid? journalId, int? fiscalYear, int? period, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        var ordenados = _entries.OrderBy(e => e.TransactionDate).ThenBy(e => e.Id).ToList();
+
+        if (pagina is not { } p)
+        {
+            return Task.FromResult<(IReadOnlyList<JournalEntry>, int?)>((ordenados, null));
+        }
+
+        var pagina2 = ordenados.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize).ToList();
+        return Task.FromResult<(IReadOnlyList<JournalEntry>, int?)>((pagina2, ordenados.Count));
+    }
 
     public Task<bool> EntryExistsAsync(
         DateOnly transactionDate, string journalCode, string archivalNumber,

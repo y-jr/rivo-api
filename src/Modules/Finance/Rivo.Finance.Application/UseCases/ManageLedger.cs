@@ -2,6 +2,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
 using Rivo.Hr.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.UseCases;
 
@@ -490,15 +491,16 @@ public enum PostEntryOutcome
 
 public sealed class ListJournalEntries(ILedgerStore store)
 {
-    public async Task<IReadOnlyList<JournalEntryView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<JournalEntryView> Items, int? TotalCount)> ExecuteAsync(
         Guid? journalId,
         int? fiscalYear,
         int? period,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var lancamentos = await store.ListEntriesAsync(journalId, fiscalYear, period, cancellationToken);
+        var (lancamentos, total) = await store.ListEntriesAsync(journalId, fiscalYear, period, pagina, cancellationToken);
 
-        return [.. lancamentos.Select(ToView)];
+        return ([.. lancamentos.Select(ToView)], total);
     }
 
     internal static JournalEntryView ToView(JournalEntry e) =>

@@ -8,6 +8,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.UseCases;
 using Rivo.Finance.Contracts;
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Api;
 
@@ -59,7 +60,8 @@ public static class LedgerEndpoints
         // ---- Lançamentos ----
         group.MapGet("/ledger/entries", ListEntriesAsync)
             .RequireAuthorization(FinancePermissions.LedgerRead)
-            .Produces<IReadOnlyList<JournalEntryView>>();
+            .Produces<IReadOnlyList<JournalEntryView>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/ledger/entries/{entryId:guid}", GetEntryAsync)
             .RequireAuthorization(FinancePermissions.LedgerRead)
@@ -322,8 +324,27 @@ public static class LedgerEndpoints
         Guid? journalId,
         int? fiscalYear,
         int? period,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await list.ExecuteAsync(journalId, fiscalYear, period, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (itens, total) = await list.ExecuteAsync(journalId, fiscalYear, period, pagina, cancellationToken);
+
+        if (pagina is { } p)
+        {
+            response.Headers["X-Page"] = p.Page.ToString();
+            response.Headers["X-Page-Size"] = p.PageSize.ToString();
+            response.Headers["X-Total-Count"] = total!.Value.ToString();
+        }
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> GetEntryAsync(
         Guid entryId,
