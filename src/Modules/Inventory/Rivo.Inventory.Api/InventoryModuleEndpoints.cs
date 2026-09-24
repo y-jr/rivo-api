@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Rivo.Audit.Contracts;
 using Rivo.Inventory.Application.UseCases;
 using Rivo.Inventory.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Inventory.Api;
 
@@ -17,7 +18,8 @@ public static class InventoryModuleEndpoints
 
         group.MapGet("/items", ListAsync)
             .RequireAuthorization(InventoryPermissions.ItemsRead)
-            .Produces<IReadOnlyList<InventoryItemView>>();
+            .Produces<IReadOnlyList<InventoryItemView>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/items/{itemId:guid}", GetAsync)
             .RequireAuthorization(InventoryPermissions.ItemsRead)
@@ -66,7 +68,8 @@ public static class InventoryModuleEndpoints
 
         group.MapGet("/warehouses", ListWarehousesAsync)
             .RequireAuthorization(InventoryPermissions.ItemsRead)
-            .Produces<IReadOnlyList<WarehouseView>>();
+            .Produces<IReadOnlyList<WarehouseView>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/warehouses/{warehouseId:guid}", GetWarehouseAsync)
             .RequireAuthorization(InventoryPermissions.ItemsRead)
@@ -87,7 +90,8 @@ public static class InventoryModuleEndpoints
 
         group.MapGet("/counts", ListCountsAsync)
             .RequireAuthorization(InventoryPermissions.ItemsRead)
-            .Produces<IReadOnlyList<InventoryCountView>>();
+            .Produces<IReadOnlyList<InventoryCountView>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/counts/{countId:guid}", GetCountAsync)
             .RequireAuthorization(InventoryPermissions.ItemsRead)
@@ -146,9 +150,18 @@ public static class InventoryModuleEndpoints
     private static async Task<IResult> ListAsync(
         ListInventoryItems listItems,
         bool? includeInactive,
+        int? page,
+        int? pageSize,
+        HttpResponse response,
         CancellationToken cancellationToken)
     {
-        var itens = await listItems.ExecuteAsync(includeInactive ?? false, cancellationToken);
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (itens, total) = await listItems.ExecuteAsync(includeInactive ?? false, pagina, cancellationToken);
+        AplicarCabecalhosDePagina(response, pagina, total);
         return Results.Ok(itens);
     }
 
@@ -263,9 +276,18 @@ public static class InventoryModuleEndpoints
     private static async Task<IResult> ListWarehousesAsync(
         ListWarehouses listWarehouses,
         bool? includeInactive,
+        int? page,
+        int? pageSize,
+        HttpResponse response,
         CancellationToken cancellationToken)
     {
-        var armazens = await listWarehouses.ExecuteAsync(includeInactive ?? false, cancellationToken);
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (armazens, total) = await listWarehouses.ExecuteAsync(includeInactive ?? false, pagina, cancellationToken);
+        AplicarCabecalhosDePagina(response, pagina, total);
         return Results.Ok(armazens);
     }
 
@@ -318,9 +340,18 @@ public static class InventoryModuleEndpoints
     private static async Task<IResult> ListCountsAsync(
         ListInventoryCounts listCounts,
         Guid? warehouseId,
+        int? page,
+        int? pageSize,
+        HttpResponse response,
         CancellationToken cancellationToken)
     {
-        var contagens = await listCounts.ExecuteAsync(warehouseId, cancellationToken);
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (contagens, total) = await listCounts.ExecuteAsync(warehouseId, pagina, cancellationToken);
+        AplicarCabecalhosDePagina(response, pagina, total);
         return Results.Ok(contagens);
     }
 
@@ -509,6 +540,22 @@ public static class InventoryModuleEndpoints
             ActorId: Guid.TryParse(actor, out var id) ? id : null,
             IpAddress: http.Connection.RemoteIpAddress?.ToString(),
             CorrelationId: http.TraceIdentifier);
+    }
+
+    /// <summary>
+    /// `X-Page`/`X-Page-Size`/`X-Total-Count` só quando há página pedida
+    /// (ADR-068) — o corpo continua o mesmo array de sempre.
+    /// </summary>
+    private static void AplicarCabecalhosDePagina(HttpResponse response, PageRequest? pagina, int? total)
+    {
+        if (pagina is not { } p)
+        {
+            return;
+        }
+
+        response.Headers["X-Page"] = p.Page.ToString();
+        response.Headers["X-Page-Size"] = p.PageSize.ToString();
+        response.Headers["X-Total-Count"] = total!.Value.ToString();
     }
 }
 

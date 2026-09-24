@@ -108,7 +108,8 @@ public class ProjectReferenceTests
         // `documents` (cotações), `inventory` (recepção de bens) e
         // `notifications` — pertencem à Ordem de Compra e à Recepção, que não
         // estão feitas.
-        ["Procurement"] = ["Audit", "Hr"],
+        // `SharedKernel` — 2026-09-25 (ADR-068): paginação real das listagens.
+        ["Procurement"] = ["Audit", "Hr", "SharedKernel"],
 
         ["Documents"] = ["Audit"],
         ["Hr"] = ["Audit", "Documents"],
@@ -121,7 +122,8 @@ public class ProjectReferenceTests
         // `Hr` desde o ADR-057: quem abre a folha resolve-se a partir da conta
         // autenticada, e isso exige ler `hr`.
         ["Payroll"] = ["Audit", "Fiscal", "Documents", "Hr"],
-        ["Inventory"] = ["Audit"],
+        // `SharedKernel` — 2026-09-25 (ADR-068): paginação real das listagens.
+        ["Inventory"] = ["Audit", "SharedKernel"],
 
         // `projects` ganhou Marco e Tarefa — 2026-08-30, já não é esqueleto
         // puro. `hr` entra porque atribuir uma Tarefa referencia um
@@ -140,7 +142,8 @@ public class ProjectReferenceTests
         // `documents` (ADR-009, mesmo desenho de `hr`). As direcções que
         // `modules/fleet.md` lista e que faltam — `finance`, `inventory`,
         // `notifications` — pertencem a partes ainda por implementar.
-        ["Fleet"] = ["Audit", "Hr", "Documents"],
+        // `SharedKernel` — 2026-09-25 (ADR-068): paginação real das listagens.
+        ["Fleet"] = ["Audit", "Hr", "Documents", "SharedKernel"],
 
         // `identity` compõe o catálogo de permissões a partir do que cada
         // módulo declara — cada um diz que permissões existem, `identity`

@@ -2,6 +2,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Fleet.Application.Abstractions;
 using Rivo.Fleet.Domain;
 using Rivo.Hr.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Fleet.Application.Tests;
 
@@ -39,8 +40,19 @@ internal sealed class FakeVehicleStore : IVehicleStore
     public Task<Vehicle?> FindByPlateNumberAsync(string plateNumber, CancellationToken cancellationToken) =>
         Task.FromResult(_viaturas.SingleOrDefault(v => v.PlateNumber == plateNumber));
 
-    public Task<IReadOnlyList<Vehicle>> ListAsync(bool includeInactive, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<Vehicle>>([.. _viaturas]);
+    public Task<(IReadOnlyList<Vehicle> Items, int? TotalCount)> ListAsync(
+        bool includeInactive, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        var ordenados = _viaturas.OrderBy(v => v.PlateNumber).ToList();
+
+        if (pagina is not { } p)
+        {
+            return Task.FromResult<(IReadOnlyList<Vehicle>, int?)>((ordenados, null));
+        }
+
+        return Task.FromResult<(IReadOnlyList<Vehicle>, int?)>(
+            (ordenados.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize).ToList(), ordenados.Count));
+    }
 
     /// <summary>Sem filtrar — ver a nota da classe.</summary>
     public Task<IReadOnlyList<Vehicle>> ListWithDuePlansAsync(
@@ -65,7 +77,8 @@ internal sealed class FakeVehicleStore : IVehicleStore
     public Task AddVehicleDocumentAsync(VehicleDocument link, CancellationToken cancellationToken) =>
         throw new NotSupportedException("O teste não previu uma chamada a AddVehicleDocumentAsync.");
 
-    public Task<IReadOnlyList<VehicleDocument>> ListVehicleDocumentsAsync(Guid vehicleId, CancellationToken cancellationToken) =>
+    public Task<(IReadOnlyList<VehicleDocument> Items, int? TotalCount)> ListVehicleDocumentsAsync(
+        Guid vehicleId, PageRequest? pagina, CancellationToken cancellationToken) =>
         throw new NotSupportedException("O teste não previu uma chamada a ListVehicleDocumentsAsync.");
 
     public Task SaveChangesAsync(CancellationToken cancellationToken)

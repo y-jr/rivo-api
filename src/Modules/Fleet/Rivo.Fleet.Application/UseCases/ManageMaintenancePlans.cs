@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Fleet.Application.Abstractions;
 using Rivo.Fleet.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Fleet.Application.UseCases;
 
@@ -185,17 +186,35 @@ public enum PlanLifecycleOutcome
 /// </summary>
 public sealed class ListDueMaintenancePlans(IVehicleStore store, TimeProvider clock)
 {
-    public async Task<IReadOnlyList<DueMaintenancePlanView>> ExecuteAsync(
-        int withinDays, CancellationToken cancellationToken)
+    /// <summary>
+    /// Paginação em memória, não na query (excepção a ADR-068): a unidade da
+    /// listagem é o plano, mas a `Store` devolve veículos com planos aninhados
+    /// — achatar isto num `Skip`/`Take` de SQL exigiria reescrever
+    /// <see cref="IVehicleStore.ListWithDuePlansAsync"/> para uma projecção
+    /// própria de planos, fora do âmbito desta ronda. O número de veículos com
+    /// manutenção a vencer é sempre pequeno (não cresce sem limite como
+    /// lançamentos ou movimentos), por isso o corte em memória aqui é seguro.
+    /// </summary>
+    public async Task<(IReadOnlyList<DueMaintenancePlanView> Items, int? TotalCount)> ExecuteAsync(
+        int withinDays, PageRequest? pagina, CancellationToken cancellationToken)
     {
         var hoje = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         var veiculos = await store.ListWithDuePlansAsync(hoje, withinDays, cancellationToken);
 
-        return [.. veiculos.SelectMany(v => v.Plans
+        var planos = veiculos.SelectMany(v => v.Plans
             .Where(p => p.IsActive && p.NextDueOn <= hoje.AddDays(withinDays))
             .Select(p => new DueMaintenancePlanView(
                 v.Id, v.PlateNumber, p.Id, p.Description, p.NextDueOn, p.IsOverdue(hoje))))
-            .OrderBy(p => p.NextDueOn)];
+            .OrderBy(p => p.NextDueOn)
+            .ToList();
+
+        if (pagina is not { } p2)
+        {
+            return (planos, null);
+        }
+
+        var fatia = planos.Skip((p2.Page - 1) * p2.PageSize).Take(p2.PageSize).ToList();
+        return (fatia, planos.Count);
     }
 }
 

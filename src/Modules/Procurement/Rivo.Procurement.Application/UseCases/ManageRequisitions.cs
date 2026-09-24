@@ -2,6 +2,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Hr.Contracts;
 using Rivo.Procurement.Application.Abstractions;
 using Rivo.Procurement.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Procurement.Application.UseCases;
 
@@ -63,9 +64,10 @@ internal static class RequisitionViews
 
 public sealed class ListRequisitions(IProcurementStore store)
 {
-    public async Task<IReadOnlyList<RequisitionView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<RequisitionView> Items, int? TotalCount)> ExecuteAsync(
         Guid? requestedByEmployeeId,
         string? status,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         RequisitionStatus? estado = null;
@@ -74,16 +76,16 @@ public sealed class ListRequisitions(IProcurementStore store)
         {
             if (!Enum.TryParse<RequisitionStatus>(status, ignoreCase: true, out var parsed))
             {
-                return [];
+                return ([], null);
             }
 
             estado = parsed;
         }
 
-        var requisicoes = await store.ListRequisitionsAsync(
-            requestedByEmployeeId, estado, cancellationToken);
+        var (requisicoes, total) = await store.ListRequisitionsAsync(
+            requestedByEmployeeId, estado, pagina, cancellationToken);
 
-        return [.. requisicoes.Select(RequisitionViews.ToView)];
+        return ([.. requisicoes.Select(RequisitionViews.ToView)], total);
     }
 }
 

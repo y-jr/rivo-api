@@ -1,4 +1,5 @@
 using Rivo.Inventory.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Inventory.Application.Abstractions;
 
@@ -14,7 +15,8 @@ public interface IInventoryItemStore
 
     Task<InventoryItem?> FindBySkuAsync(string sku, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<InventoryItem>> ListAsync(bool includeInactive, CancellationToken cancellationToken);
+    Task<(IReadOnlyList<InventoryItem> Items, int? TotalCount)> ListAsync(
+        bool includeInactive, PageRequest? pagina, CancellationToken cancellationToken);
 
     Task AddAsync(InventoryItem item, CancellationToken cancellationToken);
 

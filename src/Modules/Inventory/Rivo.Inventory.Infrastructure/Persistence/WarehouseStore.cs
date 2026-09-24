@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Inventory.Application.Abstractions;
 using Rivo.Inventory.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Inventory.Infrastructure.Persistence;
 
@@ -15,7 +16,8 @@ public sealed class WarehouseStore(InventoryDbContext context) : IWarehouseStore
     public async Task<Warehouse?> FindByCodeAsync(string code, CancellationToken cancellationToken) =>
         await context.Warehouses.AsNoTracking().FirstOrDefaultAsync(w => w.Code == code, cancellationToken);
 
-    public async Task<IReadOnlyList<Warehouse>> ListAsync(bool includeInactive, CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<Warehouse> Items, int? TotalCount)> ListAsync(
+        bool includeInactive, PageRequest? pagina, CancellationToken cancellationToken)
     {
         var query = context.Warehouses.AsNoTracking().AsQueryable();
 
@@ -24,7 +26,17 @@ public sealed class WarehouseStore(InventoryDbContext context) : IWarehouseStore
             query = query.Where(w => w.Status == WarehouseStatus.Active);
         }
 
-        return await query.OrderBy(w => w.Code).ToListAsync(cancellationToken);
+        query = query.OrderBy(w => w.Code);
+
+        int? total = null;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            query = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        return (await query.ToListAsync(cancellationToken), total);
     }
 
     public async Task AddAsync(Warehouse warehouse, CancellationToken cancellationToken) =>

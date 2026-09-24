@@ -1,4 +1,5 @@
 using Rivo.Procurement.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Procurement.Application.Abstractions;
 
@@ -25,7 +26,8 @@ public interface IProcurementStore
     /// </summary>
     Task<Supplier?> FindSupplierByTaxIdAsync(string taxId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<Supplier>> ListSuppliersAsync(bool includeInactive, CancellationToken cancellationToken);
+    Task<(IReadOnlyList<Supplier> Items, int? TotalCount)> ListSuppliersAsync(
+        bool includeInactive, PageRequest? pagina, CancellationToken cancellationToken);
 
     Task AddSupplierAsync(Supplier supplier, CancellationToken cancellationToken);
 
@@ -33,9 +35,10 @@ public interface IProcurementStore
 
     Task<PurchaseRequisition?> FindRequisitionForUpdateAsync(Guid requisitionId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<PurchaseRequisition>> ListRequisitionsAsync(
+    Task<(IReadOnlyList<PurchaseRequisition> Items, int? TotalCount)> ListRequisitionsAsync(
         Guid? requestedByEmployeeId,
         RequisitionStatus? status,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     Task AddRequisitionAsync(PurchaseRequisition requisition, CancellationToken cancellationToken);
@@ -44,9 +47,10 @@ public interface IProcurementStore
 
     Task<PurchaseOrder?> FindOrderForUpdateAsync(Guid purchaseOrderId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<PurchaseOrder>> ListOrdersAsync(
+    Task<(IReadOnlyList<PurchaseOrder> Items, int? TotalCount)> ListOrdersAsync(
         Guid? requisitionId,
         Guid? supplierId,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -70,8 +74,9 @@ public interface IProcurementStore
 
     Task<GoodsReceipt?> FindReceiptForUpdateAsync(Guid goodsReceiptId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<GoodsReceipt>> ListReceiptsAsync(
+    Task<(IReadOnlyList<GoodsReceipt> Items, int? TotalCount)> ListReceiptsAsync(
         Guid? purchaseOrderId,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     /// <summary>

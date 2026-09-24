@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Hr.Contracts;
 using Rivo.Procurement.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Procurement.Application.Tests;
 
@@ -129,6 +130,40 @@ internal sealed class FakeProcurementStore : ProcurementStoreParcial
     {
         Gravacoes++;
         return Task.CompletedTask;
+    }
+
+    public override Task<(IReadOnlyList<Supplier> Items, int? TotalCount)> ListSuppliersAsync(
+        bool includeInactive, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        var ordenados = _fornecedores
+            .Where(f => includeInactive || f.Status == SupplierStatus.Active)
+            .OrderBy(f => f.Name)
+            .ToList();
+
+        return Task.FromResult(Paginar(ordenados, pagina));
+    }
+
+    public override Task<(IReadOnlyList<PurchaseRequisition> Items, int? TotalCount)> ListRequisitionsAsync(
+        Guid? requestedByEmployeeId, RequisitionStatus? status, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        var ordenados = _requisicoes
+            .Where(r => requestedByEmployeeId is null || r.RequestedByEmployeeId == requestedByEmployeeId)
+            .Where(r => status is null || r.Status == status)
+            .OrderByDescending(r => r.RequestedOn)
+            .ThenByDescending(r => r.Id)
+            .ToList();
+
+        return Task.FromResult(Paginar(ordenados, pagina));
+    }
+
+    private static (IReadOnlyList<T> Items, int? TotalCount) Paginar<T>(List<T> ordenados, PageRequest? pagina)
+    {
+        if (pagina is not { } p)
+        {
+            return (ordenados, null);
+        }
+
+        return (ordenados.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize).ToList(), ordenados.Count);
     }
 }
 

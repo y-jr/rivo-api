@@ -1,4 +1,5 @@
 using Rivo.Inventory.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Inventory.Application.Abstractions;
 
@@ -12,7 +13,8 @@ public interface IInventoryCountStore
 
     Task<InventoryCount?> FindForUpdateAsync(Guid countId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<InventoryCount>> ListAsync(Guid? warehouseId, CancellationToken cancellationToken);
+    Task<(IReadOnlyList<InventoryCount> Items, int? TotalCount)> ListAsync(
+        Guid? warehouseId, PageRequest? pagina, CancellationToken cancellationToken);
 
     Task AddAsync(InventoryCount count, CancellationToken cancellationToken);
 

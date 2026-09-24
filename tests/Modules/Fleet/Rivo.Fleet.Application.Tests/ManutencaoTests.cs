@@ -32,8 +32,8 @@ public class ManutencaoTests
         viatura.SchedulePlan("Revisão", 180, Hoje.AddDays(30));   // no limite
         viatura.SchedulePlan("Pneus", 180, Hoje.AddDays(31));     // um dia depois
 
-        var vencidos = await new ListDueMaintenancePlans(store, Relogio)
-            .ExecuteAsync(30, CancellationToken.None);
+        var (vencidos, _) = await new ListDueMaintenancePlans(store, Relogio)
+            .ExecuteAsync(30, pagina: null, CancellationToken.None);
 
         Assert.Equal("Revisão", Assert.Single(vencidos).Description);
     }
@@ -50,8 +50,8 @@ public class ManutencaoTests
         var plano = viatura.SchedulePlan("Revisão", 180, Hoje.AddDays(-10));
         viatura.CancelPlan(plano.Id);
 
-        var vencidos = await new ListDueMaintenancePlans(store, Relogio)
-            .ExecuteAsync(30, CancellationToken.None);
+        var (vencidos, _) = await new ListDueMaintenancePlans(store, Relogio)
+            .ExecuteAsync(30, pagina: null, CancellationToken.None);
 
         Assert.Empty(vencidos);
     }
@@ -68,8 +68,9 @@ public class ManutencaoTests
         var viatura = store.Registar("LD-01-AA");
         viatura.SchedulePlan("Revisão", 180, Hoje.AddDays(-5));
 
-        var vencido = Assert.Single(await new ListDueMaintenancePlans(store, Relogio)
-            .ExecuteAsync(30, CancellationToken.None));
+        var (planos, _) = await new ListDueMaintenancePlans(store, Relogio)
+            .ExecuteAsync(30, pagina: null, CancellationToken.None);
+        var vencido = Assert.Single(planos);
 
         Assert.True(vencido.IsOverdue);
     }
@@ -81,8 +82,9 @@ public class ManutencaoTests
         var viatura = store.Registar("LD-01-AA");
         viatura.SchedulePlan("Revisão", 180, Hoje);
 
-        var plano = Assert.Single(await new ListDueMaintenancePlans(store, Relogio)
-            .ExecuteAsync(0, CancellationToken.None));
+        var (planosHoje, _) = await new ListDueMaintenancePlans(store, Relogio)
+            .ExecuteAsync(0, pagina: null, CancellationToken.None);
+        var plano = Assert.Single(planosHoje);
 
         // Horizonte zero cobre hoje, e hoje ainda não é atraso.
         Assert.False(plano.IsOverdue);
@@ -102,8 +104,8 @@ public class ManutencaoTests
         viatura.SchedulePlan("Pneus", 365, Hoje.AddDays(10));
         store.Registar("LD-02-BB"); // sem planos, não contribui
 
-        var vencidos = await new ListDueMaintenancePlans(store, Relogio)
-            .ExecuteAsync(30, CancellationToken.None);
+        var (vencidos, _) = await new ListDueMaintenancePlans(store, Relogio)
+            .ExecuteAsync(30, pagina: null, CancellationToken.None);
 
         Assert.Equal(2, vencidos.Count);
         Assert.All(vencidos, p => Assert.Equal("LD-01-AA", p.PlateNumber));
@@ -117,8 +119,8 @@ public class ManutencaoTests
         store.Registar("LD-02-BB").SchedulePlan("Primeiro", 180, Hoje.AddDays(-3));
         store.Registar("LD-03-CC").SchedulePlan("Segundo", 180, Hoje.AddDays(7));
 
-        var vencidos = await new ListDueMaintenancePlans(store, Relogio)
-            .ExecuteAsync(30, CancellationToken.None);
+        var (vencidos, _) = await new ListDueMaintenancePlans(store, Relogio)
+            .ExecuteAsync(30, pagina: null, CancellationToken.None);
 
         // Ordenado através das viaturas todas, não dentro de cada uma.
         Assert.Equal(["Primeiro", "Segundo", "Terceiro"], vencidos.Select(p => p.Description));
