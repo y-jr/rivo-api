@@ -1,4 +1,5 @@
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.Abstractions;
 
@@ -19,8 +20,9 @@ public interface IPayablesStore
     /// </summary>
     Task<BankAccount?> FindAccountForUpdateAsync(Guid accountId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<BankAccount>> ListAccountsAsync(
+    Task<(IReadOnlyList<BankAccount> Items, int? TotalCount)> ListAccountsAsync(
         bool includeClosed,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     Task AddAccountAsync(BankAccount account, CancellationToken cancellationToken);
@@ -58,8 +60,9 @@ public interface IPayablesStore
 
     Task<PurchaseInvoice?> FindPurchaseInvoiceForUpdateAsync(Guid invoiceId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<PurchaseInvoice>> ListPurchaseInvoicesAsync(
+    Task<(IReadOnlyList<PurchaseInvoice> Items, int? TotalCount)> ListPurchaseInvoicesAsync(
         DateOnly? dueBefore,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -81,8 +84,9 @@ public interface IPayablesStore
 
     Task<PaymentRequest?> FindPaymentRequestForUpdateAsync(Guid requestId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<PaymentRequest>> ListPaymentRequestsAsync(
+    Task<(IReadOnlyList<PaymentRequest> Items, int? TotalCount)> ListPaymentRequestsAsync(
         Guid? purchaseInvoiceId,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     /// <summary>

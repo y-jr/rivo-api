@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.UseCases;
 
@@ -92,13 +93,14 @@ public enum CreateChartOfAccountsVersionOutcome
 
 public sealed class ListChartOfAccountsVersions(ILedgerStore store)
 {
-    public async Task<IReadOnlyList<ChartOfAccountsVersionView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<ChartOfAccountsVersionView> Items, int? TotalCount)> ExecuteAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var versoes = await store.ListChartVersionsAsync(includeInactive, cancellationToken);
+        var (versoes, total) = await store.ListChartVersionsAsync(includeInactive, pagina, cancellationToken);
 
-        return [.. versoes.Select(v => new ChartOfAccountsVersionView(
+        return ([.. versoes.Select(v => new ChartOfAccountsVersionView(
             v.Id,
             v.Jurisdiction,
             v.Name,
@@ -107,7 +109,7 @@ public sealed class ListChartOfAccountsVersions(ILedgerStore store)
             v.EffectiveFrom,
             v.EffectiveTo,
             v.IsActive,
-            v.Accounts.Count))];
+            v.Accounts.Count))], total);
     }
 }
 

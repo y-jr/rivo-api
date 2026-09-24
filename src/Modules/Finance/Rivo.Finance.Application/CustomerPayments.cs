@@ -20,7 +20,10 @@ public sealed class CustomerPayments(SubmitPaymentClaim submit, ListPaymentClaim
         CancellationToken cancellationToken) =>
         submit.ExecuteAsync(customerId, salesInvoiceId, amount, paidOn, documentId, submittedByUserId, notes, cancellationToken);
 
-    public Task<IReadOnlyList<PaymentClaimView>> ListMyClaimsAsync(
-        Guid customerId, CancellationToken cancellationToken) =>
-        list.ExecuteAsync(customerId, status: null, cancellationToken);
+    public async Task<IReadOnlyList<PaymentClaimView>> ListMyClaimsAsync(
+        Guid customerId, CancellationToken cancellationToken)
+    {
+        var (itens, _) = await list.ExecuteAsync(customerId, status: null, pagina: null, cancellationToken);
+        return itens;
+    }
 }

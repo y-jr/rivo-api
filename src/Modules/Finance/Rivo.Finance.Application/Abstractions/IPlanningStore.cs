@@ -1,4 +1,5 @@
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.Abstractions;
 
@@ -27,8 +28,9 @@ public interface IPlanningStore
         Guid departmentId,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<CostCentre>> ListCostCentresAsync(
+    Task<(IReadOnlyList<CostCentre> Items, int? TotalCount)> ListCostCentresAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     Task AddCostCentreAsync(CostCentre costCentre, CancellationToken cancellationToken);
@@ -46,9 +48,10 @@ public interface IPlanningStore
         int fiscalYear,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<Budget>> ListBudgetsAsync(
+    Task<(IReadOnlyList<Budget> Items, int? TotalCount)> ListBudgetsAsync(
         Guid? costCentreId,
         int? fiscalYear,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     Task AddBudgetAsync(Budget budget, CancellationToken cancellationToken);
@@ -92,9 +95,10 @@ public interface IPlanningStore
         int month,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<DepartmentCostForecast>> ListForecastsAsync(
+    Task<(IReadOnlyList<DepartmentCostForecast> Items, int? TotalCount)> ListForecastsAsync(
         Guid? departmentId,
         int? fiscalYear,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     Task AddForecastAsync(DepartmentCostForecast forecast, CancellationToken cancellationToken);
