@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Hr.Application.Abstractions;
 using Rivo.Hr.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Hr.Application.UseCases;
 
@@ -8,11 +9,12 @@ namespace Rivo.Hr.Application.UseCases;
 
 public sealed class ListDepartments(IHrStore store)
 {
-    public async Task<IReadOnlyList<DepartmentView>> ExecuteAsync(CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<DepartmentView> Items, int? TotalCount)> ExecuteAsync(
+        PageRequest? pagina, CancellationToken cancellationToken)
     {
-        var departments = await store.ListDepartmentsAsync(cancellationToken);
+        var (departments, total) = await store.ListDepartmentsAsync(pagina, cancellationToken);
 
-        return [.. departments.Select(d => new DepartmentView(d.Id, d.Name, d.ManagerId))];
+        return ([.. departments.Select(d => new DepartmentView(d.Id, d.Name, d.ManagerId))], total);
     }
 }
 
@@ -47,12 +49,13 @@ public sealed class CreateDepartment(IHrStore store, IAuditTrail audit)
 
 public sealed class ListPositions(IHrStore store)
 {
-    public async Task<IReadOnlyList<PositionView>> ExecuteAsync(CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<PositionView> Items, int? TotalCount)> ExecuteAsync(
+        PageRequest? pagina, CancellationToken cancellationToken)
     {
-        var positions = await store.ListPositionsAsync(cancellationToken);
+        var (positions, total) = await store.ListPositionsAsync(pagina, cancellationToken);
 
-        return [.. positions.Select(p => new PositionView(
-            p.Id, p.Name, p.HierarchyLevel, p.GrantsApprovalAuthority))];
+        return ([.. positions.Select(p => new PositionView(
+            p.Id, p.Name, p.HierarchyLevel, p.GrantsApprovalAuthority))], total);
     }
 }
 
