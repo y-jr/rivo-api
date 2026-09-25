@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Hr.Application.Abstractions;
 using Rivo.Hr.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Hr.Application.UseCases;
 
@@ -11,9 +12,10 @@ public sealed class ListLifecycleProcesses(IHrStore store)
 {
     public static readonly IReadOnlyList<string> Kinds = [.. Enum.GetNames<LifecycleKind>()];
 
-    public async Task<IReadOnlyList<LifecycleProcessView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<LifecycleProcessView> Items, int? TotalCount)> ExecuteAsync(
         string? kind,
         Guid? employeeId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         LifecycleKind? filter = null;
@@ -22,15 +24,16 @@ public sealed class ListLifecycleProcesses(IHrStore store)
         {
             if (!Enum.TryParse<LifecycleKind>(kind, ignoreCase: true, out var parsed))
             {
-                return [];
+                return ([], null);
             }
 
             filter = parsed;
         }
 
-        var processes = await store.ListLifecycleProcessesAsync(filter, employeeId, cancellationToken);
+        var (processes, total) = await store.ListLifecycleProcessesAsync(
+            filter, employeeId, pagina, cancellationToken);
 
-        return [.. processes.Select(Project)];
+        return ([.. processes.Select(Project)], total);
     }
 
     internal static LifecycleProcessView Project(EmployeeLifecycleProcess p) =>

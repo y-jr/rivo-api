@@ -1,20 +1,22 @@
 using Rivo.Audit.Contracts;
 using Rivo.Hr.Application.Abstractions;
 using Rivo.Hr.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Hr.Application.UseCases;
 
 public sealed class ListLeave(IHrStore store)
 {
-    public async Task<IReadOnlyList<LeaveView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<LeaveView> Items, int? TotalCount)> ExecuteAsync(
         Guid? employeeId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var pedidos = await store.ListLeaveAsync(employeeId, cancellationToken);
+        var (pedidos, total) = await store.ListLeaveAsync(employeeId, pagina, cancellationToken);
 
-        return [.. pedidos.Select(l => new LeaveView(
+        return ([.. pedidos.Select(l => new LeaveView(
             l.Id, l.EmployeeId, l.Type.ToString(), l.StartsOn, l.EndsOn,
-            l.CalendarDays, l.Status.ToString(), l.Reason, l.ApprovalRequestId))];
+            l.CalendarDays, l.Status.ToString(), l.Reason, l.ApprovalRequestId))], total);
     }
 }
 
@@ -87,7 +89,7 @@ public sealed class RequestLeave(
             return LeaveResult.ApprovalUnavailable();
         }
 
-        var existentes = await store.ListLeaveAsync(employeeId, cancellationToken);
+        var (existentes, _) = await store.ListLeaveAsync(employeeId, pagina: null, cancellationToken);
 
         if (existentes.Any(l => l.OverlapsWith(startsOn, endsOn)))
         {
