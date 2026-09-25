@@ -46,9 +46,15 @@ public sealed record LoginResponse(
     int IdleTimeoutSeconds);
 
 /// <summary>Identidade do utilizador autenticado, para o cliente se orientar.</summary>
+/// <param name="DisplayName">
+/// Nome do colaborador ligado à conta, se existir (ADR-042) — nulo quando a
+/// conta não tem colaborador associado, em vez de inventado a partir do
+/// endereço de email.
+/// </param>
 public sealed record CurrentUserResponse(
     Guid UserId,
     string Email,
+    string? DisplayName,
     IReadOnlyList<string> Roles,
     IReadOnlyList<string> Permissions);
 

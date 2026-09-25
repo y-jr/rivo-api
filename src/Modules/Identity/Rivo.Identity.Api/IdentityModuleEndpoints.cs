@@ -446,7 +446,11 @@ public static class IdentityModuleEndpoints
         return Results.NoContent();
     }
 
-    private static IResult GetCurrentUser(ClaimsPrincipal principal)
+    private static async Task<IResult> GetCurrentUser(
+        ClaimsPrincipal principal,
+        GetCurrentUserDisplayName getDisplayName,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
     {
         var userId = principal.FindFirstValue(JwtRegisteredClaimNames.Sub)
             ?? principal.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -467,7 +471,9 @@ public static class IdentityModuleEndpoints
         // do servidor, não a do cliente.
         var permissions = principal.FindAll(IdentityPermissions.ClaimType).Select(claim => claim.Value).ToArray();
 
-        return Results.Ok(new CurrentUserResponse(id, email, roles, permissions));
+        var displayName = await getDisplayName.ExecuteAsync(id, clock.GetUtcNow(), cancellationToken);
+
+        return Results.Ok(new CurrentUserResponse(id, email, displayName, roles, permissions));
     }
 
     /// <summary>
