@@ -114,7 +114,7 @@ public static class CommercialModuleEndpoints
 
         if (cliente is null)
         {
-            return Results.NotFound(new { erro = "Cliente não encontrado." });
+            return Results.Problem("Cliente não encontrado.", statusCode: StatusCodes.Status404NotFound);
         }
 
         // `status` como texto, igual a GET /commercial/customers — a lista e o
@@ -203,7 +203,7 @@ public static class CommercialModuleEndpoints
         {
             UpdateCustomerOutcome.Updated => Results.NoContent(),
 
-            UpdateCustomerOutcome.NotFound => Results.NotFound(new { erro = "Cliente não encontrado." }),
+            UpdateCustomerOutcome.NotFound => Results.Problem("Cliente não encontrado.", statusCode: StatusCodes.Status404NotFound),
 
             UpdateCustomerOutcome.PartialAddress => Results.ValidationProblem(
                 new Dictionary<string, string[]>
@@ -230,7 +230,7 @@ public static class CommercialModuleEndpoints
 
         return encontrado
             ? Results.NoContent()
-            : Results.NotFound(new { erro = "Cliente não encontrado." });
+            : Results.Problem("Cliente não encontrado.", statusCode: StatusCodes.Status404NotFound);
     }
 
     private static async Task<IResult> LinkAccountAsync(
@@ -248,7 +248,7 @@ public static class CommercialModuleEndpoints
             LinkCustomerAccountOutcome.Linked => Results.NoContent(),
 
             LinkCustomerAccountOutcome.NotFound =>
-                Results.NotFound(new { erro = result.Error }),
+                Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             // 409 nos dois sentidos: a conta já é de outro cliente, ou este
             // cliente já tem outra conta. Até ao ADR-055 o segundo caso
@@ -279,7 +279,7 @@ public static class CommercialModuleEndpoints
             UnlinkCustomerAccountOutcome.Unlinked => Results.NoContent(),
 
             UnlinkCustomerAccountOutcome.NotFound =>
-                Results.NotFound(new { erro = result.Error }),
+                Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             _ => Results.Problem("Resultado inesperado ao desligar a conta."),
         };
@@ -295,7 +295,7 @@ public static class CommercialModuleEndpoints
         // Lista vazia e 404 dizem coisas diferentes: «nunca teve conta» e «não
         // há tal cliente».
         return historico is null
-            ? Results.NotFound(new { erro = "Cliente não encontrado." })
+            ? Results.Problem("Cliente não encontrado.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(historico);
     }
 
@@ -314,10 +314,10 @@ public static class CommercialModuleEndpoints
             AssignCustomerOwnerOutcome.Assigned => Results.NoContent(),
 
             AssignCustomerOwnerOutcome.NotFound =>
-                Results.NotFound(new { erro = result.Error }),
+                Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             AssignCustomerOwnerOutcome.EmployeeNotFound =>
-                Results.NotFound(new { erro = result.Error }),
+                Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             _ => Results.Problem("Resultado inesperado ao atribuir o vendedor responsável."),
         };

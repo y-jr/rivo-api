@@ -191,7 +191,7 @@ public static class IdentityModuleEndpoints
             AssignProfileOutcome.Assigned => Results.NoContent(),
 
             // 404 porque o utilizador é o recurso que o URI identifica.
-            AssignProfileOutcome.UserNotFound => Results.NotFound(new { erro = "Utilizador não encontrado." }),
+            AssignProfileOutcome.UserNotFound => Results.Problem("Utilizador não encontrado.", statusCode: StatusCodes.Status404NotFound),
 
             // 400 e não 404: o perfil vem do corpo, e o recurso que o URI
             // identifica — o utilizador — existe. Um 404 aqui manda procurar o
@@ -531,7 +531,7 @@ public static class IdentityModuleEndpoints
         return resultado.Result switch
         {
             PasswordChangeResult.Changed => Results.NoContent(),
-            PasswordChangeResult.UserNotFound => Results.NotFound(new { erro = "Utilizador não encontrado." }),
+            PasswordChangeResult.UserNotFound => Results.Problem("Utilizador não encontrado.", statusCode: StatusCodes.Status404NotFound),
 
             PasswordChangeResult.Rejected => Results.ValidationProblem(
                 new Dictionary<string, string[]> { ["newPassword"] = [.. resultado.Errors] }),
@@ -570,7 +570,7 @@ public static class IdentityModuleEndpoints
         return resultado switch
         {
             AccountStatusOutcome.Changed => Results.NoContent(),
-            AccountStatusOutcome.UserNotFound => Results.NotFound(new { erro = "Utilizador não encontrado." }),
+            AccountStatusOutcome.UserNotFound => Results.Problem("Utilizador não encontrado.", statusCode: StatusCodes.Status404NotFound),
             _ => Results.Problem("Resultado inesperado ao alterar o estado da conta."),
         };
     }
@@ -588,11 +588,11 @@ public static class IdentityModuleEndpoints
         return outcome switch
         {
             AssignProfileOutcome.Assigned => Results.NoContent(),
-            AssignProfileOutcome.UserNotFound => Results.NotFound(new { erro = "Utilizador não encontrado." }),
+            AssignProfileOutcome.UserNotFound => Results.Problem("Utilizador não encontrado.", statusCode: StatusCodes.Status404NotFound),
 
             // 404 e não 400, ao contrário da atribuição: aqui o perfil vem no
             // URI, e é parte do recurso que não foi encontrado.
-            AssignProfileOutcome.ProfileNotFound => Results.NotFound(new { erro = "Perfil de acesso não encontrado." }),
+            AssignProfileOutcome.ProfileNotFound => Results.Problem("Perfil de acesso não encontrado.", statusCode: StatusCodes.Status404NotFound),
 
             _ => Results.Problem("Resultado inesperado ao retirar o perfil."),
         };
@@ -637,7 +637,7 @@ public static class IdentityModuleEndpoints
 
             // Sessão de outra pessoa devolve o mesmo que sessão inexistente —
             // ver a nota em `RevokeOwnSession`.
-            RevokeSessionOutcome.NotFound => Results.NotFound(new { erro = "Sessão não encontrada." }),
+            RevokeSessionOutcome.NotFound => Results.Problem("Sessão não encontrada.", statusCode: StatusCodes.Status404NotFound),
 
             _ => Results.Problem("Resultado inesperado ao terminar a sessão."),
         };

@@ -181,7 +181,7 @@ public static class PayablesEndpoints
         return outcome switch
         {
             AccountMovementOutcome.Done => Results.NoContent(),
-            AccountMovementOutcome.NotFound => Results.NotFound(new { erro = "Conta não encontrada." }),
+            AccountMovementOutcome.NotFound => Results.Problem("Conta não encontrada.", statusCode: StatusCodes.Status404NotFound),
             _ => Results.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["deposito"] = ["O valor tem de ser maior que zero e a conta tem de estar aberta."],
@@ -202,7 +202,7 @@ public static class PayablesEndpoints
         return outcome switch
         {
             AccountMovementOutcome.Done => Results.NoContent(),
-            AccountMovementOutcome.NotFound => Results.NotFound(new { erro = "Conta não encontrada." }),
+            AccountMovementOutcome.NotFound => Results.Problem("Conta não encontrada.", statusCode: StatusCodes.Status404NotFound),
 
             // 409 e não 400: quando a recusa é por saldo insuficiente ou conta
             // fechada, é o estado que impede — o mesmo critério de
@@ -228,7 +228,7 @@ public static class PayablesEndpoints
         return resultado.Outcome switch
         {
             BankAccountStatusOutcome.Changed => Results.NoContent(),
-            BankAccountStatusOutcome.NotFound => Results.NotFound(new { erro = "Conta não encontrada." }),
+            BankAccountStatusOutcome.NotFound => Results.Problem("Conta não encontrada.", statusCode: StatusCodes.Status404NotFound),
 
             // 409: é o saldo — o estado da conta — que impede, e não o corpo
             // do pedido.
@@ -250,7 +250,7 @@ public static class PayablesEndpoints
         return resultado.Outcome switch
         {
             BankAccountStatusOutcome.Changed => Results.NoContent(),
-            BankAccountStatusOutcome.NotFound => Results.NotFound(new { erro = "Conta não encontrada." }),
+            BankAccountStatusOutcome.NotFound => Results.Problem("Conta não encontrada.", statusCode: StatusCodes.Status404NotFound),
             _ => Results.Problem("Resultado inesperado ao reabrir a conta."),
         };
     }
@@ -273,7 +273,7 @@ public static class PayablesEndpoints
         var extracto = await statement.ExecuteAsync(accountId, from, to, cancellationToken);
 
         return extracto is null
-            ? Results.NotFound(new { erro = "Conta não encontrada." })
+            ? Results.Problem("Conta não encontrada.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(extracto);
     }
 
@@ -304,7 +304,7 @@ public static class PayablesEndpoints
         var compra = await getInvoice.ExecuteAsync(purchaseInvoiceId, cancellationToken);
 
         return compra is null
-            ? Results.NotFound(new { erro = "Factura de compra não encontrada." })
+            ? Results.Problem("Factura de compra não encontrada.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(compra);
     }
 
@@ -316,7 +316,7 @@ public static class PayablesEndpoints
         var vista = await getMatch.ExecuteAsync(purchaseInvoiceId, cancellationToken);
 
         return vista is null
-            ? Results.NotFound(new { erro = "Factura de compra não encontrada." })
+            ? Results.Problem("Factura de compra não encontrada.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(vista);
     }
 
@@ -391,7 +391,7 @@ public static class PayablesEndpoints
         var pedido = await getRequest.ExecuteAsync(paymentRequestId, cancellationToken);
 
         return pedido is null
-            ? Results.NotFound(new { erro = "Pedido de pagamento não encontrado." })
+            ? Results.Problem("Pedido de pagamento não encontrado.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(pedido);
     }
 
@@ -447,10 +447,10 @@ public static class PayablesEndpoints
                 }),
 
             CreatePaymentRequestOutcome.InvoiceNotFound =>
-                Results.NotFound(new { erro = "Factura de compra não encontrada." }),
+                Results.Problem("Factura de compra não encontrada.", statusCode: StatusCodes.Status404NotFound),
 
             CreatePaymentRequestOutcome.CostCentreNotFound =>
-                Results.NotFound(new { erro = "Centro de custo não encontrado ou desactivado." }),
+                Results.Problem("Centro de custo não encontrado ou desactivado.", statusCode: StatusCodes.Status404NotFound),
 
             // 501: sem motor de governança a capacidade não existe. Melhor não
             // criar o pedido do que criar um que nunca poderá ser pago (BR-1).
@@ -482,7 +482,7 @@ public static class PayablesEndpoints
         return result.Outcome switch
         {
             CancelInvoiceOutcome.Cancelled => Results.NoContent(),
-            CancelInvoiceOutcome.NotFound => Results.NotFound(new { erro = "Pedido não encontrado." }),
+            CancelInvoiceOutcome.NotFound => Results.Problem("Pedido não encontrado.", statusCode: StatusCodes.Status404NotFound),
             _ => Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
         };
     }
@@ -544,10 +544,10 @@ public static class PayablesEndpoints
                 Results.Ok(new { estado = "Executado", saldoRestante = result.RemainingBalance }),
 
             ExecutePaymentOutcome.RequestNotFound =>
-                Results.NotFound(new { erro = "Pedido de pagamento não encontrado." }),
+                Results.Problem("Pedido de pagamento não encontrado.", statusCode: StatusCodes.Status404NotFound),
 
             ExecutePaymentOutcome.AccountNotFound =>
-                Results.NotFound(new { erro = "Conta bancária não encontrada." }),
+                Results.Problem("Conta bancária não encontrada.", statusCode: StatusCodes.Status404NotFound),
 
             // **403 e não 409**: não é o estado que impede, é *esta pessoa*.
             // Mesma distinção que `approval` faz para BR-2 e BR-4.

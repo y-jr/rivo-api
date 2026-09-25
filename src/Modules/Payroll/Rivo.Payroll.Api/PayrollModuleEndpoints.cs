@@ -102,7 +102,7 @@ public static class PayrollModuleEndpoints
         var folha = await getRun.ExecuteAsync(runId, cancellationToken);
 
         return folha is null
-            ? Results.NotFound(new { erro = "Folha não encontrada." })
+            ? Results.Problem("Folha não encontrada.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(ToView(folha));
     }
 
@@ -169,7 +169,7 @@ public static class PayrollModuleEndpoints
         {
             AddItemResultKind.Added => Results.Created($"/payroll/runs/{runId}", new { itemId = result.ItemId }),
 
-            AddItemResultKind.NotFound => Results.NotFound(new { erro = result.Error }),
+            AddItemResultKind.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             // 400: campo mal preenchido (salário não positivo) ou falta de
             // configuração fiscal — em ambos os casos o pedido corrige-se do
@@ -196,7 +196,7 @@ public static class PayrollModuleEndpoints
         return result.Outcome switch
         {
             SubmitRunOutcome.Submitted => Results.Ok(new { approvalRequestId = result.ApprovalRequestId }),
-            SubmitRunOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            SubmitRunOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             // 501: o motor de governança não está ligado neste ambiente — não
             // é a folha que está errada, é a capacidade que falta.
@@ -219,7 +219,7 @@ public static class PayrollModuleEndpoints
 
         return result.Outcome switch
         {
-            ApplyDecisionOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            ApplyDecisionOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             _ => Results.Ok(new { status = result.Status }),
         };
     }
@@ -242,7 +242,7 @@ public static class PayrollModuleEndpoints
 
             AttachPayrollDocumentOutcome.RunNotFound or AttachPayrollDocumentOutcome.ItemNotFound
                 or AttachPayrollDocumentOutcome.DocumentNotFound =>
-                Results.NotFound(new { erro = result.Error }),
+                Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             // 400: categoria em branco — campo mal preenchido.
             AttachPayrollDocumentOutcome.Rejected =>

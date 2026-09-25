@@ -199,7 +199,7 @@ public static class FinanceModuleEndpoints
         var saldo = await getBalance.ExecuteAsync(invoiceId, cancellationToken);
 
         return saldo is null
-            ? Results.NotFound(new { erro = "Factura não encontrada." })
+            ? Results.Problem("Factura não encontrada.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(saldo);
     }
 
@@ -275,7 +275,7 @@ public static class FinanceModuleEndpoints
                 enableRangeProcessing: false),
 
             FiscalDocumentFileOutcome.DocumentNotFound =>
-                Results.NotFound(new { erro = "Documento não encontrado." }),
+                Results.Problem("Documento não encontrado.", statusCode: StatusCodes.Status404NotFound),
 
             // 501 e não 500: a capacidade existe, falta configurar quem emite.
             // Mesma leitura do 501 em `hr` e `procurement` — é estado de
@@ -304,7 +304,7 @@ public static class FinanceModuleEndpoints
             FiscalDocumentDeliveryOutcome.Sent => Results.Ok(new { enviadoPara = result.SentTo }),
 
             FiscalDocumentDeliveryOutcome.DocumentNotFound =>
-                Results.NotFound(new { erro = "Documento não encontrado." }),
+                Results.Problem("Documento não encontrado.", statusCode: StatusCodes.Status404NotFound),
 
             // 409: o documento está bem, o que falta é a quem enviar. Não é o
             // pedido que está malformado — é o cliente que não tem endereço, ou
@@ -353,7 +353,7 @@ public static class FinanceModuleEndpoints
         var nota = await getNote.ExecuteAsync(creditNoteId, cancellationToken);
 
         return nota is null
-            ? Results.NotFound(new { erro = "Nota de crédito não encontrada." })
+            ? Results.Problem("Nota de crédito não encontrada.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(nota);
     }
 
@@ -384,10 +384,10 @@ public static class FinanceModuleEndpoints
                 new { creditNoteId = result.CreditNoteId, number = result.Number }),
 
             IssueCreditNoteOutcome.InvoiceNotFound =>
-                Results.NotFound(new { erro = "Factura não encontrada." }),
+                Results.Problem("Factura não encontrada.", statusCode: StatusCodes.Status404NotFound),
 
             IssueCreditNoteOutcome.SeriesNotFound =>
-                Results.NotFound(new { erro = "Série NC não encontrada. Abra-a em /finance/series." }),
+                Results.Problem("Série NC não encontrada. Abra-a em /finance/series.", statusCode: StatusCodes.Status404NotFound),
 
             // 409: creditar mais do que está em aberto é conflito com o estado
             // da factura, não campo mal preenchido.
@@ -421,7 +421,7 @@ public static class FinanceModuleEndpoints
         return result.Outcome switch
         {
             CancelInvoiceOutcome.Cancelled => Results.NoContent(),
-            CancelInvoiceOutcome.NotFound => Results.NotFound(new { erro = "Nota de crédito não encontrada." }),
+            CancelInvoiceOutcome.NotFound => Results.Problem("Nota de crédito não encontrada.", statusCode: StatusCodes.Status404NotFound),
             CancelInvoiceOutcome.Rejected =>
                 Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
             _ => Results.Problem("Resultado inesperado ao anular a nota de crédito."),
@@ -457,7 +457,7 @@ public static class FinanceModuleEndpoints
         var recibo = await getReceipt.ExecuteAsync(receiptId, cancellationToken);
 
         return recibo is null
-            ? Results.NotFound(new { erro = "Recibo não encontrado." })
+            ? Results.Problem("Recibo não encontrado.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(recibo);
     }
 
@@ -499,10 +499,10 @@ public static class FinanceModuleEndpoints
                 new { receiptId = result.ReceiptId, number = result.Number }),
 
             RegisterReceiptOutcome.InvoiceNotFound =>
-                Results.NotFound(new { erro = "Factura não encontrada." }),
+                Results.Problem("Factura não encontrada.", statusCode: StatusCodes.Status404NotFound),
 
             RegisterReceiptOutcome.SeriesNotFound =>
-                Results.NotFound(new { erro = "Série RG não encontrada. Abra-a em /finance/series." }),
+                Results.Problem("Série RG não encontrada. Abra-a em /finance/series.", statusCode: StatusCodes.Status404NotFound),
 
             RegisterReceiptOutcome.ExceedsOutstanding =>
                 Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
@@ -530,7 +530,7 @@ public static class FinanceModuleEndpoints
         return result.Outcome switch
         {
             CancelInvoiceOutcome.Cancelled => Results.NoContent(),
-            CancelInvoiceOutcome.NotFound => Results.NotFound(new { erro = "Recibo não encontrado." }),
+            CancelInvoiceOutcome.NotFound => Results.Problem("Recibo não encontrado.", statusCode: StatusCodes.Status404NotFound),
             CancelInvoiceOutcome.Rejected =>
                 Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
             _ => Results.Problem("Resultado inesperado ao estornar o recibo."),
@@ -571,7 +571,7 @@ public static class FinanceModuleEndpoints
             ReviewPaymentClaimOutcome.Confirmed => Results.Ok(new { receiptId = result.ReceiptId }),
 
             ReviewPaymentClaimOutcome.NotFound =>
-                Results.NotFound(new { erro = "Pedido não encontrado." }),
+                Results.Problem("Pedido não encontrado.", statusCode: StatusCodes.Status404NotFound),
 
             ReviewPaymentClaimOutcome.Rejected or ReviewPaymentClaimOutcome.ReceiptFailed =>
                 Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
@@ -596,7 +596,7 @@ public static class FinanceModuleEndpoints
             ReviewPaymentClaimOutcome.RejectedOk => Results.NoContent(),
 
             ReviewPaymentClaimOutcome.NotFound =>
-                Results.NotFound(new { erro = "Pedido não encontrado." }),
+                Results.Problem("Pedido não encontrado.", statusCode: StatusCodes.Status404NotFound),
 
             ReviewPaymentClaimOutcome.Rejected =>
                 Results.ValidationProblem(new Dictionary<string, string[]> { ["reason"] = [result.Error!] }),
@@ -676,7 +676,7 @@ public static class FinanceModuleEndpoints
         var factura = await getInvoice.ExecuteAsync(invoiceId, cancellationToken);
 
         return factura is null
-            ? Results.NotFound(new { erro = "Factura não encontrada." })
+            ? Results.Problem("Factura não encontrada.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(factura);
     }
 
@@ -708,10 +708,10 @@ public static class FinanceModuleEndpoints
                 new { invoiceId = result.InvoiceId, number = result.Number }),
 
             IssueInvoiceOutcome.CustomerNotFound =>
-                Results.NotFound(new { erro = "Cliente não encontrado." }),
+                Results.Problem("Cliente não encontrado.", statusCode: StatusCodes.Status404NotFound),
 
             IssueInvoiceOutcome.SeriesNotFound =>
-                Results.NotFound(new { erro = "Série de numeração não encontrada. Abra-a em /finance/series." }),
+                Results.Problem("Série de numeração não encontrada. Abra-a em /finance/series.", statusCode: StatusCodes.Status404NotFound),
 
             // 501 e não 400: o pedido é legítimo e o sistema é que não sabe
             // emiti-lo. Falta o catálogo de códigos de isenção (ADR-036), e não
@@ -748,7 +748,7 @@ public static class FinanceModuleEndpoints
         {
             CancelInvoiceOutcome.Cancelled => Results.NoContent(),
 
-            CancelInvoiceOutcome.NotFound => Results.NotFound(new { erro = "Factura não encontrada." }),
+            CancelInvoiceOutcome.NotFound => Results.Problem("Factura não encontrada.", statusCode: StatusCodes.Status404NotFound),
 
             // 409: já anulada é conflito de estado, não pedido mal formado.
             CancelInvoiceOutcome.Rejected =>
