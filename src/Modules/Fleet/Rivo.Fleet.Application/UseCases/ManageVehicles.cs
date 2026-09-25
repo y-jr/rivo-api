@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Fleet.Application.Abstractions;
 using Rivo.Fleet.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Fleet.Application.UseCases;
 
@@ -66,12 +67,12 @@ internal static class VehicleViews
 
 public sealed class ListVehicles(IVehicleStore store, TimeProvider clock)
 {
-    public async Task<IReadOnlyList<VehicleView>> ExecuteAsync(
-        bool includeInactive, CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<VehicleView> Items, int? TotalCount)> ExecuteAsync(
+        bool includeInactive, PageRequest? pagina, CancellationToken cancellationToken)
     {
         var hoje = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var veiculos = await store.ListAsync(includeInactive, cancellationToken);
-        return [.. veiculos.Select(v => VehicleViews.ToView(v, hoje))];
+        var (veiculos, total) = await store.ListAsync(includeInactive, pagina, cancellationToken);
+        return ([.. veiculos.Select(v => VehicleViews.ToView(v, hoje))], total);
     }
 }
 

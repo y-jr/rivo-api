@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Hr.Application.Abstractions;
 using Rivo.Hr.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Hr.Application.UseCases;
 
@@ -11,24 +12,22 @@ public sealed class ListAttendance(IHrStore store)
 {
     /// <param name="anomaliesOnly">
     /// Só faltas e atrasos por justificar. É a vista que a fila de RH usa —
-    /// filtrada aqui e não no cliente, para não mandar o dia inteiro da empresa
-    /// pela rede à procura de meia dúzia de casos.
+    /// filtrada na query do `Store`, não em memória (ADR-068): filtrar depois
+    /// de paginar faria a página 2 saltar registos que a página 1 nunca
+    /// chegou a excluir.
     /// </param>
-    public async Task<IReadOnlyList<AttendanceView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<AttendanceView> Items, int? TotalCount)> ExecuteAsync(
         DateOnly from,
         DateOnly to,
         Guid? employeeId,
         bool anomaliesOnly,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var records = await store.ListAttendanceAsync(from, to, employeeId, cancellationToken);
+        var (records, total) = await store.ListAttendanceAsync(
+            from, to, employeeId, anomaliesOnly, pagina, cancellationToken);
 
-        if (anomaliesOnly)
-        {
-            records = [.. records.Where(r => r.IsAnomaly)];
-        }
-
-        return [.. records.Select(r => new AttendanceView(
+        return ([.. records.Select(r => new AttendanceView(
             r.Id,
             r.EmployeeId,
             r.Day,
@@ -36,7 +35,7 @@ public sealed class ListAttendance(IHrStore store)
             r.CheckedOutAt,
             r.Status.ToString(),
             r.Justification,
-            r.ObservedDuration?.TotalHours))];
+            r.ObservedDuration?.TotalHours))], total);
     }
 }
 

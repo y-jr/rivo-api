@@ -1,11 +1,30 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Hr.Application.Abstractions;
 using Rivo.Hr.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Hr.Infrastructure.Persistence;
 
 public sealed class HrStore(HrDbContext context) : IHrStore
 {
+    /// <summary>
+    /// Skip/Take real na query, nunca corte em memória (ADR-068) — o total só
+    /// vem preenchido quando há página pedida, o que é como o chamador sabe
+    /// que a listagem paginou de facto.
+    /// </summary>
+    private static async Task<(IReadOnlyList<T> Items, int? TotalCount)> PaginateAsync<T>(
+        IQueryable<T> query, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        if (pagina is not { } p)
+        {
+            return (await query.ToListAsync(cancellationToken), null);
+        }
+
+        var total = await query.CountAsync(cancellationToken);
+        var itens = await query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize).ToListAsync(cancellationToken);
+        return (itens, total);
+    }
+
     public async Task<Employee?> FindEmployeeAsync(Guid employeeId, CancellationToken cancellationToken) =>
         await context.Employees.FirstOrDefaultAsync(e => e.Id == employeeId, cancellationToken);
 
@@ -32,8 +51,10 @@ public sealed class HrStore(HrDbContext context) : IHrStore
             .AsNoTracking()
             .ToListAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<Employee>> ListEmployeesAsync(CancellationToken cancellationToken) =>
-        await context.Employees.AsNoTracking().OrderBy(e => e.FullName).ToListAsync(cancellationToken);
+    public async Task<(IReadOnlyList<Employee> Items, int? TotalCount)> ListEmployeesAsync(
+        PageRequest? pagina, CancellationToken cancellationToken) =>
+        await PaginateAsync(
+            context.Employees.AsNoTracking().OrderBy(e => e.FullName), pagina, cancellationToken);
 
     public async Task AddEmployeeAsync(Employee employee, CancellationToken cancellationToken) =>
         await context.Employees.AddAsync(employee, cancellationToken);
@@ -44,8 +65,10 @@ public sealed class HrStore(HrDbContext context) : IHrStore
     public async Task<Department?> FindDepartmentAsync(Guid departmentId, CancellationToken cancellationToken) =>
         await context.Departments.FirstOrDefaultAsync(d => d.Id == departmentId, cancellationToken);
 
-    public async Task<IReadOnlyList<Department>> ListDepartmentsAsync(CancellationToken cancellationToken) =>
-        await context.Departments.AsNoTracking().OrderBy(d => d.Name).ToListAsync(cancellationToken);
+    public async Task<(IReadOnlyList<Department> Items, int? TotalCount)> ListDepartmentsAsync(
+        PageRequest? pagina, CancellationToken cancellationToken) =>
+        await PaginateAsync(
+            context.Departments.AsNoTracking().OrderBy(d => d.Name), pagina, cancellationToken);
 
     public async Task AddDepartmentAsync(Department department, CancellationToken cancellationToken) =>
         await context.Departments.AddAsync(department, cancellationToken);
@@ -53,8 +76,11 @@ public sealed class HrStore(HrDbContext context) : IHrStore
     public async Task<Position?> FindPositionAsync(Guid positionId, CancellationToken cancellationToken) =>
         await context.Positions.FirstOrDefaultAsync(p => p.Id == positionId, cancellationToken);
 
-    public async Task<IReadOnlyList<Position>> ListPositionsAsync(CancellationToken cancellationToken) =>
-        await context.Positions.AsNoTracking().OrderBy(p => p.HierarchyLevel).ThenBy(p => p.Name).ToListAsync(cancellationToken);
+    public async Task<(IReadOnlyList<Position> Items, int? TotalCount)> ListPositionsAsync(
+        PageRequest? pagina, CancellationToken cancellationToken) =>
+        await PaginateAsync(
+            context.Positions.AsNoTracking().OrderBy(p => p.HierarchyLevel).ThenBy(p => p.Name),
+            pagina, cancellationToken);
 
     public async Task AddPositionAsync(Position position, CancellationToken cancellationToken) =>
         await context.Positions.AddAsync(position, cancellationToken);
@@ -83,8 +109,9 @@ public sealed class HrStore(HrDbContext context) : IHrStore
             .Select(a => a.Id)
             .ToListAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<LeaveRequest>> ListLeaveAsync(
+    public async Task<(IReadOnlyList<LeaveRequest> Items, int? TotalCount)> ListLeaveAsync(
         Guid? employeeId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.LeaveRequests.AsNoTracking();
@@ -94,7 +121,7 @@ public sealed class HrStore(HrDbContext context) : IHrStore
             query = query.Where(l => l.EmployeeId == employeeId);
         }
 
-        return await query.OrderByDescending(l => l.StartsOn).ToListAsync(cancellationToken);
+        return await PaginateAsync(query.OrderByDescending(l => l.StartsOn), pagina, cancellationToken);
     }
 
     public async Task<LeaveRequest?> FindLeaveAsync(Guid leaveId, CancellationToken cancellationToken) =>
@@ -145,11 +172,11 @@ public sealed class HrStore(HrDbContext context) : IHrStore
             .OrderByDescending(c => c.StartsOn)
             .ToListAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<EmploymentContract>> ListContractsAsync(CancellationToken cancellationToken) =>
-        await context.EmploymentContracts
-            .AsNoTracking()
-            .OrderByDescending(c => c.StartsOn)
-            .ToListAsync(cancellationToken);
+    public async Task<(IReadOnlyList<EmploymentContract> Items, int? TotalCount)> ListContractsAsync(
+        PageRequest? pagina, CancellationToken cancellationToken) =>
+        await PaginateAsync(
+            context.EmploymentContracts.AsNoTracking().OrderByDescending(c => c.StartsOn),
+            pagina, cancellationToken);
 
     public async Task<EmploymentContract?> FindContractAsync(Guid contractId, CancellationToken cancellationToken) =>
         await context.EmploymentContracts.FirstOrDefaultAsync(c => c.Id == contractId, cancellationToken);
@@ -166,10 +193,12 @@ public sealed class HrStore(HrDbContext context) : IHrStore
         await context.AttendanceRecords
             .FirstOrDefaultAsync(a => a.EmployeeId == employeeId && a.Day == day, cancellationToken);
 
-    public async Task<IReadOnlyList<AttendanceRecord>> ListAttendanceAsync(
+    public async Task<(IReadOnlyList<AttendanceRecord> Items, int? TotalCount)> ListAttendanceAsync(
         DateOnly from,
         DateOnly to,
         Guid? employeeId,
+        bool anomaliesOnly,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.AttendanceRecords
@@ -181,16 +210,23 @@ public sealed class HrStore(HrDbContext context) : IHrStore
             query = query.Where(a => a.EmployeeId == employeeId);
         }
 
-        return await query
-            .OrderByDescending(a => a.Day)
-            .ToListAsync(cancellationToken);
+        if (anomaliesOnly)
+        {
+            // Na query e não em memória: filtrar depois do Skip/Take faria a
+            // página 2 saltar registos que a página 1 nunca chegou a excluir.
+            query = query.Where(a => a.Status == AttendanceStatus.Absent || a.Status == AttendanceStatus.Late);
+        }
+
+        return await PaginateAsync(query.OrderByDescending(a => a.Day), pagina, cancellationToken);
     }
 
     public async Task AddAttendanceAsync(AttendanceRecord record, CancellationToken cancellationToken) =>
         await context.AttendanceRecords.AddAsync(record, cancellationToken);
 
-    public async Task<IReadOnlyList<Benefit>> ListBenefitsAsync(CancellationToken cancellationToken) =>
-        await context.Benefits.AsNoTracking().OrderBy(b => b.Name).ToListAsync(cancellationToken);
+    public async Task<(IReadOnlyList<Benefit> Items, int? TotalCount)> ListBenefitsAsync(
+        PageRequest? pagina, CancellationToken cancellationToken) =>
+        await PaginateAsync(
+            context.Benefits.AsNoTracking().OrderBy(b => b.Name), pagina, cancellationToken);
 
     public async Task<Benefit?> FindBenefitAsync(Guid benefitId, CancellationToken cancellationToken) =>
         await context.Benefits.FirstOrDefaultAsync(b => b.Id == benefitId, cancellationToken);
@@ -198,8 +234,9 @@ public sealed class HrStore(HrDbContext context) : IHrStore
     public async Task AddBenefitAsync(Benefit benefit, CancellationToken cancellationToken) =>
         await context.Benefits.AddAsync(benefit, cancellationToken);
 
-    public async Task<IReadOnlyList<BenefitEnrolment>> ListEnrolmentsAsync(
+    public async Task<(IReadOnlyList<BenefitEnrolment> Items, int? TotalCount)> ListEnrolmentsAsync(
         Guid? employeeId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.BenefitEnrolments.AsNoTracking();
@@ -209,7 +246,7 @@ public sealed class HrStore(HrDbContext context) : IHrStore
             query = query.Where(e => e.EmployeeId == employeeId);
         }
 
-        return await query.OrderByDescending(e => e.StartsOn).ToListAsync(cancellationToken);
+        return await PaginateAsync(query.OrderByDescending(e => e.StartsOn), pagina, cancellationToken);
     }
 
     public async Task<BenefitEnrolment?> FindEnrolmentAsync(Guid enrolmentId, CancellationToken cancellationToken) =>
@@ -218,8 +255,10 @@ public sealed class HrStore(HrDbContext context) : IHrStore
     public async Task AddEnrolmentAsync(BenefitEnrolment enrolment, CancellationToken cancellationToken) =>
         await context.BenefitEnrolments.AddAsync(enrolment, cancellationToken);
 
-    public async Task<IReadOnlyList<JobOpening>> ListJobOpeningsAsync(CancellationToken cancellationToken) =>
-        await context.JobOpenings.AsNoTracking().OrderBy(o => o.Title).ToListAsync(cancellationToken);
+    public async Task<(IReadOnlyList<JobOpening> Items, int? TotalCount)> ListJobOpeningsAsync(
+        PageRequest? pagina, CancellationToken cancellationToken) =>
+        await PaginateAsync(
+            context.JobOpenings.AsNoTracking().OrderBy(o => o.Title), pagina, cancellationToken);
 
     public async Task<JobOpening?> FindJobOpeningAsync(Guid openingId, CancellationToken cancellationToken) =>
         await context.JobOpenings.FirstOrDefaultAsync(o => o.Id == openingId, cancellationToken);
@@ -227,8 +266,9 @@ public sealed class HrStore(HrDbContext context) : IHrStore
     public async Task AddJobOpeningAsync(JobOpening opening, CancellationToken cancellationToken) =>
         await context.JobOpenings.AddAsync(opening, cancellationToken);
 
-    public async Task<IReadOnlyList<Candidate>> ListCandidatesAsync(
+    public async Task<(IReadOnlyList<Candidate> Items, int? TotalCount)> ListCandidatesAsync(
         Guid? openingId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.Candidates.AsNoTracking();
@@ -238,7 +278,8 @@ public sealed class HrStore(HrDbContext context) : IHrStore
             query = query.Where(c => c.JobOpeningId == openingId);
         }
 
-        return await query.OrderBy(c => c.Stage).ThenBy(c => c.AppliedOn).ToListAsync(cancellationToken);
+        return await PaginateAsync(
+            query.OrderBy(c => c.Stage).ThenBy(c => c.AppliedOn), pagina, cancellationToken);
     }
 
     public async Task<Candidate?> FindCandidateAsync(Guid candidateId, CancellationToken cancellationToken) =>
@@ -247,9 +288,10 @@ public sealed class HrStore(HrDbContext context) : IHrStore
     public async Task AddCandidateAsync(Candidate candidate, CancellationToken cancellationToken) =>
         await context.Candidates.AddAsync(candidate, cancellationToken);
 
-    public async Task<IReadOnlyList<EmployeeLifecycleProcess>> ListLifecycleProcessesAsync(
+    public async Task<(IReadOnlyList<EmployeeLifecycleProcess> Items, int? TotalCount)> ListLifecycleProcessesAsync(
         LifecycleKind? kind,
         Guid? employeeId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         // `Include` das tarefas: quem lista quer ver o progresso, e sem elas a
@@ -266,7 +308,7 @@ public sealed class HrStore(HrDbContext context) : IHrStore
             query = query.Where(p => p.EmployeeId == employeeId);
         }
 
-        return await query.OrderByDescending(p => p.Id).ToListAsync(cancellationToken);
+        return await PaginateAsync(query.OrderByDescending(p => p.Id), pagina, cancellationToken);
     }
 
     public async Task<EmployeeLifecycleProcess?> FindLifecycleProcessAsync(

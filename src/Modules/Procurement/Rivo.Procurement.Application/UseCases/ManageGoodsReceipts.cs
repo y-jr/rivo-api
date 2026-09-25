@@ -2,6 +2,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Hr.Contracts;
 using Rivo.Procurement.Application.Abstractions;
 using Rivo.Procurement.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Procurement.Application.UseCases;
 
@@ -223,13 +224,14 @@ public enum RegisterGoodsReceiptOutcome
 
 public sealed class ListGoodsReceipts(IProcurementStore store)
 {
-    public async Task<IReadOnlyList<GoodsReceiptView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<GoodsReceiptView> Items, int? TotalCount)> ExecuteAsync(
         Guid? purchaseOrderId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var recepcoes = await store.ListReceiptsAsync(purchaseOrderId, cancellationToken);
+        var (recepcoes, total) = await store.ListReceiptsAsync(purchaseOrderId, pagina, cancellationToken);
 
-        return [.. recepcoes.Select(GoodsReceiptViews.ToView)];
+        return ([.. recepcoes.Select(GoodsReceiptViews.ToView)], total);
     }
 }
 

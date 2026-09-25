@@ -31,7 +31,7 @@ public sealed class GetStockValuationByPeriod(IInventoryItemStore store)
             return StockValuationResult.Rejected("A data inicial não pode ser posterior à data final.");
         }
 
-        var itens = await store.ListAsync(includeInactive: true, cancellationToken);
+        var (itens, _) = await store.ListAsync(includeInactive: true, pagina: null, cancellationToken);
 
         // Só itens com movimento na janela -- um item sem nenhum não tem
         // nada a dizer sobre este período, e listá-lo a zero seria ruído.

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Fleet.Application.Abstractions;
 using Rivo.Fleet.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Fleet.Infrastructure.Persistence;
 
@@ -27,7 +28,8 @@ public sealed class VehicleStore(FleetDbContext context) : IVehicleStore
     public async Task<Vehicle?> FindByPlateNumberAsync(string plateNumber, CancellationToken cancellationToken) =>
         await context.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.PlateNumber == plateNumber, cancellationToken);
 
-    public async Task<IReadOnlyList<Vehicle>> ListAsync(bool includeInactive, CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<Vehicle> Items, int? TotalCount)> ListAsync(
+        bool includeInactive, PageRequest? pagina, CancellationToken cancellationToken)
     {
         var query = context.Vehicles.AsNoTracking()
             .Include(v => v.Maintenances)
@@ -42,7 +44,17 @@ public sealed class VehicleStore(FleetDbContext context) : IVehicleStore
             query = query.Where(v => v.Status != VehicleStatus.Inactive);
         }
 
-        return await query.OrderBy(v => v.PlateNumber).ToListAsync(cancellationToken);
+        query = query.OrderBy(v => v.PlateNumber);
+
+        int? total = null;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            query = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        return (await query.ToListAsync(cancellationToken), total);
     }
 
     public async Task<IReadOnlyList<Vehicle>> ListWithDuePlansAsync(
@@ -81,12 +93,25 @@ public sealed class VehicleStore(FleetDbContext context) : IVehicleStore
     public async Task AddVehicleDocumentAsync(VehicleDocument link, CancellationToken cancellationToken) =>
         await context.VehicleDocuments.AddAsync(link, cancellationToken);
 
-    public async Task<IReadOnlyList<VehicleDocument>> ListVehicleDocumentsAsync(
-        Guid vehicleId, CancellationToken cancellationToken) =>
-        await context.VehicleDocuments.AsNoTracking()
+    public async Task<(IReadOnlyList<VehicleDocument> Items, int? TotalCount)> ListVehicleDocumentsAsync(
+        Guid vehicleId, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        var query = context.VehicleDocuments.AsNoTracking()
             .Where(l => l.VehicleId == vehicleId)
             .OrderByDescending(l => l.AttachedAt)
-            .ToListAsync(cancellationToken);
+            .ThenByDescending(l => l.Id)
+            .AsQueryable();
+
+        int? total = null;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            query = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        return (await query.ToListAsync(cancellationToken), total);
+    }
 
     public Task SaveChangesAsync(CancellationToken cancellationToken) =>
         context.SaveChangesAsync(cancellationToken);

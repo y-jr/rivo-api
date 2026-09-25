@@ -7,6 +7,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Fleet.Application.UseCases;
 using Rivo.Fleet.Contracts;
 using Rivo.Fleet.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Fleet.Api;
 
@@ -18,7 +19,8 @@ public static class FleetModuleEndpoints
 
         group.MapGet("/vehicles", ListAsync)
             .RequireAuthorization(FleetPermissions.VehiclesRead)
-            .Produces<IReadOnlyList<VehicleView>>();
+            .Produces<IReadOnlyList<VehicleView>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/vehicles/{vehicleId:guid}", GetAsync)
             .RequireAuthorization(FleetPermissions.VehiclesRead)
@@ -87,7 +89,8 @@ public static class FleetModuleEndpoints
         // concreta — por isso vive fora de /vehicles/{id}.
         group.MapGet("/maintenance-plans/due", ListDuePlansAsync)
             .RequireAuthorization(FleetPermissions.VehiclesRead)
-            .Produces<IReadOnlyList<DueMaintenancePlanView>>();
+            .Produces<IReadOnlyList<DueMaintenancePlanView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/vehicles/{vehicleId:guid}/trips", RegisterTripAsync)
             .RequireAuthorization(FleetPermissions.VehiclesWrite)
@@ -106,7 +109,8 @@ public static class FleetModuleEndpoints
         group.MapGet("/vehicles/{vehicleId:guid}/documents", ListDocumentsAsync)
             .RequireAuthorization(FleetPermissions.VehiclesRead)
             .Produces<IReadOnlyList<VehicleDocumentView>>()
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesValidationProblem();
 
         group.MapPost("/vehicles/{vehicleId:guid}/documents", AttachDocumentAsync)
             .RequireAuthorization(FleetPermissions.VehiclesWrite)
@@ -120,9 +124,18 @@ public static class FleetModuleEndpoints
     private static async Task<IResult> ListAsync(
         ListVehicles listVehicles,
         bool? includeInactive,
+        int? page,
+        int? pageSize,
+        HttpResponse response,
         CancellationToken cancellationToken)
     {
-        var veiculos = await listVehicles.ExecuteAsync(includeInactive ?? false, cancellationToken);
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (veiculos, total) = await listVehicles.ExecuteAsync(includeInactive ?? false, pagina, cancellationToken);
+        AplicarCabecalhosDePagina(response, pagina, total);
         return Results.Ok(veiculos);
     }
 
@@ -367,13 +380,25 @@ public static class FleetModuleEndpoints
     private static async Task<IResult> ListDocumentsAsync(
         Guid vehicleId,
         ListVehicleDocuments listDocuments,
+        int? page,
+        int? pageSize,
+        HttpResponse response,
         CancellationToken cancellationToken)
     {
-        var documentos = await listDocuments.ExecuteAsync(vehicleId, cancellationToken);
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
 
-        return documentos is null
-            ? Results.NotFound(new { erro = "Viatura não encontrada." })
-            : Results.Ok(documentos);
+        var resultado = await listDocuments.ExecuteAsync(vehicleId, pagina, cancellationToken);
+
+        if (resultado is not { } r)
+        {
+            return Results.NotFound(new { erro = "Viatura não encontrada." });
+        }
+
+        AplicarCabecalhosDePagina(response, pagina, r.TotalCount);
+        return Results.Ok(r.Items);
     }
 
     private static async Task<IResult> AttachDocumentAsync(
@@ -399,9 +424,18 @@ public static class FleetModuleEndpoints
     private static async Task<IResult> ListDuePlansAsync(
         ListDueMaintenancePlans listDuePlans,
         int? withinDays,
+        int? page,
+        int? pageSize,
+        HttpResponse response,
         CancellationToken cancellationToken)
     {
-        var planos = await listDuePlans.ExecuteAsync(withinDays ?? 0, cancellationToken);
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (planos, total) = await listDuePlans.ExecuteAsync(withinDays ?? 0, pagina, cancellationToken);
+        AplicarCabecalhosDePagina(response, pagina, total);
         return Results.Ok(planos);
     }
 
@@ -414,6 +448,22 @@ public static class FleetModuleEndpoints
             ActorId: Guid.TryParse(actor, out var id) ? id : null,
             IpAddress: http.Connection.RemoteIpAddress?.ToString(),
             CorrelationId: http.TraceIdentifier);
+    }
+
+    /// <summary>
+    /// `X-Page`/`X-Page-Size`/`X-Total-Count` só quando há página pedida
+    /// (ADR-068) — o corpo continua o mesmo array de sempre.
+    /// </summary>
+    private static void AplicarCabecalhosDePagina(HttpResponse response, PageRequest? pagina, int? total)
+    {
+        if (pagina is not { } p)
+        {
+            return;
+        }
+
+        response.Headers["X-Page"] = p.Page.ToString();
+        response.Headers["X-Page-Size"] = p.PageSize.ToString();
+        response.Headers["X-Total-Count"] = total!.Value.ToString();
     }
 }
 

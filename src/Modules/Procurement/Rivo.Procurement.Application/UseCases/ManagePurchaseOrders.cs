@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Procurement.Application.Abstractions;
 using Rivo.Procurement.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Procurement.Application.UseCases;
 
@@ -265,15 +266,19 @@ public enum IssuePurchaseOrderOutcome
 
 public sealed class ListPurchaseOrders(IProcurementStore store)
 {
-    public async Task<IReadOnlyList<PurchaseOrderView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<PurchaseOrderView> Items, int? TotalCount)> ExecuteAsync(
         Guid? requisitionId,
         Guid? supplierId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var ordens = await store.ListOrdersAsync(requisitionId, supplierId, cancellationToken);
+        var (ordens, total) = await store.ListOrdersAsync(requisitionId, supplierId, pagina, cancellationToken);
 
         var vistas = new List<PurchaseOrderView>(ordens.Count);
 
+        // O enriquecimento por item corre só sobre a fatia paginada — nunca
+        // sobre o conjunto inteiro antes de cortar, senão a paginação pouparia
+        // bytes na resposta mas não pouparia nada na base de dados.
         foreach (var ordem in ordens)
         {
             var fornecedor = await store.FindSupplierAsync(ordem.SupplierId, cancellationToken);
@@ -285,7 +290,7 @@ public sealed class ListPurchaseOrders(IProcurementStore store)
                 ordem, fornecedor?.Name ?? "(fornecedor removido)", recebido));
         }
 
-        return vistas;
+        return (vistas, total);
     }
 }
 

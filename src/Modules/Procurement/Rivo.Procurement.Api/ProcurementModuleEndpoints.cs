@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Rivo.Audit.Contracts;
 using Rivo.Procurement.Application.UseCases;
 using Rivo.Procurement.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Procurement.Api;
 
@@ -17,7 +18,8 @@ public static class ProcurementModuleEndpoints
 
         group.MapGet("/suppliers", ListSuppliersAsync)
             .RequireAuthorization(ProcurementPermissions.SuppliersRead)
-            .Produces<IReadOnlyList<SupplierReference>>();
+            .Produces<IReadOnlyList<SupplierReference>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/suppliers/{supplierId:guid}", GetSupplierAsync)
             .RequireAuthorization(ProcurementPermissions.SuppliersRead)
@@ -44,7 +46,8 @@ public static class ProcurementModuleEndpoints
 
         group.MapGet("/requisitions", ListRequisitionsAsync)
             .RequireAuthorization(ProcurementPermissions.RequisitionsRead)
-            .Produces<IReadOnlyList<RequisitionView>>();
+            .Produces<IReadOnlyList<RequisitionView>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/requisitions/{requisitionId:guid}", GetRequisitionAsync)
             .RequireAuthorization(ProcurementPermissions.RequisitionsRead)
@@ -83,7 +86,8 @@ public static class ProcurementModuleEndpoints
 
         group.MapGet("/orders", ListOrdersAsync)
             .RequireAuthorization(ProcurementPermissions.OrdersRead)
-            .Produces<IReadOnlyList<PurchaseOrderView>>();
+            .Produces<IReadOnlyList<PurchaseOrderView>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/orders/{purchaseOrderId:guid}", GetOrderAsync)
             .RequireAuthorization(ProcurementPermissions.OrdersRead)
@@ -106,7 +110,8 @@ public static class ProcurementModuleEndpoints
             .ProducesProblem(StatusCodes.Status409Conflict);
         group.MapGet("/receipts", ListReceiptsAsync)
             .RequireAuthorization(ProcurementPermissions.ReceiptsRead)
-            .Produces<IReadOnlyList<GoodsReceiptView>>();
+            .Produces<IReadOnlyList<GoodsReceiptView>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/receipts/{goodsReceiptId:guid}", GetReceiptAsync)
             .RequireAuthorization(ProcurementPermissions.ReceiptsRead)
@@ -135,8 +140,20 @@ public static class ProcurementModuleEndpoints
     private static async Task<IResult> ListSuppliersAsync(
         ListSuppliers listSuppliers,
         bool? includeInactive,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listSuppliers.ExecuteAsync(includeInactive ?? false, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (itens, total) = await listSuppliers.ExecuteAsync(includeInactive ?? false, pagina, cancellationToken);
+        AplicarCabecalhosDePagina(response, pagina, total);
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> GetSupplierAsync(
         Guid supplierId,
@@ -230,9 +247,21 @@ public static class ProcurementModuleEndpoints
         ListRequisitions listRequisitions,
         Guid? requestedByEmployeeId,
         string? status,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listRequisitions.ExecuteAsync(
-            requestedByEmployeeId, status, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (itens, total) = await listRequisitions.ExecuteAsync(
+            requestedByEmployeeId, status, pagina, cancellationToken);
+        AplicarCabecalhosDePagina(response, pagina, total);
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> GetRequisitionAsync(
         Guid requisitionId,
@@ -390,8 +419,20 @@ public static class ProcurementModuleEndpoints
         ListPurchaseOrders listOrders,
         Guid? requisitionId,
         Guid? supplierId,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listOrders.ExecuteAsync(requisitionId, supplierId, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (itens, total) = await listOrders.ExecuteAsync(requisitionId, supplierId, pagina, cancellationToken);
+        AplicarCabecalhosDePagina(response, pagina, total);
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> GetOrderAsync(
         Guid purchaseOrderId,
@@ -478,8 +519,36 @@ public static class ProcurementModuleEndpoints
     private static async Task<IResult> ListReceiptsAsync(
         ListGoodsReceipts listReceipts,
         Guid? purchaseOrderId,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listReceipts.ExecuteAsync(purchaseOrderId, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (itens, total) = await listReceipts.ExecuteAsync(purchaseOrderId, pagina, cancellationToken);
+        AplicarCabecalhosDePagina(response, pagina, total);
+        return Results.Ok(itens);
+    }
+
+    /// <summary>
+    /// `X-Page`/`X-Page-Size`/`X-Total-Count` só quando há página pedida
+    /// (ADR-068) — o corpo continua o mesmo array de sempre.
+    /// </summary>
+    private static void AplicarCabecalhosDePagina(HttpResponse response, PageRequest? pagina, int? total)
+    {
+        if (pagina is not { } p)
+        {
+            return;
+        }
+
+        response.Headers["X-Page"] = p.Page.ToString();
+        response.Headers["X-Page-Size"] = p.PageSize.ToString();
+        response.Headers["X-Total-Count"] = total!.Value.ToString();
+    }
 
     private static async Task<IResult> GetReceiptAsync(
         Guid goodsReceiptId,

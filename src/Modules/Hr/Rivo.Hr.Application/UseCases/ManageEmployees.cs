@@ -2,17 +2,19 @@
 using Rivo.Hr.Application.Abstractions;
 using Rivo.Hr.Contracts;
 using Rivo.Hr.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Hr.Application.UseCases;
 
 public sealed class ListEmployees(IHrStore store)
 {
-    public async Task<IReadOnlyList<EmployeeView>> ExecuteAsync(CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<EmployeeView> Items, int? TotalCount)> ExecuteAsync(
+        PageRequest? pagina, CancellationToken cancellationToken)
     {
-        var employees = await store.ListEmployeesAsync(cancellationToken);
+        var (employees, total) = await store.ListEmployeesAsync(pagina, cancellationToken);
 
-        return [.. employees.Select(e => new EmployeeView(
-            e.Id, e.FullName, e.Status.ToString(), e.DepartmentId, e.UserId, e.HiredOn))];
+        return ([.. employees.Select(e => new EmployeeView(
+            e.Id, e.FullName, e.Status.ToString(), e.DepartmentId, e.UserId, e.HiredOn))], total);
     }
 }
 

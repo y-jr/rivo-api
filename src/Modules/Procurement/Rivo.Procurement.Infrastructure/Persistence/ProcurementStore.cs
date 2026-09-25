@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Procurement.Application.Abstractions;
 using Rivo.Procurement.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Procurement.Infrastructure.Persistence;
 
@@ -20,8 +21,9 @@ public sealed class ProcurementStore(ProcurementDbContext context) : IProcuremen
             .AsNoTracking()
             .FirstOrDefaultAsync(s => s.TaxId == taxId, cancellationToken);
 
-    public async Task<IReadOnlyList<Supplier>> ListSuppliersAsync(
+    public async Task<(IReadOnlyList<Supplier> Items, int? TotalCount)> ListSuppliersAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.Suppliers.AsNoTracking().AsQueryable();
@@ -33,7 +35,17 @@ public sealed class ProcurementStore(ProcurementDbContext context) : IProcuremen
             query = query.Where(s => s.Status == SupplierStatus.Active);
         }
 
-        return await query.OrderBy(s => s.Name).ToListAsync(cancellationToken);
+        query = query.OrderBy(s => s.Name);
+
+        int? total = null;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            query = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        return (await query.ToListAsync(cancellationToken), total);
     }
 
     public async Task AddSupplierAsync(Supplier supplier, CancellationToken cancellationToken) =>
@@ -54,9 +66,10 @@ public sealed class ProcurementStore(ProcurementDbContext context) : IProcuremen
             .Include(r => r.Lines)
             .FirstOrDefaultAsync(r => r.Id == requisitionId, cancellationToken);
 
-    public async Task<IReadOnlyList<PurchaseRequisition>> ListRequisitionsAsync(
+    public async Task<(IReadOnlyList<PurchaseRequisition> Items, int? TotalCount)> ListRequisitionsAsync(
         Guid? requestedByEmployeeId,
         RequisitionStatus? status,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.Requisitions
@@ -76,10 +89,17 @@ public sealed class ProcurementStore(ProcurementDbContext context) : IProcuremen
 
         // Mais recentes primeiro: quem abre a lista quer ver o que está em
         // curso, não o que se pediu há dois anos.
-        return await query
-            .OrderByDescending(r => r.RequestedOn)
-            .ThenByDescending(r => r.Id)
-            .ToListAsync(cancellationToken);
+        query = query.OrderByDescending(r => r.RequestedOn).ThenByDescending(r => r.Id);
+
+        int? total = null;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            query = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        return (await query.ToListAsync(cancellationToken), total);
     }
 
     public async Task AddRequisitionAsync(
@@ -102,9 +122,10 @@ public sealed class ProcurementStore(ProcurementDbContext context) : IProcuremen
             .Include(o => o.Lines)
             .FirstOrDefaultAsync(o => o.Id == purchaseOrderId, cancellationToken);
 
-    public async Task<IReadOnlyList<PurchaseOrder>> ListOrdersAsync(
+    public async Task<(IReadOnlyList<PurchaseOrder> Items, int? TotalCount)> ListOrdersAsync(
         Guid? requisitionId,
         Guid? supplierId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.Orders
@@ -122,10 +143,17 @@ public sealed class ProcurementStore(ProcurementDbContext context) : IProcuremen
             query = query.Where(o => o.SupplierId == fornecedor);
         }
 
-        return await query
-            .OrderByDescending(o => o.IssuedOn)
-            .ThenByDescending(o => o.Id)
-            .ToListAsync(cancellationToken);
+        query = query.OrderByDescending(o => o.IssuedOn).ThenByDescending(o => o.Id);
+
+        int? total = null;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            query = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        return (await query.ToListAsync(cancellationToken), total);
     }
 
     public async Task<decimal> OrderedAgainstRequisitionAsync(
@@ -166,8 +194,9 @@ public sealed class ProcurementStore(ProcurementDbContext context) : IProcuremen
             .Include(g => g.Lines)
             .FirstOrDefaultAsync(g => g.Id == goodsReceiptId, cancellationToken);
 
-    public async Task<IReadOnlyList<GoodsReceipt>> ListReceiptsAsync(
+    public async Task<(IReadOnlyList<GoodsReceipt> Items, int? TotalCount)> ListReceiptsAsync(
         Guid? purchaseOrderId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.Receipts
@@ -180,10 +209,17 @@ public sealed class ProcurementStore(ProcurementDbContext context) : IProcuremen
             query = query.Where(g => g.PurchaseOrderId == ordem);
         }
 
-        return await query
-            .OrderByDescending(g => g.ReceivedOn)
-            .ThenByDescending(g => g.Id)
-            .ToListAsync(cancellationToken);
+        query = query.OrderByDescending(g => g.ReceivedOn).ThenByDescending(g => g.Id);
+
+        int? total = null;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            query = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        return (await query.ToListAsync(cancellationToken), total);
     }
 
     public async Task<IReadOnlyDictionary<Guid, decimal>> ReceivedByOrderLineAsync(

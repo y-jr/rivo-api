@@ -1,5 +1,6 @@
 using Rivo.Procurement.Application.Abstractions;
 using Rivo.Procurement.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Procurement.Application.Tests;
 
@@ -25,20 +26,20 @@ internal abstract class ProcurementStoreParcial : IProcurementStore
     public virtual Task<Supplier?> FindSupplierAsync(Guid supplierId, CancellationToken cancellationToken) => NaoUsado<Supplier?>();
     public virtual Task<Supplier?> FindSupplierForUpdateAsync(Guid supplierId, CancellationToken cancellationToken) => NaoUsado<Supplier?>();
     public virtual Task<Supplier?> FindSupplierByTaxIdAsync(string taxId, CancellationToken cancellationToken) => NaoUsado<Supplier?>();
-    public virtual Task<IReadOnlyList<Supplier>> ListSuppliersAsync(bool includeInactive, CancellationToken cancellationToken) => NaoUsado<IReadOnlyList<Supplier>>();
+    public virtual Task<(IReadOnlyList<Supplier> Items, int? TotalCount)> ListSuppliersAsync(bool includeInactive, PageRequest? pagina, CancellationToken cancellationToken) => NaoUsado<(IReadOnlyList<Supplier>, int?)>();
     public virtual Task AddSupplierAsync(Supplier supplier, CancellationToken cancellationToken) => NaoUsado();
     public virtual Task<PurchaseRequisition?> FindRequisitionAsync(Guid requisitionId, CancellationToken cancellationToken) => NaoUsado<PurchaseRequisition?>();
     public virtual Task<PurchaseRequisition?> FindRequisitionForUpdateAsync(Guid requisitionId, CancellationToken cancellationToken) => NaoUsado<PurchaseRequisition?>();
-    public virtual Task<IReadOnlyList<PurchaseRequisition>> ListRequisitionsAsync(Guid? requestedByEmployeeId, RequisitionStatus? status, CancellationToken cancellationToken) => NaoUsado<IReadOnlyList<PurchaseRequisition>>();
+    public virtual Task<(IReadOnlyList<PurchaseRequisition> Items, int? TotalCount)> ListRequisitionsAsync(Guid? requestedByEmployeeId, RequisitionStatus? status, PageRequest? pagina, CancellationToken cancellationToken) => NaoUsado<(IReadOnlyList<PurchaseRequisition>, int?)>();
     public virtual Task AddRequisitionAsync(PurchaseRequisition requisition, CancellationToken cancellationToken) => NaoUsado();
     public virtual Task<PurchaseOrder?> FindOrderAsync(Guid purchaseOrderId, CancellationToken cancellationToken) => NaoUsado<PurchaseOrder?>();
     public virtual Task<PurchaseOrder?> FindOrderForUpdateAsync(Guid purchaseOrderId, CancellationToken cancellationToken) => NaoUsado<PurchaseOrder?>();
-    public virtual Task<IReadOnlyList<PurchaseOrder>> ListOrdersAsync(Guid? requisitionId, Guid? supplierId, CancellationToken cancellationToken) => NaoUsado<IReadOnlyList<PurchaseOrder>>();
+    public virtual Task<(IReadOnlyList<PurchaseOrder> Items, int? TotalCount)> ListOrdersAsync(Guid? requisitionId, Guid? supplierId, PageRequest? pagina, CancellationToken cancellationToken) => NaoUsado<(IReadOnlyList<PurchaseOrder>, int?)>();
     public virtual Task<decimal> OrderedAgainstRequisitionAsync(Guid requisitionId, CancellationToken cancellationToken) => NaoUsado<decimal>();
     public virtual Task AddOrderAsync(PurchaseOrder order, CancellationToken cancellationToken) => NaoUsado();
     public virtual Task<GoodsReceipt?> FindReceiptAsync(Guid goodsReceiptId, CancellationToken cancellationToken) => NaoUsado<GoodsReceipt?>();
     public virtual Task<GoodsReceipt?> FindReceiptForUpdateAsync(Guid goodsReceiptId, CancellationToken cancellationToken) => NaoUsado<GoodsReceipt?>();
-    public virtual Task<IReadOnlyList<GoodsReceipt>> ListReceiptsAsync(Guid? purchaseOrderId, CancellationToken cancellationToken) => NaoUsado<IReadOnlyList<GoodsReceipt>>();
+    public virtual Task<(IReadOnlyList<GoodsReceipt> Items, int? TotalCount)> ListReceiptsAsync(Guid? purchaseOrderId, PageRequest? pagina, CancellationToken cancellationToken) => NaoUsado<(IReadOnlyList<GoodsReceipt>, int?)>();
     public virtual Task<IReadOnlyDictionary<Guid, decimal>> ReceivedByOrderLineAsync(Guid purchaseOrderId, CancellationToken cancellationToken) => NaoUsado<IReadOnlyDictionary<Guid, decimal>>();
     public virtual Task<bool> HasReceiptsAsync(Guid purchaseOrderId, CancellationToken cancellationToken) => NaoUsado<bool>();
     public virtual Task AddReceiptAsync(GoodsReceipt receipt, CancellationToken cancellationToken) => NaoUsado();

@@ -1,17 +1,19 @@
 using Rivo.Audit.Contracts;
 using Rivo.Hr.Application.Abstractions;
 using Rivo.Hr.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Hr.Application.UseCases;
 
 public sealed class ListJobOpenings(IHrStore store)
 {
-    public async Task<IReadOnlyList<JobOpeningView>> ExecuteAsync(CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<JobOpeningView> Items, int? TotalCount)> ExecuteAsync(
+        PageRequest? pagina, CancellationToken cancellationToken)
     {
-        var openings = await store.ListJobOpeningsAsync(cancellationToken);
+        var (openings, total) = await store.ListJobOpeningsAsync(pagina, cancellationToken);
 
-        return [.. openings.Select(o => new JobOpeningView(
-            o.Id, o.Title, o.DepartmentId, o.Vacancies, o.Description, o.Requirements, o.Status.ToString()))];
+        return ([.. openings.Select(o => new JobOpeningView(
+            o.Id, o.Title, o.DepartmentId, o.Vacancies, o.Description, o.Requirements, o.Status.ToString()))], total);
     }
 }
 
@@ -105,15 +107,16 @@ public sealed class CloseJobOpening(IHrStore store, IAuditTrail audit)
 
 public sealed class ListCandidates(IHrStore store)
 {
-    public async Task<IReadOnlyList<CandidateView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<CandidateView> Items, int? TotalCount)> ExecuteAsync(
         Guid? openingId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var candidates = await store.ListCandidatesAsync(openingId, cancellationToken);
+        var (candidates, total) = await store.ListCandidatesAsync(openingId, pagina, cancellationToken);
 
-        return [.. candidates.Select(c => new CandidateView(
+        return ([.. candidates.Select(c => new CandidateView(
             c.Id, c.JobOpeningId, c.FullName, c.Email, c.Phone,
-            c.AppliedOn, c.Stage.ToString(), c.Notes, c.HiredEmployeeId))];
+            c.AppliedOn, c.Stage.ToString(), c.Notes, c.HiredEmployeeId))], total);
     }
 }
 
