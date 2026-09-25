@@ -10,6 +10,22 @@ using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.Tests;
 
+/// <summary>Mesma semântica de `LedgerStore.PaginarAsync` (ADR-068), sobre listas em memória.</summary>
+internal static class PaginacaoDeTeste
+{
+    public static (IReadOnlyList<T> Items, int? TotalCount) Paginar<T>(IEnumerable<T> ordenados, PageRequest? pagina)
+    {
+        var lista = ordenados.ToList();
+
+        if (pagina is not { } p)
+        {
+            return (lista, null);
+        }
+
+        return ([.. lista.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize)], lista.Count);
+    }
+}
+
 /// <summary>
 /// Duplos escritos à mão, sem biblioteca de mocks — ADR-022 rejeitou
 /// dependências que não resolvem problema nenhum.
@@ -76,8 +92,10 @@ internal sealed class FakeSalesInvoiceStore : ISalesInvoiceStore
         DocumentType type, string code, CancellationToken cancellationToken) =>
         Task.FromResult(_series.GetValueOrDefault((type, code)));
 
-    public Task<IReadOnlyList<DocumentSeries>> ListSeriesAsync(CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<DocumentSeries>>([.. _series.Values]);
+    public Task<(IReadOnlyList<DocumentSeries> Items, int? TotalCount)> ListSeriesAsync(
+        PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult(PaginacaoDeTeste.Paginar(
+            _series.Values.OrderBy(s => s.Type).ThenBy(s => s.Code), pagina));
 
     public Task AddSeriesAsync(DocumentSeries series, CancellationToken cancellationToken)
     {
@@ -94,12 +112,15 @@ internal sealed class FakeSalesInvoiceStore : ISalesInvoiceStore
     public Task<SalesInvoice?> FindForUpdateAsync(Guid invoiceId, CancellationToken cancellationToken) =>
         Task.FromResult(_invoices.GetValueOrDefault(invoiceId));
 
-    public Task<IReadOnlyList<SalesInvoice>> ListAsync(
-        Guid? customerId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<SalesInvoice>>([.. _invoices.Values
-            .Where(i => customerId is null || i.CustomerId == customerId)
-            .Where(i => from is null || i.IssuedOn >= from)
-            .Where(i => to is null || i.IssuedOn <= to)]);
+    public Task<(IReadOnlyList<SalesInvoice> Items, int? TotalCount)> ListAsync(
+        Guid? customerId, DateOnly? from, DateOnly? to, PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult(PaginacaoDeTeste.Paginar(
+            _invoices.Values
+                .Where(i => customerId is null || i.CustomerId == customerId)
+                .Where(i => from is null || i.IssuedOn >= from)
+                .Where(i => to is null || i.IssuedOn <= to)
+                .OrderByDescending(i => i.IssuedOn),
+            pagina));
 
     public Task AddAsync(SalesInvoice invoice, CancellationToken cancellationToken)
     {
@@ -230,9 +251,13 @@ internal sealed class FakeSalesInvoiceStore : ISalesInvoiceStore
     public Task<CreditNote?> FindCreditNoteForUpdateAsync(Guid creditNoteId, CancellationToken cancellationToken) =>
         FindCreditNoteAsync(creditNoteId, cancellationToken);
 
-    public Task<IReadOnlyList<CreditNote>> ListCreditNotesAsync(
-        Guid? salesInvoiceId, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<CreditNote>>([.. _creditNotes]);
+    public Task<(IReadOnlyList<CreditNote> Items, int? TotalCount)> ListCreditNotesAsync(
+        Guid? salesInvoiceId, PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult(PaginacaoDeTeste.Paginar(
+            _creditNotes
+                .Where(n => salesInvoiceId is null || n.SalesInvoiceId == salesInvoiceId)
+                .OrderByDescending(n => n.IssuedOn),
+            pagina));
 
     public Task AddCreditNoteAsync(CreditNote note, CancellationToken cancellationToken)
     {
@@ -253,12 +278,15 @@ internal sealed class FakeSalesInvoiceStore : ISalesInvoiceStore
     public Task<Receipt?> FindReceiptForUpdateAsync(Guid receiptId, CancellationToken cancellationToken) =>
         FindReceiptAsync(receiptId, cancellationToken);
 
-    public Task<IReadOnlyList<Receipt>> ListReceiptsAsync(
-        Guid? customerId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<Receipt>>([.. _receipts
-            .Where(r => customerId is null || r.CustomerId == customerId)
-            .Where(r => from is null || r.ReceivedOn >= from)
-            .Where(r => to is null || r.ReceivedOn <= to)]);
+    public Task<(IReadOnlyList<Receipt> Items, int? TotalCount)> ListReceiptsAsync(
+        Guid? customerId, DateOnly? from, DateOnly? to, PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult(PaginacaoDeTeste.Paginar(
+            _receipts
+                .Where(r => customerId is null || r.CustomerId == customerId)
+                .Where(r => from is null || r.ReceivedOn >= from)
+                .Where(r => to is null || r.ReceivedOn <= to)
+                .OrderByDescending(r => r.ReceivedOn),
+            pagina));
 
     public Task AddReceiptAsync(Receipt receipt, CancellationToken cancellationToken)
     {
@@ -274,11 +302,14 @@ internal sealed class FakeSalesInvoiceStore : ISalesInvoiceStore
     public Task<PaymentClaim?> FindPaymentClaimForUpdateAsync(Guid claimId, CancellationToken cancellationToken) =>
         Task.FromResult(_paymentClaims.GetValueOrDefault(claimId));
 
-    public Task<IReadOnlyList<PaymentClaim>> ListPaymentClaimsAsync(
-        Guid? customerId, PaymentClaimStatus? status, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<PaymentClaim>>([.. _paymentClaims.Values
-            .Where(c => customerId is null || c.CustomerId == customerId)
-            .Where(c => status is null || c.Status == status)]);
+    public Task<(IReadOnlyList<PaymentClaim> Items, int? TotalCount)> ListPaymentClaimsAsync(
+        Guid? customerId, PaymentClaimStatus? status, PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult(PaginacaoDeTeste.Paginar(
+            _paymentClaims.Values
+                .Where(c => customerId is null || c.CustomerId == customerId)
+                .Where(c => status is null || c.Status == status)
+                .OrderByDescending(c => c.SubmittedAt),
+            pagina));
 
     public Task AddPaymentClaimAsync(PaymentClaim claim, CancellationToken cancellationToken)
     {
@@ -325,10 +356,11 @@ internal sealed class FakePayablesStore : IPayablesStore
     public Task<BankAccount?> FindAccountForUpdateAsync(Guid accountId, CancellationToken cancellationToken) =>
         Task.FromResult(_accounts.GetValueOrDefault(accountId));
 
-    public Task<IReadOnlyList<BankAccount>> ListAccountsAsync(
-        bool includeClosed, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<BankAccount>>(
-            [.. _accounts.Values.Where(a => includeClosed || a.IsActive)]);
+    public Task<(IReadOnlyList<BankAccount> Items, int? TotalCount)> ListAccountsAsync(
+        bool includeClosed, PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult(PaginacaoDeTeste.Paginar(
+            _accounts.Values.Where(a => includeClosed || a.IsActive).OrderBy(a => a.Name, StringComparer.Ordinal),
+            pagina));
 
     public Task AddAccountAsync(BankAccount account, CancellationToken cancellationToken)
     {
@@ -381,9 +413,13 @@ internal sealed class FakePayablesStore : IPayablesStore
         Guid invoiceId, CancellationToken cancellationToken) =>
         Task.FromResult(_invoices.GetValueOrDefault(invoiceId));
 
-    public Task<IReadOnlyList<PurchaseInvoice>> ListPurchaseInvoicesAsync(
-        DateOnly? dueBefore, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<PurchaseInvoice>>([.. _invoices.Values]);
+    public Task<(IReadOnlyList<PurchaseInvoice> Items, int? TotalCount)> ListPurchaseInvoicesAsync(
+        DateOnly? dueBefore, PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult(PaginacaoDeTeste.Paginar(
+            _invoices.Values
+                .Where(i => dueBefore is null || i.DueOn <= dueBefore)
+                .OrderBy(i => i.DueOn),
+            pagina));
 
     public Task<bool> PurchaseInvoiceExistsAsync(
         string supplierTaxId, string supplierInvoiceNumber, CancellationToken cancellationToken) =>
@@ -403,9 +439,13 @@ internal sealed class FakePayablesStore : IPayablesStore
         Guid requestId, CancellationToken cancellationToken) =>
         Task.FromResult(_requests.GetValueOrDefault(requestId));
 
-    public Task<IReadOnlyList<PaymentRequest>> ListPaymentRequestsAsync(
-        Guid? purchaseInvoiceId, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<PaymentRequest>>([.. _requests.Values]);
+    public Task<(IReadOnlyList<PaymentRequest> Items, int? TotalCount)> ListPaymentRequestsAsync(
+        Guid? purchaseInvoiceId, PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult(PaginacaoDeTeste.Paginar(
+            _requests.Values
+                .Where(r => purchaseInvoiceId is null || r.PurchaseInvoiceId == purchaseInvoiceId)
+                .OrderByDescending(r => r.RequestedOn).ThenBy(r => r.Id),
+            pagina));
 
     public Task<decimal> CommittedAsync(Guid purchaseInvoiceId, CancellationToken cancellationToken) =>
         Task.FromResult(_requests.Values
@@ -494,10 +534,11 @@ internal sealed class FakePlanningStore : IPlanningStore
         Task.FromResult<IReadOnlyList<CostCentre>>(
             [.. _centres.Values.Where(c => c.DepartmentId == departmentId)]);
 
-    public Task<IReadOnlyList<CostCentre>> ListCostCentresAsync(
-        bool includeInactive, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<CostCentre>>(
-            [.. _centres.Values.Where(c => includeInactive || c.IsActive)]);
+    public Task<(IReadOnlyList<CostCentre> Items, int? TotalCount)> ListCostCentresAsync(
+        bool includeInactive, PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult(PaginacaoDeTeste.Paginar(
+            _centres.Values.Where(c => includeInactive || c.IsActive).OrderBy(c => c.Code, StringComparer.Ordinal),
+            pagina));
 
     public Task AddCostCentreAsync(CostCentre costCentre, CancellationToken cancellationToken)
     {
@@ -516,9 +557,14 @@ internal sealed class FakePlanningStore : IPlanningStore
         Task.FromResult(_budgets.FirstOrDefault(
             b => b.CostCentreId == costCentreId && b.FiscalYear == fiscalYear));
 
-    public Task<IReadOnlyList<Budget>> ListBudgetsAsync(
-        Guid? costCentreId, int? fiscalYear, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<Budget>>([.. _budgets]);
+    public Task<(IReadOnlyList<Budget> Items, int? TotalCount)> ListBudgetsAsync(
+        Guid? costCentreId, int? fiscalYear, PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult(PaginacaoDeTeste.Paginar(
+            _budgets
+                .Where(b => costCentreId is null || b.CostCentreId == costCentreId)
+                .Where(b => fiscalYear is null || b.FiscalYear == fiscalYear)
+                .OrderBy(b => b.FiscalYear).ThenBy(b => b.CostCentreId),
+            pagina));
 
     public Task AddBudgetAsync(Budget budget, CancellationToken cancellationToken)
     {
@@ -542,9 +588,14 @@ internal sealed class FakePlanningStore : IPlanningStore
         Task.FromResult(_forecasts.Any(
             f => f.DepartmentId == departmentId && f.FiscalYear == fiscalYear && f.Month == month));
 
-    public Task<IReadOnlyList<DepartmentCostForecast>> ListForecastsAsync(
-        Guid? departmentId, int? fiscalYear, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<DepartmentCostForecast>>([.. _forecasts]);
+    public Task<(IReadOnlyList<DepartmentCostForecast> Items, int? TotalCount)> ListForecastsAsync(
+        Guid? departmentId, int? fiscalYear, PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult(PaginacaoDeTeste.Paginar(
+            _forecasts
+                .Where(f => departmentId is null || f.DepartmentId == departmentId)
+                .Where(f => fiscalYear is null || f.FiscalYear == fiscalYear)
+                .OrderBy(f => f.FiscalYear).ThenBy(f => f.Month),
+            pagina));
 
     public Task AddForecastAsync(DepartmentCostForecast forecast, CancellationToken cancellationToken)
     {
@@ -784,10 +835,11 @@ internal sealed class FakeLedgerStore : ILedgerStore
                 .Where(a => codes.Contains(a.Code))
                 .ToDictionary(a => a.Code, StringComparer.Ordinal));
 
-    public Task<IReadOnlyList<LedgerAccount>> ListAccountsAsync(
-        bool includeInactive, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<LedgerAccount>>(
-            [.. _accounts.Values.Where(a => includeInactive || a.IsActive).OrderBy(a => a.Code, StringComparer.Ordinal)]);
+    public Task<(IReadOnlyList<LedgerAccount> Items, int? TotalCount)> ListAccountsAsync(
+        bool includeInactive, PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult(PaginacaoDeTeste.Paginar(
+            _accounts.Values.Where(a => includeInactive || a.IsActive).OrderBy(a => a.Code, StringComparer.Ordinal),
+            pagina));
 
     public Task<bool> HasChildrenAsync(Guid accountId, CancellationToken cancellationToken) =>
         Task.FromResult(_accounts.Values.Any(a => a.ParentId == accountId && a.IsActive));
@@ -807,10 +859,11 @@ internal sealed class FakeLedgerStore : ILedgerStore
     public Task<Journal?> FindJournalByCodeAsync(string code, CancellationToken cancellationToken) =>
         Task.FromResult(_journals.Values.FirstOrDefault(j => j.Code == code));
 
-    public Task<IReadOnlyList<Journal>> ListJournalsAsync(
-        bool includeInactive, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<Journal>>(
-            [.. _journals.Values.Where(j => includeInactive || j.IsActive)]);
+    public Task<(IReadOnlyList<Journal> Items, int? TotalCount)> ListJournalsAsync(
+        bool includeInactive, PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult(PaginacaoDeTeste.Paginar(
+            _journals.Values.Where(j => includeInactive || j.IsActive).OrderBy(j => j.Code, StringComparer.Ordinal),
+            pagina));
 
     public Task AddJournalAsync(Journal journal, CancellationToken cancellationToken)
     {
@@ -892,10 +945,11 @@ internal sealed class FakeLedgerStore : ILedgerStore
         Guid ruleId, CancellationToken cancellationToken) =>
         FindPostingRuleAsync(ruleId, cancellationToken);
 
-    public Task<IReadOnlyList<PostingRule>> ListPostingRulesAsync(
-        bool includeInactive, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<PostingRule>>(
-            [.. _rules.Where(r => includeInactive || r.IsActive)]);
+    public Task<(IReadOnlyList<PostingRule> Items, int? TotalCount)> ListPostingRulesAsync(
+        bool includeInactive, PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult(PaginacaoDeTeste.Paginar(
+            _rules.Where(r => includeInactive || r.IsActive).OrderBy(r => r.Event),
+            pagina));
 
     public Task AddPostingRuleAsync(PostingRule rule, CancellationToken cancellationToken)
     {
@@ -927,11 +981,14 @@ internal sealed class FakeLedgerStore : ILedgerStore
             v.Name == name &&
             v.Revision == version));
 
-    public Task<IReadOnlyList<ChartOfAccountsVersion>> ListChartVersionsAsync(
+    public Task<(IReadOnlyList<ChartOfAccountsVersion> Items, int? TotalCount)> ListChartVersionsAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<ChartOfAccountsVersion>>(
-            [.. _chartVersions.Values.Where(v => includeInactive || v.IsActive)]);
+        Task.FromResult(PaginacaoDeTeste.Paginar(
+            _chartVersions.Values.Where(v => includeInactive || v.IsActive)
+                .OrderBy(v => v.Jurisdiction).ThenBy(v => v.Name).ThenBy(v => v.EffectiveFrom),
+            pagina));
 
     public Task AddChartVersionAsync(
         ChartOfAccountsVersion chartVersion,
@@ -957,11 +1014,14 @@ internal sealed class FakeLedgerStore : ILedgerStore
         CancellationToken cancellationToken) =>
         Task.FromResult(_accountingRules.GetValueOrDefault(ruleId));
 
-    public Task<IReadOnlyList<AccountingRule>> ListAccountingRulesAsync(
+    public Task<(IReadOnlyList<AccountingRule> Items, int? TotalCount)> ListAccountingRulesAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<AccountingRule>>(
-            [.. _accountingRules.Values.Where(r => includeInactive || r.IsActive)]);
+        Task.FromResult(PaginacaoDeTeste.Paginar(
+            _accountingRules.Values.Where(r => includeInactive || r.IsActive)
+                .OrderBy(r => r.EffectiveFrom).ThenBy(r => r.Code),
+            pagina));
 
     public Task AddAccountingRuleAsync(
         AccountingRule rule,

@@ -116,15 +116,16 @@ public enum OpenLedgerAccountOutcome
 
 public sealed class ListLedgerAccounts(ILedgerStore store)
 {
-    public async Task<IReadOnlyList<LedgerAccountView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<LedgerAccountView> Items, int? TotalCount)> ExecuteAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var contas = await store.ListAccountsAsync(includeInactive, cancellationToken);
+        var (contas, total) = await store.ListAccountsAsync(includeInactive, pagina, cancellationToken);
 
-        return [.. contas.Select(c => new LedgerAccountView(
+        return ([.. contas.Select(c => new LedgerAccountView(
             c.Id, c.Code, c.Name, c.Category.ToString(), c.ParentCode,
-            c.AcceptsPostings, c.IsAnalytic, c.IsActive))];
+            c.AcceptsPostings, c.IsAnalytic, c.IsActive))], total);
     }
 }
 
@@ -264,13 +265,14 @@ public enum OpenJournalOutcome
 
 public sealed class ListJournals(ILedgerStore store)
 {
-    public async Task<IReadOnlyList<JournalView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<JournalView> Items, int? TotalCount)> ExecuteAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var diarios = await store.ListJournalsAsync(includeInactive, cancellationToken);
+        var (diarios, total) = await store.ListJournalsAsync(includeInactive, pagina, cancellationToken);
 
-        return [.. diarios.Select(d => new JournalView(d.Id, d.Code, d.Name, d.IsActive))];
+        return ([.. diarios.Select(d => new JournalView(d.Id, d.Code, d.Name, d.IsActive))], total);
     }
 }
 
@@ -849,7 +851,7 @@ public sealed class GetTrialBalance(ILedgerStore store)
         int? period,
         CancellationToken cancellationToken)
     {
-        var contas = await store.ListAccountsAsync(includeInactive: true, cancellationToken);
+        var (contas, _) = await store.ListAccountsAsync(includeInactive: true, pagina: null, cancellationToken);
 
         var fecho = await store.AccountMovementsAsync(fiscalYear, period, cancellationToken);
 

@@ -3,6 +3,7 @@ using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
 using Rivo.Hr.Contracts;
 using Rivo.Procurement.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.UseCases;
 
@@ -236,14 +237,15 @@ public enum BankAccountStatusOutcome
 
 public sealed class ListBankAccounts(IPayablesStore store)
 {
-    public async Task<IReadOnlyList<BankAccountView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<BankAccountView> Items, int? TotalCount)> ExecuteAsync(
         bool includeClosed,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var contas = await store.ListAccountsAsync(includeClosed, cancellationToken);
+        var (contas, total) = await store.ListAccountsAsync(includeClosed, pagina, cancellationToken);
 
-        return [.. contas.Select(c => new BankAccountView(
-            c.Id, c.Name, c.Bank, c.Iban, c.Currency, c.Balance, c.IsActive))];
+        return ([.. contas.Select(c => new BankAccountView(
+            c.Id, c.Name, c.Bank, c.Iban, c.Currency, c.Balance, c.IsActive))], total);
     }
 }
 
@@ -545,13 +547,14 @@ public enum RegisterPurchaseInvoiceOutcome
 
 public sealed class ListPurchaseInvoices(IPayablesStore store)
 {
-    public async Task<IReadOnlyList<PurchaseInvoiceView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<PurchaseInvoiceView> Items, int? TotalCount)> ExecuteAsync(
         DateOnly? dueBefore,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var compras = await store.ListPurchaseInvoicesAsync(dueBefore, cancellationToken);
+        var (compras, total) = await store.ListPurchaseInvoicesAsync(dueBefore, pagina, cancellationToken);
 
-        return [.. compras.Select(ToView)];
+        return ([.. compras.Select(ToView)], total);
     }
 
     internal static PurchaseInvoiceView ToView(PurchaseInvoice compra) =>
@@ -878,13 +881,14 @@ public enum CreatePaymentRequestOutcome
 
 public sealed class ListPaymentRequests(IPayablesStore store)
 {
-    public async Task<IReadOnlyList<PaymentRequestView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<PaymentRequestView> Items, int? TotalCount)> ExecuteAsync(
         Guid? purchaseInvoiceId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var pedidos = await store.ListPaymentRequestsAsync(purchaseInvoiceId, cancellationToken);
+        var (pedidos, total) = await store.ListPaymentRequestsAsync(purchaseInvoiceId, pagina, cancellationToken);
 
-        return [.. pedidos.Select(ToView)];
+        return ([.. pedidos.Select(ToView)], total);
     }
 
     internal static PaymentRequestView ToView(PaymentRequest p) =>

@@ -65,7 +65,7 @@ public sealed class ReceivablesOverview(ISalesInvoiceStore invoices, ICustomerDi
     public async Task<IReadOnlyList<CustomerInvoiceView>> ListCustomerInvoicesAsync(
         Guid customerId, CancellationToken cancellationToken)
     {
-        var facturas = await invoices.ListAsync(customerId, from: null, to: null, cancellationToken);
+        var (facturas, _) = await invoices.ListAsync(customerId, from: null, to: null, pagina: null, cancellationToken);
 
         return [.. facturas.Select(factura => new CustomerInvoiceView(
             factura.Id,
@@ -83,7 +83,7 @@ public sealed class ReceivablesOverview(ISalesInvoiceStore invoices, ICustomerDi
         // financia a abertura, o resto vira movimento do período. Duas
         // idas à base a mais por chamada seria o preço de as separar já
         // filtradas — sem consumidor a queixar-se da diferença, fica assim.
-        var facturas = (await invoices.ListAsync(customerId, from: null, to, cancellationToken))
+        var facturas = (await invoices.ListAsync(customerId, from: null, to, pagina: null, cancellationToken)).Items
             .Where(i => i.Status == InvoiceStatus.Normal && i.Currency == currency)
             .ToList();
 
@@ -91,7 +91,7 @@ public sealed class ReceivablesOverview(ISalesInvoiceStore invoices, ICustomerDi
             .Where(n => n.Status == InvoiceStatus.Normal && n.Currency == currency)
             .ToList();
 
-        var recibos = (await invoices.ListReceiptsAsync(customerId, from: null, to, cancellationToken))
+        var recibos = (await invoices.ListReceiptsAsync(customerId, from: null, to, pagina: null, cancellationToken)).Items
             .Where(r => r.Status == InvoiceStatus.Normal && r.Currency == currency)
             .ToList();
 

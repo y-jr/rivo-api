@@ -1,20 +1,22 @@
 using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.UseCases;
 
 public sealed class ListSalesInvoices(ISalesInvoiceStore store)
 {
-    public async Task<IReadOnlyList<SalesInvoiceSummary>> ExecuteAsync(
+    public async Task<(IReadOnlyList<SalesInvoiceSummary> Items, int? TotalCount)> ExecuteAsync(
         Guid? customerId,
         DateOnly? from,
         DateOnly? to,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var facturas = await store.ListAsync(customerId, from, to, cancellationToken);
+        var (facturas, total) = await store.ListAsync(customerId, from, to, pagina, cancellationToken);
 
-        return [.. facturas.Select(invoice => new SalesInvoiceSummary(
+        return ([.. facturas.Select(invoice => new SalesInvoiceSummary(
             invoice.Id,
             invoice.Number.Formatted,
             invoice.IssuedOn,
@@ -22,7 +24,7 @@ public sealed class ListSalesInvoices(ISalesInvoiceStore store)
             invoice.Customer.Name,
             invoice.Customer.TaxId,
             invoice.Currency,
-            invoice.GrossTotal))];
+            invoice.GrossTotal))], total);
     }
 }
 
@@ -213,12 +215,13 @@ public enum CancelInvoiceOutcome
 
 public sealed class ListDocumentSeries(ISalesInvoiceStore store)
 {
-    public async Task<IReadOnlyList<DocumentSeriesView>> ExecuteAsync(CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<DocumentSeriesView> Items, int? TotalCount)> ExecuteAsync(
+        PageRequest? pagina, CancellationToken cancellationToken)
     {
-        var series = await store.ListSeriesAsync(cancellationToken);
+        var (series, total) = await store.ListSeriesAsync(pagina, cancellationToken);
 
-        return [.. series.Select(s => new DocumentSeriesView(
-            s.Id, s.Type.ToString(), s.Code, s.NextSequence, s.IsActive))];
+        return ([.. series.Select(s => new DocumentSeriesView(
+            s.Id, s.Type.ToString(), s.Code, s.NextSequence, s.IsActive))], total);
     }
 }
 

@@ -2,6 +2,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.UseCases;
 using Rivo.Finance.Contracts;
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.Tests;
 
@@ -185,5 +186,30 @@ public class PaymentClaimTests
             Guid.CreateVersion7(), "Motivo", Guid.CreateVersion7(), Contexto, CancellationToken.None);
 
         Assert.Equal(ReviewPaymentClaimOutcome.NotFound, resultado.Outcome);
+    }
+
+    // ---- paginação (ADR-068, item #10) ----
+
+    [Fact]
+    public async Task ListagemDePedidosComPagina_DevolveFatiaEOTotal()
+    {
+        var factura = FacturaDe(ClienteId);
+
+        var store = new FakeSalesInvoiceStore().WithSeries(DocumentType.RG).With(factura)
+            .With(PaymentClaim.Submit(factura.Id, ClienteId, 10_000m, Hoje, Guid.CreateVersion7(), Guid.CreateVersion7(), null, Agora))
+            .With(PaymentClaim.Submit(factura.Id, ClienteId, 20_000m, Hoje, Guid.CreateVersion7(), Guid.CreateVersion7(), null, Agora))
+            .With(PaymentClaim.Submit(factura.Id, ClienteId, 30_000m, Hoje, Guid.CreateVersion7(), Guid.CreateVersion7(), null, Agora));
+
+        var (pagina1, total) = await new ListPaymentClaims(store)
+            .ExecuteAsync(customerId: null, status: null, new PageRequest(1, 2), CancellationToken.None);
+
+        Assert.Equal(3, total);
+        Assert.Equal(2, pagina1.Count);
+
+        var (semPagina, totalSemPagina) = await new ListPaymentClaims(store)
+            .ExecuteAsync(customerId: null, status: null, null, CancellationToken.None);
+
+        Assert.Equal(3, semPagina.Count);
+        Assert.Null(totalSemPagina);
     }
 }
