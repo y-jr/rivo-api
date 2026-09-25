@@ -316,7 +316,6 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
         CancellationToken cancellationToken) =>
         await context.AccountingRules
             .AsNoTracking()
-            .Include(r => r.Lines)
             .FirstOrDefaultAsync(r => r.Id == ruleId, cancellationToken);
 
     public Task<(IReadOnlyList<AccountingRule> Items, int? TotalCount)> ListAccountingRulesAsync(
@@ -326,7 +325,6 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
     {
         var query = context.AccountingRules
             .AsNoTracking()
-            .Include(r => r.Lines)
             .AsQueryable();
 
         if (!includeInactive)
