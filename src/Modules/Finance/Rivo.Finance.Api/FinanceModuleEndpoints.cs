@@ -7,6 +7,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.UseCases;
 using Rivo.Finance.Domain;
 using Rivo.Finance.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Api;
 
@@ -18,7 +19,8 @@ public static class FinanceModuleEndpoints
 
         group.MapGet("/series", ListSeriesAsync)
             .RequireAuthorization(FinancePermissions.InvoicesRead)
-            .Produces<IReadOnlyList<DocumentSeriesView>>();
+            .Produces<IReadOnlyList<DocumentSeriesView>>()
+            .ProducesValidationProblem();
 
         // Abrir uma série paralela é a forma óbvia de emitir fora da sequência
         // auditável. Permissão própria, só Admin.
@@ -30,7 +32,8 @@ public static class FinanceModuleEndpoints
 
         group.MapGet("/sales-invoices", ListAsync)
             .RequireAuthorization(FinancePermissions.InvoicesRead)
-            .Produces<IReadOnlyList<SalesInvoiceSummary>>();
+            .Produces<IReadOnlyList<SalesInvoiceSummary>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/sales-invoices/{invoiceId:guid}", GetAsync)
             .RequireAuthorization(FinancePermissions.InvoicesRead)
@@ -84,7 +87,8 @@ public static class FinanceModuleEndpoints
         // deixa rasto do quanto e do porquê.
         group.MapGet("/credit-notes", ListCreditNotesAsync)
             .RequireAuthorization(FinancePermissions.InvoicesRead)
-            .Produces<IReadOnlyList<CreditNoteView>>();
+            .Produces<IReadOnlyList<CreditNoteView>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/credit-notes/{creditNoteId:guid}", GetCreditNoteAsync)
             .RequireAuthorization(FinancePermissions.InvoicesRead)
@@ -125,7 +129,8 @@ public static class FinanceModuleEndpoints
         // Recibos.
         group.MapGet("/receipts", ListReceiptsAsync)
             .RequireAuthorization(FinancePermissions.ReceiptsRead)
-            .Produces<IReadOnlyList<ReceiptView>>();
+            .Produces<IReadOnlyList<ReceiptView>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/receipts/{receiptId:guid}", GetReceiptAsync)
             .RequireAuthorization(FinancePermissions.ReceiptsRead)
@@ -166,7 +171,8 @@ public static class FinanceModuleEndpoints
         // resolve "o próprio cliente" antes de chegar a `finance`.
         group.MapGet("/payment-claims", ListPaymentClaimsAsync)
             .RequireAuthorization(FinancePermissions.ReceiptsRead)
-            .Produces<IReadOnlyList<PaymentClaimView>>();
+            .Produces<IReadOnlyList<PaymentClaimView>>()
+            .ProducesValidationProblem();
 
         // Confirmar dispara o recibo (RegisterReceipt) — mesma permissão de
         // registar um, porque é o que isto faz de facto.
@@ -323,8 +329,21 @@ public static class FinanceModuleEndpoints
     private static async Task<IResult> ListCreditNotesAsync(
         ListCreditNotes listNotes,
         Guid? salesInvoiceId,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listNotes.ExecuteAsync(salesInvoiceId, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (PagingProblem(page, pageSize, out var pagina) is { } problema)
+        {
+            return problema;
+        }
+
+        var (itens, total) = await listNotes.ExecuteAsync(salesInvoiceId, pagina, cancellationToken);
+        ApplyPagingHeaders(response, pagina, total);
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> GetCreditNoteAsync(
         Guid creditNoteId,
@@ -414,8 +433,21 @@ public static class FinanceModuleEndpoints
         Guid? customerId,
         DateOnly? from,
         DateOnly? to,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listReceipts.ExecuteAsync(customerId, from, to, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (PagingProblem(page, pageSize, out var pagina) is { } problema)
+        {
+            return problema;
+        }
+
+        var (itens, total) = await listReceipts.ExecuteAsync(customerId, from, to, pagina, cancellationToken);
+        ApplyPagingHeaders(response, pagina, total);
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> GetReceiptAsync(
         Guid receiptId,
@@ -509,8 +541,21 @@ public static class FinanceModuleEndpoints
         ListPaymentClaims listClaims,
         Guid? customerId,
         PaymentClaimStatus? status,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listClaims.ExecuteAsync(customerId, status, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (PagingProblem(page, pageSize, out var pagina) is { } problema)
+        {
+            return problema;
+        }
+
+        var (itens, total) = await listClaims.ExecuteAsync(customerId, status, pagina, cancellationToken);
+        ApplyPagingHeaders(response, pagina, total);
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> ConfirmPaymentClaimAsync(
         Guid claimId,
@@ -562,8 +607,21 @@ public static class FinanceModuleEndpoints
 
     private static async Task<IResult> ListSeriesAsync(
         ListDocumentSeries listSeries,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listSeries.ExecuteAsync(cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (PagingProblem(page, pageSize, out var pagina) is { } problema)
+        {
+            return problema;
+        }
+
+        var (itens, total) = await listSeries.ExecuteAsync(pagina, cancellationToken);
+        ApplyPagingHeaders(response, pagina, total);
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> OpenSeriesAsync(
         OpenSeriesRequest request,
@@ -594,8 +652,21 @@ public static class FinanceModuleEndpoints
         Guid? customerId,
         DateOnly? from,
         DateOnly? to,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listInvoices.ExecuteAsync(customerId, from, to, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (PagingProblem(page, pageSize, out var pagina) is { } problema)
+        {
+            return problema;
+        }
+
+        var (itens, total) = await listInvoices.ExecuteAsync(customerId, from, to, pagina, cancellationToken);
+        ApplyPagingHeaders(response, pagina, total);
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> GetAsync(
         Guid invoiceId,
@@ -696,6 +767,28 @@ public static class FinanceModuleEndpoints
             ActorId: Guid.TryParse(actor, out var id) ? id : null,
             IpAddress: http.Connection.RemoteIpAddress?.ToString(),
             CorrelationId: http.TraceIdentifier);
+    }
+
+    // ---- paginação (ADR-068) ----
+
+    private static IResult? PagingProblem(int? page, int? pageSize, out PageRequest? pagina)
+    {
+        if (Pagination.TryParse(page, pageSize, out pagina, out var erro))
+        {
+            return null;
+        }
+
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+    }
+
+    private static void ApplyPagingHeaders(HttpResponse response, PageRequest? pagina, int? total)
+    {
+        if (pagina is { } p)
+        {
+            response.Headers["X-Page"] = p.Page.ToString();
+            response.Headers["X-Page-Size"] = p.PageSize.ToString();
+            response.Headers["X-Total-Count"] = total!.Value.ToString();
+        }
     }
 }
 

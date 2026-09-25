@@ -31,7 +31,8 @@ public static class LedgerEndpoints
         // ---- Plano de contas ----
         group.MapGet("/ledger/accounts", ListAccountsAsync)
             .RequireAuthorization(FinancePermissions.LedgerRead)
-            .Produces<IReadOnlyList<LedgerAccountView>>();
+            .Produces<IReadOnlyList<LedgerAccountView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/ledger/accounts", OpenAccountAsync)
             .RequireAuthorization(FinancePermissions.LedgerWrite)
@@ -49,7 +50,8 @@ public static class LedgerEndpoints
         // ---- Diários ----
         group.MapGet("/ledger/journals", ListJournalsAsync)
             .RequireAuthorization(FinancePermissions.LedgerRead)
-            .Produces<IReadOnlyList<JournalView>>();
+            .Produces<IReadOnlyList<JournalView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/ledger/journals", OpenJournalAsync)
             .RequireAuthorization(FinancePermissions.LedgerWrite)
@@ -119,7 +121,8 @@ public static class LedgerEndpoints
         // Fica com quem fecha períodos, não com quem lança um a um.
         group.MapGet("/ledger/posting-rules", ListPostingRulesAsync)
             .RequireAuthorization(FinancePermissions.LedgerRead)
-            .Produces<IReadOnlyList<PostingRuleView>>();
+            .Produces<IReadOnlyList<PostingRuleView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/ledger/posting-rules", DefinePostingRuleAsync)
             .RequireAuthorization(FinancePermissions.LedgerClose)
@@ -136,7 +139,8 @@ public static class LedgerEndpoints
         // ---- Versões do plano de contas ----
         group.MapGet("/ledger/chart-versions", ListChartVersionsAsync)
             .RequireAuthorization(FinancePermissions.LedgerRead)
-            .Produces<IReadOnlyList<ChartOfAccountsVersionView>>();
+            .Produces<IReadOnlyList<ChartOfAccountsVersionView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/ledger/chart-versions", CreateChartVersionAsync)
             .RequireAuthorization(FinancePermissions.LedgerClose)
@@ -147,7 +151,8 @@ public static class LedgerEndpoints
         // ---- Regras contabilísticas ----
         group.MapGet("/ledger/accounting-rules", ListAccountingRulesAsync)
             .RequireAuthorization(FinancePermissions.LedgerRead)
-            .Produces<IReadOnlyList<AccountingRuleView>>();
+            .Produces<IReadOnlyList<AccountingRuleView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/ledger/accounting-rules", CreateAccountingRuleAsync)
             .RequireAuthorization(FinancePermissions.LedgerClose)
@@ -163,7 +168,8 @@ public static class LedgerEndpoints
         // ---- Planeamento ----
         group.MapGet("/planning/cost-centres", ListCostCentresAsync)
             .RequireAuthorization(FinancePermissions.PlanningRead)
-            .Produces<IReadOnlyList<CostCentreView>>();
+            .Produces<IReadOnlyList<CostCentreView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/planning/cost-centres", OpenCostCentreAsync)
             .RequireAuthorization(FinancePermissions.PlanningWrite)
@@ -173,7 +179,8 @@ public static class LedgerEndpoints
 
         group.MapGet("/planning/budgets", ListBudgetsAsync)
             .RequireAuthorization(FinancePermissions.PlanningRead)
-            .Produces<IReadOnlyList<BudgetView>>();
+            .Produces<IReadOnlyList<BudgetView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/planning/budgets", DraftBudgetAsync)
             .RequireAuthorization(FinancePermissions.PlanningWrite)
@@ -201,7 +208,8 @@ public static class LedgerEndpoints
 
         group.MapGet("/planning/cost-forecasts", ListForecastsAsync)
             .RequireAuthorization(FinancePermissions.PlanningRead)
-            .Produces<IReadOnlyList<CostForecastView>>();
+            .Produces<IReadOnlyList<CostForecastView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/planning/cost-forecasts", RecordForecastAsync)
             .RequireAuthorization(FinancePermissions.PlanningWrite)
@@ -217,8 +225,21 @@ public static class LedgerEndpoints
     private static async Task<IResult> ListAccountsAsync(
         ListLedgerAccounts list,
         bool? includeInactive,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await list.ExecuteAsync(includeInactive ?? false, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (PagingProblem(page, pageSize, out var pagina) is { } problema)
+        {
+            return problema;
+        }
+
+        var (itens, total) = await list.ExecuteAsync(includeInactive ?? false, pagina, cancellationToken);
+        ApplyPagingHeaders(response, pagina, total);
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> OpenAccountAsync(
         LedgerAccountRequest request,
@@ -290,8 +311,21 @@ public static class LedgerEndpoints
     private static async Task<IResult> ListJournalsAsync(
         ListJournals list,
         bool? includeInactive,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await list.ExecuteAsync(includeInactive ?? false, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (PagingProblem(page, pageSize, out var pagina) is { } problema)
+        {
+            return problema;
+        }
+
+        var (itens, total) = await list.ExecuteAsync(includeInactive ?? false, pagina, cancellationToken);
+        ApplyPagingHeaders(response, pagina, total);
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> OpenJournalAsync(
         JournalRequest request,
@@ -329,19 +363,13 @@ public static class LedgerEndpoints
         HttpResponse response,
         CancellationToken cancellationToken)
     {
-        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        if (PagingProblem(page, pageSize, out var pagina) is { } problema)
         {
-            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+            return problema;
         }
 
         var (itens, total) = await list.ExecuteAsync(journalId, fiscalYear, period, pagina, cancellationToken);
-
-        if (pagina is { } p)
-        {
-            response.Headers["X-Page"] = p.Page.ToString();
-            response.Headers["X-Page-Size"] = p.PageSize.ToString();
-            response.Headers["X-Total-Count"] = total!.Value.ToString();
-        }
+        ApplyPagingHeaders(response, pagina, total);
 
         return Results.Ok(itens);
     }
@@ -552,8 +580,21 @@ public static class LedgerEndpoints
     private static async Task<IResult> ListPostingRulesAsync(
         ListPostingRules list,
         bool? includeInactive,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await list.ExecuteAsync(includeInactive ?? false, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (PagingProblem(page, pageSize, out var pagina) is { } problema)
+        {
+            return problema;
+        }
+
+        var (itens, total) = await list.ExecuteAsync(includeInactive ?? false, pagina, cancellationToken);
+        ApplyPagingHeaders(response, pagina, total);
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> DefinePostingRuleAsync(
         PostingRuleRequest request,
@@ -646,8 +687,21 @@ public static class LedgerEndpoints
     private static async Task<IResult> ListChartVersionsAsync(
         ListChartOfAccountsVersions list,
         bool? includeInactive,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await list.ExecuteAsync(includeInactive ?? false, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (PagingProblem(page, pageSize, out var pagina) is { } problema)
+        {
+            return problema;
+        }
+
+        var (itens, total) = await list.ExecuteAsync(includeInactive ?? false, pagina, cancellationToken);
+        ApplyPagingHeaders(response, pagina, total);
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> CreateChartVersionAsync(
         CreateChartVersionRequest request,
@@ -686,8 +740,21 @@ public static class LedgerEndpoints
     private static async Task<IResult> ListAccountingRulesAsync(
         ListAccountingRules list,
         bool? includeInactive,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await list.ExecuteAsync(includeInactive ?? false, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (PagingProblem(page, pageSize, out var pagina) is { } problema)
+        {
+            return problema;
+        }
+
+        var (itens, total) = await list.ExecuteAsync(includeInactive ?? false, pagina, cancellationToken);
+        ApplyPagingHeaders(response, pagina, total);
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> CreateAccountingRuleAsync(
         CreateAccountingRuleRequest request,
@@ -764,8 +831,21 @@ public static class LedgerEndpoints
     private static async Task<IResult> ListCostCentresAsync(
         ListCostCentres list,
         bool? includeInactive,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await list.ExecuteAsync(includeInactive ?? false, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (PagingProblem(page, pageSize, out var pagina) is { } problema)
+        {
+            return problema;
+        }
+
+        var (itens, total) = await list.ExecuteAsync(includeInactive ?? false, pagina, cancellationToken);
+        ApplyPagingHeaders(response, pagina, total);
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> OpenCostCentreAsync(
         CostCentreRequest request,
@@ -796,8 +876,21 @@ public static class LedgerEndpoints
         ListBudgets list,
         Guid? costCentreId,
         int? fiscalYear,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await list.ExecuteAsync(costCentreId, fiscalYear, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (PagingProblem(page, pageSize, out var pagina) is { } problema)
+        {
+            return problema;
+        }
+
+        var (itens, total) = await list.ExecuteAsync(costCentreId, fiscalYear, pagina, cancellationToken);
+        ApplyPagingHeaders(response, pagina, total);
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> DraftBudgetAsync(
         BudgetRequest request,
@@ -901,8 +994,21 @@ public static class LedgerEndpoints
         ListCostForecasts list,
         Guid? departmentId,
         int? fiscalYear,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await list.ExecuteAsync(departmentId, fiscalYear, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (PagingProblem(page, pageSize, out var pagina) is { } problema)
+        {
+            return problema;
+        }
+
+        var (itens, total) = await list.ExecuteAsync(departmentId, fiscalYear, pagina, cancellationToken);
+        ApplyPagingHeaders(response, pagina, total);
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> RecordForecastAsync(
         CostForecastRequest request,
@@ -957,6 +1063,28 @@ public static class LedgerEndpoints
             Guid.TryParse(sub, out var actorId) ? actorId : null,
             http.Connection.RemoteIpAddress?.ToString(),
             http.TraceIdentifier);
+    }
+
+    // ---- paginação (ADR-068) ----
+
+    private static IResult? PagingProblem(int? page, int? pageSize, out PageRequest? pagina)
+    {
+        if (Pagination.TryParse(page, pageSize, out pagina, out var erro))
+        {
+            return null;
+        }
+
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+    }
+
+    private static void ApplyPagingHeaders(HttpResponse response, PageRequest? pagina, int? total)
+    {
+        if (pagina is { } p)
+        {
+            response.Headers["X-Page"] = p.Page.ToString();
+            response.Headers["X-Page-Size"] = p.PageSize.ToString();
+            response.Headers["X-Total-Count"] = total!.Value.ToString();
+        }
     }
 }
 

@@ -3,6 +3,7 @@ using Rivo.Documents.Contracts;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Contracts;
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.UseCases;
 
@@ -236,12 +237,12 @@ public enum ReviewPaymentClaimOutcome
 /// <summary>Lista pedidos de confirmação — a fila de `finance`, ou "os meus" de um cliente.</summary>
 public sealed class ListPaymentClaims(ISalesInvoiceStore store)
 {
-    public async Task<IReadOnlyList<PaymentClaimView>> ExecuteAsync(
-        Guid? customerId, PaymentClaimStatus? status, CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<PaymentClaimView> Items, int? TotalCount)> ExecuteAsync(
+        Guid? customerId, PaymentClaimStatus? status, PageRequest? pagina, CancellationToken cancellationToken)
     {
-        var pedidos = await store.ListPaymentClaimsAsync(customerId, status, cancellationToken);
+        var (pedidos, total) = await store.ListPaymentClaimsAsync(customerId, status, pagina, cancellationToken);
 
-        return [.. pedidos.Select(ToView)];
+        return ([.. pedidos.Select(ToView)], total);
     }
 
     internal static PaymentClaimView ToView(PaymentClaim claim) =>
