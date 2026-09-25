@@ -173,7 +173,7 @@ public static class InventoryModuleEndpoints
         var item = await getItem.ExecuteAsync(itemId, cancellationToken);
 
         return item is null
-            ? Results.NotFound(new { erro = "Item não encontrado." })
+            ? Results.Problem("Item não encontrado.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(item);
     }
 
@@ -208,7 +208,7 @@ public static class InventoryModuleEndpoints
 
         return encontrado
             ? Results.NoContent()
-            : Results.NotFound(new { erro = "Item não encontrado." });
+            : Results.Problem("Item não encontrado.", statusCode: StatusCodes.Status404NotFound);
     }
 
     private static async Task<IResult> RegisterReceiptAsync(
@@ -267,7 +267,7 @@ public static class InventoryModuleEndpoints
                     quantityAtDestination = result.QuantityAtDestination,
                     averageCost = result.AverageCost,
                 }),
-            TransferOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            TransferOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             TransferOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
             _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["transferencia"] = [result.Error!] }),
         };
@@ -299,7 +299,7 @@ public static class InventoryModuleEndpoints
         var armazem = await getWarehouse.ExecuteAsync(warehouseId, cancellationToken);
 
         return armazem is null
-            ? Results.NotFound(new { erro = "Armazém não encontrado." })
+            ? Results.Problem("Armazém não encontrado.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(armazem);
     }
 
@@ -334,7 +334,7 @@ public static class InventoryModuleEndpoints
 
         return encontrado
             ? Results.NoContent()
-            : Results.NotFound(new { erro = "Armazém não encontrado." });
+            : Results.Problem("Armazém não encontrado.", statusCode: StatusCodes.Status404NotFound);
     }
 
     private static async Task<IResult> ListCountsAsync(
@@ -363,7 +363,7 @@ public static class InventoryModuleEndpoints
         var contagem = await getCount.ExecuteAsync(countId, cancellationToken);
 
         return contagem is null
-            ? Results.NotFound(new { erro = "Contagem não encontrada." })
+            ? Results.Problem("Contagem não encontrada.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(contagem);
     }
 
@@ -390,7 +390,7 @@ public static class InventoryModuleEndpoints
         return result.Outcome switch
         {
             OpenCountOutcome.Opened => Results.Created($"/inventory/counts/{result.CountId}", new { countId = result.CountId }),
-            OpenCountOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            OpenCountOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             OpenCountOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
             _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["count"] = [result.Error!] }),
         };
@@ -417,7 +417,7 @@ public static class InventoryModuleEndpoints
                     countedQuantity = result.CountedQuantity,
                     variance = result.Variance,
                 }),
-            AddCountLineOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            AddCountLineOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             AddCountLineOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
             _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["line"] = [result.Error!] }),
         };
@@ -476,7 +476,7 @@ public static class InventoryModuleEndpoints
 
             CloseCountOutcome.AlreadySettled => Results.Ok(new { estado = result.SettledStatus }),
 
-            CloseCountOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            CloseCountOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             _ => Results.Conflict(new { erro = result.Error }),
         };
@@ -493,7 +493,7 @@ public static class InventoryModuleEndpoints
         return result.Outcome switch
         {
             CancelCountOutcome.Cancelled => Results.NoContent(),
-            CancelCountOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            CancelCountOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             CancelCountOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
             _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["reason"] = [result.Error!] }),
         };
@@ -526,7 +526,7 @@ public static class InventoryModuleEndpoints
                     quantityAtWarehouse = result.QuantityAtWarehouse,
                     averageCost = result.AverageCost,
                 }),
-            RegisterMovementOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            RegisterMovementOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             RegisterMovementOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
             _ => Results.ValidationProblem(new Dictionary<string, string[]> { [campo] = [result.Error!] }),
         };

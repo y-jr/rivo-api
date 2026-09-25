@@ -273,7 +273,7 @@ public static class LedgerEndpoints
                 Results.Conflict(new { erro = result.Error }),
 
             OpenLedgerAccountOutcome.ParentNotFound =>
-                Results.NotFound(new { erro = result.Error }),
+                Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             _ => Results.ValidationProblem(new Dictionary<string, string[]>
             {
@@ -296,7 +296,7 @@ public static class LedgerEndpoints
             DeactivateAccountOutcome.Done => Results.NoContent(),
 
             DeactivateAccountOutcome.NotFound =>
-                Results.NotFound(new { erro = "Conta não encontrada." }),
+                Results.Problem("Conta não encontrada.", statusCode: StatusCodes.Status404NotFound),
 
             _ => Results.Conflict(new
             {
@@ -382,7 +382,7 @@ public static class LedgerEndpoints
         var lancamento = await get.ExecuteAsync(entryId, cancellationToken);
 
         return lancamento is null
-            ? Results.NotFound(new { erro = "Lançamento não encontrado." })
+            ? Results.Problem("Lançamento não encontrado.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(lancamento);
     }
 
@@ -443,10 +443,10 @@ public static class LedgerEndpoints
                 new { entryId = result.EntryId, transactionId = result.TransactionId }),
 
             PostEntryOutcome.JournalNotFound =>
-                Results.NotFound(new { erro = "Diário não encontrado." }),
+                Results.Problem("Diário não encontrado.", statusCode: StatusCodes.Status404NotFound),
 
             PostEntryOutcome.AccountNotFound =>
-                Results.NotFound(new { erro = result.Error }),
+                Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             // 409 e não 400: o lançamento está bem formado, e noutro período
             // entrava sem objecção. É o estado dos livros que impede.
@@ -480,7 +480,7 @@ public static class LedgerEndpoints
             VoidEntryOutcome.Voided => Results.NoContent(),
 
             VoidEntryOutcome.NotFound =>
-                Results.NotFound(new { erro = "Lançamento não encontrado." }),
+                Results.Problem("Lançamento não encontrado.", statusCode: StatusCodes.Status404NotFound),
 
             VoidEntryOutcome.PeriodClosed =>
                 Results.Conflict(new { erro = result.Error }),
@@ -544,7 +544,7 @@ public static class LedgerEndpoints
         return result.Outcome switch
         {
             ClosePeriodOutcome.Done => Results.NoContent(),
-            ClosePeriodOutcome.NotFound => Results.NotFound(new { erro = "Período não encontrado." }),
+            ClosePeriodOutcome.NotFound => Results.Problem("Período não encontrado.", statusCode: StatusCodes.Status404NotFound),
             _ => Results.Conflict(new { erro = result.Error }),
         };
     }
@@ -563,7 +563,7 @@ public static class LedgerEndpoints
         return result.Outcome switch
         {
             ClosePeriodOutcome.Done => Results.NoContent(),
-            ClosePeriodOutcome.NotFound => Results.NotFound(new { erro = "Período não encontrado." }),
+            ClosePeriodOutcome.NotFound => Results.Problem("Período não encontrado.", statusCode: StatusCodes.Status404NotFound),
             _ => Results.Conflict(new { erro = result.Error }),
         };
     }
@@ -652,10 +652,10 @@ public static class LedgerEndpoints
                 Results.Conflict(new { erro = result.Error }),
 
             DefinePostingRuleOutcome.JournalNotFound =>
-                Results.NotFound(new { erro = "Diário não encontrado." }),
+                Results.Problem("Diário não encontrado.", statusCode: StatusCodes.Status404NotFound),
 
             DefinePostingRuleOutcome.AccountNotFound =>
-                Results.NotFound(new { erro = result.Error }),
+                Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             // Chave própria: a regra não equilibra enquanto expressão, e isso é
             // diferente de um campo mal preenchido.
@@ -679,7 +679,7 @@ public static class LedgerEndpoints
 
         return feito
             ? Results.NoContent()
-            : Results.NotFound(new { erro = "Regra de postagem não encontrada." });
+            : Results.Problem("Regra de postagem não encontrada.", statusCode: StatusCodes.Status404NotFound);
     }
 
     // ---- Versões do plano de contas ----
@@ -804,7 +804,7 @@ public static class LedgerEndpoints
                 new { ruleId = result.RuleId }),
 
             CreateAccountingRuleOutcome.AccountNotFound =>
-                Results.NotFound(new { erro = result.Error }),
+                Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             _ => Results.ValidationProblem(new Dictionary<string, string[]>
             {
@@ -823,7 +823,7 @@ public static class LedgerEndpoints
 
         return feito
             ? Results.NoContent()
-            : Results.NotFound(new { erro = "Regra contabilística não encontrada." });
+            : Results.Problem("Regra contabilística não encontrada.", statusCode: StatusCodes.Status404NotFound);
     }
 
     // ---- Planeamento ----
@@ -913,7 +913,7 @@ public static class LedgerEndpoints
                 new { budgetId = result.BudgetId, estado = "Draft" }),
 
             DraftBudgetOutcome.CostCentreNotFound =>
-                Results.NotFound(new { erro = "Centro de custo não encontrado." }),
+                Results.Problem("Centro de custo não encontrado.", statusCode: StatusCodes.Status404NotFound),
 
             DraftBudgetOutcome.Duplicate => Results.Conflict(new { erro = result.Error }),
 
@@ -940,7 +940,7 @@ public static class LedgerEndpoints
         return result.Outcome switch
         {
             ReviseBudgetOutcome.Revised => Results.NoContent(),
-            ReviseBudgetOutcome.NotFound => Results.NotFound(new { erro = "Orçamento não encontrado." }),
+            ReviseBudgetOutcome.NotFound => Results.Problem("Orçamento não encontrado.", statusCode: StatusCodes.Status404NotFound),
 
             // 409: um orçamento aprovado não se altera. Subir o tecto depois de
             // aprovado esvaziaria a aprovação, e com ela BR-8.
@@ -985,7 +985,7 @@ public static class LedgerEndpoints
         return result.Outcome switch
         {
             ApproveBudgetOutcome.Approved => Results.NoContent(),
-            ApproveBudgetOutcome.NotFound => Results.NotFound(new { erro = "Orçamento não encontrado." }),
+            ApproveBudgetOutcome.NotFound => Results.Problem("Orçamento não encontrado.", statusCode: StatusCodes.Status404NotFound),
             _ => Results.Conflict(new { erro = result.Error }),
         };
     }

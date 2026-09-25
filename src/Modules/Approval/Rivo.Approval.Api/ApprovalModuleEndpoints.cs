@@ -119,7 +119,7 @@ public static class ApprovalModuleEndpoints
                 Results.NoContent(),
 
             DeactivatePolicyOutcome.NotFound =>
-                Results.NotFound(new { erro = "Política de aprovação não encontrada." }),
+                Results.Problem("Política de aprovação não encontrada.", statusCode: StatusCodes.Status404NotFound),
 
             _ => Results.Problem("Resultado inesperado ao desactivar a política."),
         };
@@ -200,7 +200,7 @@ public static class ApprovalModuleEndpoints
         {
             DecisionOutcome.Recorded => Results.Ok(result.Status),
 
-            DecisionOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            DecisionOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             // 403 e não 409: não é o estado do pedido que impede, é **esta
             // pessoa** que não pode decidir. BR-2 e BR-4 são regras sobre quem,
@@ -235,7 +235,7 @@ public static class ApprovalModuleEndpoints
         return result.Outcome switch
         {
             DecisionOutcome.Recorded => Results.NoContent(),
-            DecisionOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            DecisionOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             // 403 e não 409, pela mesma razão da decisão: não é o estado do
             // pedido que impede, é esta pessoa que não pode cancelá-lo (K18).

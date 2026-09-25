@@ -142,7 +142,7 @@ public static class FiscalModuleEndpoints
         var perfil = await query.ExecuteAsync(cancellationToken);
 
         return perfil is null
-            ? Results.NotFound(new { erro = "A identidade fiscal da empresa ainda não foi declarada." })
+            ? Results.Problem("A identidade fiscal da empresa ainda não foi declarada.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(perfil);
     }
 
@@ -243,7 +243,7 @@ public static class FiscalModuleEndpoints
                 Results.Created($"/fiscal/tax-rates/{scheduleId}", new { versionId = result.VersionId }),
 
             IntroduceRateOutcome.ScheduleNotFound =>
-                Results.NotFound(new { erro = "Série de taxa não encontrada." }),
+                Results.Problem("Série de taxa não encontrada.", statusCode: StatusCodes.Status404NotFound),
 
             // 409 e não 400: a sobreposição não é um campo mal preenchido, é
             // conflito com o que já lá está. Quem chama corrige fechando a
@@ -292,7 +292,7 @@ public static class FiscalModuleEndpoints
             // 404: não há regra que cubra esta data. Recusar é a resposta certa
             // — recair na versão mais próxima inventaria o valor.
             TaxDeterminationOutcome.NoRateInForce =>
-                Results.NotFound(new { erro = "Não há taxa em vigor para este código à data indicada." }),
+                Results.Problem("Não há taxa em vigor para este código à data indicada.", statusCode: StatusCodes.Status404NotFound),
 
             // 501: a capacidade não existe neste sistema, e não é defeito do
             // pedido. O catálogo de códigos de isenção está adiado pelo
@@ -313,7 +313,7 @@ public static class FiscalModuleEndpoints
         var tabela = await getSchedule.ExecuteAsync(cancellationToken);
 
         return tabela is null
-            ? Results.NotFound(new { erro = "Ainda não existe tabela de escalões de IRT." })
+            ? Results.Problem("Ainda não existe tabela de escalões de IRT.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(tabela);
     }
 
@@ -368,7 +368,7 @@ public static class FiscalModuleEndpoints
             // é a resposta certa — recair na versão mais próxima inventaria
             // o valor (mesma regra de `TaxDeterminationOutcome.NoRateInForce`).
             IncomeTaxDeterminationOutcome.NoScheduleInForce =>
-                Results.NotFound(new { erro = "Não há tabela de escalões de IRT em vigor à data indicada." }),
+                Results.Problem("Não há tabela de escalões de IRT em vigor à data indicada.", statusCode: StatusCodes.Status404NotFound),
 
             _ => Results.Problem("Resultado inesperado na determinação de IRT."),
         };
@@ -403,7 +403,7 @@ public static class FiscalModuleEndpoints
         var serie = await getSchedule.ExecuteAsync(kind, cancellationToken);
 
         return serie is null
-            ? Results.NotFound(new { erro = $"Ainda não existe limiar de isenção para '{kind}'." })
+            ? Results.Problem($"Ainda não existe limiar de isenção para '{kind}'.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(serie);
     }
 
@@ -474,7 +474,7 @@ public static class FiscalModuleEndpoints
     {
         CloseVersionOutcome.Closed => Results.NoContent(),
 
-        CloseVersionOutcome.NotFound => Results.NotFound(new { erro = "Versão não encontrada." }),
+        CloseVersionOutcome.NotFound => Results.Problem("Versão não encontrada.", statusCode: StatusCodes.Status404NotFound),
 
         // 409: já fechada — o pedido está bem formado, colide com o estado.
         CloseVersionOutcome.Conflict =>
@@ -512,7 +512,7 @@ public static class FiscalModuleEndpoints
             // resposta certa — recair no limiar mais próximo inventaria o
             // valor (mesma regra de `TaxDeterminationOutcome.NoRateInForce`).
             SubsidyExemptionOutcome.NoThresholdInForce =>
-                Results.NotFound(new { erro = "Não há limiar de isenção em vigor para este subsídio à data indicada." }),
+                Results.Problem("Não há limiar de isenção em vigor para este subsídio à data indicada.", statusCode: StatusCodes.Status404NotFound),
 
             _ => Results.Problem("Resultado inesperado na determinação do limiar de isenção."),
         };

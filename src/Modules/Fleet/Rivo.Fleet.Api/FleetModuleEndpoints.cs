@@ -147,7 +147,7 @@ public static class FleetModuleEndpoints
         var veiculo = await getVehicle.ExecuteAsync(vehicleId, cancellationToken);
 
         return veiculo is null
-            ? Results.NotFound(new { erro = "Viatura não encontrada." })
+            ? Results.Problem("Viatura não encontrada.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(veiculo);
     }
 
@@ -180,7 +180,7 @@ public static class FleetModuleEndpoints
 
         return encontrada
             ? Results.NoContent()
-            : Results.NotFound(new { erro = "Viatura não encontrada." });
+            : Results.Problem("Viatura não encontrada.", statusCode: StatusCodes.Status404NotFound);
     }
 
     private static async Task<IResult> OpenMaintenanceAsync(
@@ -205,7 +205,7 @@ public static class FleetModuleEndpoints
         {
             OpenMaintenanceOutcome.Opened => Results.Created(
                 $"/fleet/vehicles/{vehicleId}", new { maintenanceId = result.MaintenanceId }),
-            OpenMaintenanceOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            OpenMaintenanceOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             OpenMaintenanceOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
             _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["manutencao"] = [result.Error!] }),
         };
@@ -225,8 +225,8 @@ public static class FleetModuleEndpoints
         return outcome switch
         {
             MaintenanceLifecycleOutcome.Closed => Results.NoContent(),
-            MaintenanceLifecycleOutcome.VehicleNotFound => Results.NotFound(new { erro = "Viatura não encontrada." }),
-            MaintenanceLifecycleOutcome.MaintenanceNotFound => Results.NotFound(new { erro = "Registo de manutenção não encontrado." }),
+            MaintenanceLifecycleOutcome.VehicleNotFound => Results.Problem("Viatura não encontrada.", statusCode: StatusCodes.Status404NotFound),
+            MaintenanceLifecycleOutcome.MaintenanceNotFound => Results.Problem("Registo de manutenção não encontrado.", statusCode: StatusCodes.Status404NotFound),
             MaintenanceLifecycleOutcome.Rejected => Results.Conflict(new { erro = "Não foi possível fechar a manutenção." }),
             _ => Results.Problem("Resultado inesperado ao fechar a manutenção."),
         };
@@ -246,8 +246,8 @@ public static class FleetModuleEndpoints
         {
             AssignVehicleOutcome.Assigned => Results.Created(
                 $"/fleet/vehicles/{vehicleId}", new { assignmentId = result.AssignmentId }),
-            AssignVehicleOutcome.VehicleNotFound => Results.NotFound(new { erro = result.Error }),
-            AssignVehicleOutcome.EmployeeNotFound => Results.NotFound(new { erro = result.Error }),
+            AssignVehicleOutcome.VehicleNotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
+            AssignVehicleOutcome.EmployeeNotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             AssignVehicleOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
             _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["atribuicao"] = [result.Error!] }),
         };
@@ -267,8 +267,8 @@ public static class FleetModuleEndpoints
         return outcome switch
         {
             AssignmentLifecycleOutcome.Ended => Results.NoContent(),
-            AssignmentLifecycleOutcome.VehicleNotFound => Results.NotFound(new { erro = "Viatura não encontrada." }),
-            AssignmentLifecycleOutcome.AssignmentNotFound => Results.NotFound(new { erro = "Atribuição não encontrada." }),
+            AssignmentLifecycleOutcome.VehicleNotFound => Results.Problem("Viatura não encontrada.", statusCode: StatusCodes.Status404NotFound),
+            AssignmentLifecycleOutcome.AssignmentNotFound => Results.Problem("Atribuição não encontrada.", statusCode: StatusCodes.Status404NotFound),
             AssignmentLifecycleOutcome.Rejected => Results.Conflict(new { erro = "Não foi possível terminar a atribuição." }),
             _ => Results.Problem("Resultado inesperado ao terminar a atribuição."),
         };
@@ -289,7 +289,7 @@ public static class FleetModuleEndpoints
         {
             SchedulePlanOutcome.Scheduled => Results.Created(
                 $"/fleet/vehicles/{vehicleId}", new { planId = result.PlanId }),
-            SchedulePlanOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            SchedulePlanOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             SchedulePlanOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
             _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["plano"] = [result.Error!] }),
         };
@@ -319,8 +319,8 @@ public static class FleetModuleEndpoints
     private static IResult PlanLifecycleResult(PlanLifecycleOutcome outcome, string acto) => outcome switch
     {
         PlanLifecycleOutcome.Applied => Results.NoContent(),
-        PlanLifecycleOutcome.VehicleNotFound => Results.NotFound(new { erro = "Viatura não encontrada." }),
-        PlanLifecycleOutcome.PlanNotFound => Results.NotFound(new { erro = "Plano de manutenção não encontrado." }),
+        PlanLifecycleOutcome.VehicleNotFound => Results.Problem("Viatura não encontrada.", statusCode: StatusCodes.Status404NotFound),
+        PlanLifecycleOutcome.PlanNotFound => Results.Problem("Plano de manutenção não encontrado.", statusCode: StatusCodes.Status404NotFound),
         PlanLifecycleOutcome.Rejected => Results.Conflict(new { erro = $"Não foi possível {acto}." }),
         _ => Results.Problem($"Resultado inesperado ao {acto}."),
     };
@@ -341,8 +341,8 @@ public static class FleetModuleEndpoints
         {
             RegisterTripOutcome.Registered => Results.Created(
                 $"/fleet/vehicles/{vehicleId}", new { tripId = result.TripId, distance = result.Distance }),
-            RegisterTripOutcome.VehicleNotFound => Results.NotFound(new { erro = result.Error }),
-            RegisterTripOutcome.DriverNotFound => Results.NotFound(new { erro = result.Error }),
+            RegisterTripOutcome.VehicleNotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
+            RegisterTripOutcome.DriverNotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             RegisterTripOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
             _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["viagem"] = [result.Error!] }),
         };
@@ -371,7 +371,7 @@ public static class FleetModuleEndpoints
         {
             RegisterExpenseOutcome.Registered => Results.Created(
                 $"/fleet/vehicles/{vehicleId}", new { expenseId = result.ExpenseId }),
-            RegisterExpenseOutcome.VehicleNotFound => Results.NotFound(new { erro = result.Error }),
+            RegisterExpenseOutcome.VehicleNotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             RegisterExpenseOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
             _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["despesa"] = [result.Error!] }),
         };
@@ -394,7 +394,7 @@ public static class FleetModuleEndpoints
 
         if (resultado is not { } r)
         {
-            return Results.NotFound(new { erro = "Viatura não encontrada." });
+            return Results.Problem("Viatura não encontrada.", statusCode: StatusCodes.Status404NotFound);
         }
 
         AplicarCabecalhosDePagina(response, pagina, r.TotalCount);
@@ -415,8 +415,8 @@ public static class FleetModuleEndpoints
         {
             AttachVehicleDocumentOutcome.Attached => Results.Created(
                 $"/fleet/vehicles/{vehicleId}/documents", new { linkId = result.LinkId }),
-            AttachVehicleDocumentOutcome.VehicleNotFound => Results.NotFound(new { erro = result.Error }),
-            AttachVehicleDocumentOutcome.DocumentNotFound => Results.NotFound(new { erro = result.Error }),
+            AttachVehicleDocumentOutcome.VehicleNotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
+            AttachVehicleDocumentOutcome.DocumentNotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["documento"] = [result.Error!] }),
         };
     }

@@ -83,7 +83,7 @@ public static class MessagingModuleEndpoints
         var conversa = await getConversation.ExecuteAsync(conversationId, cancellationToken);
 
         return conversa is null
-            ? Results.NotFound(new { erro = "Conversa não encontrada." })
+            ? Results.Problem("Conversa não encontrada.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(conversa);
     }
 
@@ -109,7 +109,7 @@ public static class MessagingModuleEndpoints
             ReplyOutcome.Sent => Results.Created(
                 $"/messaging/conversations/{conversationId}", new { messageId = result.MessageId }),
 
-            ReplyOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            ReplyOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             ReplyOutcome.Closed => Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
 
@@ -140,7 +140,7 @@ public static class MessagingModuleEndpoints
         {
             CloseConversationOutcome.Closed => Results.NoContent(),
 
-            CloseConversationOutcome.NotFound => Results.NotFound(new { erro = "Conversa não encontrada." }),
+            CloseConversationOutcome.NotFound => Results.Problem("Conversa não encontrada.", statusCode: StatusCodes.Status404NotFound),
 
             CloseConversationOutcome.AlreadyClosed =>
                 Results.Problem("Esta conversa já está fechada.", statusCode: StatusCodes.Status409Conflict),

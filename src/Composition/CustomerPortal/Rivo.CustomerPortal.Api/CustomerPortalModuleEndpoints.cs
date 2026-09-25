@@ -204,10 +204,10 @@ public static class CustomerPortalModuleEndpoints
                 statusCode: StatusCodes.Status403Forbidden),
 
             SubmitPaymentProofOutcome.InvoiceNotFound =>
-                Results.NotFound(new { erro = result.Error }),
+                Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             SubmitPaymentProofOutcome.DocumentNotFound =>
-                Results.NotFound(new { erro = result.Error }),
+                Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             SubmitPaymentProofOutcome.ExceedsOutstanding =>
                 Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
@@ -370,7 +370,7 @@ public static class CustomerPortalModuleEndpoints
                 "Esta conta não está associada a nenhum cliente.",
                 statusCode: StatusCodes.Status403Forbidden),
 
-            SendMessageOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            SendMessageOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             SendMessageOutcome.Closed => Results.Problem(result.Error, statusCode: StatusCodes.Status409Conflict),
 

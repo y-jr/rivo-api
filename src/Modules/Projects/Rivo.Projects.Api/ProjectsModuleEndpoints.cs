@@ -135,7 +135,7 @@ public static class ProjectsModuleEndpoints
         var projecto = await getProject.ExecuteAsync(projectId, cancellationToken);
 
         return projecto is null
-            ? Results.NotFound(new { erro = "Projecto não encontrado." })
+            ? Results.Problem("Projecto não encontrado.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(projecto);
     }
 
@@ -166,7 +166,7 @@ public static class ProjectsModuleEndpoints
         return outcome switch
         {
             CloseProjectOutcome.Closed => Results.NoContent(),
-            CloseProjectOutcome.NotFound => Results.NotFound(new { erro = "Projecto não encontrado." }),
+            CloseProjectOutcome.NotFound => Results.Problem("Projecto não encontrado.", statusCode: StatusCodes.Status404NotFound),
             CloseProjectOutcome.Rejected => Results.Conflict(new { erro = "Não foi possível fechar o projecto." }),
             _ => Results.Problem("Resultado inesperado ao fechar o projecto."),
         };
@@ -186,7 +186,7 @@ public static class ProjectsModuleEndpoints
         {
             AddMilestoneOutcome.Added => Results.Created(
                 $"/projects/{projectId}", new { milestoneId = result.MilestoneId }),
-            AddMilestoneOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            AddMilestoneOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             AddMilestoneOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
             _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["marco"] = [result.Error!] }),
         };
@@ -206,8 +206,8 @@ public static class ProjectsModuleEndpoints
         return outcome switch
         {
             ReachMilestoneOutcome.Reached => Results.NoContent(),
-            ReachMilestoneOutcome.ProjectNotFound => Results.NotFound(new { erro = "Projecto não encontrado." }),
-            ReachMilestoneOutcome.MilestoneNotFound => Results.NotFound(new { erro = "Marco não encontrado." }),
+            ReachMilestoneOutcome.ProjectNotFound => Results.Problem("Projecto não encontrado.", statusCode: StatusCodes.Status404NotFound),
+            ReachMilestoneOutcome.MilestoneNotFound => Results.Problem("Marco não encontrado.", statusCode: StatusCodes.Status404NotFound),
             ReachMilestoneOutcome.Rejected => Results.Conflict(new { erro = "Não foi possível alcançar o marco." }),
             _ => Results.Problem("Resultado inesperado ao alcançar o marco."),
         };
@@ -227,8 +227,8 @@ public static class ProjectsModuleEndpoints
         return result.Outcome switch
         {
             AddTaskOutcome.Added => Results.Created($"/projects/{projectId}", new { taskId = result.TaskId }),
-            AddTaskOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
-            AddTaskOutcome.EmployeeNotFound => Results.NotFound(new { erro = result.Error }),
+            AddTaskOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
+            AddTaskOutcome.EmployeeNotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             AddTaskOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
             _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["tarefa"] = [result.Error!] }),
         };
@@ -248,9 +248,9 @@ public static class ProjectsModuleEndpoints
         return outcome switch
         {
             AssignTaskOutcome.Assigned => Results.NoContent(),
-            AssignTaskOutcome.ProjectNotFound => Results.NotFound(new { erro = "Projecto não encontrado." }),
-            AssignTaskOutcome.TaskNotFound => Results.NotFound(new { erro = "Tarefa não encontrada." }),
-            AssignTaskOutcome.EmployeeNotFound => Results.NotFound(new { erro = "Colaborador a atribuir não encontrado." }),
+            AssignTaskOutcome.ProjectNotFound => Results.Problem("Projecto não encontrado.", statusCode: StatusCodes.Status404NotFound),
+            AssignTaskOutcome.TaskNotFound => Results.Problem("Tarefa não encontrada.", statusCode: StatusCodes.Status404NotFound),
+            AssignTaskOutcome.EmployeeNotFound => Results.Problem("Colaborador a atribuir não encontrado.", statusCode: StatusCodes.Status404NotFound),
             AssignTaskOutcome.Rejected => Results.Conflict(new { erro = "Não foi possível atribuir a tarefa." }),
             _ => Results.Problem("Resultado inesperado ao atribuir a tarefa."),
         };
@@ -279,8 +279,8 @@ public static class ProjectsModuleEndpoints
     private static IResult TaskLifecycleResult(TaskLifecycleOutcome outcome, string acto) => outcome switch
     {
         TaskLifecycleOutcome.Applied => Results.NoContent(),
-        TaskLifecycleOutcome.ProjectNotFound => Results.NotFound(new { erro = "Projecto não encontrado." }),
-        TaskLifecycleOutcome.TaskNotFound => Results.NotFound(new { erro = "Tarefa não encontrada." }),
+        TaskLifecycleOutcome.ProjectNotFound => Results.Problem("Projecto não encontrado.", statusCode: StatusCodes.Status404NotFound),
+        TaskLifecycleOutcome.TaskNotFound => Results.Problem("Tarefa não encontrada.", statusCode: StatusCodes.Status404NotFound),
         TaskLifecycleOutcome.Rejected => Results.Conflict(new { erro = $"Não foi possível {acto} a tarefa." }),
         _ => Results.Problem($"Resultado inesperado ao {acto} a tarefa."),
     };
@@ -298,7 +298,7 @@ public static class ProjectsModuleEndpoints
         return result.Outcome switch
         {
             SetProjectBudgetOutcome.Set => Results.NoContent(),
-            SetProjectBudgetOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            SetProjectBudgetOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             SetProjectBudgetOutcome.Conflict => Results.Conflict(new { erro = result.Error }),
             _ => Results.ValidationProblem(new Dictionary<string, string[]> { ["orcamento"] = [result.Error!] }),
         };
@@ -321,7 +321,7 @@ public static class ProjectsModuleEndpoints
                 $"/projects/{projectId}", new { allocationId = result.AllocationId }),
 
             AllocateResourceOutcome.ProjectNotFound or AllocateResourceOutcome.ResourceNotFound =>
-                Results.NotFound(new { erro = result.Error }),
+                Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             // 409: o mesmo recurso já está alocado, ou o projecto está
             // fechado — conflito com o estado actual, não pedido malformado.
@@ -350,8 +350,8 @@ public static class ProjectsModuleEndpoints
         return outcome switch
         {
             EndAllocationOutcome.Applied => Results.NoContent(),
-            EndAllocationOutcome.ProjectNotFound => Results.NotFound(new { erro = "Projecto não encontrado." }),
-            EndAllocationOutcome.AllocationNotFound => Results.NotFound(new { erro = "Alocação não encontrada." }),
+            EndAllocationOutcome.ProjectNotFound => Results.Problem("Projecto não encontrado.", statusCode: StatusCodes.Status404NotFound),
+            EndAllocationOutcome.AllocationNotFound => Results.Problem("Alocação não encontrada.", statusCode: StatusCodes.Status404NotFound),
 
             // 400: data de fim antes do início da alocação.
             EndAllocationOutcome.Rejected =>

@@ -340,7 +340,7 @@ public static class HrModuleEndpoints
         {
             AttachDocumentOutcome.Attached =>
                 Results.Created($"/hr/employees/{employeeId}/documents", new { linkId = result.LinkId }),
-            _ => Results.NotFound(new { erro = result.Message }),
+            _ => Results.Problem(result.Message, statusCode: StatusCodes.Status404NotFound),
         };
     }
 
@@ -473,7 +473,7 @@ public static class HrModuleEndpoints
         {
             HireEmployeeOutcome.Hired =>
                 Results.Created($"/hr/employees/{result.EmployeeId}", new { employeeId = result.EmployeeId }),
-            HireEmployeeOutcome.DepartmentNotFound => Results.NotFound(new { erro = result.Error }),
+            HireEmployeeOutcome.DepartmentNotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
         };
     }
@@ -492,7 +492,7 @@ public static class HrModuleEndpoints
         {
             LinkEmployeeAccountOutcome.Linked => Results.NoContent(),
 
-            LinkEmployeeAccountOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            LinkEmployeeAccountOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             // 409 nos dois sentidos do conflito: a conta já é de outra pessoa,
             // ou esta pessoa já tem outra conta. O pedido está bem formado —
@@ -525,7 +525,7 @@ public static class HrModuleEndpoints
             // pretendido verifica-se nos dois casos.
             UnlinkEmployeeAccountOutcome.Unlinked => Results.NoContent(),
 
-            UnlinkEmployeeAccountOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            UnlinkEmployeeAccountOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             _ => throw new ArgumentOutOfRangeException(nameof(result), result.Outcome, "Desfecho sem tradução HTTP."),
         };
@@ -541,7 +541,7 @@ public static class HrModuleEndpoints
         // Lista vazia e 404 dizem coisas diferentes: "nunca teve conta" e "não
         // há tal pessoa".
         return historico is null
-            ? Results.NotFound(new { erro = "Colaborador não encontrado." })
+            ? Results.Problem("Colaborador não encontrado.", statusCode: StatusCodes.Status404NotFound)
             : Results.Ok(historico);
     }
 
@@ -558,7 +558,7 @@ public static class HrModuleEndpoints
             // reler a lista -- que é onde as outras correcções aparecem.
             CorrectionOutcome.Corrected => Results.NoContent(),
 
-            CorrectionOutcome.NotFound => Results.NotFound(new { erro = "Registo não encontrado." }),
+            CorrectionOutcome.NotFound => Results.Problem("Registo não encontrado.", statusCode: StatusCodes.Status404NotFound),
 
             CorrectionOutcome.Rejected =>
                 Results.ValidationProblem(new Dictionary<string, string[]> { ["correccao"] = [resultado.Error!] }),
@@ -688,7 +688,7 @@ public static class HrModuleEndpoints
                 Results.Created($"/hr/employees/{employeeId}", new { assignmentId = result.AssignmentId }),
 
             AssignPositionOutcome.EmployeeNotFound or AssignPositionOutcome.PositionNotFound =>
-                Results.NotFound(new { erro = result.Message }),
+                Results.Problem(result.Message, statusCode: StatusCodes.Status404NotFound),
 
             // 202: aceite, mas **sem efeito ainda** (BR-20). A distinção face
             // ao 201 é o ponto — o cargo não foi atribuído, foi submetido, e
@@ -735,7 +735,7 @@ public static class HrModuleEndpoints
                 Results.Created($"/hr/employees/{employeeId}", new { assignmentId = result.AssignmentId }),
 
             AssignPositionOutcome.EmployeeNotFound or AssignPositionOutcome.PositionNotFound =>
-                Results.NotFound(new { erro = result.Message }),
+                Results.Problem(result.Message, statusCode: StatusCodes.Status404NotFound),
 
             _ => Results.Problem("Resultado inesperado ao atribuir o cargo directamente."),
         };
@@ -765,7 +765,7 @@ public static class HrModuleEndpoints
                 Results.Accepted(value: new { estado = result.Status, detalhe = result.Message }),
 
             ApplyApprovalOutcome.NotFound =>
-                Results.NotFound(new { erro = result.Message }),
+                Results.Problem(result.Message, statusCode: StatusCodes.Status404NotFound),
 
             _ => Results.Problem("Resultado inesperado ao aplicar a decisão."),
         };
@@ -813,7 +813,7 @@ public static class HrModuleEndpoints
                 Results.Created($"/hr/contracts?employeeId={request.EmployeeId}", new { contractId = result.ContractId }),
 
             DrawContractOutcome.EmployeeNotFound =>
-                Results.NotFound(new { erro = result.Error }),
+                Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             // 409 e não 400: o pedido está bem formado, o que colide é o estado
             // actual — já existe um contrato em vigor no período.
@@ -847,7 +847,7 @@ public static class HrModuleEndpoints
             TerminateContractOutcome.Terminated => Results.NoContent(),
 
             TerminateContractOutcome.NotFound =>
-                Results.NotFound(new { erro = result.Error }),
+                Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             TerminateContractOutcome.Rejected =>
                 Results.Conflict(new { erro = result.Error }),
@@ -921,7 +921,7 @@ public static class HrModuleEndpoints
                 Results.Ok(new { recordId = result.RecordId, movimento = "saida", at = result.At }),
 
             ClockOutcome.EmployeeNotFound =>
-                Results.NotFound(new { erro = result.Error }),
+                Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             ClockOutcome.Rejected =>
                 Results.Conflict(new { erro = result.Error }),
@@ -952,7 +952,7 @@ public static class HrModuleEndpoints
                 Results.Ok(new { recordId = result.RecordId }),
 
             AbsenceOutcome.EmployeeNotFound =>
-                Results.NotFound(new { erro = result.Error }),
+                Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             AbsenceOutcome.Rejected =>
                 Results.Conflict(new { erro = result.Error }),
@@ -999,7 +999,7 @@ public static class HrModuleEndpoints
                     $"/hr/leave?employeeId={request.EmployeeId}",
                     new { leaveId = result.LeaveId, estado = "PendenteAprovacao", detalhe = result.Message }),
 
-            LeaveOutcome.NotFound => Results.NotFound(new { erro = result.Message }),
+            LeaveOutcome.NotFound => Results.Problem(result.Message, statusCode: StatusCodes.Status404NotFound),
 
             // 409: já há ausência pedida ou aprovada nesse período.
             LeaveOutcome.Overlaps => Results.Conflict(new { erro = result.Message }),
@@ -1030,7 +1030,7 @@ public static class HrModuleEndpoints
         return result.Outcome switch
         {
             LeaveOutcome.Cancelled => Results.NoContent(),
-            LeaveOutcome.NotFound => Results.NotFound(new { erro = result.Message }),
+            LeaveOutcome.NotFound => Results.Problem(result.Message, statusCode: StatusCodes.Status404NotFound),
             LeaveOutcome.Rejected => Results.Conflict(new { erro = result.Message }),
             _ => Results.Problem("Resultado inesperado ao retirar o pedido."),
         };
@@ -1054,7 +1054,7 @@ public static class HrModuleEndpoints
             ApplyApprovalOutcome.StillPending =>
                 Results.Accepted(value: new { estado = result.Status, detalhe = result.Message }),
 
-            ApplyApprovalOutcome.NotFound => Results.NotFound(new { erro = result.Message }),
+            ApplyApprovalOutcome.NotFound => Results.Problem(result.Message, statusCode: StatusCodes.Status404NotFound),
 
             _ => Results.Problem("Resultado inesperado ao aplicar a decisão."),
         };
@@ -1143,7 +1143,7 @@ public static class HrModuleEndpoints
         return result.Outcome switch
         {
             EnrolOutcome.Done => Results.NoContent(),
-            EnrolOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            EnrolOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             EnrolOutcome.Rejected => Results.Conflict(new { erro = result.Error }),
             _ => Results.Problem("Resultado inesperado ao cancelar a adesão."),
         };
@@ -1153,7 +1153,7 @@ public static class HrModuleEndpoints
         result.Outcome switch
         {
             EnrolOutcome.Done => Results.Created(location, new { enrolmentId = result.EnrolmentId }),
-            EnrolOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            EnrolOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             EnrolOutcome.Rejected => Results.Conflict(new { erro = result.Error }),
             _ => Results.Problem("Resultado inesperado na adesão ao benefício."),
         };
@@ -1201,7 +1201,7 @@ public static class HrModuleEndpoints
         return result.Outcome switch
         {
             RecruitmentOutcome.Done => Results.NoContent(),
-            RecruitmentOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            RecruitmentOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             RecruitmentOutcome.Rejected => Results.Conflict(new { erro = result.Error }),
             _ => Results.Problem("Resultado inesperado ao fechar a vaga."),
         };
@@ -1256,7 +1256,7 @@ public static class HrModuleEndpoints
         return result.Outcome switch
         {
             RecruitmentOutcome.Done => Results.NoContent(),
-            RecruitmentOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            RecruitmentOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             // 409: a fase pedida não é possível a partir da actual. O pedido
             // está bem formado — o que colide é o estado do funil.
@@ -1281,7 +1281,7 @@ public static class HrModuleEndpoints
             RecruitmentOutcome.Done =>
                 Results.Created($"/hr/employees/{result.Id}", new { employeeId = result.Id }),
 
-            RecruitmentOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            RecruitmentOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
             RecruitmentOutcome.Rejected => Results.Conflict(new { erro = result.Error }),
             _ => Results.Problem("Resultado inesperado ao contratar o candidato."),
         };
@@ -1293,7 +1293,7 @@ public static class HrModuleEndpoints
             RecruitmentOutcome.Done =>
                 Results.Created(location, new Dictionary<string, object?> { [idName] = result.Id }),
 
-            RecruitmentOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            RecruitmentOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             RecruitmentOutcome.Rejected =>
                 Results.ValidationProblem(new Dictionary<string, string[]> { ["recrutamento"] = [result.Error!] }),
@@ -1340,7 +1340,7 @@ public static class HrModuleEndpoints
             LifecycleOutcome.Done =>
                 Results.Created($"/hr/lifecycle?employeeId={request.EmployeeId}", new { processId = result.ProcessId }),
 
-            LifecycleOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            LifecycleOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             LifecycleOutcome.Rejected =>
                 Results.ValidationProblem(new Dictionary<string, string[]> { ["processo"] = [result.Error!] }),
@@ -1377,7 +1377,7 @@ public static class HrModuleEndpoints
         result.Outcome switch
         {
             LifecycleOutcome.Done => Results.NoContent(),
-            LifecycleOutcome.NotFound => Results.NotFound(new { erro = result.Error }),
+            LifecycleOutcome.NotFound => Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
 
             // 409: faltam tarefas, ou o processo já está concluído. É o estado
             // que recusa, não o pedido.
