@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Builder;
@@ -469,7 +470,12 @@ public static class FleetModuleEndpoints
 
 public sealed record RegisterVehicleRequest(string PlateNumber, string Model);
 
-public sealed record OpenMaintenanceRequest(string Type, string Description, DateOnly StartedOn);
+public sealed record OpenMaintenanceRequest(
+    /// <summary>`Preventive` ou `Corrective` (#18 do levantamento de pendências).</summary>
+    [property: AllowedValues("Preventive", "Corrective")]
+    string Type,
+    string Description,
+    DateOnly StartedOn);
 
 /// <param name="Cost">Opcional (ADR-048) — o valor final da intervenção, se houver a registar.</param>
 public sealed record CloseMaintenanceRequest(DateOnly EndedOn, decimal? Cost = null);

@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Rivo.Audit.Contracts;
 using Rivo.Fleet.Application.Abstractions;
 using Rivo.Fleet.Domain;
@@ -25,7 +26,15 @@ public sealed record VehicleView(
     IReadOnlyList<FleetExpenseView> Expenses);
 
 public sealed record MaintenanceRecordView(
-    Guid MaintenanceId, string Type, string Description, DateOnly StartedOn, DateOnly? EndedOn, decimal? Cost);
+    Guid MaintenanceId,
+
+    /// <summary>`Preventive` ou `Corrective` (#18 do levantamento de pendências).</summary>
+    [property: AllowedValues("Preventive", "Corrective")]
+    string Type,
+    string Description,
+    DateOnly StartedOn,
+    DateOnly? EndedOn,
+    decimal? Cost);
 
 public sealed record VehicleAssignmentView(
     Guid AssignmentId, Guid EmployeeId, DateOnly StartedOn, DateOnly? EndedOn);
