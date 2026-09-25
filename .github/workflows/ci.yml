@@ -151,11 +151,17 @@ jobs:
 
       # Sem isto, uma falha no CI mostra só que a suite falhou. Os logs dizem
       # porquê — e não há como reproduzir localmente um container já destruído.
+      #
+      # `--tail 300` na api ficava curto: verify-all.ps1 corre dezenas de
+      # suites em sequência, e uma falha numa suite cedo (ex. finance) fica
+      # fora da janela assim que as suites seguintes (projects, fleet,
+      # approval, procurement, ...) escrevem as suas próprias linhas —
+      # confirmado a 2026-09-25, a investigar #19/#21.
       - name: Logs em caso de falha
         if: failure()
         run: |
           echo "=== api ==="
-          docker compose -f docker-compose.yml -f docker-compose.dev.yml logs --tail 300 api || true
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml logs --tail 5000 api || true
           echo "=== sqlserver ==="
           docker compose -f docker-compose.yml -f docker-compose.dev.yml logs --tail 100 sqlserver || true
 

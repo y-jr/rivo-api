@@ -1033,6 +1033,40 @@ Test-Case "46. Dados sobrevivem ao reinicio da stack" {
     "balancete e orcamento intactos apos restart"
 }
 
+# ---------- Pendencias #19 e #21 ----------
+#
+# O levantamento de pendencias apontava 500 em dois caminhos de
+# accounting-rules. Revisto o codigo (ListAccountingRules.ExecuteAsync,
+# LedgerStore.ListAccountingRulesAsync, DeactivateAccountingRule.ExecuteAsync)
+# e nao ha caminho de excepcao para nenhum dos dois — estes dois casos provam
+# isso ao vivo, nao so por leitura.
+
+Test-Case "47. accounting-rules nunca rebenta, mesmo sem regra nenhuma (#19)" {
+    # Suite reexecutavel: nao se pode assumir tenant vazio (pode ja haver
+    # regras de corridas anteriores). O que interessa e que a listagem e
+    # sempre 200 com um array — nunca 500, tenha ela 0 ou mais linhas.
+    #
+    # -SkipHttpErrorCheck + corpo da resposta: se isto continuar a rebentar,
+    # a mensagem de erro fica no proprio output da suite, sem ter de ir aos
+    # logs do container — foi assim que se confirmou que #19 e #21 sao bugs
+    # reais, nao relatorios desactualizados (2026-09-25).
+    $resposta = Invoke-WebRequest "$base/finance/ledger/accounting-rules" -Headers $financeHeaders -SkipHttpErrorCheck
+    if ([int]$resposta.StatusCode -ne 200) {
+        throw "esperado 200, obtido $([int]$resposta.StatusCode) -- corpo: $(Get-RivoCorpo $resposta)"
+    }
+    $regras = Get-RivoLista "$base/finance/ledger/accounting-rules" -Headers $financeHeaders
+    "$($regras.Count) regra(s) contabilisticas — sempre 200, nunca 500"
+}
+
+Test-Case "48. Desactivar regra contabilistica inexistente e 404, nao 500 (#21)" {
+    $inexistente = [guid]::NewGuid()
+    $resposta = Invoke-WebRequest "$base/finance/ledger/accounting-rules/$inexistente/deactivation" -Method Post -ContentType "application/json" -Headers $adminHeaders -SkipHttpErrorCheck
+    if ([int]$resposta.StatusCode -ne 404) {
+        throw "esperado 404, obtido $([int]$resposta.StatusCode) -- corpo: $(Get-RivoCorpo $resposta)"
+    }
+    "404 para uma regra que nao existe — o caminho de FindAccountingRuleAsync nulo nao rebenta"
+}
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host "$failures teste(s) falharam." -ForegroundColor Red; exit 1 }
 Write-Host "Todos os testes passaram." -ForegroundColor Green
