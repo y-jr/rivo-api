@@ -2,18 +2,20 @@ using Rivo.Audit.Contracts;
 using Rivo.Procurement.Application.Abstractions;
 using Rivo.Procurement.Contracts;
 using Rivo.Procurement.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Procurement.Application.UseCases;
 
 public sealed class ListSuppliers(IProcurementStore store)
 {
-    public async Task<IReadOnlyList<SupplierReference>> ExecuteAsync(
+    public async Task<(IReadOnlyList<SupplierReference> Items, int? TotalCount)> ExecuteAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var fornecedores = await store.ListSuppliersAsync(includeInactive, cancellationToken);
+        var (fornecedores, total) = await store.ListSuppliersAsync(includeInactive, pagina, cancellationToken);
 
-        return [.. fornecedores.Select(SupplierDirectory.ToReference)];
+        return ([.. fornecedores.Select(SupplierDirectory.ToReference)], total);
     }
 }
 

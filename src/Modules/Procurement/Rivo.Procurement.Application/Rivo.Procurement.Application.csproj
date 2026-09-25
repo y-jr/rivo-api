@@ -8,6 +8,10 @@
     <!-- O requisitante é um Colaborador, e o acesso é exclusivamente pelo
          contrato (ADR-010). `procurement` nunca lê tabelas de `hr`. -->
     <ProjectReference Include="..\..\Hr\Rivo.Hr.Contracts\Rivo.Hr.Contracts.csproj" />
+
+    <!-- PageRequest/Pagination (ADR-068) — primitiva estrutural sem dono de
+         negócio, não conceito de procurement. -->
+    <ProjectReference Include="..\..\..\SharedKernel\Rivo.SharedKernel.Contracts\Rivo.SharedKernel.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

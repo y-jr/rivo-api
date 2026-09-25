@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Inventory.Application.Abstractions;
 using Rivo.Inventory.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Inventory.Application.Tests;
 
@@ -36,9 +37,16 @@ internal sealed class FakeInventoryItemStore : IInventoryItemStore
     public Task<InventoryItem?> FindBySkuAsync(string sku, CancellationToken cancellationToken) =>
         Task.FromResult(_itens.SingleOrDefault(i => i.Sku == sku));
 
-    public Task<IReadOnlyList<InventoryItem>> ListAsync(bool includeInactive, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<InventoryItem>>(
-            [.. _itens.Where(i => includeInactive || i.Status == InventoryItemStatus.Active)]);
+    public Task<(IReadOnlyList<InventoryItem> Items, int? TotalCount)> ListAsync(
+        bool includeInactive, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        var ordenados = _itens
+            .Where(i => includeInactive || i.Status == InventoryItemStatus.Active)
+            .OrderBy(i => i.Sku)
+            .ToList();
+
+        return Task.FromResult(FakePaginacao.Paginar(ordenados, pagina));
+    }
 
     public Task AddAsync(InventoryItem item, CancellationToken cancellationToken)
     {
@@ -84,8 +92,16 @@ internal sealed class FakeWarehouseStore : IWarehouseStore
     public Task<Warehouse?> FindByCodeAsync(string code, CancellationToken cancellationToken) =>
         Task.FromResult(_armazens.SingleOrDefault(a => a.Code == code));
 
-    public Task<IReadOnlyList<Warehouse>> ListAsync(bool includeInactive, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<Warehouse>>([.. _armazens]);
+    public Task<(IReadOnlyList<Warehouse> Items, int? TotalCount)> ListAsync(
+        bool includeInactive, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        // Mantém o comportamento original do duplo: não filtra por
+        // `includeInactive` (nenhum teste existente precisou disso até agora)
+        // — só a paginação é nova.
+        var ordenados = _armazens.OrderBy(a => a.Code).ToList();
+
+        return Task.FromResult(FakePaginacao.Paginar(ordenados, pagina));
+    }
 
     public Task AddAsync(Warehouse warehouse, CancellationToken cancellationToken)
     {
@@ -110,4 +126,18 @@ internal sealed class FakeAuditTrail : IAuditTrail
 internal sealed class RelogioFixo(DateTimeOffset agora) : TimeProvider
 {
     public override DateTimeOffset GetUtcNow() => agora;
+}
+
+/// <summary>Paginação em memória para os duplos deste módulo (ADR-068).</summary>
+internal static class FakePaginacao
+{
+    public static (IReadOnlyList<T> Items, int? TotalCount) Paginar<T>(List<T> ordenados, PageRequest? pagina)
+    {
+        if (pagina is not { } p)
+        {
+            return (ordenados, null);
+        }
+
+        return (ordenados.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize).ToList(), ordenados.Count);
+    }
 }

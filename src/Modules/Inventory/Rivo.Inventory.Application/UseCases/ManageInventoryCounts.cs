@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Inventory.Application.Abstractions;
 using Rivo.Inventory.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Inventory.Application.UseCases;
 
@@ -32,10 +33,11 @@ internal static class InventoryCountViews
 
 public sealed class ListInventoryCounts(IInventoryCountStore store)
 {
-    public async Task<IReadOnlyList<InventoryCountView>> ExecuteAsync(Guid? warehouseId, CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<InventoryCountView> Items, int? TotalCount)> ExecuteAsync(
+        Guid? warehouseId, PageRequest? pagina, CancellationToken cancellationToken)
     {
-        var contagens = await store.ListAsync(warehouseId, cancellationToken);
-        return [.. contagens.Select(InventoryCountViews.ToView)];
+        var (contagens, total) = await store.ListAsync(warehouseId, pagina, cancellationToken);
+        return ([.. contagens.Select(InventoryCountViews.ToView)], total);
     }
 }
 
