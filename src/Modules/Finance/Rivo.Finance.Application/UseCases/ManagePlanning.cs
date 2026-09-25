@@ -3,6 +3,7 @@ using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Contracts;
 using Rivo.Finance.Domain;
 using Rivo.Hr.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.UseCases;
 
@@ -78,14 +79,15 @@ public enum OpenCostCentreOutcome
 
 public sealed class ListCostCentres(IPlanningStore store)
 {
-    public async Task<IReadOnlyList<CostCentreView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<CostCentreView> Items, int? TotalCount)> ExecuteAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var centros = await store.ListCostCentresAsync(includeInactive, cancellationToken);
+        var (centros, total) = await store.ListCostCentresAsync(includeInactive, pagina, cancellationToken);
 
-        return [.. centros.Select(c => new CostCentreView(
-            c.Id, c.Code, c.Name, c.DepartmentId, c.ResponsibleEmployeeId, c.IsActive))];
+        return ([.. centros.Select(c => new CostCentreView(
+            c.Id, c.Code, c.Name, c.DepartmentId, c.ResponsibleEmployeeId, c.IsActive))], total);
     }
 }
 
@@ -341,17 +343,18 @@ public enum ApproveBudgetOutcome
 
 public sealed class ListBudgets(IPlanningStore store)
 {
-    public async Task<IReadOnlyList<BudgetView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<BudgetView> Items, int? TotalCount)> ExecuteAsync(
         Guid? costCentreId,
         int? fiscalYear,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var orcamentos = await store.ListBudgetsAsync(costCentreId, fiscalYear, cancellationToken);
+        var (orcamentos, total) = await store.ListBudgetsAsync(costCentreId, fiscalYear, pagina, cancellationToken);
 
-        return [.. orcamentos.Select(b => new BudgetView(
+        return ([.. orcamentos.Select(b => new BudgetView(
             b.Id, b.CostCentreId, b.FiscalYear, b.Currency, b.Status.ToString(),
             b.AnnualTotal, b.ApprovedAt, b.ApprovedByEmployeeId,
-            [.. b.Lines.OrderBy(l => l.Month).Select(l => new BudgetLineView(l.Month, l.Amount))]))];
+            [.. b.Lines.OrderBy(l => l.Month).Select(l => new BudgetLineView(l.Month, l.Amount))]))], total);
     }
 }
 
@@ -459,16 +462,17 @@ public enum RecordForecastOutcome
 
 public sealed class ListCostForecasts(IPlanningStore store)
 {
-    public async Task<IReadOnlyList<CostForecastView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<CostForecastView> Items, int? TotalCount)> ExecuteAsync(
         Guid? departmentId,
         int? fiscalYear,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var previsoes = await store.ListForecastsAsync(departmentId, fiscalYear, cancellationToken);
+        var (previsoes, total) = await store.ListForecastsAsync(departmentId, fiscalYear, pagina, cancellationToken);
 
-        return [.. previsoes.Select(f => new CostForecastView(
+        return ([.. previsoes.Select(f => new CostForecastView(
             f.Id, f.DepartmentId, f.FiscalYear, f.Month, f.Currency,
-            f.OperationalCosts, f.FixedCosts, f.Total, f.Status.ToString(), f.SubmittedAt))];
+            f.OperationalCosts, f.FixedCosts, f.Total, f.Status.ToString(), f.SubmittedAt))], total);
     }
 }
 

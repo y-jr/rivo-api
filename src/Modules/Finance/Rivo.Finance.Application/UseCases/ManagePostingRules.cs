@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.UseCases;
 
@@ -158,20 +159,21 @@ public enum DefinePostingRuleOutcome
 
 public sealed class ListPostingRules(ILedgerStore store)
 {
-    public async Task<IReadOnlyList<PostingRuleView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<PostingRuleView> Items, int? TotalCount)> ExecuteAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var regras = await store.ListPostingRulesAsync(includeInactive, cancellationToken);
+        var (regras, total) = await store.ListPostingRulesAsync(includeInactive, pagina, cancellationToken);
 
-        return [.. regras.Select(r => new PostingRuleView(
+        return ([.. regras.Select(r => new PostingRuleView(
             r.Id,
             r.Event.ToString(),
             r.JournalCode,
             r.Description,
             r.IsActive,
             [.. r.Lines.OrderBy(l => l.LineNumber).Select(l => new PostingRuleLineView(
-                l.LineNumber, l.AccountCode, l.Side.ToString(), l.Amount.ToString(), l.Description))]))];
+                l.LineNumber, l.AccountCode, l.Side.ToString(), l.Amount.ToString(), l.Description))]))], total);
     }
 }
 

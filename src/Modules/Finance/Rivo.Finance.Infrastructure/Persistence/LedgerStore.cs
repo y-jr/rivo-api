@@ -38,8 +38,9 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
         return contas.ToDictionary(a => a.Code, StringComparer.Ordinal);
     }
 
-    public async Task<IReadOnlyList<LedgerAccount>> ListAccountsAsync(
+    public Task<(IReadOnlyList<LedgerAccount> Items, int? TotalCount)> ListAccountsAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.LedgerAccounts.AsNoTracking().AsQueryable();
@@ -49,7 +50,29 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
             query = query.Where(a => a.IsActive);
         }
 
-        return await query.OrderBy(a => a.Code).ToListAsync(cancellationToken);
+        return PaginarAsync(query.OrderBy(a => a.Code), pagina, cancellationToken);
+    }
+
+    /// <summary>
+    /// Skip/Take real (ADR-068) — <paramref name="query"/> já vem ordenada de
+    /// forma determinística por quem chama, que é quem conhece o campo certo
+    /// para cada listagem.
+    /// </summary>
+    private static async Task<(IReadOnlyList<T> Items, int? TotalCount)> PaginarAsync<T>(
+        IOrderedQueryable<T> query, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        int? total = null;
+
+        IQueryable<T> paginada = query;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            paginada = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        var itens = await paginada.ToListAsync(cancellationToken);
+        return (itens, total);
     }
 
     public async Task<bool> HasChildrenAsync(Guid accountId, CancellationToken cancellationToken) =>
@@ -76,8 +99,9 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
             .AsNoTracking()
             .FirstOrDefaultAsync(j => j.Code == code, cancellationToken);
 
-    public async Task<IReadOnlyList<Journal>> ListJournalsAsync(
+    public Task<(IReadOnlyList<Journal> Items, int? TotalCount)> ListJournalsAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.Journals.AsNoTracking().AsQueryable();
@@ -87,7 +111,7 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
             query = query.Where(j => j.IsActive);
         }
 
-        return await query.OrderBy(j => j.Code).ToListAsync(cancellationToken);
+        return PaginarAsync(query.OrderBy(j => j.Code), pagina, cancellationToken);
     }
 
     public async Task AddJournalAsync(Journal journal, CancellationToken cancellationToken) =>
@@ -209,8 +233,9 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
         CancellationToken cancellationToken) =>
         await context.PostingRules.FirstOrDefaultAsync(r => r.Id == ruleId, cancellationToken);
 
-    public async Task<IReadOnlyList<PostingRule>> ListPostingRulesAsync(
+    public Task<(IReadOnlyList<PostingRule> Items, int? TotalCount)> ListPostingRulesAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.PostingRules.AsNoTracking().AsQueryable();
@@ -220,7 +245,7 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
             query = query.Where(r => r.IsActive);
         }
 
-        return await query.OrderBy(r => r.Event).ToListAsync(cancellationToken);
+        return PaginarAsync(query.OrderBy(r => r.Event), pagina, cancellationToken);
     }
 
     public async Task AddPostingRuleAsync(PostingRule rule, CancellationToken cancellationToken) =>
@@ -248,8 +273,9 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
                 v.Revision == version,
                 cancellationToken);
 
-    public async Task<IReadOnlyList<ChartOfAccountsVersion>> ListChartVersionsAsync(
+    public Task<(IReadOnlyList<ChartOfAccountsVersion> Items, int? TotalCount)> ListChartVersionsAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.ChartOfAccountsVersions
@@ -262,11 +288,10 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
             query = query.Where(v => v.IsActive);
         }
 
-        return await query
-            .OrderBy(v => v.Jurisdiction)
-            .ThenBy(v => v.Name)
-            .ThenBy(v => v.EffectiveFrom)
-            .ToListAsync(cancellationToken);
+        return PaginarAsync(
+            query.OrderBy(v => v.Jurisdiction).ThenBy(v => v.Name).ThenBy(v => v.EffectiveFrom),
+            pagina,
+            cancellationToken);
     }
 
     public async Task AddChartVersionAsync(
@@ -294,8 +319,9 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
             .Include(r => r.Lines)
             .FirstOrDefaultAsync(r => r.Id == ruleId, cancellationToken);
 
-    public async Task<IReadOnlyList<AccountingRule>> ListAccountingRulesAsync(
+    public Task<(IReadOnlyList<AccountingRule> Items, int? TotalCount)> ListAccountingRulesAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.AccountingRules
@@ -308,10 +334,10 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
             query = query.Where(r => r.IsActive);
         }
 
-        return await query
-            .OrderBy(r => r.EffectiveFrom)
-            .ThenBy(r => r.Code)
-            .ToListAsync(cancellationToken);
+        return PaginarAsync(
+            query.OrderBy(r => r.EffectiveFrom).ThenBy(r => r.Code),
+            pagina,
+            cancellationToken);
     }
 
     public async Task AddAccountingRuleAsync(
@@ -357,6 +383,22 @@ public sealed class LedgerStore(FinanceDbContext context) : ILedgerStore
 
 public sealed class PlanningStore(FinanceDbContext context) : IPlanningStore
 {
+    /// <summary>Skip/Take real (ADR-068) — ver o mesmo método em <c>LedgerStore</c>.</summary>
+    private static async Task<(IReadOnlyList<T> Items, int? TotalCount)> PaginarAsync<T>(
+        IOrderedQueryable<T> query, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        int? total = null;
+        IQueryable<T> paginada = query;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            paginada = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        return ([.. await paginada.ToListAsync(cancellationToken)], total);
+    }
+
     public async Task<CostCentre?> FindCostCentreAsync(Guid costCentreId, CancellationToken cancellationToken) =>
         await context.CostCentres
             .AsNoTracking()
@@ -380,8 +422,9 @@ public sealed class PlanningStore(FinanceDbContext context) : IPlanningStore
             .OrderBy(c => c.Code)
             .ToListAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<CostCentre>> ListCostCentresAsync(
+    public Task<(IReadOnlyList<CostCentre> Items, int? TotalCount)> ListCostCentresAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.CostCentres.AsNoTracking().AsQueryable();
@@ -391,7 +434,7 @@ public sealed class PlanningStore(FinanceDbContext context) : IPlanningStore
             query = query.Where(c => c.IsActive);
         }
 
-        return await query.OrderBy(c => c.Code).ToListAsync(cancellationToken);
+        return PaginarAsync(query.OrderBy(c => c.Code), pagina, cancellationToken);
     }
 
     public async Task AddCostCentreAsync(CostCentre costCentre, CancellationToken cancellationToken) =>
@@ -416,9 +459,10 @@ public sealed class PlanningStore(FinanceDbContext context) : IPlanningStore
                 b => b.CostCentreId == costCentreId && b.FiscalYear == fiscalYear,
                 cancellationToken);
 
-    public async Task<IReadOnlyList<Budget>> ListBudgetsAsync(
+    public Task<(IReadOnlyList<Budget> Items, int? TotalCount)> ListBudgetsAsync(
         Guid? costCentreId,
         int? fiscalYear,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.Budgets.AsNoTracking().AsQueryable();
@@ -433,10 +477,10 @@ public sealed class PlanningStore(FinanceDbContext context) : IPlanningStore
             query = query.Where(b => b.FiscalYear == ano);
         }
 
-        return await query
-            .OrderBy(b => b.FiscalYear)
-            .ThenBy(b => b.CostCentreId)
-            .ToListAsync(cancellationToken);
+        return PaginarAsync(
+            query.OrderBy(b => b.FiscalYear).ThenBy(b => b.CostCentreId),
+            pagina,
+            cancellationToken);
     }
 
     public async Task AddBudgetAsync(Budget budget, CancellationToken cancellationToken) =>
@@ -487,9 +531,10 @@ public sealed class PlanningStore(FinanceDbContext context) : IPlanningStore
                 f => f.DepartmentId == departmentId && f.FiscalYear == fiscalYear && f.Month == month,
                 cancellationToken);
 
-    public async Task<IReadOnlyList<DepartmentCostForecast>> ListForecastsAsync(
+    public Task<(IReadOnlyList<DepartmentCostForecast> Items, int? TotalCount)> ListForecastsAsync(
         Guid? departmentId,
         int? fiscalYear,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.CostForecasts.AsNoTracking().AsQueryable();
@@ -504,10 +549,10 @@ public sealed class PlanningStore(FinanceDbContext context) : IPlanningStore
             query = query.Where(f => f.FiscalYear == ano);
         }
 
-        return await query
-            .OrderBy(f => f.FiscalYear)
-            .ThenBy(f => f.Month)
-            .ToListAsync(cancellationToken);
+        return PaginarAsync(
+            query.OrderBy(f => f.FiscalYear).ThenBy(f => f.Month),
+            pagina,
+            cancellationToken);
     }
 
     public async Task AddForecastAsync(

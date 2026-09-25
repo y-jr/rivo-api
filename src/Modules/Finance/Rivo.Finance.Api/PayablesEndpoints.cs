@@ -7,6 +7,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.UseCases;
 using Rivo.Finance.Contracts;
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Api;
 
@@ -24,7 +25,8 @@ public static class PayablesEndpoints
         // ---- Tesouraria ----
         group.MapGet("/accounts", ListAccountsAsync)
             .RequireAuthorization(FinancePermissions.PayablesRead)
-            .Produces<IReadOnlyList<BankAccountView>>();
+            .Produces<IReadOnlyList<BankAccountView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/accounts", OpenAccountAsync)
             .RequireAuthorization(FinancePermissions.PayablesWrite)
@@ -69,7 +71,8 @@ public static class PayablesEndpoints
         // ---- Contas a Pagar ----
         group.MapGet("/purchase-invoices", ListPurchaseInvoicesAsync)
             .RequireAuthorization(FinancePermissions.PayablesRead)
-            .Produces<IReadOnlyList<PurchaseInvoiceView>>();
+            .Produces<IReadOnlyList<PurchaseInvoiceView>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/purchase-invoices/{purchaseInvoiceId:guid}", GetPurchaseInvoiceAsync)
             .RequireAuthorization(FinancePermissions.PayablesRead)
@@ -92,7 +95,8 @@ public static class PayablesEndpoints
         // ---- Pedidos de pagamento ----
         group.MapGet("/payment-requests", ListPaymentRequestsAsync)
             .RequireAuthorization(FinancePermissions.PayablesRead)
-            .Produces<IReadOnlyList<PaymentRequestView>>();
+            .Produces<IReadOnlyList<PaymentRequestView>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/payment-requests/{paymentRequestId:guid}", GetPaymentRequestAsync)
             .RequireAuthorization(FinancePermissions.PayablesRead)
@@ -133,8 +137,21 @@ public static class PayablesEndpoints
     private static async Task<IResult> ListAccountsAsync(
         ListBankAccounts listAccounts,
         bool? includeClosed,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listAccounts.ExecuteAsync(includeClosed ?? false, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (PagingProblem(page, pageSize, out var pagina) is { } problema)
+        {
+            return problema;
+        }
+
+        var (itens, total) = await listAccounts.ExecuteAsync(includeClosed ?? false, pagina, cancellationToken);
+        ApplyPagingHeaders(response, pagina, total);
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> OpenAccountAsync(
         OpenAccountRequest request,
@@ -263,8 +280,21 @@ public static class PayablesEndpoints
     private static async Task<IResult> ListPurchaseInvoicesAsync(
         ListPurchaseInvoices listInvoices,
         DateOnly? dueBefore,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listInvoices.ExecuteAsync(dueBefore, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (PagingProblem(page, pageSize, out var pagina) is { } problema)
+        {
+            return problema;
+        }
+
+        var (itens, total) = await listInvoices.ExecuteAsync(dueBefore, pagina, cancellationToken);
+        ApplyPagingHeaders(response, pagina, total);
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> GetPurchaseInvoiceAsync(
         Guid purchaseInvoiceId,
@@ -337,8 +367,21 @@ public static class PayablesEndpoints
     private static async Task<IResult> ListPaymentRequestsAsync(
         ListPaymentRequests listRequests,
         Guid? purchaseInvoiceId,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listRequests.ExecuteAsync(purchaseInvoiceId, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (PagingProblem(page, pageSize, out var pagina) is { } problema)
+        {
+            return problema;
+        }
+
+        var (itens, total) = await listRequests.ExecuteAsync(purchaseInvoiceId, pagina, cancellationToken);
+        ApplyPagingHeaders(response, pagina, total);
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> GetPaymentRequestAsync(
         Guid paymentRequestId,
@@ -533,6 +576,28 @@ public static class PayablesEndpoints
             ActorId: Guid.TryParse(actor, out var id) ? id : null,
             IpAddress: http.Connection.RemoteIpAddress?.ToString(),
             CorrelationId: http.TraceIdentifier);
+    }
+
+    // ---- paginação (ADR-068) ----
+
+    private static IResult? PagingProblem(int? page, int? pageSize, out PageRequest? pagina)
+    {
+        if (Pagination.TryParse(page, pageSize, out pagina, out var erro))
+        {
+            return null;
+        }
+
+        return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+    }
+
+    private static void ApplyPagingHeaders(HttpResponse response, PageRequest? pagina, int? total)
+    {
+        if (pagina is { } p)
+        {
+            response.Headers["X-Page"] = p.Page.ToString();
+            response.Headers["X-Page-Size"] = p.PageSize.ToString();
+            response.Headers["X-Total-Count"] = total!.Value.ToString();
+        }
     }
 }
 
