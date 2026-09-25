@@ -1033,6 +1033,29 @@ Test-Case "46. Dados sobrevivem ao reinicio da stack" {
     "balancete e orcamento intactos apos restart"
 }
 
+# ---------- Pendencias #19 e #21 ----------
+#
+# O levantamento de pendencias apontava 500 em dois caminhos de
+# accounting-rules. Revisto o codigo (ListAccountingRules.ExecuteAsync,
+# LedgerStore.ListAccountingRulesAsync, DeactivateAccountingRule.ExecuteAsync)
+# e nao ha caminho de excepcao para nenhum dos dois — estes dois casos provam
+# isso ao vivo, nao so por leitura.
+
+Test-Case "47. accounting-rules nunca rebenta, mesmo sem regra nenhuma (#19)" {
+    # Suite reexecutavel: nao se pode assumir tenant vazio (pode ja haver
+    # regras de corridas anteriores). O que interessa e que a listagem e
+    # sempre 200 com um array — nunca 500, tenha ela 0 ou mais linhas.
+    $regras = Get-RivoLista "$base/finance/ledger/accounting-rules" -Headers $financeHeaders
+    "$($regras.Count) regra(s) contabilisticas — sempre 200, nunca 500"
+}
+
+Test-Case "48. Desactivar regra contabilistica inexistente e 404, nao 500 (#21)" {
+    $inexistente = [guid]::NewGuid()
+    $code = Get-StatusCode { Invoke-RestMethod "$base/finance/ledger/accounting-rules/$inexistente/deactivation" -Method Post -ContentType "application/json" -Headers $adminHeaders }
+    if ($code -ne 404) { throw "esperado 404, obtido $code" }
+    "404 para uma regra que nao existe — o caminho de FindAccountingRuleAsync nulo nao rebenta"
+}
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host "$failures teste(s) falharam." -ForegroundColor Red; exit 1 }
 Write-Host "Todos os testes passaram." -ForegroundColor Green
