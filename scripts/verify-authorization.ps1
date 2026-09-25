@@ -566,6 +566,30 @@ Test-Case "27. Actividade empurra o prazo de inactividade para a frente" {
     "prazo de $antesPrazo para $depoisPrazo, tecto intacto"
 }
 
+Test-Case "28. displayName em /identity/me vem do colaborador ligado, e falta quando nao ha (#11)" {
+    # `$plainHeaders` nunca passou por `/hr/employees` -- a conta existe em
+    # `identity` sem colaborador nenhum ligado (ADR-042). E o caso mais comum:
+    # nem toda a conta e de alguem admitido como colaborador.
+    $semColaborador = Invoke-RestMethod "$base/identity/me" -Headers $plainHeaders
+    if ($semColaborador.displayName) {
+        throw "esperava displayName vazio para conta sem colaborador ligado, obtive '$($semColaborador.displayName)'"
+    }
+
+    # Com colaborador ligado (mesmo helper do resto da suite: admite e liga a
+    # conta em dois passos, ADR-054), o nome tem de vir do lado de `hr` -- e
+    # nao inventado a partir do email ou de outro campo de `identity`.
+    $nomeColaborador = "Colaborador DisplayName $stamp"
+    $contaComColaborador = New-RivoColaboradorComConta -Email "displayname-$stamp@rivo.ao" `
+        -Nome $nomeColaborador -AdminHeaders $bootstrapHeaders -Perfil "Colaborador"
+
+    $comColaborador = Invoke-RestMethod "$base/identity/me" -Headers $contaComColaborador.Headers
+    if ($comColaborador.displayName -ne $nomeColaborador) {
+        throw "esperava displayName '$nomeColaborador', obtive '$($comColaborador.displayName)'"
+    }
+
+    "sem colaborador: vazio; com colaborador: '$($comColaborador.displayName)'"
+}
+
 Write-Host ""
 if ($failures -gt 0) {
     Write-Host "$failures teste(s) falharam." -ForegroundColor Red

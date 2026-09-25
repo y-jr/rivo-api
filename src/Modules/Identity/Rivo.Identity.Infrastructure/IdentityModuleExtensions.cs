@@ -160,6 +160,7 @@ public static class IdentityModuleExtensions
         services.AddScoped<SetAccountStatus>();
         services.AddScoped<ListOwnSessions>();
         services.AddScoped<RevokeOwnSession>();
+        services.AddScoped<GetCurrentUserDisplayName>();
         services.AddSingleton<ListAccessProfiles>();
 
         // O contrato publicado (ADR-017) — primeiro consumidor é `Rivo.Settings`
