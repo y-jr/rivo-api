@@ -514,8 +514,8 @@ public class LedgerTests
         var v2 = ChartOfAccountsVersion.BootstrapDevelopment();
         store.With(v1).With(v2);
 
-        var resultado = await new ListChartOfAccountsVersions(store).ExecuteAsync(
-            false, CancellationToken.None);
+        var (resultado, _) = await new ListChartOfAccountsVersions(store).ExecuteAsync(
+            false, null, CancellationToken.None);
 
         Assert.Equal(2, resultado.Count);
         Assert.Single(resultado, v => v.ChartVersionId == v1.Id);
@@ -595,8 +595,8 @@ public class LedgerTests
 
         await store.AddAccountingRuleAsync(regra, CancellationToken.None);
 
-        var resultado = await new ListAccountingRules(store).ExecuteAsync(
-            false, CancellationToken.None);
+        var (resultado, _) = await new ListAccountingRules(store).ExecuteAsync(
+            false, null, CancellationToken.None);
 
         Assert.Single(resultado);
         var view = resultado.First();
@@ -772,5 +772,24 @@ public class LedgerTests
 
         Assert.Equal(5, total3);
         Assert.Equal(["ARQ-5"], ultimaPagina.Select(e => e.ArchivalNumber));
+    }
+
+    [Fact]
+    public async Task ListagemDeContasComPagina_DevolveFatiaOrdenadaEOTotal()
+    {
+        var (store, _, _, _) = Livros();
+
+        var (pagina1, total) = await new ListLedgerAccounts(store)
+            .ExecuteAsync(includeInactive: true, new PageRequest(1, 2), CancellationToken.None);
+
+        // Livros() já regista 4 contas (raiz, agregadora, custo, fornecedor).
+        Assert.Equal(4, total);
+        Assert.Equal(2, pagina1.Count);
+
+        var (semPagina, totalSemPagina) = await new ListLedgerAccounts(store)
+            .ExecuteAsync(includeInactive: true, null, CancellationToken.None);
+
+        Assert.Equal(4, semPagina.Count);
+        Assert.Null(totalSemPagina);
     }
 }

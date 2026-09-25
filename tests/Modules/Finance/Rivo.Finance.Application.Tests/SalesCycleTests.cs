@@ -3,6 +3,7 @@ using Rivo.Commercial.Contracts;
 using Rivo.Finance.Application.UseCases;
 using Rivo.Finance.Domain;
 using Rivo.Fiscal.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.Tests;
 
@@ -384,5 +385,26 @@ public class SalesCycleTests
             Contexto, CancellationToken.None);
 
         Assert.Equal(RegisterReceiptOutcome.ExceedsOutstanding, recibo.Outcome);
+    }
+
+    // ---- paginação (ADR-068, item #10) ----
+
+    [Fact]
+    public async Task ListagemDeFacturasComPagina_DevolveFatiaEOTotal()
+    {
+        var store = new FakeSalesInvoiceStore();
+        store.With(FacturaDe()).With(FacturaDe()).With(FacturaDe());
+
+        var (pagina1, total) = await new ListSalesInvoices(store)
+            .ExecuteAsync(customerId: null, from: null, to: null, new PageRequest(1, 2), CancellationToken.None);
+
+        Assert.Equal(3, total);
+        Assert.Equal(2, pagina1.Count);
+
+        var (semPagina, totalSemPagina) = await new ListSalesInvoices(store)
+            .ExecuteAsync(customerId: null, from: null, to: null, null, CancellationToken.None);
+
+        Assert.Equal(3, semPagina.Count);
+        Assert.Null(totalSemPagina);
     }
 }

@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.UseCases;
 
@@ -24,7 +25,7 @@ public sealed class GetInvoiceBalance(ISalesInvoiceStore store)
         }
 
         var emAberto = await store.OutstandingAsync(invoiceId, cancellationToken);
-        var notas = await store.ListCreditNotesAsync(invoiceId, cancellationToken);
+        var (notas, _) = await store.ListCreditNotesAsync(invoiceId, pagina: null, cancellationToken);
 
         var creditado = notas
             .Where(nota => nota.Status is InvoiceStatus.Normal)
@@ -64,13 +65,14 @@ public sealed record InvoiceBalanceView(
 
 public sealed class ListCreditNotes(ISalesInvoiceStore store)
 {
-    public async Task<IReadOnlyList<CreditNoteView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<CreditNoteView> Items, int? TotalCount)> ExecuteAsync(
         Guid? salesInvoiceId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var notas = await store.ListCreditNotesAsync(salesInvoiceId, cancellationToken);
+        var (notas, total) = await store.ListCreditNotesAsync(salesInvoiceId, pagina, cancellationToken);
 
-        return [.. notas.Select(ToView)];
+        return ([.. notas.Select(ToView)], total);
     }
 
     internal static CreditNoteView ToView(CreditNote nota) =>
@@ -139,15 +141,16 @@ public sealed class GetCreditNote(ISalesInvoiceStore store)
 
 public sealed class ListReceipts(ISalesInvoiceStore store)
 {
-    public async Task<IReadOnlyList<ReceiptView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<ReceiptView> Items, int? TotalCount)> ExecuteAsync(
         Guid? customerId,
         DateOnly? from,
         DateOnly? to,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var recibos = await store.ListReceiptsAsync(customerId, from, to, cancellationToken);
+        var (recibos, total) = await store.ListReceiptsAsync(customerId, from, to, pagina, cancellationToken);
 
-        return [.. recibos.Select(ToView)];
+        return ([.. recibos.Select(ToView)], total);
     }
 
     internal static ReceiptView ToView(Receipt recibo) =>

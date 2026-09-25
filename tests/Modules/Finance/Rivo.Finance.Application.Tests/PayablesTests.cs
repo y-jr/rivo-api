@@ -3,6 +3,7 @@ using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Application.UseCases;
 using Rivo.Finance.Domain;
 using Rivo.Procurement.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.Tests;
 
@@ -532,5 +533,28 @@ public class PayablesTests
         Assert.Equal(AccountMovementOutcome.Rejected, resultado);
         Assert.Empty(conta.Movements);
         Assert.Equal(0, store.SaveCount);
+    }
+
+    // ---- paginação (ADR-068, item #10) ----
+
+    [Fact]
+    public async Task ListagemDeContasComPagina_DevolveFatiaOrdenadaEOTotal()
+    {
+        var store = new FakePayablesStore()
+            .With(BankAccount.Open("Conta C", "BFA", null, "AOA"))
+            .With(BankAccount.Open("Conta A", "BAI", null, "AOA"))
+            .With(BankAccount.Open("Conta B", "BIC", null, "AOA"));
+
+        var (pagina1, total) = await new ListBankAccounts(store)
+            .ExecuteAsync(includeClosed: false, new PageRequest(1, 2), CancellationToken.None);
+
+        Assert.Equal(3, total);
+        Assert.Equal(["Conta A", "Conta B"], pagina1.Select(c => c.Name));
+
+        var (semPagina, totalSemPagina) = await new ListBankAccounts(store)
+            .ExecuteAsync(includeClosed: false, null, CancellationToken.None);
+
+        Assert.Equal(3, semPagina.Count);
+        Assert.Null(totalSemPagina);
     }
 }

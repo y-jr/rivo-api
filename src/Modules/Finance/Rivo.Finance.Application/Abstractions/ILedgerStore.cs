@@ -30,8 +30,9 @@ public interface ILedgerStore
         IReadOnlyCollection<string> codes,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<LedgerAccount>> ListAccountsAsync(
+    Task<(IReadOnlyList<LedgerAccount> Items, int? TotalCount)> ListAccountsAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -49,8 +50,9 @@ public interface ILedgerStore
 
     Task<Journal?> FindJournalByCodeAsync(string code, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<Journal>> ListJournalsAsync(
+    Task<(IReadOnlyList<Journal> Items, int? TotalCount)> ListJournalsAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     Task AddJournalAsync(Journal journal, CancellationToken cancellationToken);
@@ -130,8 +132,9 @@ public interface ILedgerStore
 
     Task<PostingRule?> FindPostingRuleForUpdateAsync(Guid ruleId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<PostingRule>> ListPostingRulesAsync(
+    Task<(IReadOnlyList<PostingRule> Items, int? TotalCount)> ListPostingRulesAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     Task AddPostingRuleAsync(PostingRule rule, CancellationToken cancellationToken);
@@ -146,8 +149,9 @@ public interface ILedgerStore
         string version,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<ChartOfAccountsVersion>> ListChartVersionsAsync(
+    Task<(IReadOnlyList<ChartOfAccountsVersion> Items, int? TotalCount)> ListChartVersionsAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -166,8 +170,9 @@ public interface ILedgerStore
         Guid ruleId,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<AccountingRule>> ListAccountingRulesAsync(
+    Task<(IReadOnlyList<AccountingRule> Items, int? TotalCount)> ListAccountingRulesAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     Task AddAccountingRuleAsync(
