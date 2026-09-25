@@ -1067,6 +1067,53 @@ Test-Case "48. Desactivar regra contabilistica inexistente e 404, nao 500 (#21)"
     "404 para uma regra que nao existe — o caminho de FindAccountingRuleAsync nulo nao rebenta"
 }
 
+Test-Case "49. Campo desconhecido no lancamento e recusado com 400, nao ignorado em silencio (#45)" {
+    # Piloto do #45: `periodo` em vez de `period` -- um erro de escrita comum
+    # (nome em portugues) que antes desta mudanca seria silenciosamente
+    # ignorado, e o lancamento entrava com o periodo por omissao (nulo).
+    $corpoComErro = @{
+        journalCode     = $diario
+        archivalNumber  = "ARQ-TYPO-$curto"
+        transactionDate = "$ano-08-18"
+        fiscalYear      = $ano
+        periodo         = 8
+        description     = "Campo mal escrito"
+        lines           = @(
+            @{ accountCode = $custo; side = "Debit"; amount = 500; description = "Custo" },
+            @{ accountCode = $fornecedor; side = "Credit"; amount = 500; description = "Divida" }
+        )
+    } | ConvertTo-Json -Depth 5
+
+    $resposta = Invoke-WebRequest "$base/finance/ledger/entries" -Method Post -Body $corpoComErro -ContentType "application/json" -Headers $financeHeaders -SkipHttpErrorCheck
+    if ([int]$resposta.StatusCode -ne 400) {
+        throw "esperado 400 com 'periodo' (nao existe) no corpo, obtido $([int]$resposta.StatusCode) -- corpo: $(Get-RivoCorpo $resposta)"
+    }
+
+    # Confirma que nao ficou nada gravado com esse archivalNumber -- rejeitado
+    # antes de chegar ao caso de uso, nao apos.
+    $n = Invoke-Sql "select count(*) from finance.journal_entry where archival_number='ARQ-TYPO-$curto'"
+    if ($n -ne "0") { throw "o lancamento com campo desconhecido nao devia ter side-effect nenhum, mas ha $n registo(s)" }
+
+    # E o mesmo corpo, com o nome certo, continua a funcionar -- a mudanca so
+    # recusa o que esta a mais, nunca o que esta certo.
+    $corpoCorrecto = @{
+        journalCode     = $diario
+        archivalNumber  = "ARQ-OK-$curto"
+        transactionDate = "$ano-08-18"
+        fiscalYear      = $ano
+        period          = 8
+        description     = "Campo certo"
+        lines           = @(
+            @{ accountCode = $custo; side = "Debit"; amount = 500; description = "Custo" },
+            @{ accountCode = $fornecedor; side = "Credit"; amount = 500; description = "Divida" }
+        )
+    } | ConvertTo-Json -Depth 5
+
+    Invoke-RestMethod "$base/finance/ledger/entries" -Method Post -Body $corpoCorrecto -ContentType "application/json" -Headers $financeHeaders | Out-Null
+
+    "400 com 'periodo', sem side-effect; 'period' continua a funcionar"
+}
+
 Write-Host ""
 if ($failures -gt 0) { Write-Host "$failures teste(s) falharam." -ForegroundColor Red; exit 1 }
 Write-Host "Todos os testes passaram." -ForegroundColor Green
