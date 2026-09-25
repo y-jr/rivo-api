@@ -1,5 +1,6 @@
 using Rivo.Audit.Contracts;
 using Rivo.Hr.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Hr.Application.Tests;
 
@@ -16,8 +17,92 @@ internal sealed class FakeHrStore : HrStoreParcial
     private readonly List<EmployeeAccountLink> _episodios = [];
     private readonly List<Department> _departamentos = [];
     private readonly List<Position> _cargos = [];
+    private readonly List<LeaveRequest> _pedidosDeFerias = [];
+    private readonly List<EmploymentContract> _contratos = [];
+    private readonly List<AttendanceRecord> _marcacoes = [];
 
     public int Gravacoes { get; private set; }
+
+    /// <summary>
+    /// Mesma lógica de paginação real do `HrStore` (ADR-068), aplicada em
+    /// memória: sem página, devolve tudo; com página, corta a colecção já
+    /// ordenada e devolve o total de antes do corte.
+    /// </summary>
+    private static (IReadOnlyList<T> Items, int? TotalCount) Paginar<T>(IEnumerable<T> ordenados, PageRequest? pagina)
+    {
+        var lista = ordenados.ToList();
+
+        if (pagina is not { } p)
+        {
+            return (lista, null);
+        }
+
+        return ([.. lista.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize)], lista.Count);
+    }
+
+    public LeaveRequest AdicionarFerias(LeaveRequest pedido)
+    {
+        _pedidosDeFerias.Add(pedido);
+        return pedido;
+    }
+
+    public EmploymentContract AdicionarContrato(EmploymentContract contrato)
+    {
+        _contratos.Add(contrato);
+        return contrato;
+    }
+
+    public AttendanceRecord AdicionarMarcacao(AttendanceRecord registo)
+    {
+        _marcacoes.Add(registo);
+        return registo;
+    }
+
+    public override Task<(IReadOnlyList<Department> Items, int? TotalCount)> ListDepartmentsAsync(
+        PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult(Paginar(_departamentos.OrderBy(d => d.Name), pagina));
+
+    public override Task<(IReadOnlyList<Position> Items, int? TotalCount)> ListPositionsAsync(
+        PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult(Paginar(_cargos.OrderBy(p => p.HierarchyLevel).ThenBy(p => p.Name), pagina));
+
+    public override Task<(IReadOnlyList<LeaveRequest> Items, int? TotalCount)> ListLeaveAsync(
+        Guid? employeeId, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        var filtrados = employeeId is { } id
+            ? _pedidosDeFerias.Where(l => l.EmployeeId == id)
+            : _pedidosDeFerias.AsEnumerable();
+
+        return Task.FromResult(Paginar(filtrados.OrderByDescending(l => l.StartsOn), pagina));
+    }
+
+    public override Task<(IReadOnlyList<EmploymentContract> Items, int? TotalCount)> ListContractsAsync(
+        PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult(Paginar(_contratos.OrderByDescending(c => c.StartsOn), pagina));
+
+    public override Task<IReadOnlyList<EmploymentContract>> ListContractsForEmployeeAsync(
+        Guid employeeId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<EmploymentContract>>(
+            [.. _contratos.Where(c => c.EmployeeId == employeeId).OrderByDescending(c => c.StartsOn)]);
+
+    public override Task<(IReadOnlyList<AttendanceRecord> Items, int? TotalCount)> ListAttendanceAsync(
+        DateOnly from, DateOnly to, Guid? employeeId, bool anomaliesOnly, PageRequest? pagina,
+        CancellationToken cancellationToken)
+    {
+        var filtrados = _marcacoes.Where(a => a.Day >= from && a.Day <= to);
+
+        if (employeeId is { } id)
+        {
+            filtrados = filtrados.Where(a => a.EmployeeId == id);
+        }
+
+        if (anomaliesOnly)
+        {
+            filtrados = filtrados.Where(a => a.IsAnomaly);
+        }
+
+        return Task.FromResult(Paginar(filtrados.OrderByDescending(a => a.Day), pagina));
+    }
 
     /// <summary>Os episódios de histórico gravados, por ordem de criação.</summary>
     public IReadOnlyList<EmployeeAccountLink> Episodios => _episodios;

@@ -111,7 +111,9 @@ public class ProjectReferenceTests
         ["Procurement"] = ["Audit", "Hr"],
 
         ["Documents"] = ["Audit"],
-        ["Hr"] = ["Audit", "Documents"],
+        // `SharedKernel` — 2026-09-23 (ADR-068): Skip/Take de paginação real
+        // usa `PageRequest`, primitiva sem dono de negócio.
+        ["Hr"] = ["Audit", "Documents", "SharedKernel"],
 
         // Esqueletos (ver `modules/payroll.md`, `inventory.md`) — 2026-08-29.
         // Só o catálogo de permissões publicado e `audit`, como qualquer

@@ -1,17 +1,19 @@
 using Rivo.Audit.Contracts;
 using Rivo.Hr.Application.Abstractions;
 using Rivo.Hr.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Hr.Application.UseCases;
 
 public sealed class ListBenefits(IHrStore store)
 {
-    public async Task<IReadOnlyList<BenefitView>> ExecuteAsync(CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<BenefitView> Items, int? TotalCount)> ExecuteAsync(
+        PageRequest? pagina, CancellationToken cancellationToken)
     {
-        var benefits = await store.ListBenefitsAsync(cancellationToken);
+        var (benefits, total) = await store.ListBenefitsAsync(pagina, cancellationToken);
 
-        return [.. benefits.Select(b => new BenefitView(
-            b.Id, b.Name, b.Kind, b.MonthlyValue, b.Currency, b.Description, b.IsActive))];
+        return ([.. benefits.Select(b => new BenefitView(
+            b.Id, b.Name, b.Kind, b.MonthlyValue, b.Currency, b.Description, b.IsActive))], total);
     }
 }
 
@@ -70,14 +72,15 @@ public sealed record CreateBenefitResult(bool Succeeded, Guid? BenefitId, string
 
 public sealed class ListBenefitEnrolments(IHrStore store)
 {
-    public async Task<IReadOnlyList<BenefitEnrolmentView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<BenefitEnrolmentView> Items, int? TotalCount)> ExecuteAsync(
         Guid? employeeId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var enrolments = await store.ListEnrolmentsAsync(employeeId, cancellationToken);
+        var (enrolments, total) = await store.ListEnrolmentsAsync(employeeId, pagina, cancellationToken);
 
-        return [.. enrolments.Select(e => new BenefitEnrolmentView(
-            e.Id, e.EmployeeId, e.BenefitId, e.StartsOn, e.CancelledOn, e.Status.ToString()))];
+        return ([.. enrolments.Select(e => new BenefitEnrolmentView(
+            e.Id, e.EmployeeId, e.BenefitId, e.StartsOn, e.CancelledOn, e.Status.ToString()))], total);
     }
 }
 
@@ -122,7 +125,7 @@ public sealed class EnrolInBenefit(IHrStore store, IAuditTrail audit)
             return EnrolResult.NotFound("Benefício não encontrado.");
         }
 
-        var existing = await store.ListEnrolmentsAsync(employeeId, cancellationToken);
+        var (existing, _) = await store.ListEnrolmentsAsync(employeeId, pagina: null, cancellationToken);
 
         if (existing.Any(e => e.BenefitId == benefitId && e.Status == BenefitEnrolmentStatus.Active))
         {
