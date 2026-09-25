@@ -1,5 +1,6 @@
 using Rivo.Notifications.Contracts;
 using Rivo.Notifications.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Notifications.Application;
 
@@ -64,17 +65,18 @@ public sealed class ListMyNotifications(INotificationStore store)
 {
     private const int MaxLimit = 100;
 
-    public async Task<IReadOnlyList<NotificationView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<NotificationView> Items, int? TotalCount)> ExecuteAsync(
         Guid recipientUserId,
         bool unreadOnly,
         int limit,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var notifications = await store.ListForRecipientAsync(
-            recipientUserId, unreadOnly, Math.Clamp(limit, 1, MaxLimit), cancellationToken);
+        var (notifications, total) = await store.ListForRecipientAsync(
+            recipientUserId, unreadOnly, Math.Clamp(limit, 1, MaxLimit), pagina, cancellationToken);
 
-        return [.. notifications.Select(n => new NotificationView(
-            n.Id, n.Type, n.Title, n.Message, n.ReadAt is not null, n.CreatedAt, n.ReadAt))];
+        return ([.. notifications.Select(n => new NotificationView(
+            n.Id, n.Type, n.Title, n.Message, n.ReadAt is not null, n.CreatedAt, n.ReadAt))], total);
     }
 }
 

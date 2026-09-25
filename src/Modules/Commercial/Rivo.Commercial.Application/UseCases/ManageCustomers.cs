@@ -3,6 +3,7 @@ using Rivo.Commercial.Application.Abstractions;
 using Rivo.Commercial.Contracts;
 using Rivo.Commercial.Domain;
 using Rivo.Hr.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Commercial.Application.UseCases;
 
@@ -27,13 +28,14 @@ namespace Rivo.Commercial.Application.UseCases;
 /// </summary>
 public sealed class ListCustomers(ICustomerStore store)
 {
-    public async Task<IReadOnlyList<CustomerListItem>> ExecuteAsync(
+    public async Task<(IReadOnlyList<CustomerListItem> Items, int? TotalCount)> ExecuteAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var clientes = await store.ListAsync(includeInactive, cancellationToken);
+        var (clientes, total) = await store.ListAsync(includeInactive, pagina, cancellationToken);
 
-        return [.. clientes.Select(c => new CustomerListItem(
+        return ([.. clientes.Select(c => new CustomerListItem(
             c.Id,
             c.Name,
             c.TaxId,
@@ -43,7 +45,7 @@ public sealed class ListCustomers(ICustomerStore store)
             c.UserId,
             c.AssignedToEmployeeId,
             c.Email,
-            c.Phone))];
+            c.Phone))], total);
     }
 }
 

@@ -3,6 +3,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Rivo.Projects.Domain\Rivo.Projects.Domain.csproj" />
     <ProjectReference Include="..\Rivo.Projects.Contracts\Rivo.Projects.Contracts.csproj" />
+    <!-- PageRequest/Pagination (ADR-068) — primitiva estrutural sem dono de
+         negócio, não conceito de projects. -->
+    <ProjectReference Include="..\..\..\SharedKernel\Rivo.SharedKernel.Contracts\Rivo.SharedKernel.Contracts.csproj" />
     <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
 
     <!-- Quem uma tarefa atribui é um Colaborador, e o acesso é exclusivamente

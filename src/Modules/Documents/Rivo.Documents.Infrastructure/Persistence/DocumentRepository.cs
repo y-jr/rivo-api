@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Documents.Application;
 using Rivo.Documents.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Documents.Infrastructure.Persistence;
 
@@ -17,11 +18,12 @@ public sealed class DocumentRepository(DocumentsDbContext context) : IDocumentRe
             .Where(d => documentIds.Contains(d.Id))
             .ToListAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<Document>> ListAsync(
+    public async Task<(IReadOnlyList<Document> Items, int? TotalCount)> ListAsync(
         string? category,
         DateOnly? from,
         DateOnly? to,
         int limit,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.Documents
@@ -48,10 +50,18 @@ public sealed class DocumentRepository(DocumentsDbContext context) : IDocumentRe
             query = query.Where(d => d.UploadedAt <= ate);
         }
 
-        return await query
-            .OrderByDescending(d => d.UploadedAt)
-            .Take(limit)
-            .ToListAsync(cancellationToken);
+        query = query.OrderByDescending(d => d.UploadedAt);
+
+        // Sem página pedida, mantém o comportamento antigo de `limit` (ADR-068).
+        if (pagina is not { } p)
+        {
+            var itensDoLimite = await query.Take(limit).ToListAsync(cancellationToken);
+            return (itensDoLimite, null);
+        }
+
+        var total = await query.CountAsync(cancellationToken);
+        var itens = await query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize).ToListAsync(cancellationToken);
+        return (itens, total);
     }
 
     public async Task AddAsync(Document document, CancellationToken cancellationToken) =>

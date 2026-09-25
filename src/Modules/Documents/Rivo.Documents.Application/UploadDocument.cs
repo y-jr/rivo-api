@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Rivo.Audit.Contracts;
 using Rivo.Documents.Contracts;
 using Rivo.Documents.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Documents.Application;
 
@@ -157,17 +158,18 @@ public sealed class ListDocuments(IDocumentRepository repository)
     /// </summary>
     private const int MaxLimit = 200;
 
-    public async Task<IReadOnlyList<DocumentDescriptor>> ExecuteAsync(
+    public async Task<(IReadOnlyList<DocumentDescriptor> Items, int? TotalCount)> ExecuteAsync(
         string? category,
         DateOnly? from,
         DateOnly? to,
         int? limit,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var tecto = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
 
-        var documentos = await repository.ListAsync(category, from, to, tecto, cancellationToken);
+        var (documentos, total) = await repository.ListAsync(category, from, to, tecto, pagina, cancellationToken);
 
-        return [.. documentos.Select(UploadDocument.Map)];
+        return ([.. documentos.Select(UploadDocument.Map)], total);
     }
 }

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Commercial.Application.Abstractions;
 using Rivo.Commercial.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Commercial.Infrastructure.Persistence;
 
@@ -45,8 +46,9 @@ public sealed class CustomerStore(CommercialDbContext context) : ICustomerStore
             .AsNoTracking()
             .ToListAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<Customer>> ListAsync(
+    public async Task<(IReadOnlyList<Customer> Items, int? TotalCount)> ListAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.Customers.AsNoTracking().AsQueryable();
@@ -58,7 +60,18 @@ public sealed class CustomerStore(CommercialDbContext context) : ICustomerStore
             query = query.Where(c => c.Status == CustomerStatus.Active);
         }
 
-        return await query.OrderBy(c => c.Name).ToListAsync(cancellationToken);
+        query = query.OrderBy(c => c.Name);
+
+        int? total = null;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            query = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        var itens = await query.ToListAsync(cancellationToken);
+        return (itens, total);
     }
 
     public async Task AddAsync(Customer customer, CancellationToken cancellationToken) =>

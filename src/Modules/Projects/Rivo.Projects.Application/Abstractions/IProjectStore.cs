@@ -1,4 +1,5 @@
 using Rivo.Projects.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Projects.Application.Abstractions;
 
@@ -12,7 +13,8 @@ public interface IProjectStore
 
     Task<Project?> FindForUpdateAsync(Guid projectId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<Project>> ListAsync(bool includeClosed, CancellationToken cancellationToken);
+    Task<(IReadOnlyList<Project> Items, int? TotalCount)> ListAsync(
+        bool includeClosed, PageRequest? pagina, CancellationToken cancellationToken);
 
     Task AddAsync(Project project, CancellationToken cancellationToken);
 

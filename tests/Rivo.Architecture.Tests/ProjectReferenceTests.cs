@@ -35,7 +35,9 @@ public class ProjectReferenceTests
     private static readonly Dictionary<string, string[]> DependenciasDeclaradas = new(StringComparer.Ordinal)
     {
         ["Audit"] = [],
-        ["Notifications"] = [],
+        // `SharedKernel` — 2026-09-23 (ADR-068): Skip/Take de paginação real
+        // usa `PageRequest`, primitiva sem dono de negócio.
+        ["Notifications"] = ["SharedKernel"],
 
         // SharedKernel (ADR-068) — primitivas estruturais sem dono de negócio
         // (ver domain/shared-concepts.md). Não depende de módulo nenhum, pela
@@ -53,7 +55,9 @@ public class ProjectReferenceTests
         // Virá a **ler** desses módulos para relato e exportação SAF-T
         // (`modules/fiscal.md`, "duas direcções, duas capacidades"), mas isso
         // está adiado pelo ADR-036 e a linha muda quando lá se chegar.
-        ["Fiscal"] = ["Audit"],
+        // `SharedKernel` — 2026-09-23 (ADR-068): Skip/Take de paginação real
+        // em `ListTaxRates`.
+        ["Fiscal"] = ["Audit", "SharedKernel"],
 
         // `commercial` está reduzido ao Cliente pelo ADR-036, e o Cliente só
         // depende de `audit` — registar um cliente altera a base de um
@@ -63,7 +67,9 @@ public class ProjectReferenceTests
         // `Hr` — 2026-09-03 (ADR-045): atribuir o vendedor responsável exige
         // validar o Colaborador pelo contrato de `hr`, nunca por leitura de
         // tabela (ADR-010).
-        ["Commercial"] = ["Audit", "Hr"],
+        // `SharedKernel` — 2026-09-23 (ADR-068): Skip/Take de paginação real
+        // em `ListCustomers`.
+        ["Commercial"] = ["Audit", "Hr", "SharedKernel"],
         // `finance`/AR é o encontro dos três: `commercial` dá o cliente,
         // `fiscal` dá a taxa à data do facto gerador, e `finance` possui o
         // documento (ADR-036). Nenhum lê as tabelas do outro.
@@ -111,7 +117,9 @@ public class ProjectReferenceTests
         // `SharedKernel` — 2026-09-25 (ADR-068): paginação real das listagens.
         ["Procurement"] = ["Audit", "Hr", "SharedKernel"],
 
-        ["Documents"] = ["Audit"],
+        // `SharedKernel` — 2026-09-23 (ADR-068): Skip/Take de paginação real
+        // em `ListDocuments`.
+        ["Documents"] = ["Audit", "SharedKernel"],
         // `SharedKernel` — 2026-09-23 (ADR-068): Skip/Take de paginação real
         // usa `PageRequest`, primitiva sem dono de negócio.
         ["Hr"] = ["Audit", "Documents", "SharedKernel"],
@@ -137,7 +145,9 @@ public class ProjectReferenceTests
         // faltam — `finance`, `commercial`, `fleet`, `documents`, `approval`,
         // `notifications` — pertencem a Orçamento de Projecto e Alocação de
         // Recursos, que ainda não estão feitos.
-        ["Projects"] = ["Audit", "Hr", "Fleet"],
+        // `SharedKernel` — 2026-09-23 (ADR-068): Skip/Take de paginação real
+        // em `ListProjects`.
+        ["Projects"] = ["Audit", "Hr", "Fleet", "SharedKernel"],
 
         // `fleet` ganhou Manutenção e Atribuição — 2026-08-30, mesma razão de
         // `projects`: atribuir uma viatura a um motorista referencia um

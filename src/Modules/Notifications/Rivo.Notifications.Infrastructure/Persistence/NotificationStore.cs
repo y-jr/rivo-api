@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Notifications.Application;
 using Rivo.Notifications.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Notifications.Infrastructure.Persistence;
 
@@ -12,10 +13,11 @@ public sealed class NotificationStore(NotificationsDbContext context) : INotific
     public async Task<Notification?> FindAsync(Guid notificationId, CancellationToken cancellationToken) =>
         await context.Notifications.FirstOrDefaultAsync(n => n.Id == notificationId, cancellationToken);
 
-    public async Task<IReadOnlyList<Notification>> ListForRecipientAsync(
+    public async Task<(IReadOnlyList<Notification> Items, int? TotalCount)> ListForRecipientAsync(
         Guid recipientUserId,
         bool unreadOnly,
         int limit,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.Notifications
@@ -27,10 +29,19 @@ public sealed class NotificationStore(NotificationsDbContext context) : INotific
             query = query.Where(n => n.ReadAt == null);
         }
 
-        return await query
-            .OrderByDescending(n => n.CreatedAt)
-            .Take(limit)
-            .ToListAsync(cancellationToken);
+        query = query.OrderByDescending(n => n.CreatedAt);
+
+        // Sem página pedida, mantém o comportamento antigo de `limit` — quem
+        // já consome esta rota sem `page`/`pageSize` não vê nada mudar.
+        if (pagina is not { } p)
+        {
+            var itensDoLimite = await query.Take(limit).ToListAsync(cancellationToken);
+            return (itensDoLimite, null);
+        }
+
+        var total = await query.CountAsync(cancellationToken);
+        var itens = await query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize).ToListAsync(cancellationToken);
+        return (itens, total);
     }
 
     public async Task<IReadOnlyList<Notification>> ListUnreadForRecipientAsync(

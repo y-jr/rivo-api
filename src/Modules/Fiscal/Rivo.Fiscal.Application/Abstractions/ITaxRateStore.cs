@@ -1,4 +1,5 @@
 using Rivo.Fiscal.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Fiscal.Application.Abstractions;
 
@@ -22,7 +23,8 @@ public interface ITaxRateStore
 
     Task<TaxRateSchedule?> FindByIdAsync(Guid scheduleId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<TaxRateSchedule>> ListAsync(CancellationToken cancellationToken);
+    Task<(IReadOnlyList<TaxRateSchedule> Items, int? TotalCount)> ListAsync(
+        PageRequest? pagina, CancellationToken cancellationToken);
 
     Task AddAsync(TaxRateSchedule schedule, CancellationToken cancellationToken);
 

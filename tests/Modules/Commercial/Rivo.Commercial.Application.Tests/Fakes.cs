@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Commercial.Application.Abstractions;
 using Rivo.Commercial.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Commercial.Application.Tests;
 
@@ -67,8 +68,19 @@ internal sealed class FakeCustomerStore : ICustomerStore
         Task.FromResult<IReadOnlyList<CustomerAccountLink>>(
             [.. _episodios.Where(l => l.CustomerId == customerId).OrderByDescending(l => l.LinkedOn)]);
 
-    public Task<IReadOnlyList<Customer>> ListAsync(bool includeInactive, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<Customer>>([.. _clientes]);
+    public Task<(IReadOnlyList<Customer> Items, int? TotalCount)> ListAsync(
+        bool includeInactive, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        var ordenados = _clientes.OrderBy(c => c.Name).ToList();
+
+        if (pagina is not { } p)
+        {
+            return Task.FromResult<(IReadOnlyList<Customer>, int?)>((ordenados, null));
+        }
+
+        var fatia = ordenados.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize).ToList();
+        return Task.FromResult<(IReadOnlyList<Customer>, int?)>((fatia, ordenados.Count));
+    }
 
     public Task AddAsync(Customer customer, CancellationToken cancellationToken)
     {

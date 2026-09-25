@@ -4,6 +4,9 @@
     <ProjectReference Include="..\Rivo.Fiscal.Domain\Rivo.Fiscal.Domain.csproj" />
     <ProjectReference Include="..\Rivo.Fiscal.Contracts\Rivo.Fiscal.Contracts.csproj" />
     <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
+    <!-- PageRequest/Pagination (ADR-068) — primitiva estrutural sem dono de
+         negócio, não conceito de fiscal. -->
+    <ProjectReference Include="..\..\..\SharedKernel\Rivo.SharedKernel.Contracts\Rivo.SharedKernel.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

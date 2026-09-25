@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Projects.Application.Abstractions;
 using Rivo.Projects.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Projects.Infrastructure.Persistence;
 
@@ -22,7 +23,8 @@ public sealed class ProjectStore(ProjectsDbContext context) : IProjectStore
             .Include(p => p.Allocations)
             .FirstOrDefaultAsync(p => p.Id == projectId, cancellationToken);
 
-    public async Task<IReadOnlyList<Project>> ListAsync(bool includeClosed, CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<Project> Items, int? TotalCount)> ListAsync(
+        bool includeClosed, PageRequest? pagina, CancellationToken cancellationToken)
     {
         var query = context.Projects.AsNoTracking()
             .Include(p => p.Milestones)
@@ -36,7 +38,18 @@ public sealed class ProjectStore(ProjectsDbContext context) : IProjectStore
             query = query.Where(p => p.Status == ProjectStatus.Active);
         }
 
-        return await query.OrderBy(p => p.Name).ToListAsync(cancellationToken);
+        query = query.OrderBy(p => p.Name);
+
+        int? total = null;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            query = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        var itens = await query.ToListAsync(cancellationToken);
+        return (itens, total);
     }
 
     public async Task AddAsync(Project project, CancellationToken cancellationToken) =>

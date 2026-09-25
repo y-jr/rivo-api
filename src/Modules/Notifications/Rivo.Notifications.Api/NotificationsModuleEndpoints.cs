@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Rivo.Notifications.Application;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Notifications.Api;
 
@@ -16,7 +17,8 @@ public static class NotificationsModuleEndpoints
         // Só autenticação, sem permissão: o que limita o acesso é ser o
         // destinatário, e isso é invariante do domínio.
         group.MapGet("/me", ListMineAsync).RequireAuthorization()
-            .Produces<IReadOnlyList<NotificationView>>();
+            .Produces<IReadOnlyList<NotificationView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/{notificationId:guid}/read", MarkAsReadAsync).RequireAuthorization()
             .Produces(StatusCodes.Status204NoContent)
@@ -45,15 +47,35 @@ public static class NotificationsModuleEndpoints
     private static async Task<IResult> ListMineAsync(
         ListMyNotifications list,
         ClaimsPrincipal principal,
+        HttpResponse response,
         CancellationToken cancellationToken,
         bool unreadOnly = false,
-        int limit = 50)
+        int limit = 50,
+        int? page = null,
+        int? pageSize = null)
     {
         var userId = CurrentUserId(principal);
 
-        return userId is null
-            ? Results.Unauthorized()
-            : Results.Ok(await list.ExecuteAsync(userId.Value, unreadOnly, limit, cancellationToken));
+        if (userId is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (itens, total) = await list.ExecuteAsync(userId.Value, unreadOnly, limit, pagina, cancellationToken);
+
+        if (pagina is { } p)
+        {
+            response.Headers["X-Page"] = p.Page.ToString();
+            response.Headers["X-Page-Size"] = p.PageSize.ToString();
+            response.Headers["X-Total-Count"] = total!.Value.ToString();
+        }
+
+        return Results.Ok(itens);
     }
 
     private static async Task<IResult> MarkAllAsReadAsync(

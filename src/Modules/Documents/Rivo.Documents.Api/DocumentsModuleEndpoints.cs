@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Routing;
 using Rivo.Audit.Contracts;
 using Rivo.Documents.Application;
 using Rivo.Documents.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Documents.Api;
 
@@ -33,7 +34,8 @@ public static class DocumentsModuleEndpoints
         // quem procura os anexos de um colaborador pede-os a `hr` (ADR-009).
         group.MapGet("/", ListAsync)
             .RequireAuthorization(DocumentPermissions.Read)
-            .Produces<IReadOnlyList<DocumentDescriptor>>();
+            .Produces<IReadOnlyList<DocumentDescriptor>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/{documentId:guid}", DownloadAsync)
             .RequireAuthorization(DocumentPermissions.Read)
@@ -54,8 +56,27 @@ public static class DocumentsModuleEndpoints
         DateOnly? from,
         DateOnly? to,
         int? limit,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listDocuments.ExecuteAsync(category, from, to, limit, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (itens, total) = await listDocuments.ExecuteAsync(category, from, to, limit, pagina, cancellationToken);
+
+        if (pagina is { } p)
+        {
+            response.Headers["X-Page"] = p.Page.ToString();
+            response.Headers["X-Page-Size"] = p.PageSize.ToString();
+            response.Headers["X-Total-Count"] = total!.Value.ToString();
+        }
+
+        return Results.Ok(itens);
+    }
 
     private static AuditContext BuildAuditContext(HttpContext http)
     {
