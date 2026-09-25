@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi;
 using Rivo.Api.OpenApi;
 using Rivo.Finance.Api;
+using Rivo.Fleet.Api;
+using Rivo.Fleet.Application.UseCases;
 
 namespace Rivo.Api.Tests;
 
@@ -25,6 +27,36 @@ public class AllowedValuesSchemaTransformerTests
 
         Assert.NotNull(schema.Enum);
         Assert.Equal(["GR", "GA", "GM", "AR", "AA", "AM"], schema.Enum!.Select(v => v!.GetValue<string>()));
+    }
+
+    /// <summary>
+    /// Mesmo gap do #9, desta vez em `fleet`: <c>OpenMaintenanceRequest.Type</c>
+    /// é validado à mão contra <c>MaintenanceType</c> (Preventive/Corrective),
+    /// sem que o schema documentasse os valores aceites (#18).
+    /// </summary>
+    [Fact]
+    public async Task PedidoDeManutencao_GanhaOEnumNoSchema()
+    {
+        var schema = new OpenApiSchema();
+        var contexto = NovoContexto(typeof(OpenMaintenanceRequest), nameof(OpenMaintenanceRequest.Type));
+
+        await new AllowedValuesSchemaTransformer().TransformAsync(schema, contexto, CancellationToken.None);
+
+        Assert.NotNull(schema.Enum);
+        Assert.Equal(["Preventive", "Corrective"], schema.Enum!.Select(v => v!.GetValue<string>()));
+    }
+
+    /// <summary>A mesma marca do lado da leitura — <c>MaintenanceRecordView.Type</c> (#18).</summary>
+    [Fact]
+    public async Task VistaDeManutencao_GanhaOEnumNoSchema()
+    {
+        var schema = new OpenApiSchema();
+        var contexto = NovoContexto(typeof(MaintenanceRecordView), nameof(MaintenanceRecordView.Type));
+
+        await new AllowedValuesSchemaTransformer().TransformAsync(schema, contexto, CancellationToken.None);
+
+        Assert.NotNull(schema.Enum);
+        Assert.Equal(["Preventive", "Corrective"], schema.Enum!.Select(v => v!.GetValue<string>()));
     }
 
     [Fact]
