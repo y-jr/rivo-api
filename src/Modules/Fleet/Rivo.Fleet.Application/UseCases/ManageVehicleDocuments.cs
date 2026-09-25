@@ -2,6 +2,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Documents.Contracts;
 using Rivo.Fleet.Application.Abstractions;
 using Rivo.Fleet.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Fleet.Application.UseCases;
 
@@ -106,8 +107,8 @@ public enum AttachVehicleDocumentOutcome
 /// </summary>
 public sealed class ListVehicleDocuments(IVehicleStore store, IDocumentCatalogue documents)
 {
-    public async Task<IReadOnlyList<VehicleDocumentView>?> ExecuteAsync(
-        Guid vehicleId, CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<VehicleDocumentView> Items, int? TotalCount)?> ExecuteAsync(
+        Guid vehicleId, PageRequest? pagina, CancellationToken cancellationToken)
     {
         var veiculo = await store.FindAsync(vehicleId, cancellationToken);
 
@@ -116,11 +117,11 @@ public sealed class ListVehicleDocuments(IVehicleStore store, IDocumentCatalogue
             return null;
         }
 
-        var links = await store.ListVehicleDocumentsAsync(vehicleId, cancellationToken);
+        var (links, total) = await store.ListVehicleDocumentsAsync(vehicleId, pagina, cancellationToken);
 
         if (links.Count == 0)
         {
-            return [];
+            return ((IReadOnlyList<VehicleDocumentView>)[], total);
         }
 
         var descriptors = await documents.FindManyAsync(
@@ -128,7 +129,7 @@ public sealed class ListVehicleDocuments(IVehicleStore store, IDocumentCatalogue
 
         var byId = descriptors.ToDictionary(descriptor => descriptor.DocumentId);
 
-        return
+        IReadOnlyList<VehicleDocumentView> itens =
         [
             .. links
                 .Where(link => byId.ContainsKey(link.DocumentId))
@@ -140,6 +141,8 @@ public sealed class ListVehicleDocuments(IVehicleStore store, IDocumentCatalogue
                     byId[link.DocumentId].SizeInBytes,
                     link.AttachedAt))
         ];
+
+        return (itens, total);
     }
 }
 

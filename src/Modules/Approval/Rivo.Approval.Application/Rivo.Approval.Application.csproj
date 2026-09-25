@@ -14,6 +14,10 @@
     -->
     <ProjectReference Include="..\..\Finance\Rivo.Finance.Contracts\Rivo.Finance.Contracts.csproj" />
     <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
+
+    <!-- PageRequest/Pagination (ADR-068) — primitiva estrutural sem dono de
+         negócio, não conceito de approval. -->
+    <ProjectReference Include="..\..\..\SharedKernel\Rivo.SharedKernel.Contracts\Rivo.SharedKernel.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

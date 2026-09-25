@@ -103,7 +103,7 @@ public sealed class EmployeeDirectory(IHrStore store, HireEmployee hire) : IEmpl
 
         if (!string.IsNullOrWhiteSpace(departmentName))
         {
-            var departamentos = await store.ListDepartmentsAsync(cancellationToken);
+            var (departamentos, _) = await store.ListDepartmentsAsync(pagina: null, cancellationToken);
             var departamento = departamentos.FirstOrDefault(
                 d => string.Equals(d.Name, departmentName, StringComparison.OrdinalIgnoreCase));
 

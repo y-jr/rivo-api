@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Messaging.Application.Abstractions;
 using Rivo.Messaging.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Messaging.Infrastructure.Persistence;
 
@@ -25,8 +26,8 @@ public sealed class ConversationStore(MessagingDbContext context) : IConversatio
             .Include(c => c.Messages)
             .FirstOrDefaultAsync(c => c.Id == conversationId, cancellationToken);
 
-    public async Task<IReadOnlyList<Conversation>> ListByCustomerAsync(
-        Guid customerId, ConversationKind? kind, CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<Conversation> Items, int? TotalCount)> ListByCustomerAsync(
+        Guid customerId, ConversationKind? kind, PageRequest? pagina, CancellationToken cancellationToken)
     {
         var query = context.Conversations
             .AsNoTracking()
@@ -39,11 +40,13 @@ public sealed class ConversationStore(MessagingDbContext context) : IConversatio
             query = query.Where(c => c.Kind == tipo);
         }
 
-        return await query.ToListAsync(cancellationToken);
+        query = query.OrderByDescending(c => c.OpenedAt).ThenBy(c => c.Id);
+
+        return await PaginarAsync(query, pagina, cancellationToken);
     }
 
-    public async Task<IReadOnlyList<Conversation>> ListAsync(
-        ConversationStatus? status, ConversationKind? kind, CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<Conversation> Items, int? TotalCount)> ListAsync(
+        ConversationStatus? status, ConversationKind? kind, PageRequest? pagina, CancellationToken cancellationToken)
     {
         var query = context.Conversations.AsNoTracking().Include(c => c.Messages).AsQueryable();
 
@@ -57,7 +60,28 @@ public sealed class ConversationStore(MessagingDbContext context) : IConversatio
             query = query.Where(c => c.Kind == tipo);
         }
 
-        return await query.ToListAsync(cancellationToken);
+        query = query.OrderByDescending(c => c.OpenedAt).ThenBy(c => c.Id);
+
+        return await PaginarAsync(query, pagina, cancellationToken);
+    }
+
+    /// <summary>
+    /// A query já vem ordenada de forma determinística — só falta decidir se
+    /// se corta (ADR-068).
+    /// </summary>
+    private static async Task<(IReadOnlyList<Conversation> Items, int? TotalCount)> PaginarAsync(
+        IQueryable<Conversation> query, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        int? total = null;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            query = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        var itens = await query.ToListAsync(cancellationToken);
+        return (itens, total);
     }
 
     public async Task AddAsync(Conversation conversation, CancellationToken cancellationToken) =>

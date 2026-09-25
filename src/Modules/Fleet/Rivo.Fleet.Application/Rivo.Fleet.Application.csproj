@@ -13,6 +13,10 @@
     <!-- Seguros e documentação legal anexam-se via `documents` (ADR-009),
          mesmo desenho de `hr`. -->
     <ProjectReference Include="..\..\Documents\Rivo.Documents.Contracts\Rivo.Documents.Contracts.csproj" />
+
+    <!-- PageRequest/Pagination (ADR-068) — primitiva estrutural sem dono de
+         negócio, não conceito de fleet. -->
+    <ProjectReference Include="..\..\..\SharedKernel\Rivo.SharedKernel.Contracts\Rivo.SharedKernel.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -1,4 +1,5 @@
 using Rivo.Fleet.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Fleet.Application.Abstractions;
 
@@ -14,7 +15,8 @@ public interface IVehicleStore
 
     Task<Vehicle?> FindByPlateNumberAsync(string plateNumber, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<Vehicle>> ListAsync(bool includeInactive, CancellationToken cancellationToken);
+    Task<(IReadOnlyList<Vehicle> Items, int? TotalCount)> ListAsync(
+        bool includeInactive, PageRequest? pagina, CancellationToken cancellationToken);
 
     /// <summary>
     /// Viaturas com pelo menos um plano de manutenção activo devido até
@@ -50,7 +52,8 @@ public interface IVehicleStore
 
     Task AddVehicleDocumentAsync(VehicleDocument link, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<VehicleDocument>> ListVehicleDocumentsAsync(Guid vehicleId, CancellationToken cancellationToken);
+    Task<(IReadOnlyList<VehicleDocument> Items, int? TotalCount)> ListVehicleDocumentsAsync(
+        Guid vehicleId, PageRequest? pagina, CancellationToken cancellationToken);
 
     Task SaveChangesAsync(CancellationToken cancellationToken);
 }

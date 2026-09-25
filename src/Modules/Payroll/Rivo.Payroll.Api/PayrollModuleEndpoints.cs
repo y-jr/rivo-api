@@ -7,6 +7,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Payroll.Application.UseCases;
 using Rivo.Payroll.Contracts;
 using Rivo.Payroll.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Payroll.Api;
 
@@ -18,7 +19,8 @@ public static class PayrollModuleEndpoints
 
         group.MapGet("/runs", ListAsync)
             .RequireAuthorization(PayrollPermissions.RunsRead)
-            .Produces<IReadOnlyList<PayrollRunView>>();
+            .Produces<IReadOnlyList<PayrollRunView>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/runs/{runId:guid}", GetAsync)
             .RequireAuthorization(PayrollPermissions.RunsRead)
@@ -71,9 +73,26 @@ public static class PayrollModuleEndpoints
     }
 
     private static async Task<IResult> ListAsync(
-        ListPayrollRuns listRuns, CancellationToken cancellationToken)
+        ListPayrollRuns listRuns,
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
     {
-        var folhas = await listRuns.ExecuteAsync(cancellationToken);
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (folhas, total) = await listRuns.ExecuteAsync(pagina, cancellationToken);
+
+        if (pagina is { } p)
+        {
+            response.Headers["X-Page"] = p.Page.ToString();
+            response.Headers["X-Page-Size"] = p.PageSize.ToString();
+            response.Headers["X-Total-Count"] = total!.Value.ToString();
+        }
+
         return Results.Ok(folhas.Select(ToView));
     }
 

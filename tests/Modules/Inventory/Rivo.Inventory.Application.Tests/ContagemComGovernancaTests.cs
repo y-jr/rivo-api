@@ -2,6 +2,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Inventory.Application.Abstractions;
 using Rivo.Inventory.Application.UseCases;
 using Rivo.Inventory.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Inventory.Application.Tests;
 
@@ -25,8 +26,16 @@ internal sealed class FakeInventoryCountStore : IInventoryCountStore
     public Task<InventoryCount?> FindForUpdateAsync(Guid countId, CancellationToken cancellationToken) =>
         Task.FromResult(_contagens.SingleOrDefault(c => c.Id == countId));
 
-    public Task<IReadOnlyList<InventoryCount>> ListAsync(Guid? warehouseId, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<InventoryCount>>([.. _contagens]);
+    public Task<(IReadOnlyList<InventoryCount> Items, int? TotalCount)> ListAsync(
+        Guid? warehouseId, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        // Mantém o comportamento original do duplo: não filtra por
+        // `warehouseId` (nenhum teste existente precisou disso) — só a
+        // paginação é nova.
+        var ordenados = _contagens.OrderByDescending(c => c.OccurredOn).ToList();
+
+        return Task.FromResult(FakePaginacao.Paginar(ordenados, pagina));
+    }
 
     public Task AddAsync(InventoryCount count, CancellationToken cancellationToken)
     {

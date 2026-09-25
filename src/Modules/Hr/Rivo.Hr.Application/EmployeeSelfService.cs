@@ -37,7 +37,8 @@ public sealed class EmployeeSelfService(
         // `anomaliesOnly: false` — o próprio vê o mês todo, e não só os dias
         // problemáticos. Filtrar anomalias é ferramenta de quem gere, não de
         // quem quer conferir o seu registo.
-        var registos = await attendance.ExecuteAsync(from, to, employeeId, anomaliesOnly: false, cancellationToken);
+        var (registos, _) = await attendance.ExecuteAsync(
+            from, to, employeeId, anomaliesOnly: false, pagina: null, cancellationToken);
 
         return
         [
@@ -56,7 +57,7 @@ public sealed class EmployeeSelfService(
         Guid employeeId,
         CancellationToken cancellationToken)
     {
-        var pedidos = await leave.ExecuteAsync(employeeId, cancellationToken);
+        var (pedidos, _) = await leave.ExecuteAsync(employeeId, pagina: null, cancellationToken);
 
         return
         [

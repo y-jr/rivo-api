@@ -2,6 +2,7 @@ using Rivo.Approval.Application.Abstractions;
 using Rivo.Approval.Domain;
 using Rivo.Audit.Contracts;
 using Rivo.Hr.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Approval.Application.Tests;
 
@@ -32,9 +33,9 @@ internal sealed class FakeApprovalStore(ApprovalRequest? request = null) : IAppr
     public Task<ApprovalPolicy?> FindPolicyAsync(Guid policyId, CancellationToken cancellationToken) =>
         Task.FromResult<ApprovalPolicy?>(null);
 
-    public Task<IReadOnlyList<ApprovalRequest>> ListRequestsAsync(
-        string? processType, Guid? pendingForEmployeeId, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<ApprovalRequest>>([]);
+    public Task<(IReadOnlyList<ApprovalRequest> Items, int? TotalCount)> ListRequestsAsync(
+        string? processType, Guid? pendingForEmployeeId, PageRequest? pagina, CancellationToken cancellationToken) =>
+        Task.FromResult<(IReadOnlyList<ApprovalRequest>, int?)>(([], null));
 
     public Task AddRequestAsync(ApprovalRequest request, CancellationToken cancellationToken) =>
         Task.CompletedTask;

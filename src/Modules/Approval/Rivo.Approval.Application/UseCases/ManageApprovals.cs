@@ -3,6 +3,7 @@ using Rivo.Approval.Contracts;
 using Rivo.Approval.Domain;
 using Rivo.Audit.Contracts;
 using Rivo.Hr.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Approval.Application.UseCases;
 
@@ -266,14 +267,16 @@ public sealed class ListApprovalRequests(IApprovalStore store)
     /// Só os pedidos à espera desta pessoa. É a caixa de entrada de quem
     /// aprova — e a consulta que a fila de RH faz.
     /// </param>
-    public async Task<IReadOnlyList<ApprovalStatusView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<ApprovalStatusView> Items, int? TotalCount)> ExecuteAsync(
         string? processType,
         Guid? pendingForEmployeeId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var requests = await store.ListRequestsAsync(processType, pendingForEmployeeId, cancellationToken);
+        var (requests, total) = await store.ListRequestsAsync(
+            processType, pendingForEmployeeId, pagina, cancellationToken);
 
-        return [.. requests.Select(ApprovalGateway.Project)];
+        return ([.. requests.Select(ApprovalGateway.Project)], total);
     }
 }
 

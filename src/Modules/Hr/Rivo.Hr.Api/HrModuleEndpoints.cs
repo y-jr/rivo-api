@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Rivo.Audit.Contracts;
 using Rivo.Hr.Application.UseCases;
 using Rivo.Hr.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Hr.Api;
 
@@ -17,7 +18,8 @@ public static class HrModuleEndpoints
 
         group.MapGet("/employees", ListEmployeesAsync)
             .RequireAuthorization(HrPermissions.EmployeesRead)
-            .Produces<IReadOnlyList<EmployeeView>>();
+            .Produces<IReadOnlyList<EmployeeView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/employees", HireEmployeeAsync)
             .RequireAuthorization(HrPermissions.EmployeesWrite)
@@ -84,7 +86,8 @@ public static class HrModuleEndpoints
 
         group.MapGet("/departments", ListDepartmentsAsync)
             .RequireAuthorization(HrPermissions.DepartmentsRead)
-            .Produces<IReadOnlyList<DepartmentView>>();
+            .Produces<IReadOnlyList<DepartmentView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/departments", CreateDepartmentAsync)
             .RequireAuthorization(HrPermissions.DepartmentsWrite)
@@ -98,7 +101,8 @@ public static class HrModuleEndpoints
 
         group.MapGet("/positions", ListPositionsAsync)
             .RequireAuthorization(HrPermissions.PositionsRead)
-            .Produces<IReadOnlyList<PositionView>>();
+            .Produces<IReadOnlyList<PositionView>>()
+            .ProducesValidationProblem();
 
         // Catálogo de Cargos: só Admin. Quem controla a marca de autoridade
         // controla, indirectamente, quem pode vir a aprovar (ADR-015).
@@ -160,7 +164,8 @@ public static class HrModuleEndpoints
         // do módulo.
         group.MapGet("/contracts", ListContractsAsync)
             .RequireAuthorization(HrPermissions.ContractsRead)
-            .Produces<IReadOnlyList<EmploymentContractView>>();
+            .Produces<IReadOnlyList<EmploymentContractView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/contracts", DrawContractAsync)
             .RequireAuthorization(HrPermissions.ContractsWrite)
@@ -200,7 +205,8 @@ public static class HrModuleEndpoints
         // pendente **não é ausência** (mesmo princípio de BR-20).
         group.MapGet("/leave", ListLeaveAsync)
             .RequireAuthorization(HrPermissions.LeaveRead)
-            .Produces<IReadOnlyList<LeaveView>>();
+            .Produces<IReadOnlyList<LeaveView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/leave", RequestLeaveAsync)
             .RequireAuthorization(HrPermissions.LeaveWrite)
@@ -225,7 +231,8 @@ public static class HrModuleEndpoints
         // Benefícios: catálogo e adesões.
         group.MapGet("/benefits", ListBenefitsAsync)
             .RequireAuthorization(HrPermissions.BenefitsRead)
-            .Produces<IReadOnlyList<BenefitView>>();
+            .Produces<IReadOnlyList<BenefitView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/benefits", CreateBenefitAsync)
             .RequireAuthorization(HrPermissions.BenefitsWrite)
@@ -234,7 +241,8 @@ public static class HrModuleEndpoints
 
         group.MapGet("/benefits/enrolments", ListEnrolmentsAsync)
             .RequireAuthorization(HrPermissions.BenefitsRead)
-            .Produces<IReadOnlyList<BenefitEnrolmentView>>();
+            .Produces<IReadOnlyList<BenefitEnrolmentView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/benefits/enrolments", EnrolAsync)
             .RequireAuthorization(HrPermissions.BenefitsWrite)
@@ -251,7 +259,8 @@ public static class HrModuleEndpoints
         // Recrutamento: vagas e funil de candidatos.
         group.MapGet("/recruitment/openings", ListOpeningsAsync)
             .RequireAuthorization(HrPermissions.RecruitmentRead)
-            .Produces<IReadOnlyList<JobOpeningView>>();
+            .Produces<IReadOnlyList<JobOpeningView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/recruitment/openings", OpenOpeningAsync)
             .RequireAuthorization(HrPermissions.RecruitmentWrite)
@@ -267,7 +276,8 @@ public static class HrModuleEndpoints
 
         group.MapGet("/recruitment/candidates", ListCandidatesAsync)
             .RequireAuthorization(HrPermissions.RecruitmentRead)
-            .Produces<IReadOnlyList<CandidateView>>();
+            .Produces<IReadOnlyList<CandidateView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/recruitment/openings/{openingId:guid}/candidates", ApplyAsync)
             .RequireAuthorization(HrPermissions.RecruitmentWrite)
@@ -292,7 +302,8 @@ public static class HrModuleEndpoints
         // Entrada e saída, conduzidas por checklist.
         group.MapGet("/lifecycle", ListLifecycleAsync)
             .RequireAuthorization(HrPermissions.LifecycleRead)
-            .Produces<IReadOnlyList<LifecycleProcessView>>();
+            .Produces<IReadOnlyList<LifecycleProcessView>>()
+            .ProducesValidationProblem();
 
         group.MapPost("/lifecycle", StartLifecycleAsync)
             .RequireAuthorization(HrPermissions.LifecycleWrite)
@@ -350,10 +361,48 @@ public static class HrModuleEndpoints
             CorrelationId: http.TraceIdentifier);
     }
 
+    /// <summary>
+    /// Interpreta `page`/`pageSize` uma só vez, para as onze listagens que
+    /// ganharam paginação real (ADR-068) não repetirem a mesma validação.
+    /// </summary>
+    private static (PageRequest? Pagina, IResult? Erro) ResolverPagina(int? page, int? pageSize)
+    {
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var mensagem))
+        {
+            return (null, Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [mensagem!] }));
+        }
+
+        return (pagina, null);
+    }
+
+    /// <summary>Só escreve cabeçalhos quando há página pedida — sem isso, nada muda na resposta.</summary>
+    private static void EscreverCabecalhosDePagina(HttpResponse response, PageRequest? pagina, int? total)
+    {
+        if (pagina is { } p)
+        {
+            response.Headers["X-Page"] = p.Page.ToString();
+            response.Headers["X-Page-Size"] = p.PageSize.ToString();
+            response.Headers["X-Total-Count"] = total!.Value.ToString();
+        }
+    }
+
     private static async Task<IResult> ListEmployeesAsync(
         ListEmployees listEmployees,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listEmployees.ExecuteAsync(cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        var (pagina, erro) = ResolverPagina(page, pageSize);
+        if (erro is not null)
+        {
+            return erro;
+        }
+
+        var (itens, total) = await listEmployees.ExecuteAsync(pagina, cancellationToken);
+        EscreverCabecalhosDePagina(response, pagina, total);
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> GetEmployeeAsync(
         Guid employeeId,
@@ -555,8 +604,21 @@ public static class HrModuleEndpoints
 
     private static async Task<IResult> ListDepartmentsAsync(
         ListDepartments listDepartments,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listDepartments.ExecuteAsync(cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        var (pagina, erro) = ResolverPagina(page, pageSize);
+        if (erro is not null)
+        {
+            return erro;
+        }
+
+        var (itens, total) = await listDepartments.ExecuteAsync(pagina, cancellationToken);
+        EscreverCabecalhosDePagina(response, pagina, total);
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> CreateDepartmentAsync(
         CreateDepartmentRequest request,
@@ -572,8 +634,21 @@ public static class HrModuleEndpoints
 
     private static async Task<IResult> ListPositionsAsync(
         ListPositions listPositions,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listPositions.ExecuteAsync(cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        var (pagina, erro) = ResolverPagina(page, pageSize);
+        if (erro is not null)
+        {
+            return erro;
+        }
+
+        var (itens, total) = await listPositions.ExecuteAsync(pagina, cancellationToken);
+        EscreverCabecalhosDePagina(response, pagina, total);
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> CreatePositionAsync(
         CreatePositionRequest request,
@@ -699,8 +774,21 @@ public static class HrModuleEndpoints
     private static async Task<IResult> ListContractsAsync(
         ListEmploymentContracts listContracts,
         Guid? employeeId,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listContracts.ExecuteAsync(employeeId, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        var (pagina, erro) = ResolverPagina(page, pageSize);
+        if (erro is not null)
+        {
+            return erro;
+        }
+
+        var (itens, total) = await listContracts.ExecuteAsync(employeeId, pagina, cancellationToken);
+        EscreverCabecalhosDePagina(response, pagina, total);
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> DrawContractAsync(
         DrawContractRequest request,
@@ -774,7 +862,10 @@ public static class HrModuleEndpoints
         DateOnly? to,
         Guid? employeeId,
         bool? anomaliesOnly,
+        int? page,
+        int? pageSize,
         TimeProvider clock,
+        HttpResponse response,
         CancellationToken cancellationToken)
     {
         var hoje = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
@@ -793,8 +884,16 @@ public static class HrModuleEndpoints
             });
         }
 
-        return Results.Ok(await listAttendance.ExecuteAsync(
-            inicio, fim, employeeId, anomaliesOnly ?? false, cancellationToken));
+        var (pagina, erro) = ResolverPagina(page, pageSize);
+        if (erro is not null)
+        {
+            return erro;
+        }
+
+        var (itens, total) = await listAttendance.ExecuteAsync(
+            inicio, fim, employeeId, anomaliesOnly ?? false, pagina, cancellationToken);
+        EscreverCabecalhosDePagina(response, pagina, total);
+        return Results.Ok(itens);
     }
 
     private static async Task<IResult> ClockAsync(
@@ -865,8 +964,21 @@ public static class HrModuleEndpoints
     private static async Task<IResult> ListLeaveAsync(
         ListLeave listLeave,
         Guid? employeeId,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listLeave.ExecuteAsync(employeeId, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        var (pagina, erro) = ResolverPagina(page, pageSize);
+        if (erro is not null)
+        {
+            return erro;
+        }
+
+        var (itens, total) = await listLeave.ExecuteAsync(employeeId, pagina, cancellationToken);
+        EscreverCabecalhosDePagina(response, pagina, total);
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> RequestLeaveAsync(
         RequestLeaveRequest request,
@@ -950,8 +1062,21 @@ public static class HrModuleEndpoints
 
     private static async Task<IResult> ListBenefitsAsync(
         ListBenefits listBenefits,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listBenefits.ExecuteAsync(cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        var (pagina, erro) = ResolverPagina(page, pageSize);
+        if (erro is not null)
+        {
+            return erro;
+        }
+
+        var (itens, total) = await listBenefits.ExecuteAsync(pagina, cancellationToken);
+        EscreverCabecalhosDePagina(response, pagina, total);
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> CreateBenefitAsync(
         CreateBenefitRequest request,
@@ -972,8 +1097,21 @@ public static class HrModuleEndpoints
     private static async Task<IResult> ListEnrolmentsAsync(
         ListBenefitEnrolments listEnrolments,
         Guid? employeeId,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listEnrolments.ExecuteAsync(employeeId, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        var (pagina, erro) = ResolverPagina(page, pageSize);
+        if (erro is not null)
+        {
+            return erro;
+        }
+
+        var (itens, total) = await listEnrolments.ExecuteAsync(employeeId, pagina, cancellationToken);
+        EscreverCabecalhosDePagina(response, pagina, total);
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> EnrolAsync(
         EnrolRequest request,
@@ -1022,8 +1160,21 @@ public static class HrModuleEndpoints
 
     private static async Task<IResult> ListOpeningsAsync(
         ListJobOpenings listOpenings,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listOpenings.ExecuteAsync(cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        var (pagina, erro) = ResolverPagina(page, pageSize);
+        if (erro is not null)
+        {
+            return erro;
+        }
+
+        var (itens, total) = await listOpenings.ExecuteAsync(pagina, cancellationToken);
+        EscreverCabecalhosDePagina(response, pagina, total);
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> OpenOpeningAsync(
         OpenJobOpeningRequest request,
@@ -1059,8 +1210,21 @@ public static class HrModuleEndpoints
     private static async Task<IResult> ListCandidatesAsync(
         ListCandidates listCandidates,
         Guid? openingId,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listCandidates.ExecuteAsync(openingId, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        var (pagina, erro) = ResolverPagina(page, pageSize);
+        if (erro is not null)
+        {
+            return erro;
+        }
+
+        var (itens, total) = await listCandidates.ExecuteAsync(openingId, pagina, cancellationToken);
+        EscreverCabecalhosDePagina(response, pagina, total);
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> ApplyAsync(
         Guid openingId,
@@ -1141,8 +1305,21 @@ public static class HrModuleEndpoints
         ListLifecycleProcesses listProcesses,
         string? kind,
         Guid? employeeId,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listProcesses.ExecuteAsync(kind, employeeId, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        var (pagina, erro) = ResolverPagina(page, pageSize);
+        if (erro is not null)
+        {
+            return erro;
+        }
+
+        var (itens, total) = await listProcesses.ExecuteAsync(kind, employeeId, pagina, cancellationToken);
+        EscreverCabecalhosDePagina(response, pagina, total);
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> StartLifecycleAsync(
         StartLifecycleRequest request,

@@ -114,12 +114,15 @@ public class ProjectReferenceTests
         // `documents` (cotações), `inventory` (recepção de bens) e
         // `notifications` — pertencem à Ordem de Compra e à Recepção, que não
         // estão feitas.
-        ["Procurement"] = ["Audit", "Hr"],
+        // `SharedKernel` — 2026-09-25 (ADR-068): paginação real das listagens.
+        ["Procurement"] = ["Audit", "Hr", "SharedKernel"],
 
         // `SharedKernel` — 2026-09-23 (ADR-068): Skip/Take de paginação real
         // em `ListDocuments`.
         ["Documents"] = ["Audit", "SharedKernel"],
-        ["Hr"] = ["Audit", "Documents"],
+        // `SharedKernel` — 2026-09-23 (ADR-068): Skip/Take de paginação real
+        // usa `PageRequest`, primitiva sem dono de negócio.
+        ["Hr"] = ["Audit", "Documents", "SharedKernel"],
 
         // Esqueletos (ver `modules/payroll.md`, `inventory.md`) — 2026-08-29.
         // Só o catálogo de permissões publicado e `audit`, como qualquer
@@ -128,8 +131,11 @@ public class ProjectReferenceTests
         // justificam.
         // `Hr` desde o ADR-057: quem abre a folha resolve-se a partir da conta
         // autenticada, e isso exige ler `hr`.
-        ["Payroll"] = ["Audit", "Fiscal", "Documents", "Hr"],
-        ["Inventory"] = ["Audit"],
+        // `SharedKernel` — 2026-09-25 (ADR-068): Skip/Take de paginação real
+        // em ListPayrollRuns.
+        ["Payroll"] = ["Audit", "Fiscal", "Documents", "Hr", "SharedKernel"],
+        // `SharedKernel` — 2026-09-25 (ADR-068): paginação real das listagens.
+        ["Inventory"] = ["Audit", "SharedKernel"],
 
         // `projects` ganhou Marco e Tarefa — 2026-08-30, já não é esqueleto
         // puro. `hr` entra porque atribuir uma Tarefa referencia um
@@ -150,7 +156,8 @@ public class ProjectReferenceTests
         // `documents` (ADR-009, mesmo desenho de `hr`). As direcções que
         // `modules/fleet.md` lista e que faltam — `finance`, `inventory`,
         // `notifications` — pertencem a partes ainda por implementar.
-        ["Fleet"] = ["Audit", "Hr", "Documents"],
+        // `SharedKernel` — 2026-09-25 (ADR-068): paginação real das listagens.
+        ["Fleet"] = ["Audit", "Hr", "Documents", "SharedKernel"],
 
         // `identity` compõe o catálogo de permissões a partir do que cada
         // módulo declara — cada um diz que permissões existem, `identity`
@@ -179,7 +186,9 @@ public class ProjectReferenceTests
         // composition root é que o liga ao motor de `approval`. A direcção
         // `approval → finance` é uma só, e `Modules_HaveNoDependencyCycles`
         // continua a valer — é ele que garante que assim fica.
-        ["Approval"] = ["Hr", "Audit", "Finance"],
+        // `SharedKernel` — 2026-09-25 (ADR-068): Skip/Take de paginação real
+        // em ListApprovalRequests.
+        ["Approval"] = ["Hr", "Audit", "Finance", "SharedKernel"],
 
         // `Settings` não é módulo — é camada de composição (ADR-041), sem
         // Domain nem Infrastructure própria. A regra de dependência não muda
@@ -215,7 +224,9 @@ public class ProjectReferenceTests
         // atribuído ao cliente; `Hr` resolve o `UserId` desse vendedor para o
         // notificar; `Notifications` enfileira o aviso. Nenhuma dependência a
         // `Approval` — sem SLA, sem alçada, é fila simples.
-        ["Messaging"] = ["Audit", "Commercial", "Hr", "Notifications"],
+        // `SharedKernel` — 2026-09-25 (ADR-068): Skip/Take de paginação real
+        // em ListConversations.
+        ["Messaging"] = ["Audit", "Commercial", "Hr", "Notifications", "SharedKernel"],
 
         // Quinta camada de composição (ADR-047, Analytics & IA) — tendência
         // mensal de `finance` (variante de `Dashboard`), mais actividade de

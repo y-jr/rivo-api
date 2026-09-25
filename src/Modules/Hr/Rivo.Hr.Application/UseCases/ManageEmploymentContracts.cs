@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Hr.Application.Abstractions;
 using Rivo.Hr.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Hr.Application.UseCases;
 
@@ -9,15 +10,24 @@ namespace Rivo.Hr.Application.UseCases;
 /// </summary>
 public sealed class ListEmploymentContracts(IHrStore store)
 {
-    public async Task<IReadOnlyList<EmploymentContractView>> ExecuteAsync(
+    /// <summary>
+    /// A paginação só se aplica à listagem da empresa inteira — o histórico
+    /// de um único colaborador já é naturalmente pequeno, e paginá-lo seria
+    /// cerimónia sem benefício.
+    /// </summary>
+    public async Task<(IReadOnlyList<EmploymentContractView> Items, int? TotalCount)> ExecuteAsync(
         Guid? employeeId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var contracts = employeeId is null
-            ? await store.ListContractsAsync(cancellationToken)
-            : await store.ListContractsForEmployeeAsync(employeeId.Value, cancellationToken);
+        if (employeeId is null)
+        {
+            var (contracts, total) = await store.ListContractsAsync(pagina, cancellationToken);
+            return ([.. contracts.Select(Project)], total);
+        }
 
-        return [.. contracts.Select(Project)];
+        var doColaborador = await store.ListContractsForEmployeeAsync(employeeId.Value, cancellationToken);
+        return ([.. doColaborador.Select(Project)], null);
     }
 
     internal static EmploymentContractView Project(EmploymentContract c) =>
