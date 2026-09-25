@@ -143,9 +143,19 @@ convenção angolana para esse caso não está levantada. Registado em
 | POST | `/commercial/customers` | `commercial.customers.write` |
 | POST | `/commercial/customers/{customerId}/details` | `commercial.customers.write` |
 | POST | `/commercial/customers/{customerId}/status` | `commercial.customers.write` |
+| POST | `/commercial/customers/{customerId}/account` | `commercial.customers.write` |
+| DELETE | `/commercial/customers/{customerId}/account` | `commercial.customers.write` |
+| GET | `/commercial/customers/{customerId}/account-history` | `commercial.customers.read` |
 
-**Não há `DELETE`**, e é BR-14 a aparecer na forma da API: desactiva-se pelo
-endpoint de estado.
+**Não há `DELETE` sobre o Cliente**, e é BR-14 a aparecer na forma da API:
+desactiva-se pelo endpoint de estado, nunca se elimina.
+
+O único `DELETE` do módulo (#23 do levantamento de pendências, confirmado
+como arquitectura definitiva) é sobre a **ligação à conta**, não sobre o
+Cliente — desliga a conta de utilizador do portal do cliente (ADR-055),
+mantendo o registo do Cliente intacto. É a mesma excepção estreita que
+`hr` tem em `DELETE /hr/employees/{id}/account` — nenhuma das duas apaga
+uma entidade de negócio.
 
 NIF repetido devolve **`409`** com o identificador do cliente que já existe —
 quem tentou registar quase de certeza quer trabalhar com esse, e sem o
