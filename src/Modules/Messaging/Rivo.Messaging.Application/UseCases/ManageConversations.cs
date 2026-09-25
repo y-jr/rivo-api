@@ -5,6 +5,7 @@ using Rivo.Messaging.Application.Abstractions;
 using Rivo.Messaging.Contracts;
 using Rivo.Messaging.Domain;
 using Rivo.Notifications.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Messaging.Application.UseCases;
 
@@ -210,14 +211,21 @@ public sealed class AddCustomerTicketMessage(
 /// As conversas do próprio cliente, de um dado tipo — "as minhas mensagens"
 /// ou "os meus tickets" do Portal do Cliente.
 /// </summary>
+/// <summary>
+/// Sem paginação, de propósito: só é alcançada por
+/// <see cref="Rivo.Messaging.Contracts.ICustomerMessaging"/> (via
+/// <c>CustomerMessaging</c>), e um assembly de contratos não referencia nada
+/// (nem <c>Rivo.SharedKernel.Contracts</c>) — não há por onde o chamador do
+/// outro lado do contrato pedir uma página.
+/// </summary>
 public sealed class ListMyConversations(IConversationStore store)
 {
     public async Task<IReadOnlyList<ConversationView>> ExecuteAsync(
         Guid customerId, ConversationKind kind, CancellationToken cancellationToken)
     {
-        var conversas = await store.ListByCustomerAsync(customerId, kind, cancellationToken);
+        var (conversas, _) = await store.ListByCustomerAsync(customerId, kind, pagina: null, cancellationToken);
 
-        return [.. conversas.OrderByDescending(c => c.OpenedAt).Select(ToView)];
+        return [.. conversas.Select(ToView)];
     }
 
     internal static ConversationView ToView(Conversation conversa) =>
@@ -349,13 +357,13 @@ public enum CloseConversationOutcome
 /// </summary>
 public sealed class ListConversations(IConversationStore store, ICustomerDirectory customers)
 {
-    public async Task<IReadOnlyList<ConversationSummaryView>> ExecuteAsync(
-        ConversationStatus? status, ConversationKind? kind, CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<ConversationSummaryView> Items, int? TotalCount)> ExecuteAsync(
+        ConversationStatus? status, ConversationKind? kind, PageRequest? pagina, CancellationToken cancellationToken)
     {
-        var conversas = await store.ListAsync(status, kind, cancellationToken);
+        var (conversas, total) = await store.ListAsync(status, kind, pagina, cancellationToken);
         var vistas = new List<ConversationSummaryView>(conversas.Count);
 
-        foreach (var conversa in conversas.OrderByDescending(c => c.OpenedAt))
+        foreach (var conversa in conversas)
         {
             var cliente = await customers.FindAsync(conversa.CustomerId, cancellationToken);
 
@@ -371,7 +379,7 @@ public sealed class ListConversations(IConversationStore store, ICustomerDirecto
                 conversa.Messages.Count));
         }
 
-        return vistas;
+        return (vistas, total);
     }
 }
 

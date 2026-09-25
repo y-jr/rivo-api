@@ -1,4 +1,5 @@
 using Rivo.Payroll.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Payroll.Application.Abstractions;
 
@@ -14,7 +15,12 @@ public interface IPayrollRunStore
     /// <summary>Rastreado, com itens incluídos: quem procura assim vai alterar.</summary>
     Task<PayrollRun?> FindForUpdateAsync(Guid runId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<PayrollRun>> ListAsync(CancellationToken cancellationToken);
+    /// <summary>
+    /// <paramref name="pagina"/> nulo devolve tudo, como antes de existir
+    /// paginação (ADR-068) — o total só vem preenchido quando há página.
+    /// </summary>
+    Task<(IReadOnlyList<PayrollRun> Items, int? TotalCount)> ListAsync(
+        PageRequest? pagina, CancellationToken cancellationToken);
 
     Task AddAsync(PayrollRun run, CancellationToken cancellationToken);
 

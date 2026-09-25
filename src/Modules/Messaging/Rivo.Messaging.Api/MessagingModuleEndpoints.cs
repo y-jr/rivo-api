@@ -7,6 +7,7 @@ using Rivo.Audit.Contracts;
 using Rivo.Messaging.Application.UseCases;
 using Rivo.Messaging.Contracts;
 using Rivo.Messaging.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Messaging.Api;
 
@@ -22,7 +23,8 @@ public static class MessagingModuleEndpoints
         // antes de chegar a `messaging`.
         group.MapGet("/conversations", ListAsync)
             .RequireAuthorization(MessagingPermissions.ConversationsRead)
-            .Produces<IReadOnlyList<ConversationSummaryView>>();
+            .Produces<IReadOnlyList<ConversationSummaryView>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/conversations/{conversationId:guid}", GetAsync)
             .RequireAuthorization(MessagingPermissions.ConversationsRead)
@@ -51,8 +53,27 @@ public static class MessagingModuleEndpoints
         ListConversations listConversations,
         ConversationStatus? status,
         ConversationKind? kind,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listConversations.ExecuteAsync(status, kind, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (conversas, total) = await listConversations.ExecuteAsync(status, kind, pagina, cancellationToken);
+
+        if (pagina is { } p)
+        {
+            response.Headers["X-Page"] = p.Page.ToString();
+            response.Headers["X-Page-Size"] = p.PageSize.ToString();
+            response.Headers["X-Total-Count"] = total!.Value.ToString();
+        }
+
+        return Results.Ok(conversas);
+    }
 
     private static async Task<IResult> GetAsync(
         Guid conversationId,

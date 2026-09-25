@@ -4,6 +4,7 @@ using Rivo.Hr.Contracts;
 using Rivo.Messaging.Application.Abstractions;
 using Rivo.Messaging.Domain;
 using Rivo.Notifications.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Messaging.Application.Tests;
 
@@ -31,16 +32,39 @@ internal sealed class FakeConversationStore : IConversationStore
     public Task<Conversation?> FindForUpdateAsync(Guid conversationId, CancellationToken cancellationToken) =>
         Task.FromResult(_conversations.GetValueOrDefault(conversationId));
 
-    public Task<IReadOnlyList<Conversation>> ListByCustomerAsync(
-        Guid customerId, ConversationKind? kind, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<Conversation>>(
-            [.. _conversations.Values.Where(c => c.CustomerId == customerId && (kind is null || c.Kind == kind))]);
+    public Task<(IReadOnlyList<Conversation> Items, int? TotalCount)> ListByCustomerAsync(
+        Guid customerId, ConversationKind? kind, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        var ordenadas = _conversations.Values
+            .Where(c => c.CustomerId == customerId && (kind is null || c.Kind == kind))
+            .OrderByDescending(c => c.OpenedAt).ThenBy(c => c.Id)
+            .ToList();
 
-    public Task<IReadOnlyList<Conversation>> ListAsync(
-        ConversationStatus? status, ConversationKind? kind, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<Conversation>>(
-            [.. _conversations.Values.Where(c =>
-                (status is null || c.Status == status) && (kind is null || c.Kind == kind))]);
+        return Task.FromResult(Paginar(ordenadas, pagina));
+    }
+
+    public Task<(IReadOnlyList<Conversation> Items, int? TotalCount)> ListAsync(
+        ConversationStatus? status, ConversationKind? kind, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        var ordenadas = _conversations.Values
+            .Where(c => (status is null || c.Status == status) && (kind is null || c.Kind == kind))
+            .OrderByDescending(c => c.OpenedAt).ThenBy(c => c.Id)
+            .ToList();
+
+        return Task.FromResult(Paginar(ordenadas, pagina));
+    }
+
+    private static (IReadOnlyList<Conversation> Items, int? TotalCount) Paginar(
+        List<Conversation> ordenadas, PageRequest? pagina)
+    {
+        if (pagina is not { } p)
+        {
+            return (ordenadas, null);
+        }
+
+        var fatia = ordenadas.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize).ToList();
+        return (fatia, ordenadas.Count);
+    }
 
     public Task AddAsync(Conversation conversation, CancellationToken cancellationToken)
     {

@@ -1,4 +1,5 @@
 using Rivo.Messaging.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Messaging.Application.Abstractions;
 
@@ -24,11 +25,16 @@ public interface IConversationStore
     /// <summary>Rastreada: quem a procura assim vai responder-lhe ou fechá-la.</summary>
     Task<Conversation?> FindForUpdateAsync(Guid conversationId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<Conversation>> ListByCustomerAsync(
-        Guid customerId, ConversationKind? kind, CancellationToken cancellationToken);
+    /// <summary>
+    /// <paramref name="pagina"/> nulo devolve tudo, como antes de existir
+    /// paginação (ADR-068) — o total só vem preenchido quando há página.
+    /// </summary>
+    Task<(IReadOnlyList<Conversation> Items, int? TotalCount)> ListByCustomerAsync(
+        Guid customerId, ConversationKind? kind, PageRequest? pagina, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<Conversation>> ListAsync(
-        ConversationStatus? status, ConversationKind? kind, CancellationToken cancellationToken);
+    /// <summary>Mesma nota de paginação de <see cref="ListByCustomerAsync"/>.</summary>
+    Task<(IReadOnlyList<Conversation> Items, int? TotalCount)> ListAsync(
+        ConversationStatus? status, ConversationKind? kind, PageRequest? pagina, CancellationToken cancellationToken);
 
     Task AddAsync(Conversation conversation, CancellationToken cancellationToken);
 

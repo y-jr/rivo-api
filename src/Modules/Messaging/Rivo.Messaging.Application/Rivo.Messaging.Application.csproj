@@ -15,6 +15,10 @@
 
     <!-- INotifier: enfileira o aviso de mensagem nova. -->
     <ProjectReference Include="..\..\Notifications\Rivo.Notifications.Contracts\Rivo.Notifications.Contracts.csproj" />
+
+    <!-- PageRequest/Pagination (ADR-068) — primitiva estrutural sem dono de
+         negócio, não conceito de messaging. -->
+    <ProjectReference Include="..\..\..\SharedKernel\Rivo.SharedKernel.Contracts\Rivo.SharedKernel.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

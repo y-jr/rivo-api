@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Approval.Application.Abstractions;
 using Rivo.Approval.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Approval.Infrastructure.Persistence;
 
@@ -39,9 +40,10 @@ public sealed class ApprovalStore(ApprovalDbContext context) : IApprovalStore
             .Include(r => r.Decisions)
             .FirstOrDefaultAsync(r => r.Id == requestId, cancellationToken);
 
-    public async Task<IReadOnlyList<ApprovalRequest>> ListRequestsAsync(
+    public async Task<(IReadOnlyList<ApprovalRequest> Items, int? TotalCount)> ListRequestsAsync(
         string? processType,
         Guid? pendingForEmployeeId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.Requests
@@ -75,7 +77,18 @@ public sealed class ApprovalStore(ApprovalDbContext context) : IApprovalStore
                     && a.Step == r.CurrentStep));
         }
 
-        return await query.OrderByDescending(r => r.SubmittedAt).ToListAsync(cancellationToken);
+        query = query.OrderByDescending(r => r.SubmittedAt).ThenBy(r => r.Id);
+
+        int? total = null;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            query = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        var itens = await query.ToListAsync(cancellationToken);
+        return (itens, total);
     }
 
     public async Task AddRequestAsync(ApprovalRequest request, CancellationToken cancellationToken) =>

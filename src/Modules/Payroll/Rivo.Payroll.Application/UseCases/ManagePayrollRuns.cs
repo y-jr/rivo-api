@@ -3,13 +3,15 @@ using Rivo.Fiscal.Contracts;
 using Rivo.Payroll.Application.Abstractions;
 using Rivo.Payroll.Domain;
 using Rivo.Hr.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Payroll.Application.UseCases;
 
 public sealed class ListPayrollRuns(IPayrollRunStore store)
 {
-    public async Task<IReadOnlyList<PayrollRun>> ExecuteAsync(CancellationToken cancellationToken) =>
-        await store.ListAsync(cancellationToken);
+    public async Task<(IReadOnlyList<PayrollRun> Items, int? TotalCount)> ExecuteAsync(
+        PageRequest? pagina, CancellationToken cancellationToken) =>
+        await store.ListAsync(pagina, cancellationToken);
 }
 
 public sealed class GetPayrollRun(IPayrollRunStore store)
