@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -1101,6 +1102,19 @@ public sealed record LedgerAccountRequest(
 
 public sealed record JournalRequest(string Code, string Name);
 
+/// <remarks>
+/// Piloto do #45 (pendências): campos que o cliente escreva mal ou a mais são
+/// recusados com 400 em vez de silenciosamente ignorados. Escolhido para o
+/// piloto por ser o DTO onde um nome trocado sai mais caro — vários campos
+/// opcionais (<see cref="TransactionDate"/>, <see cref="FiscalYear"/>,
+/// <see cref="Period"/>) aceitam <c>null</c>, e sem isto um erro de escrita no
+/// corpo do pedido lançava a lançamento com a data ou o período errados sem
+/// aviso nenhum. Generalizar a todos os DTOs fica por decidir — sem tráfego
+/// real do frontend para testar contra, não há como confirmar que nenhum
+/// campo hoje enviado a mais (telemetria, versões antigas) deixaria de
+/// funcionar globalmente.
+/// </remarks>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record PostEntryRequest(
     string JournalCode,
 
@@ -1117,6 +1131,8 @@ public sealed record PostEntryRequest(
     string? Type,
     IReadOnlyList<PostEntryLineRequest>? Lines);
 
+/// <remarks>Mesmo piloto do #45 que <see cref="PostEntryRequest"/> — ver ali a justificação.</remarks>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record PostEntryLineRequest(
     string AccountCode,
 
