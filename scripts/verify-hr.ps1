@@ -751,7 +751,57 @@ Test-Case "50. Corrigir sem autenticacao -> 401 nas tres rotas" {
     "401 nas tres"
 }
 
-Test-Case "51. Dados sobrevivem ao reinicio da stack" {
+Test-Case "51. Aprovar ferias actualiza o status ao aplicar o outcome (#38)" {
+    # Item #38 do levantamento de pendencias: apos decidir, GET /hr/leave
+    # continuava a mostrar "Pending". Nao ha bug -- o estado so se actualiza
+    # quando ApplyLeaveApprovalOutcome corre, por dois caminhos possiveis: o
+    # worker de reconciliacao (60s) ou este endpoint manual. Nunca havia sido
+    # testado (nenhuma suite chamava /hr/leave/{id}/approval-outcome antes
+    # deste caso) -- prova o caminho deterministico, sem depender do tempo.
+    $cargoAprovadorFerias = (Invoke-RestMethod "$base/hr/positions" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+            -Body (@{ name = "Aprovador Ferias $stamp"; hierarchyLevel = 3; grantsApprovalAuthority = $false } | ConvertTo-Json)).positionId
+
+    $aprovadorFeriasConta = New-RivoColaboradorComConta -Email "apr-ferias-$stamp@rivo.ao" -Nome "Aprovador Ferias Verify" `
+        -AdminHeaders $adminHeaders -HeadersDeAdmissao $hrHeaders -Perfil "Admin"
+
+    Invoke-RestMethod "$base/hr/employees/$($aprovadorFeriasConta.EmployeeId)/positions" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+        -Body (@{ positionId = $cargoAprovadorFerias } | ConvertTo-Json) | Out-Null
+
+    Clear-RivoApprovalPolicies -ProcessType "hr.leave_request" -Headers $adminHeaders
+    Invoke-RestMethod "$base/approval/policies" -Method Post -ContentType "application/json" -Headers $adminHeaders `
+        -Body (@{ processType = "hr.leave_request"; steps = @(@{ approverPositionId = $cargoAprovadorFerias }) } | ConvertTo-Json -Depth 5) | Out-Null
+
+    $requisitante = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+            -Body (@{ fullName = "Requisitante Ferias $stamp" } | ConvertTo-Json)).employeeId
+
+    $pedido = Invoke-RestMethod "$base/hr/leave" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+        -Body (@{ employeeId = $requisitante; type = "Annual"; startsOn = "2027-01-04"; endsOn = "2027-01-08"; reason = "Verificacao" } | ConvertTo-Json)
+
+    $leaveId = $pedido.leaveId
+    if (-not $leaveId) { throw "pedido de ferias nao criado" }
+
+    $antes = Get-RivoLista "$base/hr/leave?employeeId=$requisitante" -Headers $hrHeaders
+    $linhaAntes = $antes | Where-Object { $_.leaveId -eq $leaveId }
+    if ($linhaAntes.status -ne "Pending") { throw "estado inicial '$($linhaAntes.status)', esperado Pending" }
+
+    $requestId = $linhaAntes.approvalRequestId
+    if (-not $requestId) { throw "pedido sem processo de aprovacao associado" }
+
+    Invoke-RestMethod "$base/approval/requests/$requestId/decisions" -Method Post -ContentType "application/json" -Headers $aprovadorFeriasConta.Headers `
+        -Body (@{ action = "Approved" } | ConvertTo-Json) | Out-Null
+
+    # O caminho deterministico: o endpoint manual, sem esperar pelo worker de
+    # reconciliacao.
+    Invoke-RestMethod "$base/hr/leave/$leaveId/approval-outcome" -Method Post -Headers $hrHeaders | Out-Null
+
+    $depois = Get-RivoLista "$base/hr/leave?employeeId=$requisitante" -Headers $hrHeaders
+    $estado = ($depois | Where-Object { $_.leaveId -eq $leaveId }).status
+    if ($estado -ne "Approved") { throw "estado '$estado', esperado Approved" }
+
+    "decidido e aplicado -- GET /hr/leave mostra Approved"
+}
+
+Test-Case "52. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
