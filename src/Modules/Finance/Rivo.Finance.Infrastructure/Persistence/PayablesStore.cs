@@ -1,11 +1,28 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Infrastructure.Persistence;
 
 public sealed class PayablesStore(FinanceDbContext context) : IPayablesStore
 {
+    /// <summary>Skip/Take real (ADR-068) — ver o mesmo método em <c>LedgerStore</c>.</summary>
+    private static async Task<(IReadOnlyList<T> Items, int? TotalCount)> PaginarAsync<T>(
+        IOrderedQueryable<T> query, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        int? total = null;
+        IQueryable<T> paginada = query;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            paginada = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        return ([.. await paginada.ToListAsync(cancellationToken)], total);
+    }
+
     public async Task<BankAccount?> FindAccountAsync(Guid accountId, CancellationToken cancellationToken) =>
         await context.Accounts
             .AsNoTracking()
@@ -18,8 +35,9 @@ public sealed class PayablesStore(FinanceDbContext context) : IPayablesStore
         await context.Accounts
             .FirstOrDefaultAsync(a => a.Id == accountId, cancellationToken);
 
-    public async Task<IReadOnlyList<BankAccount>> ListAccountsAsync(
+    public Task<(IReadOnlyList<BankAccount> Items, int? TotalCount)> ListAccountsAsync(
         bool includeClosed,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.Accounts.AsNoTracking().AsQueryable();
@@ -29,7 +47,7 @@ public sealed class PayablesStore(FinanceDbContext context) : IPayablesStore
             query = query.Where(a => a.IsActive);
         }
 
-        return await query.OrderBy(a => a.Name).ToListAsync(cancellationToken);
+        return PaginarAsync(query.OrderBy(a => a.Name), pagina, cancellationToken);
     }
 
     public async Task AddAccountAsync(BankAccount account, CancellationToken cancellationToken) =>
@@ -104,8 +122,9 @@ public sealed class PayablesStore(FinanceDbContext context) : IPayablesStore
         await context.PurchaseInvoices
             .FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 
-    public async Task<IReadOnlyList<PurchaseInvoice>> ListPurchaseInvoicesAsync(
+    public Task<(IReadOnlyList<PurchaseInvoice> Items, int? TotalCount)> ListPurchaseInvoicesAsync(
         DateOnly? dueBefore,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.PurchaseInvoices.AsNoTracking().AsQueryable();
@@ -116,7 +135,7 @@ public sealed class PayablesStore(FinanceDbContext context) : IPayablesStore
         }
 
         // Por vencimento: é a ordem da fila de pagamentos.
-        return await query.OrderBy(i => i.DueOn).ToListAsync(cancellationToken);
+        return PaginarAsync(query.OrderBy(i => i.DueOn), pagina, cancellationToken);
     }
 
     public Task<bool> PurchaseInvoiceExistsAsync(
@@ -144,8 +163,9 @@ public sealed class PayablesStore(FinanceDbContext context) : IPayablesStore
         await context.PaymentRequests
             .FirstOrDefaultAsync(r => r.Id == requestId, cancellationToken);
 
-    public async Task<IReadOnlyList<PaymentRequest>> ListPaymentRequestsAsync(
+    public Task<(IReadOnlyList<PaymentRequest> Items, int? TotalCount)> ListPaymentRequestsAsync(
         Guid? purchaseInvoiceId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.PaymentRequests.AsNoTracking().AsQueryable();
@@ -155,7 +175,10 @@ public sealed class PayablesStore(FinanceDbContext context) : IPayablesStore
             query = query.Where(r => r.PurchaseInvoiceId == factura);
         }
 
-        return await query.OrderByDescending(r => r.RequestedOn).ToListAsync(cancellationToken);
+        return PaginarAsync(
+            query.OrderByDescending(r => r.RequestedOn).ThenBy(r => r.Id),
+            pagina,
+            cancellationToken);
     }
 
     public async Task<decimal> CommittedAsync(Guid purchaseInvoiceId, CancellationToken cancellationToken) =>

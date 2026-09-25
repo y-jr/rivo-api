@@ -1,4 +1,5 @@
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.Abstractions;
 
@@ -18,7 +19,8 @@ public interface ISalesInvoiceStore
         string code,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<DocumentSeries>> ListSeriesAsync(CancellationToken cancellationToken);
+    Task<(IReadOnlyList<DocumentSeries> Items, int? TotalCount)> ListSeriesAsync(
+        PageRequest? pagina, CancellationToken cancellationToken);
 
     Task AddSeriesAsync(DocumentSeries series, CancellationToken cancellationToken);
 
@@ -30,10 +32,11 @@ public interface ISalesInvoiceStore
     /// <summary>Rastreada: quem a procura assim vai anulá-la.</summary>
     Task<SalesInvoice?> FindForUpdateAsync(Guid invoiceId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<SalesInvoice>> ListAsync(
+    Task<(IReadOnlyList<SalesInvoice> Items, int? TotalCount)> ListAsync(
         Guid? customerId,
         DateOnly? from,
         DateOnly? to,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     Task AddAsync(SalesInvoice invoice, CancellationToken cancellationToken);
@@ -109,8 +112,9 @@ public interface ISalesInvoiceStore
 
     Task<CreditNote?> FindCreditNoteForUpdateAsync(Guid creditNoteId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<CreditNote>> ListCreditNotesAsync(
+    Task<(IReadOnlyList<CreditNote> Items, int? TotalCount)> ListCreditNotesAsync(
         Guid? salesInvoiceId,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -127,10 +131,11 @@ public interface ISalesInvoiceStore
 
     Task<Receipt?> FindReceiptForUpdateAsync(Guid receiptId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<Receipt>> ListReceiptsAsync(
+    Task<(IReadOnlyList<Receipt> Items, int? TotalCount)> ListReceiptsAsync(
         Guid? customerId,
         DateOnly? from,
         DateOnly? to,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     Task AddReceiptAsync(Receipt receipt, CancellationToken cancellationToken);
@@ -140,9 +145,10 @@ public interface ISalesInvoiceStore
     /// <summary>Rastreada: quem a procura assim vai confirmar ou rejeitar.</summary>
     Task<PaymentClaim?> FindPaymentClaimForUpdateAsync(Guid claimId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<PaymentClaim>> ListPaymentClaimsAsync(
+    Task<(IReadOnlyList<PaymentClaim> Items, int? TotalCount)> ListPaymentClaimsAsync(
         Guid? customerId,
         PaymentClaimStatus? status,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     Task AddPaymentClaimAsync(PaymentClaim claim, CancellationToken cancellationToken);

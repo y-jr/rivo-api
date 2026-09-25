@@ -1,11 +1,28 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Infrastructure.Persistence;
 
 public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceStore
 {
+    /// <summary>Skip/Take real (ADR-068) — ver o mesmo método em <c>LedgerStore</c>.</summary>
+    private static async Task<(IReadOnlyList<T> Items, int? TotalCount)> PaginarAsync<T>(
+        IOrderedQueryable<T> query, PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        int? total = null;
+        IQueryable<T> paginada = query;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            paginada = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        return ([.. await paginada.ToListAsync(cancellationToken)], total);
+    }
+
     public async Task<DocumentSeries?> FindSeriesForAllocationAsync(
         DocumentType type,
         string code,
@@ -16,12 +33,12 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
         await context.Series
             .FirstOrDefaultAsync(s => s.Type == type && s.Code == code, cancellationToken);
 
-    public async Task<IReadOnlyList<DocumentSeries>> ListSeriesAsync(CancellationToken cancellationToken) =>
-        await context.Series
-            .AsNoTracking()
-            .OrderBy(s => s.Type)
-            .ThenBy(s => s.Code)
-            .ToListAsync(cancellationToken);
+    public Task<(IReadOnlyList<DocumentSeries> Items, int? TotalCount)> ListSeriesAsync(
+        PageRequest? pagina, CancellationToken cancellationToken) =>
+        PaginarAsync(
+            context.Series.AsNoTracking().OrderBy(s => s.Type).ThenBy(s => s.Code),
+            pagina,
+            cancellationToken);
 
     public async Task AddSeriesAsync(DocumentSeries series, CancellationToken cancellationToken) =>
         await context.Series.AddAsync(series, cancellationToken);
@@ -43,10 +60,11 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
             .Include(i => i.Lines)
             .FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
 
-    public async Task<IReadOnlyList<SalesInvoice>> ListAsync(
+    public Task<(IReadOnlyList<SalesInvoice> Items, int? TotalCount)> ListAsync(
         Guid? customerId,
         DateOnly? from,
         DateOnly? to,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.Invoices.AsNoTracking().Include(i => i.Lines).AsQueryable();
@@ -69,10 +87,10 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
         // Anuladas incluídas de propósito: continuam a existir e a contar para
         // a sequência (BR-14). Esconder uma factura anulada faria a numeração
         // parecer ter buracos.
-        return await query
-            .OrderByDescending(i => i.IssuedOn)
-            .ThenByDescending(i => i.Number.Sequence)
-            .ToListAsync(cancellationToken);
+        return PaginarAsync(
+            query.OrderByDescending(i => i.IssuedOn).ThenByDescending(i => i.Number.Sequence),
+            pagina,
+            cancellationToken);
     }
 
     public async Task AddAsync(SalesInvoice invoice, CancellationToken cancellationToken) =>
@@ -243,8 +261,9 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
             .Include(n => n.Lines)
             .FirstOrDefaultAsync(n => n.Id == creditNoteId, cancellationToken);
 
-    public async Task<IReadOnlyList<CreditNote>> ListCreditNotesAsync(
+    public Task<(IReadOnlyList<CreditNote> Items, int? TotalCount)> ListCreditNotesAsync(
         Guid? salesInvoiceId,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.CreditNotes.AsNoTracking().Include(n => n.Lines).AsQueryable();
@@ -254,7 +273,10 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
             query = query.Where(n => n.SalesInvoiceId == factura);
         }
 
-        return await query.OrderByDescending(n => n.IssuedOn).ToListAsync(cancellationToken);
+        return PaginarAsync(
+            query.OrderByDescending(n => n.IssuedOn).ThenByDescending(n => n.Number.Sequence),
+            pagina,
+            cancellationToken);
     }
 
     public async Task<IReadOnlyList<CreditNote>> ListCreditNotesForCustomerAsync(
@@ -292,10 +314,11 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
             .Include(r => r.Lines)
             .FirstOrDefaultAsync(r => r.Id == receiptId, cancellationToken);
 
-    public async Task<IReadOnlyList<Receipt>> ListReceiptsAsync(
+    public Task<(IReadOnlyList<Receipt> Items, int? TotalCount)> ListReceiptsAsync(
         Guid? customerId,
         DateOnly? from,
         DateOnly? to,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.Receipts.AsNoTracking().Include(r => r.Lines).AsQueryable();
@@ -315,7 +338,10 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
             query = query.Where(r => r.ReceivedOn <= fim);
         }
 
-        return await query.OrderByDescending(r => r.ReceivedOn).ToListAsync(cancellationToken);
+        return PaginarAsync(
+            query.OrderByDescending(r => r.ReceivedOn).ThenByDescending(r => r.Number.Sequence),
+            pagina,
+            cancellationToken);
     }
 
     public async Task AddReceiptAsync(Receipt receipt, CancellationToken cancellationToken) =>
@@ -330,9 +356,10 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
         await context.PaymentClaims
             .FirstOrDefaultAsync(c => c.Id == claimId, cancellationToken);
 
-    public async Task<IReadOnlyList<PaymentClaim>> ListPaymentClaimsAsync(
+    public Task<(IReadOnlyList<PaymentClaim> Items, int? TotalCount)> ListPaymentClaimsAsync(
         Guid? customerId,
         PaymentClaimStatus? status,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
         var query = context.PaymentClaims.AsNoTracking().AsQueryable();
@@ -347,7 +374,10 @@ public sealed class SalesInvoiceStore(FinanceDbContext context) : ISalesInvoiceS
             query = query.Where(c => c.Status == estado);
         }
 
-        return await query.OrderByDescending(c => c.SubmittedAt).ToListAsync(cancellationToken);
+        return PaginarAsync(
+            query.OrderByDescending(c => c.SubmittedAt).ThenBy(c => c.Id),
+            pagina,
+            cancellationToken);
     }
 
     public async Task AddPaymentClaimAsync(PaymentClaim claim, CancellationToken cancellationToken) =>

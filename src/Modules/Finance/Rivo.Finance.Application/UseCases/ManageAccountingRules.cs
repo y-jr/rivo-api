@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Finance.Application.Abstractions;
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.UseCases;
 
@@ -121,13 +122,14 @@ public enum CreateAccountingRuleOutcome
 
 public sealed class ListAccountingRules(ILedgerStore store)
 {
-    public async Task<IReadOnlyList<AccountingRuleView>> ExecuteAsync(
+    public async Task<(IReadOnlyList<AccountingRuleView> Items, int? TotalCount)> ExecuteAsync(
         bool includeInactive,
+        PageRequest? pagina,
         CancellationToken cancellationToken)
     {
-        var regras = await store.ListAccountingRulesAsync(includeInactive, cancellationToken);
+        var (regras, total) = await store.ListAccountingRulesAsync(includeInactive, pagina, cancellationToken);
 
-        return [.. regras.Select(r => new AccountingRuleView(
+        return ([.. regras.Select(r => new AccountingRuleView(
             r.Id,
             r.Code,
             r.Name,
@@ -137,7 +139,7 @@ public sealed class ListAccountingRules(ILedgerStore store)
             r.EffectiveTo,
             r.IsActive,
             [.. r.Lines.OrderBy(l => l.AccountCode).Select(l =>
-                new AccountingRuleLineView(l.AccountCode, l.Side.ToString(), l.Amount.ToString(), l.Description))]))];
+                new AccountingRuleLineView(l.AccountCode, l.Side.ToString(), l.Amount.ToString(), l.Description))]))], total);
     }
 }
 

@@ -1,6 +1,7 @@
 using Rivo.Finance.Application.UseCases;
 using Rivo.Finance.Contracts;
 using Rivo.Finance.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Finance.Application.Tests;
 
@@ -317,5 +318,32 @@ public class BudgetAvailabilityTests
 
         Assert.Equal(5, todos.Length);
         Assert.Single(todos, o => o is BudgetCheckOutcome.Within);
+    }
+
+    // ---- paginação (ADR-068, item #10) ----
+
+    [Fact]
+    public async Task ListagemDeOrcamentosComPagina_DevolveFatiaEOTotal()
+    {
+        var centroA = Centro(code: "CC-A");
+        var centroB = Centro(code: "CC-B");
+        var centroC = Centro(code: "CC-C");
+
+        var store = new FakePlanningStore()
+            .With(centroA).With(OrcamentoAprovado(centroA.Id))
+            .With(centroB).With(OrcamentoAprovado(centroB.Id))
+            .With(centroC).With(OrcamentoAprovado(centroC.Id));
+
+        var (pagina1, total) = await new ListBudgets(store)
+            .ExecuteAsync(costCentreId: null, fiscalYear: null, new PageRequest(1, 2), CancellationToken.None);
+
+        Assert.Equal(3, total);
+        Assert.Equal(2, pagina1.Count);
+
+        var (semPagina, totalSemPagina) = await new ListBudgets(store)
+            .ExecuteAsync(costCentreId: null, fiscalYear: null, null, CancellationToken.None);
+
+        Assert.Equal(3, semPagina.Count);
+        Assert.Null(totalSemPagina);
     }
 }
