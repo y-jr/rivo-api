@@ -4,6 +4,7 @@ using Rivo.Hr.Contracts;
 using Rivo.Messaging.Application.UseCases;
 using Rivo.Messaging.Contracts;
 using Rivo.Messaging.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Messaging.Application.Tests;
 
@@ -131,8 +132,8 @@ public class ManageConversationsTests
 
         Assert.NotEqual(primeiro.ConversationId, segundo.ConversationId);
 
-        var tickets = await store.ListByCustomerAsync(customerId, ConversationKind.Ticket, CancellationToken.None);
-        Assert.Equal(2, tickets.Count);
+        var tickets = await store.ListByCustomerAsync(customerId, ConversationKind.Ticket, null, CancellationToken.None);
+        Assert.Equal(2, tickets.Items.Count);
     }
 
     [Fact]
@@ -304,8 +305,9 @@ public class ManageConversationsTests
 
         var list = new ListConversations(store, customers);
 
-        var resultado = await list.ExecuteAsync(null, null, CancellationToken.None);
+        var (resultado, total) = await list.ExecuteAsync(null, null, null, CancellationToken.None);
 
+        Assert.Null(total);
         var vista = Assert.Single(resultado);
         Assert.Equal("Kianda Lda", vista.CustomerName);
         Assert.Equal(vendedorId, vista.AssignedToEmployeeId);
@@ -321,7 +323,7 @@ public class ManageConversationsTests
         var store = new FakeConversationStore().With(aberta).With(fechada);
         var list = new ListConversations(store, new FakeCustomerDirectory());
 
-        var resultado = await list.ExecuteAsync(ConversationStatus.Open, null, CancellationToken.None);
+        var (resultado, _) = await list.ExecuteAsync(ConversationStatus.Open, null, null, CancellationToken.None);
 
         Assert.Single(resultado);
         Assert.Equal(aberta.Id, resultado[0].ConversationId);
@@ -337,7 +339,7 @@ public class ManageConversationsTests
         var store = new FakeConversationStore().With(mensagem).With(ticket);
         var list = new ListConversations(store, new FakeCustomerDirectory());
 
-        var resultado = await list.ExecuteAsync(null, ConversationKind.Ticket, CancellationToken.None);
+        var (resultado, _) = await list.ExecuteAsync(null, ConversationKind.Ticket, null, CancellationToken.None);
 
         var vista = Assert.Single(resultado);
         Assert.Equal(ticket.Id, vista.ConversationId);
@@ -381,5 +383,54 @@ public class ManageConversationsTests
         Assert.Equal(ticket.Id, vista.ConversationId);
         Assert.Equal("Ticket", vista.Kind);
         Assert.Equal("Problema com login", vista.Subject);
+    }
+
+    // ---- Paginação (ADR-068, item #10) ----
+
+    [Fact]
+    public async Task ListConversations_SemPagina_ContinuaADevolverTudo()
+    {
+        var store = new FakeConversationStore();
+
+        for (var i = 0; i < 5; i++)
+        {
+            store.With(Conversation.OpenMessage(Guid.CreateVersion7(), Agora.AddMinutes(i)));
+        }
+
+        var list = new ListConversations(store, new FakeCustomerDirectory());
+
+        var (resultado, total) = await list.ExecuteAsync(null, null, null, CancellationToken.None);
+
+        Assert.Equal(5, resultado.Count);
+        Assert.Null(total);
+    }
+
+    [Fact]
+    public async Task ListConversations_ComPagina_DevolveFatiaOrdenadaEOTotal()
+    {
+        var store = new FakeConversationStore();
+        var abertas = new List<Guid>();
+
+        for (var i = 0; i < 5; i++)
+        {
+            var conversa = Conversation.OpenMessage(Guid.CreateVersion7(), Agora.AddMinutes(i));
+            abertas.Add(conversa.Id);
+            store.With(conversa);
+        }
+
+        var list = new ListConversations(store, new FakeCustomerDirectory());
+
+        // Mais recente primeiro (OpenedAt descendente) — a mesma ordem do Store real.
+        var (pagina1, total1) = await list.ExecuteAsync(null, null, new PageRequest(1, 2), CancellationToken.None);
+
+        Assert.Equal(5, total1);
+        Assert.Equal(2, pagina1.Count);
+        Assert.Equal(abertas[4], pagina1[0].ConversationId);
+        Assert.Equal(abertas[3], pagina1[1].ConversationId);
+
+        var (ultimaPagina, total3) = await list.ExecuteAsync(null, null, new PageRequest(3, 2), CancellationToken.None);
+
+        Assert.Equal(5, total3);
+        Assert.Equal(abertas[0], Assert.Single(ultimaPagina).ConversationId);
     }
 }

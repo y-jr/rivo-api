@@ -1,4 +1,5 @@
 using Rivo.Approval.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Approval.Application.Abstractions;
 
@@ -34,9 +35,14 @@ public interface IApprovalStore
     /// </summary>
     Task<ApprovalRequest?> FindRequestAsync(Guid requestId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<ApprovalRequest>> ListRequestsAsync(
+    /// <summary>
+    /// <paramref name="pagina"/> nulo devolve tudo, como antes de existir
+    /// paginação (ADR-068) — o total só vem preenchido quando há página.
+    /// </summary>
+    Task<(IReadOnlyList<ApprovalRequest> Items, int? TotalCount)> ListRequestsAsync(
         string? processType,
         Guid? pendingForEmployeeId,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     Task AddRequestAsync(ApprovalRequest request, CancellationToken cancellationToken);

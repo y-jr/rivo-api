@@ -1,6 +1,8 @@
 using Rivo.Payroll.Application;
 using Rivo.Payroll.Application.Abstractions;
+using Rivo.Payroll.Application.UseCases;
 using Rivo.Payroll.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Payroll.Application.Tests;
 
@@ -13,6 +15,13 @@ internal sealed class FakePayrollRunStore : IPayrollRunStore
 {
     private readonly List<ApprovedPayrollItem> _aprovados = [];
     private readonly List<PayrollItemDocument> _documentos = [];
+    private readonly List<PayrollRun> _runs = [];
+
+    public FakePayrollRunStore WithRun(PayrollRun run)
+    {
+        _runs.Add(run);
+        return this;
+    }
 
     /// <summary>Os identificadores com que o lote foi pedido, para provar que é um lote.</summary>
     public List<IReadOnlyList<Guid>> PedidosDeDocumentos { get; } = [];
@@ -54,8 +63,21 @@ internal sealed class FakePayrollRunStore : IPayrollRunStore
     public Task<PayrollRun?> FindForUpdateAsync(Guid runId, CancellationToken cancellationToken) =>
         Task.FromResult<PayrollRun?>(null);
 
-    public Task<IReadOnlyList<PayrollRun>> ListAsync(CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<PayrollRun>>([]);
+    public Task<(IReadOnlyList<PayrollRun> Items, int? TotalCount)> ListAsync(
+        PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        var ordenadas = _runs
+            .OrderByDescending(r => r.Year).ThenByDescending(r => r.Month).ThenBy(r => r.Id)
+            .ToList();
+
+        if (pagina is not { } p)
+        {
+            return Task.FromResult<(IReadOnlyList<PayrollRun>, int?)>((ordenadas, null));
+        }
+
+        var fatia = ordenadas.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize).ToList();
+        return Task.FromResult<(IReadOnlyList<PayrollRun>, int?)>((fatia, ordenadas.Count));
+    }
 
     public Task AddAsync(PayrollRun run, CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -186,5 +208,50 @@ public class PayrollSelfServiceTests
         var recibos = await new PayrollSelfService(store).ListPayslipsAsync(Colaborador, CancellationToken.None);
 
         Assert.Single(recibos);
+    }
+
+    // ---- Paginação (ADR-068, item #10) ----
+
+    [Fact]
+    public async Task ListPayrollRuns_SemPagina_ContinuaADevolverTudo()
+    {
+        var store = new FakePayrollRunStore();
+
+        for (var mes = 1; mes <= 5; mes++)
+        {
+            store.WithRun(PayrollRun.Open(2026, mes, Guid.NewGuid()));
+        }
+
+        var (folhas, total) = await new ListPayrollRuns(store).ExecuteAsync(null, CancellationToken.None);
+
+        Assert.Equal(5, folhas.Count);
+        Assert.Null(total);
+    }
+
+    [Fact]
+    public async Task ListPayrollRuns_ComPagina_DevolveFatiaOrdenadaEOTotal()
+    {
+        var store = new FakePayrollRunStore();
+        var folhas = new List<PayrollRun>();
+
+        for (var mes = 1; mes <= 5; mes++)
+        {
+            var folha = PayrollRun.Open(2026, mes, Guid.NewGuid());
+            folhas.Add(folha);
+            store.WithRun(folha);
+        }
+
+        // Mais recente primeiro (Year/Month descendente) — a mesma ordem do Store real.
+        var (pagina1, total1) = await new ListPayrollRuns(store).ExecuteAsync(
+            new PageRequest(1, 2), CancellationToken.None);
+
+        Assert.Equal(5, total1);
+        Assert.Equal([folhas[4].Id, folhas[3].Id], pagina1.Select(r => r.Id));
+
+        var (ultimaPagina, total3) = await new ListPayrollRuns(store).ExecuteAsync(
+            new PageRequest(3, 2), CancellationToken.None);
+
+        Assert.Equal(5, total3);
+        Assert.Equal(folhas[0].Id, Assert.Single(ultimaPagina).Id);
     }
 }

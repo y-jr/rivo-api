@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Payroll.Application.Abstractions;
 using Rivo.Payroll.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Payroll.Infrastructure.Persistence;
 
@@ -17,12 +18,26 @@ public sealed class PayrollRunStore(PayrollDbContext context) : IPayrollRunStore
             .Include(r => r.Items)
             .FirstOrDefaultAsync(r => r.Id == runId, cancellationToken);
 
-    public async Task<IReadOnlyList<PayrollRun>> ListAsync(CancellationToken cancellationToken) =>
-        await context.Runs
+    public async Task<(IReadOnlyList<PayrollRun> Items, int? TotalCount)> ListAsync(
+        PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        var query = context.Runs
             .AsNoTracking()
             .Include(r => r.Items)
-            .OrderByDescending(r => r.Year).ThenByDescending(r => r.Month)
-            .ToListAsync(cancellationToken);
+            .OrderByDescending(r => r.Year).ThenByDescending(r => r.Month).ThenBy(r => r.Id)
+            .AsQueryable();
+
+        int? total = null;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            query = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        var itens = await query.ToListAsync(cancellationToken);
+        return (itens, total);
+    }
 
     public async Task AddAsync(PayrollRun run, CancellationToken cancellationToken) =>
         await context.Runs.AddAsync(run, cancellationToken);

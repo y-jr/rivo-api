@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Rivo.Approval.Application.UseCases;
 using Rivo.Approval.Contracts;
 using Rivo.Audit.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Approval.Api;
 
@@ -35,7 +36,8 @@ public static class ApprovalModuleEndpoints
 
         group.MapGet("/requests", ListRequestsAsync)
             .RequireAuthorization(ApprovalPermissions.RequestsRead)
-            .Produces<IReadOnlyList<ApprovalStatusView>>();
+            .Produces<IReadOnlyList<ApprovalStatusView>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/requests/{requestId:guid}", GetRequestAsync)
             .RequireAuthorization(ApprovalPermissions.RequestsRead)
@@ -126,8 +128,27 @@ public static class ApprovalModuleEndpoints
         ListApprovalRequests listRequests,
         string? processType,
         Guid? pendingFor,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listRequests.ExecuteAsync(processType, pendingFor, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (pedidos, total) = await listRequests.ExecuteAsync(processType, pendingFor, pagina, cancellationToken);
+
+        if (pagina is { } p)
+        {
+            response.Headers["X-Page"] = p.Page.ToString();
+            response.Headers["X-Page-Size"] = p.PageSize.ToString();
+            response.Headers["X-Total-Count"] = total!.Value.ToString();
+        }
+
+        return Results.Ok(pedidos);
+    }
 
     private static async Task<IResult> GetRequestAsync(
         Guid requestId,
