@@ -4,6 +4,9 @@
     <ProjectReference Include="..\Rivo.Documents.Domain\Rivo.Documents.Domain.csproj" />
     <ProjectReference Include="..\Rivo.Documents.Contracts\Rivo.Documents.Contracts.csproj" />
     <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
+    <!-- PageRequest/Pagination (ADR-068) — primitiva estrutural sem dono de
+         negócio, não conceito de documents. -->
+    <ProjectReference Include="..\..\..\SharedKernel\Rivo.SharedKernel.Contracts\Rivo.SharedKernel.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

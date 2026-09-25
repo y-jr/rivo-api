@@ -4,6 +4,9 @@
     <ProjectReference Include="..\Rivo.Commercial.Domain\Rivo.Commercial.Domain.csproj" />
     <ProjectReference Include="..\Rivo.Commercial.Contracts\Rivo.Commercial.Contracts.csproj" />
     <ProjectReference Include="..\..\Audit\Rivo.Audit.Contracts\Rivo.Audit.Contracts.csproj" />
+    <!-- PageRequest/Pagination (ADR-068) — primitiva estrutural sem dono de
+         negócio, não conceito de commercial. -->
+    <ProjectReference Include="..\..\..\SharedKernel\Rivo.SharedKernel.Contracts\Rivo.SharedKernel.Contracts.csproj" />
 
     <!-- IEmployeeDirectory: valida o vendedor responsável antes de o
          atribuir (ADR-045). -->

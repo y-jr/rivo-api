@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Rivo.Fiscal.Application.Abstractions;
 using Rivo.Fiscal.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Fiscal.Infrastructure.Persistence;
 
@@ -26,13 +27,27 @@ public sealed class TaxRateStore(FiscalDbContext context) : ITaxRateStore
             .Include(s => s.Versions)
             .FirstOrDefaultAsync(s => s.Id == scheduleId, cancellationToken);
 
-    public async Task<IReadOnlyList<TaxRateSchedule>> ListAsync(CancellationToken cancellationToken) =>
-        await context.Schedules
+    public async Task<(IReadOnlyList<TaxRateSchedule> Items, int? TotalCount)> ListAsync(
+        PageRequest? pagina, CancellationToken cancellationToken)
+    {
+        var query = context.Schedules
             .AsNoTracking()
             .Include(s => s.Versions)
             .OrderBy(s => s.Kind)
             .ThenBy(s => s.Code)
-            .ToListAsync(cancellationToken);
+            .AsQueryable();
+
+        int? total = null;
+
+        if (pagina is { } p)
+        {
+            total = await query.CountAsync(cancellationToken);
+            query = query.Skip((p.Page - 1) * p.PageSize).Take(p.PageSize);
+        }
+
+        var itens = await query.ToListAsync(cancellationToken);
+        return (itens, total);
+    }
 
     public async Task AddAsync(TaxRateSchedule schedule, CancellationToken cancellationToken) =>
         await context.Schedules.AddAsync(schedule, cancellationToken);

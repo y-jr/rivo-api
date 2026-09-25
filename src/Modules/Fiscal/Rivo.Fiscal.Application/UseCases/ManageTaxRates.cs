@@ -2,17 +2,19 @@ using Rivo.Audit.Contracts;
 using Rivo.Fiscal.Application.Abstractions;
 using Rivo.Fiscal.Contracts;
 using Rivo.Fiscal.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Fiscal.Application.UseCases;
 
 /// <summary>Lista as séries de taxa e as suas versões.</summary>
 public sealed class ListTaxRates(ITaxRateStore store)
 {
-    public async Task<IReadOnlyList<TaxRateScheduleView>> ExecuteAsync(CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<TaxRateScheduleView> Items, int? TotalCount)> ExecuteAsync(
+        PageRequest? pagina, CancellationToken cancellationToken)
     {
-        var series = await store.ListAsync(cancellationToken);
+        var (series, total) = await store.ListAsync(pagina, cancellationToken);
 
-        return [.. series.Select(ToView)];
+        return ([.. series.Select(ToView)], total);
     }
 
     internal static TaxRateScheduleView ToView(TaxRateSchedule schedule) =>

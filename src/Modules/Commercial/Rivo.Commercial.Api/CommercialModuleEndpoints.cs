@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Rivo.Audit.Contracts;
 using Rivo.Commercial.Application.UseCases;
 using Rivo.Commercial.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Commercial.Api;
 
@@ -17,7 +18,8 @@ public static class CommercialModuleEndpoints
 
         group.MapGet("/customers", ListAsync)
             .RequireAuthorization(CommercialPermissions.CustomersRead)
-            .Produces<IReadOnlyList<CustomerListItem>>();
+            .Produces<IReadOnlyList<CustomerListItem>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/customers/{customerId:guid}", GetAsync)
             .RequireAuthorization(CommercialPermissions.CustomersRead)
@@ -81,8 +83,27 @@ public static class CommercialModuleEndpoints
     private static async Task<IResult> ListAsync(
         ListCustomers listCustomers,
         bool? includeInactive,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listCustomers.ExecuteAsync(includeInactive ?? false, cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (clientes, total) = await listCustomers.ExecuteAsync(includeInactive ?? false, pagina, cancellationToken);
+
+        if (pagina is { } p)
+        {
+            response.Headers["X-Page"] = p.Page.ToString();
+            response.Headers["X-Page-Size"] = p.PageSize.ToString();
+            response.Headers["X-Total-Count"] = total!.Value.ToString();
+        }
+
+        return Results.Ok(clientes);
+    }
 
     private static async Task<IResult> GetAsync(
         Guid customerId,

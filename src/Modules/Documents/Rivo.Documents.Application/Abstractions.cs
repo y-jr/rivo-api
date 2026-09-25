@@ -1,4 +1,5 @@
 using Rivo.Documents.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Documents.Application;
 
@@ -43,11 +44,12 @@ public interface IDocumentRepository
     /// sem tecto, esta rota cresce com o arquivo inteiro e o primeiro ano de
     /// uso torna-a inutilizável.
     /// </param>
-    Task<IReadOnlyList<Document>> ListAsync(
+    Task<(IReadOnlyList<Document> Items, int? TotalCount)> ListAsync(
         string? category,
         DateOnly? from,
         DateOnly? to,
         int limit,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     Task AddAsync(Document document, CancellationToken cancellationToken);

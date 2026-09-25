@@ -1,6 +1,7 @@
 using Rivo.Audit.Contracts;
 using Rivo.Projects.Application.Abstractions;
 using Rivo.Projects.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Projects.Application.UseCases;
 
@@ -55,10 +56,11 @@ internal static class ProjectViews
 
 public sealed class ListProjects(IProjectStore store)
 {
-    public async Task<IReadOnlyList<ProjectView>> ExecuteAsync(bool includeClosed, CancellationToken cancellationToken)
+    public async Task<(IReadOnlyList<ProjectView> Items, int? TotalCount)> ExecuteAsync(
+        bool includeClosed, PageRequest? pagina, CancellationToken cancellationToken)
     {
-        var projectos = await store.ListAsync(includeClosed, cancellationToken);
-        return [.. projectos.Select(ProjectViews.ToView)];
+        var (projectos, total) = await store.ListAsync(includeClosed, pagina, cancellationToken);
+        return ([.. projectos.Select(ProjectViews.ToView)], total);
     }
 }
 

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Rivo.Audit.Contracts;
 using Rivo.Fiscal.Application.UseCases;
 using Rivo.Fiscal.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Fiscal.Api;
 
@@ -17,7 +18,8 @@ public static class FiscalModuleEndpoints
 
         group.MapGet("/tax-rates", ListAsync)
             .RequireAuthorization(FiscalPermissions.RatesRead)
-            .Produces<IReadOnlyList<TaxRateScheduleView>>();
+            .Produces<IReadOnlyList<TaxRateScheduleView>>()
+            .ProducesValidationProblem();
 
         // Escrita de taxa é configuração sensível: altera o valor de todas as
         // facturas emitidas a partir da data escolhida (ADR-011 §6).
@@ -179,8 +181,27 @@ public static class FiscalModuleEndpoints
 
     private static async Task<IResult> ListAsync(
         ListTaxRates listRates,
-        CancellationToken cancellationToken) =>
-        Results.Ok(await listRates.ExecuteAsync(cancellationToken));
+        int? page,
+        int? pageSize,
+        HttpResponse response,
+        CancellationToken cancellationToken)
+    {
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (itens, total) = await listRates.ExecuteAsync(pagina, cancellationToken);
+
+        if (pagina is { } p)
+        {
+            response.Headers["X-Page"] = p.Page.ToString();
+            response.Headers["X-Page-Size"] = p.PageSize.ToString();
+            response.Headers["X-Total-Count"] = total!.Value.ToString();
+        }
+
+        return Results.Ok(itens);
+    }
 
     private static async Task<IResult> OpenScheduleAsync(
         OpenScheduleRequest request,

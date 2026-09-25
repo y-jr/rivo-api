@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Rivo.Audit.Contracts;
 using Rivo.Projects.Application.UseCases;
 using Rivo.Projects.Contracts;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Projects.Api;
 
@@ -17,7 +18,8 @@ public static class ProjectsModuleEndpoints
 
         group.MapGet("/", ListAsync)
             .RequireAuthorization(ProjectsPermissions.ProjectsRead)
-            .Produces<IReadOnlyList<ProjectView>>();
+            .Produces<IReadOnlyList<ProjectView>>()
+            .ProducesValidationProblem();
 
         group.MapGet("/{projectId:guid}", GetAsync)
             .RequireAuthorization(ProjectsPermissions.ProjectsRead)
@@ -103,9 +105,25 @@ public static class ProjectsModuleEndpoints
     private static async Task<IResult> ListAsync(
         ListProjects listProjects,
         bool? includeClosed,
+        int? page,
+        int? pageSize,
+        HttpResponse response,
         CancellationToken cancellationToken)
     {
-        var projectos = await listProjects.ExecuteAsync(includeClosed ?? false, cancellationToken);
+        if (!Pagination.TryParse(page, pageSize, out var pagina, out var erro))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]> { ["pagina"] = [erro!] });
+        }
+
+        var (projectos, total) = await listProjects.ExecuteAsync(includeClosed ?? false, pagina, cancellationToken);
+
+        if (pagina is { } p)
+        {
+            response.Headers["X-Page"] = p.Page.ToString();
+            response.Headers["X-Page-Size"] = p.PageSize.ToString();
+            response.Headers["X-Total-Count"] = total!.Value.ToString();
+        }
+
         return Results.Ok(projectos);
     }
 

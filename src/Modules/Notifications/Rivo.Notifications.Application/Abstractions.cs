@@ -1,4 +1,5 @@
 using Rivo.Notifications.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Notifications.Application;
 
@@ -8,10 +9,15 @@ public interface INotificationStore
 
     Task<Notification?> FindAsync(Guid notificationId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<Notification>> ListForRecipientAsync(
+    /// <summary>
+    /// Sem <paramref name="pagina"/>, mantém o comportamento antigo de
+    /// <paramref name="limit"/> (ADR-068) — só pagina de facto quando pedido.
+    /// </summary>
+    Task<(IReadOnlyList<Notification> Items, int? TotalCount)> ListForRecipientAsync(
         Guid recipientUserId,
         bool unreadOnly,
         int limit,
+        PageRequest? pagina,
         CancellationToken cancellationToken);
 
     /// <summary>

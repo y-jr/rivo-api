@@ -1,4 +1,5 @@
 using Rivo.Commercial.Domain;
+using Rivo.SharedKernel.Contracts;
 
 namespace Rivo.Commercial.Application.Abstractions;
 
@@ -51,7 +52,8 @@ public interface ICustomerStore
     /// <summary>Todos os episódios de um cliente, do mais recente para o mais antigo.</summary>
     Task<IReadOnlyList<CustomerAccountLink>> ListAccountLinksAsync(Guid customerId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<Customer>> ListAsync(bool includeInactive, CancellationToken cancellationToken);
+    Task<(IReadOnlyList<Customer> Items, int? TotalCount)> ListAsync(
+        bool includeInactive, PageRequest? pagina, CancellationToken cancellationToken);
 
     Task AddAsync(Customer customer, CancellationToken cancellationToken);
 
