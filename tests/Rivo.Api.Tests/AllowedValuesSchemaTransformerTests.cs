@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi;
 using Rivo.Api.OpenApi;
 using Rivo.Finance.Api;
+using Rivo.Finance.Contracts;
 using Rivo.Fleet.Api;
 using Rivo.Fleet.Application.UseCases;
 
@@ -57,6 +58,24 @@ public class AllowedValuesSchemaTransformerTests
 
         Assert.NotNull(schema.Enum);
         Assert.Equal(["Preventive", "Corrective"], schema.Enum!.Select(v => v!.GetValue<string>()));
+    }
+
+    /// <summary>
+    /// Mesmo gap do #9/#18, desta vez em `finance`: <c>PaymentClaimView.Status</c>
+    /// vem de <c>claim.Status.ToString()</c> — sem <c>[AllowedValues]</c>, o
+    /// schema não documentava Pending/Confirmed/Rejected (#27, parte
+    /// resolvível sem o fluxo de convite por email).
+    /// </summary>
+    [Fact]
+    public async Task PedidoDeConfirmacaoDePagamento_GanhaOEnumNoSchema()
+    {
+        var schema = new OpenApiSchema();
+        var contexto = NovoContexto(typeof(PaymentClaimView), nameof(PaymentClaimView.Status));
+
+        await new AllowedValuesSchemaTransformer().TransformAsync(schema, contexto, CancellationToken.None);
+
+        Assert.NotNull(schema.Enum);
+        Assert.Equal(["Pending", "Confirmed", "Rejected"], schema.Enum!.Select(v => v!.GetValue<string>()));
     }
 
     [Fact]

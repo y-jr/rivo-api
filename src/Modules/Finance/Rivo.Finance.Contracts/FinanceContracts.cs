@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Rivo.Finance.Contracts;
 
 /// <summary>
@@ -295,6 +297,9 @@ public sealed record PaymentClaimView(
     Guid SalesInvoiceId,
     decimal Amount,
     DateOnly PaidOn,
+
+    /// <summary>`Pending`, `Confirmed` ou `Rejected` (#27 do levantamento de pendências).</summary>
+    [property: AllowedValues("Pending", "Confirmed", "Rejected")]
     string Status,
     string? RejectionReason,
     DateTimeOffset SubmittedAt);
