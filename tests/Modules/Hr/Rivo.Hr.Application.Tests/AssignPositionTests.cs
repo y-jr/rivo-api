@@ -184,4 +184,38 @@ public class AssignPositionTests
 
         Assert.Equal(PositionAssignmentClosureOutcome.Rejected, segunda.Outcome);
     }
+
+    /// <summary>
+    /// Sem isto (#39), encerrar uma atribuição exigia ir à base de dados
+    /// buscar o assignmentId — o encerramento existia sem forma de o
+    /// descobrir.
+    /// </summary>
+    [Fact]
+    public async Task Lista_Atribuicoes_Do_Cargo_Do_Mais_Recente_Para_O_Mais_Antigo()
+    {
+        var store = new FakeHrStore();
+        var antigo = store.Admitir("Ana Bento");
+        var actual = store.Admitir("Bruno Costa");
+        var cargo = store.CriarCargo("CEO");
+        var atribuicaoAntiga = store.AtribuirCargo(antigo.Id, cargo.Id, Agora.AddYears(-2), Agora.AddYears(-1));
+        var atribuicaoActual = store.AtribuirCargo(actual.Id, cargo.Id, Agora.AddYears(-1));
+
+        var lista = await new ListPositionAssignments(store).ExecuteAsync(cargo.Id, CancellationToken.None);
+
+        Assert.Equal(2, lista.Count);
+        Assert.Equal(atribuicaoActual.Id, lista[0].AssignmentId);
+        Assert.Equal(atribuicaoAntiga.Id, lista[1].AssignmentId);
+        Assert.Null(lista[0].EffectiveTo);
+        Assert.NotNull(lista[1].EffectiveTo);
+    }
+
+    [Fact]
+    public async Task Lista_Atribuicoes_De_Cargo_Sem_Nenhuma_Devolve_Vazio()
+    {
+        var store = new FakeHrStore();
+
+        var lista = await new ListPositionAssignments(store).ExecuteAsync(Guid.NewGuid(), CancellationToken.None);
+
+        Assert.Empty(lista);
+    }
 }

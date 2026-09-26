@@ -369,3 +369,37 @@ internal static class PositionOccupancy
         return existentes.Any(assignment => assignment.IsEffectiveAt(asOf));
     }
 }
+
+/// <summary>
+/// Quem ocupa um Cargo — histórico completo, não só quem o ocupa agora.
+///
+/// <para>
+/// Faltava desde o #39 (levantamento de pendências): o encerramento
+/// (<see cref="EndPositionAssignment"/>) existe, mas sem uma leitura que
+/// devolva o <c>assignmentId</c>, ninguém — nem o frontend, nem um operador —
+/// tinha como descobrir <em>qual</em> atribuição encerrar. Devolve o histórico
+/// inteiro, e não só a efectiva, pelo mesmo motivo que
+/// <c>ListAssignmentsForEmployeeAsync</c> também o faz: uma atribuição
+/// recusada ou já encerrada é facto histórico, não um registo para esconder.
+/// </para>
+/// </summary>
+public sealed class ListPositionAssignments(IHrStore store)
+{
+    public async Task<IReadOnlyList<PositionAssignmentView>> ExecuteAsync(
+        Guid positionId, CancellationToken cancellationToken)
+    {
+        var atribuicoes = await store.ListAssignmentsForPositionAsync(positionId, cancellationToken);
+
+        return [.. atribuicoes
+            .OrderByDescending(a => a.EffectiveFrom)
+            .Select(a => new PositionAssignmentView(
+                a.Id, a.EmployeeId, a.EffectiveFrom, a.EffectiveTo, a.Status.ToString()))];
+    }
+}
+
+public sealed record PositionAssignmentView(
+    Guid AssignmentId,
+    Guid EmployeeId,
+    DateTimeOffset EffectiveFrom,
+    DateTimeOffset? EffectiveTo,
+    string Status);
