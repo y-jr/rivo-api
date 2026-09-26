@@ -52,6 +52,10 @@ public static class SettingsModuleEndpoints
         group.MapPost("/import/customers", ImportCustomersAsync)
             .RequireAuthorization(CommercialPermissions.CustomersWrite)
             .DisableAntiforgery()
+            .WithDescription(
+                $"CSV com cabeçalho, ordem livre — colunas resolvidas pelo nome, não pela posição. " +
+                $"Obrigatórias: {string.Join(", ", ImportCustomersFromCsv.RequiredColumns)}. " +
+                "Opcionais: Email, Telefone.")
             .Produces<CsvImportSummary>()
             .Produces(StatusCodes.Status400BadRequest)
             .ProducesValidationProblem();
@@ -59,6 +63,10 @@ public static class SettingsModuleEndpoints
         group.MapPost("/import/employees", ImportEmployeesAsync)
             .RequireAuthorization(HrPermissions.EmployeesWrite)
             .DisableAntiforgery()
+            .WithDescription(
+                $"CSV com cabeçalho, ordem livre — colunas resolvidas pelo nome, não pela posição. " +
+                $"Obrigatórias: {string.Join(", ", ImportEmployeesFromCsv.RequiredColumns)} " +
+                "(DataAdmissao no formato aaaa-mm-dd). Opcional: Departamento, resolvido por nome exacto.")
             .Produces<CsvImportSummary>()
             .Produces(StatusCodes.Status400BadRequest)
             .ProducesValidationProblem();
@@ -66,6 +74,10 @@ public static class SettingsModuleEndpoints
         group.MapPost("/import/suppliers", ImportSuppliersAsync)
             .RequireAuthorization(ProcurementPermissions.SuppliersWrite)
             .DisableAntiforgery()
+            .WithDescription(
+                $"CSV com cabeçalho, ordem livre — colunas resolvidas pelo nome, não pela posição. " +
+                $"Obrigatórias: {string.Join(", ", ImportSuppliersFromCsv.RequiredColumns)}. " +
+                "Opcionais: IBAN, Email, Telefone.")
             .Produces<CsvImportSummary>()
             .Produces(StatusCodes.Status400BadRequest)
             .ProducesValidationProblem();
