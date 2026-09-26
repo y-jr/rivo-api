@@ -590,6 +590,28 @@ Test-Case "28. displayName em /identity/me vem do colaborador ligado, e falta qu
     "sem colaborador: vazio; com colaborador: '$($comColaborador.displayName)'"
 }
 
+Test-Case "29. CORS expoe os cabecalhos de paginacao ao browser" {
+    # Bug encontrado ao construir `api.getPaginado` no frontend: a politica de
+    # CORS so expunha `WWW-Authenticate`, e por isso `X-Total-Count` chegava
+    # sempre `null` do lado do browser, apesar de vir na resposta -- o
+    # servidor respondia bem, e o cliente nunca conseguia ler.
+    $comOrigem = $bootstrapHeaders.Clone()
+    $comOrigem["Origin"] = "http://localhost:5173"
+
+    $resposta = Invoke-WebRequest "$base/hr/employees?page=1&pageSize=1" -Headers $comOrigem
+
+    $expostos = $resposta.Headers["Access-Control-Expose-Headers"]
+    if (-not $expostos) { throw "resposta CORS sem Access-Control-Expose-Headers" }
+
+    foreach ($nome in @("X-Total-Count", "X-Page", "X-Page-Size")) {
+        if ($expostos -notmatch [regex]::Escape($nome)) {
+            throw "'$nome' nao esta exposto ao browser (Access-Control-Expose-Headers: $expostos)"
+        }
+    }
+
+    "expostos: $expostos"
+}
+
 Write-Host ""
 if ($failures -gt 0) {
     Write-Host "$failures teste(s) falharam." -ForegroundColor Red

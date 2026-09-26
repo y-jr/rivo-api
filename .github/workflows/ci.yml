@@ -126,6 +126,11 @@ jobs:
             # abre a ligação —, mas tem de existir, e a API recusa-se a inventá-lo
             # em vez de enviar um convite que não abre.
             echo "FRONTEND_BASE_URL=http://localhost:5173"
+            # Sem isto a politica de CORS nao autoriza ninguem (nenhuma origem
+            # configurada), e verify-authorization#29 -- que confirma que
+            # X-Total-Count/X-Page/X-Page-Size ficam expostos ao browser --
+            # nao tem como sequer fazer o pedido com Origin.
+            echo "CORS_ALLOWED_ORIGINS=http://localhost:5173"
             # O anfitrião é o serviço do compose de desenvolvimento, nunca o
             # servidor externo: o CI não pode escrever na base de dados real.
             echo "CONNECTION_STRING=Server=sqlserver,1433;Database=rivo;User Id=sa;Password=Rivo_Dev_2026!;Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=True;"
