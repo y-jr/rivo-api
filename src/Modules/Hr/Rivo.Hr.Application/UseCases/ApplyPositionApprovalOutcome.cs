@@ -24,7 +24,8 @@ namespace Rivo.Hr.Application.UseCases;
 public sealed class ApplyPositionApprovalOutcome(
     IHrStore store,
     IHrApprovalSubmission approvals,
-    IAuditTrail audit)
+    IAuditTrail audit,
+    TimeProvider clock)
 {
     public async Task<ApplyApprovalResult> ExecuteAsync(
         Guid assignmentId,
@@ -64,10 +65,18 @@ public sealed class ApplyPositionApprovalOutcome(
                 // fica pendente: quem decidir encerra a actual primeiro
                 // (POST /hr/position-assignments/{id}/closure) e chama isto
                 // outra vez — idempotente, como já é.
+                //
+                // "Agora" (não assignment.EffectiveFrom, a data pedida na
+                // submissão): o que interessa é se alguém ocupa o Cargo no
+                // momento em que esta promoção aconteceria, não se alguém o
+                // ocupava quando o candidato foi submetido — senão encerrar o
+                // antigo *depois* de submeter o novo nunca libertaria nada,
+                // porque o antigo continuaria "efectivo" à data (mais antiga)
+                // da submissão.
                 var position = await store.FindPositionAsync(assignment.PositionId, cancellationToken);
 
                 if (position is not null
-                    && await PositionOccupancy.IsOccupiedAsync(store, position, assignment.EffectiveFrom, cancellationToken))
+                    && await PositionOccupancy.IsOccupiedAsync(store, position, clock.GetUtcNow(), cancellationToken))
                 {
                     return ApplyApprovalResult.Blocked();
                 }

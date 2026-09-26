@@ -93,7 +93,7 @@ public class AssignPositionTests
         var pendente = store.AtribuirCargoPendente(candidato.Id, cargo.Id, Agora, requestId);
 
         var resultado = await new ApplyPositionApprovalOutcome(
-                store, new FakeApprovalOutcome(HrApprovalState.Approved), new FakeAuditTrail())
+                store, new FakeApprovalOutcome(HrApprovalState.Approved), new FakeAuditTrail(), Relogio)
             .ExecuteAsync(pendente.Id, Actor(Guid.NewGuid()), CancellationToken.None);
 
         Assert.Equal(ApplyApprovalOutcome.Blocked, resultado.Outcome);
