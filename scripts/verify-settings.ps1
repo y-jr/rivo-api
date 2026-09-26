@@ -185,7 +185,34 @@ Test-Case "11. Sem autenticacao -> 401 na importacao" {
     "HTTP 401"
 }
 
-Test-Case "12. Vista sobrevive ao reinicio da stack" {
+Test-Case "12. OpenAPI documenta as colunas do CSV de importacao (#30)" {
+    # #30 do levantamento de pendencias: os tres endpoints recebem um
+    # IFormFile, e sem descricao nenhuma o OpenAPI nao dizia nada sobre que
+    # colunas o ficheiro precisa de ter -- so descoberto lendo o codigo.
+    $spec = Invoke-RestMethod "$base/openapi/v1.json"
+
+    $casos = @(
+        @{ Caminho = "/settings/import/customers"; Colunas = @("Nome", "NIF", "Morada", "Cidade", "Pais") }
+        @{ Caminho = "/settings/import/employees"; Colunas = @("Nome", "DataAdmissao") }
+        @{ Caminho = "/settings/import/suppliers"; Colunas = @("Nome", "NIF") }
+    )
+
+    foreach ($caso in $casos) {
+        $descricao = $spec.paths.($caso.Caminho).post.description
+        if ([string]::IsNullOrWhiteSpace($descricao)) {
+            throw "$($caso.Caminho) sem descricao no OpenAPI"
+        }
+        foreach ($coluna in $caso.Colunas) {
+            if ($descricao -notmatch [regex]::Escape($coluna)) {
+                throw "$($caso.Caminho) nao menciona a coluna obrigatoria '$coluna' -- descricao: $descricao"
+            }
+        }
+    }
+
+    "as tres rotas de importacao documentam as suas colunas obrigatorias"
+}
+
+Test-Case "13. Vista sobrevive ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)
     do {

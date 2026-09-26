@@ -22,7 +22,12 @@ namespace Rivo.Settings.Application;
 /// </summary>
 public sealed class ImportEmployeesFromCsv(IEmployeeDirectory employees)
 {
-    private static readonly string[] RequiredColumns = ["Nome", "DataAdmissao"];
+    /// <summary>
+    /// Público para que <c>SettingsModuleEndpoints</c> documente o mesmo
+    /// conjunto no OpenAPI (#30 do levantamento de pendências) sem duplicar a
+    /// lista — uma fonte única em vez de duas listas que podem divergir.
+    /// </summary>
+    public static readonly string[] RequiredColumns = ["Nome", "DataAdmissao"];
 
     public async Task<CsvImportResult> ExecuteAsync(string csvContent, Guid actorId, CancellationToken cancellationToken)
     {
