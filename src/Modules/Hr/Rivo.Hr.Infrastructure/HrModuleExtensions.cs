@@ -52,6 +52,7 @@ public static class HrModuleExtensions
         services.AddScoped<CorrectPosition>();
         services.AddScoped<AssignPosition>();
         services.AddScoped<EndPositionAssignment>();
+        services.AddScoped<ListPositionAssignments>();
         services.AddScoped<ApplyPositionApprovalOutcome>();
         services.AddScoped<ReconcilePendingAssignments>();
 
