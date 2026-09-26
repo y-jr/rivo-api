@@ -118,6 +118,14 @@ public static class HrModuleEndpoints
             .ProducesValidationProblem()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        // Quem ocupa este Cargo, histórico incluído (#39 do levantamento de
+        // pendências — sem isto, encerrar uma atribuição exigia ir à base de
+        // dados buscar o assignmentId). Mesma permissão do catálogo: ler quem
+        // ocupa um Cargo não é mais sensível do que ler o Cargo em si.
+        group.MapGet("/positions/{positionId:guid}/assignments", ListPositionAssignmentsAsync)
+            .RequireAuthorization(HrPermissions.PositionsRead)
+            .Produces<IReadOnlyList<PositionAssignmentView>>();
+
         // Atribuição: operação corrente de RH.
         group.MapPost("/employees/{employeeId:guid}/positions", AssignPositionAsync)
             .RequireAuthorization(HrPermissions.PositionsAssign)
@@ -658,6 +666,15 @@ public static class HrModuleEndpoints
 
         var (itens, total) = await listPositions.ExecuteAsync(pagina, cancellationToken);
         EscreverCabecalhosDePagina(response, pagina, total);
+        return Results.Ok(itens);
+    }
+
+    private static async Task<IResult> ListPositionAssignmentsAsync(
+        Guid positionId,
+        ListPositionAssignments listAssignments,
+        CancellationToken cancellationToken)
+    {
+        var itens = await listAssignments.ExecuteAsync(positionId, cancellationToken);
         return Results.Ok(itens);
     }
 
