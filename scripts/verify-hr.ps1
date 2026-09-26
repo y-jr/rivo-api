@@ -852,10 +852,15 @@ Test-Case "52. Encerramento explicito antes de outra pessoa ocupar o cargo com a
     $estadoFinal = Invoke-Sql "select status from hr.position_assignment where id='$novaAtribuicaoId'"
     if ($estadoFinal -ne "Effective") { throw "estado final '$estadoFinal', esperado Effective" }
 
-    $efectivas = Invoke-Sql "select count(*) from hr.position_assignment where position_id='$($script:authorityPositionId)' and status='Effective'"
-    if ($efectivas -ne "1") { throw "esperado exactamente 1 ocupante efectivo, obtidos $efectivas" }
+    # `status='Effective'` sozinho nao chega: encerrar so grava effective_to,
+    # o status da atribuicao antiga fica Effective para sempre (e a
+    # atribuicao Effective encerrada e facto historico, nao deixa de o ter
+    # sido). "Ocupante efectivo agora" e status Effective SEM data de fim, ou
+    # com fim ainda no futuro -- a mesma condicao de IsEffectiveAt.
+    $efectivas = Invoke-Sql "select count(*) from hr.position_assignment where position_id='$($script:authorityPositionId)' and status='Effective' and (effective_to is null or effective_to > sysdatetimeoffset())"
+    if ($efectivas -ne "1") { throw "esperado exactamente 1 ocupante efectivo agora, obtidos $efectivas" }
 
-    "409 enquanto ocupado; encerrar liberta; 1 so ocupante efectivo no fim"
+    "409 enquanto ocupado; encerrar liberta; 1 so ocupante efectivo agora"
 }
 
 Test-Case "53. Dados sobrevivem ao reinicio da stack" {
