@@ -154,4 +154,22 @@ public class PositionAssignmentTests
 
         Assert.Throws<ArgumentOutOfRangeException>(() => assignment.End(From.AddTicks(-1)));
     }
+
+    /// <summary>#39: o encerramento é sempre explícito — não há o que encerrar numa que nunca produziu efeito.</summary>
+    [Fact]
+    public void End_APendingAssignment_Throws()
+    {
+        var assignment = PositionAssignment.CreatePending(Employee, Position, From, null);
+
+        Assert.Throws<InvalidOperationException>(() => assignment.End(From.AddMonths(1)));
+    }
+
+    [Fact]
+    public void End_TwiceThrows()
+    {
+        var assignment = PositionAssignment.CreateEffective(Employee, Position, From, null);
+        assignment.End(From.AddMonths(6));
+
+        Assert.Throws<InvalidOperationException>(() => assignment.End(From.AddMonths(7)));
+    }
 }

@@ -107,6 +107,11 @@ public sealed class AssignPosition(
             return AssignPositionResult.PositionNotFound();
         }
 
+        // Submeter um candidato a um Cargo com autoridade **enquanto outro o
+        // ocupa** não é o problema (#39) — é o caso normal de rever quem
+        // sucede a quem, e BR-2/BR-20 já impedem que isso confira autoridade
+        // sem decisão. O que #39 impede é ficar efectivo duas vezes: ver
+        // ApplyPositionApprovalOutcome, que é onde uma pendente é promovida.
         if (position.GrantsApprovalAuthority)
         {
             return await SubmitForApprovalAsync(
@@ -167,6 +172,11 @@ public sealed class AssignPosition(
             return AssignPositionResult.PositionNotFound();
         }
 
+        if (await PositionOccupancy.IsOccupiedAsync(store, position, effectiveFrom, cancellationToken))
+        {
+            return AssignPositionResult.PositionOccupied();
+        }
+
         var assignment = PositionAssignment.CreateEffective(employeeId, positionId, effectiveFrom, effectiveTo);
 
         await store.AddAssignmentAsync(assignment, cancellationToken);
@@ -217,6 +227,11 @@ public sealed record AssignPositionResult(
 
     public static AssignPositionResult ApprovalRefusedSubmission(string reason) =>
         new(AssignPositionOutcome.ApprovalRefusedSubmission, null, reason);
+
+    public static AssignPositionResult PositionOccupied() =>
+        new(AssignPositionOutcome.PositionOccupied, null,
+            "Este cargo já está ocupado. Encerre a atribuição actual " +
+            "(POST /hr/position-assignments/{id}/closure) antes de atribuir outra pessoa.");
 }
 
 public enum AssignPositionOutcome
@@ -236,4 +251,121 @@ public enum AssignPositionOutcome
     /// ou ambígua, ou nenhum cargo da política com ocupante.
     /// </summary>
     ApprovalRefusedSubmission,
+
+    /// <summary>
+    /// Já há uma atribuição efectiva para este Cargo à data pedida (#39). 409 —
+    /// encerra-se a actual antes de atribuir outra pessoa, nunca automaticamente.
+    /// </summary>
+    PositionOccupied,
+}
+
+/// <summary>
+/// Encerra a ocupação de um Cargo (#39 do levantamento de pendências).
+///
+/// <para>
+/// Sem isto, nada impedia várias pessoas ocuparem o mesmo Cargo em simultâneo
+/// — e é exactamente esse silêncio que <see cref="AssignPosition"/> agora
+/// recusa (<see cref="AssignPositionOutcome.PositionOccupied"/>). Gémeo de
+/// <c>EndVehicleAssignment</c> em `fleet`, mesmo padrão.
+/// </para>
+/// </summary>
+public sealed class EndPositionAssignment(IHrStore store, IAuditTrail audit)
+{
+    public async Task<PositionAssignmentClosureResult> ExecuteAsync(
+        Guid assignmentId,
+        DateTimeOffset endedOn,
+        AuditContext context,
+        CancellationToken cancellationToken)
+    {
+        var assignment = await store.FindAssignmentAsync(assignmentId, cancellationToken);
+
+        if (assignment is null)
+        {
+            return PositionAssignmentClosureResult.NotFound();
+        }
+
+        try
+        {
+            assignment.End(endedOn);
+        }
+        catch (Exception error) when (error is ArgumentOutOfRangeException or InvalidOperationException)
+        {
+            return PositionAssignmentClosureResult.Rejected(error.Message);
+        }
+
+        await store.SaveChangesAsync(cancellationToken);
+
+        await audit.RecordAsync(
+            new AuditRecord(
+                HrAuditActions.PositionAssignmentEnded,
+                HrAuditEntityTypes.Employee,
+                assignment.EmployeeId.ToString(),
+                context,
+                NewValue: $$"""{"assignmentId":"{{assignmentId}}","positionId":"{{assignment.PositionId}}","endedOn":"{{endedOn:yyyy-MM-dd}}"}"""),
+            cancellationToken);
+
+        return PositionAssignmentClosureResult.Success();
+    }
+}
+
+public sealed record PositionAssignmentClosureResult(PositionAssignmentClosureOutcome Outcome, string? Error)
+{
+    public static PositionAssignmentClosureResult Success() =>
+        new(PositionAssignmentClosureOutcome.Ended, null);
+
+    public static PositionAssignmentClosureResult NotFound() =>
+        new(PositionAssignmentClosureOutcome.NotFound, "Atribuição não encontrada.");
+
+    public static PositionAssignmentClosureResult Rejected(string reason) =>
+        new(PositionAssignmentClosureOutcome.Rejected, reason);
+}
+
+public enum PositionAssignmentClosureOutcome
+{
+    Ended,
+    NotFound,
+
+    /// <summary>Não é efectiva, já tinha terminado, ou a data de fim é anterior ao início. 409.</summary>
+    Rejected,
+}
+
+/// <summary>
+/// Se um Cargo já tem quem o ocupe à data pedida (#39 do levantamento de
+/// pendências).
+///
+/// <para>
+/// <strong>Só se aplica a Cargos com autoridade de aprovação.</strong> O caso
+/// relatado — três "CEO" ao mesmo tempo — é um problema de governança
+/// (BR-20): duas pessoas com autoridade para o mesmo passo tornam ambíguo quem
+/// decide. Um Cargo comum (ex. "Contabilista") não tem essa ambiguidade
+/// nenhuma, e vários colaboradores já o ocupam em simultâneo de propósito
+/// (organogramas normais) — restringir aí seria inventar uma regra de negócio
+/// que ninguém pediu.
+/// </para>
+///
+/// <para>
+/// <strong>Verificado ao ficar efectivo, nunca ao submeter.</strong> Candidatar
+/// alguém a um Cargo já ocupado é o caso normal de rever quem sucede a quem — é
+/// por isso que <see cref="AssignPosition.ExecuteAsync"/> não chama isto antes
+/// de <c>SubmitForApprovalAsync</c>. Quem chama é <see cref="AssignPosition.ExecuteDirectAsync"/>
+/// (efectivo de imediato, sem governança) e <see cref="ApplyPositionApprovalOutcome"/>
+/// (o momento em que uma pendente <em>se tornaria</em> efectiva). O
+/// encerramento é sempre explícito (<c>POST /hr/position-assignments/{id}/closure</c>),
+/// nunca automático.
+/// </para>
+/// </summary>
+internal static class PositionOccupancy
+{
+    public static async Task<bool> IsOccupiedAsync(
+        IHrStore store, Position position, DateTimeOffset asOf, CancellationToken cancellationToken)
+    {
+        if (!position.GrantsApprovalAuthority)
+        {
+            return false;
+        }
+
+        var existentes = await store.ListAssignmentsForPositionAsync(position.Id, cancellationToken);
+
+        return existentes.Any(assignment => assignment.IsEffectiveAt(asOf));
+    }
 }

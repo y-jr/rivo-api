@@ -801,7 +801,69 @@ Test-Case "51. Aprovar ferias actualiza o status ao aplicar o outcome (#38)" {
     "decidido e aplicado -- GET /hr/leave mostra Approved"
 }
 
-Test-Case "52. Dados sobrevivem ao reinicio da stack" {
+Test-Case "52. Encerramento explicito antes de outra pessoa ocupar o cargo com autoridade (#39)" {
+    # Item #39 do levantamento de pendencias: nada impedia varias pessoas
+    # ocuparem o mesmo Cargo em simultaneo -- o caso relatado, tres "CEO" ao
+    # mesmo tempo. Reaproveita a infraestrutura do caso 11/12: $authorityPositionId
+    # ja tem "Alvo Verify" como ocupante efectivo, e a politica/aprovador ja
+    # existem -- criar tudo de novo aqui duplicaria o que o caso 11 ja monta.
+    $candidato = (Invoke-RestMethod "$base/hr/employees" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+            -Body (@{ fullName = "Candidato 39 $stamp" } | ConvertTo-Json)).employeeId
+
+    $submissao = Invoke-RestMethod "$base/hr/employees/$candidato/positions" -Method Post -ContentType "application/json" -Headers $hrHeaders `
+        -Body (@{ positionId = $script:authorityPositionId } | ConvertTo-Json)
+    $novaAtribuicaoId = $submissao.assignmentId
+
+    # Submeter um candidato a um cargo ja ocupado e o caso normal de rever
+    # quem sucede a quem -- fica Pending, nao e recusado (o #39 nao e sobre a
+    # submissao).
+    $estadoSubmissao = Invoke-Sql "select status from hr.position_assignment where id='$novaAtribuicaoId'"
+    if ($estadoSubmissao -ne "Pending") { throw "estado apos submeter '$estadoSubmissao', esperado Pending" }
+
+    $requestId = Invoke-Sql "select cast(id as varchar(36)) from approval.request where source_reference='$novaAtribuicaoId'"
+    if (-not $requestId) { throw "pedido de aprovacao nao encontrado para a nova atribuicao" }
+
+    Invoke-RestMethod "$base/approval/requests/$requestId/decisions" -Method Post -ContentType "application/json" -Headers $script:aprovadorConta.Headers `
+        -Body (@{ action = "Approved" } | ConvertTo-Json) | Out-Null
+
+    # Aprovado em approval, mas o cargo ainda tem "Alvo Verify" efectivo (caso
+    # 12) -- e aqui, ao promover, que duas pessoas ficariam com autoridade em
+    # simultaneo. Tem de ser recusado.
+    $resposta = Invoke-WebRequest "$base/hr/position-assignments/$novaAtribuicaoId/approval-outcome" -Method Post -Headers $hrHeaders -SkipHttpErrorCheck
+    if ([int]$resposta.StatusCode -ne 409) {
+        throw "esperado 409 com o cargo ainda ocupado, obtido $([int]$resposta.StatusCode) -- corpo: $(Get-RivoCorpo $resposta)"
+    }
+
+    $estadoBloqueado = Invoke-Sql "select status from hr.position_assignment where id='$novaAtribuicaoId'"
+    if ($estadoBloqueado -ne "Pending") { throw "atribuicao promovida apesar do bloqueio: '$estadoBloqueado'" }
+
+    # Encerramento explicito -- nunca automatico -- do ocupante anterior.
+    Invoke-RestMethod "$base/hr/position-assignments/$($script:pendingAssignmentId)/closure" -Method Post -Body "{}" -ContentType "application/json" -Headers $hrHeaders | Out-Null
+
+    $estadoAntigo = Invoke-Sql "select status from hr.position_assignment where id='$($script:pendingAssignmentId)'"
+    if ($estadoAntigo -ne "Effective") { throw "atribuicao antiga deixou de ser Effective: '$estadoAntigo'" }
+    $fimAntigo = Invoke-Sql "select count(*) from hr.position_assignment where id='$($script:pendingAssignmentId)' and effective_to is not null"
+    if ($fimAntigo -ne "1") { throw "encerramento nao gravou effective_to" }
+
+    # Agora que o cargo esta livre, aplicar a mesma decisao (idempotente)
+    # promove a nova atribuicao.
+    Invoke-RestMethod "$base/hr/position-assignments/$novaAtribuicaoId/approval-outcome" -Method Post -Headers $hrHeaders | Out-Null
+
+    $estadoFinal = Invoke-Sql "select status from hr.position_assignment where id='$novaAtribuicaoId'"
+    if ($estadoFinal -ne "Effective") { throw "estado final '$estadoFinal', esperado Effective" }
+
+    # `status='Effective'` sozinho nao chega: encerrar so grava effective_to,
+    # o status da atribuicao antiga fica Effective para sempre (e a
+    # atribuicao Effective encerrada e facto historico, nao deixa de o ter
+    # sido). "Ocupante efectivo agora" e status Effective SEM data de fim, ou
+    # com fim ainda no futuro -- a mesma condicao de IsEffectiveAt.
+    $efectivas = Invoke-Sql "select count(*) from hr.position_assignment where position_id='$($script:authorityPositionId)' and status='Effective' and (effective_to is null or effective_to > sysdatetimeoffset())"
+    if ($efectivas -ne "1") { throw "esperado exactamente 1 ocupante efectivo agora, obtidos $efectivas" }
+
+    "409 enquanto ocupado; encerrar liberta; 1 so ocupante efectivo agora"
+}
+
+Test-Case "53. Dados sobrevivem ao reinicio da stack" {
     Restart-RivoStack
     $deadline = (Get-Date).AddSeconds(420)   # ver a nota em Wait-RivoApi
     do { Start-Sleep -Seconds 4; $up = try { Invoke-RestMethod "$base/health" -TimeoutSec 5 | Out-Null; $true } catch { $false } } while (-not $up -and (Get-Date) -lt $deadline)
