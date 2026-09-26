@@ -78,9 +78,12 @@ public static class BrowserClientCors
                 // Se um dia se voltar a cookies, isto muda — e nessa altura
                 // vem CSRF atrás, que o ADR-013 documenta ter evitado.
 
-                // O cliente precisa de ler o cabeçalho para saber quando parar
-                // de tentar; sem isto o browser esconde-o do JavaScript.
-                .WithExposedHeaders("WWW-Authenticate");
+                // O cliente precisa de ler estes cabeçalhos, e sem os expor o
+                // browser esconde-os do JavaScript mesmo que o servidor os
+                // tenha enviado — apanhado ao construir `api.getPaginado` no
+                // frontend: `X-Total-Count` chegava sempre `null` do lado de
+                // lá de uma origem diferente, apesar de estar na resposta.
+                .WithExposedHeaders("WWW-Authenticate", "X-Page", "X-Page-Size", "X-Total-Count");
         }));
 
         return services;
