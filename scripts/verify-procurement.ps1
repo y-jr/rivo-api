@@ -1130,8 +1130,10 @@ Test-Case "54. Registar a factura contra a ordem, e o match mostra os tres numer
     if ([decimal]$match.receivedTotal -ne 90000) { throw "recebido $($match.receivedTotal), esperado 90000" }
     if ([decimal]$match.invoicedNetTotal -ne 90000) { throw "facturado $($match.invoicedNetTotal), esperado 90000" }
     # #43: veredicto calculado com a tolerancia confirmada (2%) -- aqui bate em
-    # cheio e a ordem foi recebida por inteiro, por isso Matched.
-    if ($match.matchStatus -ne "Matched") { throw "matchStatus '$($match.matchStatus)', esperado Matched" }
+    # cheio e a ordem foi recebida por inteiro, por isso Matched. Os enums nao
+    # tem JsonStringEnumConverter global (#4/#9) -- o fio devolve o inteiro
+    # (Matched=0), nao o nome.
+    if ([int]$match.matchStatus -ne 0) { throw "matchStatus $($match.matchStatus), esperado 0 (Matched)" }
     "encomendado, recebido e facturado batem em 90000, matchStatus Matched"
 }
 
@@ -1162,7 +1164,7 @@ Test-Case "56. Facturar diferente do recebido nao bloqueia, so fica visivel no m
     if ([decimal]$match.invoicedNetTotal -ne 95000) { throw "facturado $($match.invoicedNetTotal), esperado 95000" }
     # #43: 5000 de desvio sobre 90000 recebidos e bem acima dos 2% tolerados
     # (1800) -- o veredicto tem de dizer Variance, nao so mostrar os numeros.
-    if ($match.matchStatus -ne "Variance") { throw "matchStatus '$($match.matchStatus)', esperado Variance" }
+    if ([int]$match.matchStatus -ne 2) { throw "matchStatus $($match.matchStatus), esperado 2 (Variance)" }
     "95000 facturados contra 90000 recebidos -- registado na mesma, matchStatus Variance"
 }
 

@@ -223,7 +223,7 @@ public class PayablesTests
         Assert.Null(vista.ReceivedTotal);
         Assert.Equal(compra.NetTotal, vista.InvoicedNetTotal);
         Assert.Empty(vista.Lines);
-        Assert.Null(vista.Status);
+        Assert.Null(vista.MatchStatus);
     }
 
     /// <summary>
@@ -248,7 +248,7 @@ public class PayablesTests
         Assert.Equal(90_000m, vista.ReceivedTotal);
         Assert.Equal(90_000m, vista.InvoicedNetTotal);
         Assert.Single(vista.Lines);
-        Assert.Equal(MatchStatus.Matched, vista.Status);
+        Assert.Equal(MatchStatus.Matched, vista.MatchStatus);
     }
 
     /// <summary>
@@ -274,7 +274,7 @@ public class PayablesTests
         Assert.Equal(90_000m, vista!.OrderedTotal);
         Assert.Equal(54_000m, vista.ReceivedTotal);
         Assert.Equal(90_000m, vista.InvoicedNetTotal);
-        Assert.Equal(MatchStatus.Variance, vista.Status);
+        Assert.Equal(MatchStatus.Variance, vista.MatchStatus);
     }
 
     /// <summary>
@@ -297,7 +297,7 @@ public class PayablesTests
 
         var vista = await Comparar(store, ordem).ExecuteAsync(resultado.PurchaseInvoiceId!.Value, CancellationToken.None);
 
-        Assert.Equal(MatchStatus.PartialMatch, vista!.Status);
+        Assert.Equal(MatchStatus.PartialMatch, vista!.MatchStatus);
     }
 
     /// <summary>A tolerância confirmada é 2% (#43, 2026-09-26) — dentro dela ainda é Matched.</summary>
@@ -316,7 +316,7 @@ public class PayablesTests
 
         var vista = await Comparar(store, ordem).ExecuteAsync(resultado.PurchaseInvoiceId!.Value, CancellationToken.None);
 
-        Assert.Equal(MatchStatus.Matched, vista!.Status);
+        Assert.Equal(MatchStatus.Matched, vista!.MatchStatus);
     }
 
     /// <summary>Acima dos 2% já é Variance, mesmo com a entrega completa.</summary>
@@ -335,7 +335,7 @@ public class PayablesTests
 
         var vista = await Comparar(store, ordem).ExecuteAsync(resultado.PurchaseInvoiceId!.Value, CancellationToken.None);
 
-        Assert.Equal(MatchStatus.Variance, vista!.Status);
+        Assert.Equal(MatchStatus.Variance, vista!.MatchStatus);
     }
 
     // ---- BR-1 na criação: sem governança não há pedido ----

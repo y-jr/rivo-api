@@ -702,7 +702,7 @@ public sealed class GetPurchaseInvoiceMatch(IPayablesStore store, IPurchaseOrder
 /// O que a factura diz, sem imposto — compara-se com <see cref="OrderedTotal"/>
 /// e <see cref="ReceivedTotal"/>, que também não o têm.
 /// </param>
-/// <param name="Status">
+/// <param name="MatchStatus">
 /// Nulo sem ordem ligada — sem o segundo lado do match não há o que avaliar
 /// (#43). Ver <see cref="GetPurchaseInvoiceMatch"/> para a tolerância.
 /// </param>
@@ -714,7 +714,7 @@ public sealed record PurchaseInvoiceMatchView(
     decimal InvoicedNetTotal,
     decimal InvoicedGrossTotal,
     IReadOnlyList<PurchaseOrderMatchLine> Lines,
-    MatchStatus? Status);
+    MatchStatus? MatchStatus);
 
 /// <summary>Veredicto do 3-way match (#43). Comparado contra o recebido, não o encomendado.</summary>
 public enum MatchStatus
