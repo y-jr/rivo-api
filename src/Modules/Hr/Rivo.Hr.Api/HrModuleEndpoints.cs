@@ -135,7 +135,8 @@ public static class HrModuleEndpoints
         group.MapPost("/employees/{employeeId:guid}/positions/direct", AssignPositionDirectAsync)
             .RequireAuthorization(HrPermissions.PositionsAssignDirect)
             .Produces(StatusCodes.Status201Created)
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Aplica a decisão já tomada em governança a uma atribuição pendente.
         //
@@ -145,7 +146,17 @@ public static class HrModuleEndpoints
             .RequireAuthorization(HrPermissions.PositionsAssign)
             .Produces(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status202Accepted)
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        // Encerra a ocupação de um Cargo (#39): sempre explícito, nunca
+        // automático — a mesma permissão que já protege AssignPositionAsync,
+        // porque é a mesma operação de negócio vista do outro lado.
+        group.MapPost("/position-assignments/{assignmentId:guid}/closure", EndPositionAssignmentAsync)
+            .RequireAuthorization(HrPermissions.PositionsAssign)
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         // Anexar exige permissão de escrita em colaboradores, não de
         // documentos: está a alterar-se o registo do colaborador. O upload do
@@ -737,6 +748,9 @@ public static class HrModuleEndpoints
             AssignPositionOutcome.EmployeeNotFound or AssignPositionOutcome.PositionNotFound =>
                 Results.Problem(result.Message, statusCode: StatusCodes.Status404NotFound),
 
+            AssignPositionOutcome.PositionOccupied =>
+                Results.Conflict(new { erro = result.Message }),
+
             _ => Results.Problem("Resultado inesperado ao atribuir o cargo directamente."),
         };
     }
@@ -767,7 +781,41 @@ public static class HrModuleEndpoints
             ApplyApprovalOutcome.NotFound =>
                 Results.Problem(result.Message, statusCode: StatusCodes.Status404NotFound),
 
+            // 409: aprovada, mas o cargo já tem quem o ocupe (#39). Nunca se
+            // promove por cima de quem já lá está — encerra-se a actual
+            // primeiro, e chama-se isto outra vez (idempotente).
+            ApplyApprovalOutcome.Blocked =>
+                Results.Conflict(new { estado = result.Status, erro = result.Message }),
+
             _ => Results.Problem("Resultado inesperado ao aplicar a decisão."),
+        };
+    }
+
+    private static async Task<IResult> EndPositionAssignmentAsync(
+        Guid assignmentId,
+        EndPositionAssignmentRequest request,
+        EndPositionAssignment endAssignment,
+        HttpContext http,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        var result = await endAssignment.ExecuteAsync(
+            assignmentId, request.EndedOn ?? clock.GetUtcNow(), BuildAuditContext(http), cancellationToken);
+
+        return result.Outcome switch
+        {
+            PositionAssignmentClosureOutcome.Ended => Results.NoContent(),
+
+            PositionAssignmentClosureOutcome.NotFound =>
+                Results.Problem(result.Error, statusCode: StatusCodes.Status404NotFound),
+
+            // 409: não é efectiva, já tinha terminado, ou a data de fim é
+            // anterior ao início — conflito com o estado actual, não pedido
+            // malformado.
+            PositionAssignmentClosureOutcome.Rejected =>
+                Results.Conflict(new { erro = result.Error }),
+
+            _ => Results.Problem("Resultado inesperado ao encerrar a atribuição."),
         };
     }
 
@@ -1428,6 +1476,9 @@ public sealed record CorrectPositionRequest(string Name, int HierarchyLevel);
 public sealed record CreatePositionRequest(string Name, int HierarchyLevel, bool GrantsApprovalAuthority);
 
 public sealed record AssignPositionRequest(Guid PositionId, DateTimeOffset? EffectiveFrom, DateTimeOffset? EffectiveTo);
+
+/// <param name="EndedOn">Omisso: agora (#39).</param>
+public sealed record EndPositionAssignmentRequest(DateTimeOffset? EndedOn);
 
 /// <param name="Category">Classificação em RH: "contrato", "declaracao", "cv".</param>
 public sealed record AttachDocumentRequest(Guid DocumentId, string Category);

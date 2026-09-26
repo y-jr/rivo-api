@@ -438,6 +438,9 @@ public static class HrAuditActions
     public const string PositionAssignmentSubmitted = "hr.position.assignment_submitted";
     public const string PositionAssignmentApproved = "hr.position.assignment_approved";
     public const string PositionAssignmentRefused = "hr.position.assignment_refused";
+
+    /// <summary>Encerramento explícito de uma ocupação de Cargo (#39).</summary>
+    public const string PositionAssignmentEnded = "hr.position.assignment_ended";
     public const string DocumentAttached = "hr.employee.document_attached";
     public const string ContractDrawn = "hr.contract.drawn";
     public const string ContractTerminated = "hr.contract.terminated";

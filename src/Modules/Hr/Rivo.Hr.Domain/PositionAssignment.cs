@@ -103,7 +103,6 @@ public sealed class PositionAssignment
         && instant >= EffectiveFrom
         && (EffectiveTo is null || instant < EffectiveTo);
 
-    /// <summary>Termina a ocupação do Cargo.</summary>
     /// <summary>
     /// Processo de aprovação que governa esta atribuição. Só existe nas
     /// pendentes — uma atribuição de Cargo sem autoridade produz efeito de
@@ -170,8 +169,28 @@ public sealed class PositionAssignment
         Status = PositionAssignmentStatus.Rejected;
     }
 
+    /// <summary>
+    /// Encerra a ocupação do Cargo (#39 do levantamento de pendências).
+    ///
+    /// <para>
+    /// <strong>Sempre explícito, nunca automático.</strong> Atribuir outra
+    /// pessoa ao mesmo Cargo não chama isto sozinho — a camada de aplicação
+    /// recusa a nova atribuição enquanto esta continuar efectiva, para que
+    /// quem atribui confirme conscientemente quem estava lá antes.
+    /// </para>
+    /// </summary>
     public void End(DateTimeOffset endsAt)
     {
+        if (Status != PositionAssignmentStatus.Effective)
+        {
+            throw new InvalidOperationException("Só uma atribuição efectiva pode terminar.");
+        }
+
+        if (EffectiveTo is not null)
+        {
+            throw new InvalidOperationException("Esta atribuição já tinha terminado.");
+        }
+
         if (endsAt < EffectiveFrom)
         {
             throw new ArgumentOutOfRangeException(

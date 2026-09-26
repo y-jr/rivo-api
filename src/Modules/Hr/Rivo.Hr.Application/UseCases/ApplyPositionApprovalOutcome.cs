@@ -57,6 +57,21 @@ public sealed class ApplyPositionApprovalOutcome(
         switch (state)
         {
             case HrApprovalState.Approved:
+                // #39: é aqui, e não na submissão, que duas pessoas ficariam
+                // efectivas no mesmo Cargo com autoridade — candidatar alguém
+                // enquanto outro o ocupa é normal (rever quem sucede a quem);
+                // promovê-la por cima de quem já lá está é que não. A pendente
+                // fica pendente: quem decidir encerra a actual primeiro
+                // (POST /hr/position-assignments/{id}/closure) e chama isto
+                // outra vez — idempotente, como já é.
+                var position = await store.FindPositionAsync(assignment.PositionId, cancellationToken);
+
+                if (position is not null
+                    && await PositionOccupancy.IsOccupiedAsync(store, position, assignment.EffectiveFrom, cancellationToken))
+                {
+                    return ApplyApprovalResult.Blocked();
+                }
+
                 assignment.MakeEffective();
                 break;
 
@@ -100,6 +115,12 @@ public sealed record ApplyApprovalResult(ApplyApprovalOutcome Outcome, string? S
 
     public static ApplyApprovalResult NotFound(string reason) =>
         new(ApplyApprovalOutcome.NotFound, null, reason);
+
+    /// <summary>Aprovada, mas o Cargo já está ocupado (#39). Continua Pending.</summary>
+    public static ApplyApprovalResult Blocked() =>
+        new(ApplyApprovalOutcome.Blocked, "Pending",
+            "Aprovado em approval, mas o cargo já está ocupado. Encerre a atribuição actual " +
+            "(POST /hr/position-assignments/{id}/closure) antes de aplicar esta decisão.");
 }
 
 public enum ApplyApprovalOutcome
@@ -108,6 +129,12 @@ public enum ApplyApprovalOutcome
     AlreadyResolved,
     StillPending,
     NotFound,
+
+    /// <summary>
+    /// Aprovada em `approval`, mas o Cargo já tem quem o ocupe (#39) — nunca se
+    /// promove por cima de quem já lá está. 409.
+    /// </summary>
+    Blocked,
 }
 
 /// <summary>

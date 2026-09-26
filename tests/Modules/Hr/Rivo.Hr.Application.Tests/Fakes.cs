@@ -1,4 +1,5 @@
 using Rivo.Audit.Contracts;
+using Rivo.Hr.Application.Abstractions;
 using Rivo.Hr.Domain;
 using Rivo.SharedKernel.Contracts;
 
@@ -17,6 +18,7 @@ internal sealed class FakeHrStore : HrStoreParcial
     private readonly List<EmployeeAccountLink> _episodios = [];
     private readonly List<Department> _departamentos = [];
     private readonly List<Position> _cargos = [];
+    private readonly List<PositionAssignment> _atribuicoes = [];
     private readonly List<LeaveRequest> _pedidosDeFerias = [];
     private readonly List<EmploymentContract> _contratos = [];
     private readonly List<AttendanceRecord> _marcacoes = [];
@@ -163,6 +165,39 @@ internal sealed class FakeHrStore : HrStoreParcial
     public override Task<Position?> FindPositionAsync(Guid positionId, CancellationToken cancellationToken) =>
         Task.FromResult(_cargos.SingleOrDefault(p => p.Id == positionId));
 
+    /// <summary>Semeia uma atribuição já efectiva, sem passar por <c>AssignPosition</c> — para preparar o cenário de um teste.</summary>
+    public PositionAssignment AtribuirCargo(
+        Guid employeeId, Guid positionId, DateTimeOffset effectiveFrom, DateTimeOffset? effectiveTo = null)
+    {
+        var atribuicao = PositionAssignment.CreateEffective(employeeId, positionId, effectiveFrom, effectiveTo);
+        _atribuicoes.Add(atribuicao);
+        return atribuicao;
+    }
+
+    /// <summary>Semeia uma atribuição Pending já ligada a um processo de aprovação — para testar <c>ApplyPositionApprovalOutcome</c>.</summary>
+    public PositionAssignment AtribuirCargoPendente(
+        Guid employeeId, Guid positionId, DateTimeOffset effectiveFrom, Guid requestId)
+    {
+        var atribuicao = PositionAssignment.CreatePending(employeeId, positionId, effectiveFrom, null);
+        atribuicao.LinkToApprovalRequest(requestId);
+        _atribuicoes.Add(atribuicao);
+        return atribuicao;
+    }
+
+    public override Task AddAssignmentAsync(PositionAssignment assignment, CancellationToken cancellationToken)
+    {
+        _atribuicoes.Add(assignment);
+        return Task.CompletedTask;
+    }
+
+    public override Task<PositionAssignment?> FindAssignmentAsync(Guid assignmentId, CancellationToken cancellationToken) =>
+        Task.FromResult(_atribuicoes.SingleOrDefault(a => a.Id == assignmentId));
+
+    public override Task<IReadOnlyList<PositionAssignment>> ListAssignmentsForPositionAsync(
+        Guid positionId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<PositionAssignment>>(
+            [.. _atribuicoes.Where(a => a.PositionId == positionId)]);
+
     public override Task AddAccountLinkAsync(EmployeeAccountLink link, CancellationToken cancellationToken)
     {
         _episodios.Add(link);
@@ -206,6 +241,38 @@ internal sealed class FakeAuditTrail : IAuditTrail
         Registos.Add(record);
         return Task.CompletedTask;
     }
+}
+
+/// <summary>
+/// Sem motor de governança ligado — o que os testes de Cargos sem autoridade
+/// de aprovação precisam, e nada mais. Chamar qualquer membro é um teste a
+/// exercitar um caminho que não previu (mesma disciplina de <c>HrStoreParcial</c>).
+/// </summary>
+internal sealed class FakeHrApprovalSubmission : IHrApprovalSubmission
+{
+    public bool IsAvailable => false;
+
+    public Task<HrApprovalSubmissionResult> SubmitAsync(
+        HrApprovalProcess process, Guid sourceReference, Guid requestedByEmployeeId,
+        Guid? departmentId, string summary, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("O teste não previu submeter a aprovação.");
+
+    public Task<HrApprovalState> GetStateAsync(Guid approvalRequestId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("O teste não previu consultar o estado de aprovação.");
+}
+
+/// <summary>Um estado de aprovação fixo — para testar <c>ApplyPositionApprovalOutcome</c> sem um motor real.</summary>
+internal sealed class FakeApprovalOutcome(HrApprovalState estado) : IHrApprovalSubmission
+{
+    public bool IsAvailable => true;
+
+    public Task<HrApprovalSubmissionResult> SubmitAsync(
+        HrApprovalProcess process, Guid sourceReference, Guid requestedByEmployeeId,
+        Guid? departmentId, string summary, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("O teste não previu submeter a aprovação.");
+
+    public Task<HrApprovalState> GetStateAsync(Guid approvalRequestId, CancellationToken cancellationToken) =>
+        Task.FromResult(estado);
 }
 
 /// <summary>
