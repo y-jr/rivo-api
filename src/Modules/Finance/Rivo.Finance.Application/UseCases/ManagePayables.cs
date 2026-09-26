@@ -606,14 +606,24 @@ public sealed class GetPurchaseInvoice(IPayablesStore store)
 }
 
 /// <summary>
-/// O 3-way match, só do lado que se pode comparar sem inventar regra: os
-/// totais lado a lado. <strong>Não recusa nada e não decide se "bate"</strong>
-/// — a tolerância de desvio é decisão de negócio sem fonte neste repositório
-/// (mesma ressalva do desvio sobre a alçada em `procurement`), e um limiar
-/// escolhido aqui seria inventá-la.
+/// O 3-way match, com o veredicto calculado (#43 do levantamento de
+/// pendências).
+///
+/// <para>
+/// <strong>A tolerância era decisão de negócio sem fonte neste repositório</strong>
+/// (mesma ressalva do desvio sobre a alçada em `procurement`) — confirmada
+/// pelo dono do produto em 2026-09-26: 2% do total recebido. Um limiar
+/// inventado aqui teria sido pior do que não calcular veredicto nenhum.
+/// </para>
 /// </summary>
 public sealed class GetPurchaseInvoiceMatch(IPayablesStore store, IPurchaseOrderDirectory orders)
 {
+    /// <summary>
+    /// Desvio entre a factura e o que foi recebido, tolerado antes de contar
+    /// como <see cref="MatchStatus.Variance"/> (#43, confirmado 2026-09-26).
+    /// </summary>
+    private const decimal ToleranciaPercentual = 0.02m;
+
     public async Task<PurchaseInvoiceMatchView?> ExecuteAsync(Guid purchaseInvoiceId, CancellationToken cancellationToken)
     {
         var compra = await store.FindPurchaseInvoiceAsync(purchaseInvoiceId, cancellationToken);
@@ -626,7 +636,7 @@ public sealed class GetPurchaseInvoiceMatch(IPayablesStore store, IPurchaseOrder
         if (compra.PurchaseOrderId is not Guid idOrdem)
         {
             return new PurchaseInvoiceMatchView(
-                compra.Id, null, null, null, compra.NetTotal, compra.GrossTotal, []);
+                compra.Id, null, null, null, compra.NetTotal, compra.GrossTotal, [], null);
         }
 
         var ordem = await orders.FindAsync(idOrdem, cancellationToken);
@@ -636,7 +646,7 @@ public sealed class GetPurchaseInvoiceMatch(IPayablesStore store, IPurchaseOrder
         if (ordem is null)
         {
             return new PurchaseInvoiceMatchView(
-                compra.Id, idOrdem, null, null, compra.NetTotal, compra.GrossTotal, []);
+                compra.Id, idOrdem, null, null, compra.NetTotal, compra.GrossTotal, [], null);
         }
 
         var linhas = ordem.Lines
@@ -644,14 +654,40 @@ public sealed class GetPurchaseInvoiceMatch(IPayablesStore store, IPurchaseOrder
                 l.LineId, l.Description, l.QuantityOrdered, l.QuantityReceived, l.UnitPrice, l.LineTotal))
             .ToList();
 
+        var recebidoTotal = linhas.Sum(l => l.UnitPrice * l.QuantityReceived);
+
         return new PurchaseInvoiceMatchView(
             compra.Id,
             ordem.PurchaseOrderId,
             ordem.Total,
-            linhas.Sum(l => l.UnitPrice * l.QuantityReceived),
+            recebidoTotal,
             compra.NetTotal,
             compra.GrossTotal,
-            linhas);
+            linhas,
+            Avaliar(compra.NetTotal, recebidoTotal, linhas));
+    }
+
+    /// <summary>
+    /// Compara a factura com o que foi <strong>recebido</strong>, não com o
+    /// que foi <strong>encomendado</strong> — paga-se pelo que chegou, e uma
+    /// entrega parcial não é, por si só, um desvio: é <see cref="MatchStatus.PartialMatch"/>
+    /// quando os valores batem dentro da tolerância mesmo sem a ordem estar
+    /// toda recebida.
+    /// </summary>
+    private static MatchStatus Avaliar(
+        decimal facturaNetTotal, decimal recebidoTotal, IReadOnlyList<PurchaseOrderMatchLine> linhas)
+    {
+        var desvio = Math.Abs(facturaNetTotal - recebidoTotal);
+        var limite = recebidoTotal * ToleranciaPercentual;
+
+        if (desvio > limite)
+        {
+            return MatchStatus.Variance;
+        }
+
+        var recebidaPorInteiro = linhas.All(l => l.QuantityReceived >= l.QuantityOrdered);
+
+        return recebidaPorInteiro ? MatchStatus.Matched : MatchStatus.PartialMatch;
     }
 }
 
@@ -666,6 +702,10 @@ public sealed class GetPurchaseInvoiceMatch(IPayablesStore store, IPurchaseOrder
 /// O que a factura diz, sem imposto — compara-se com <see cref="OrderedTotal"/>
 /// e <see cref="ReceivedTotal"/>, que também não o têm.
 /// </param>
+/// <param name="Status">
+/// Nulo sem ordem ligada — sem o segundo lado do match não há o que avaliar
+/// (#43). Ver <see cref="GetPurchaseInvoiceMatch"/> para a tolerância.
+/// </param>
 public sealed record PurchaseInvoiceMatchView(
     Guid PurchaseInvoiceId,
     Guid? PurchaseOrderId,
@@ -673,7 +713,21 @@ public sealed record PurchaseInvoiceMatchView(
     decimal? ReceivedTotal,
     decimal InvoicedNetTotal,
     decimal InvoicedGrossTotal,
-    IReadOnlyList<PurchaseOrderMatchLine> Lines);
+    IReadOnlyList<PurchaseOrderMatchLine> Lines,
+    MatchStatus? Status);
+
+/// <summary>Veredicto do 3-way match (#43). Comparado contra o recebido, não o encomendado.</summary>
+public enum MatchStatus
+{
+    /// <summary>Factura dentro da tolerância, e a ordem foi recebida por inteiro.</summary>
+    Matched,
+
+    /// <summary>Factura dentro da tolerância, mas a ordem ainda não foi recebida por inteiro.</summary>
+    PartialMatch,
+
+    /// <summary>Factura fora da tolerância face ao que foi recebido.</summary>
+    Variance,
+}
 
 public sealed record PurchaseOrderMatchLine(
     Guid LineId,

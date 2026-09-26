@@ -223,6 +223,7 @@ public class PayablesTests
         Assert.Null(vista.ReceivedTotal);
         Assert.Equal(compra.NetTotal, vista.InvoicedNetTotal);
         Assert.Empty(vista.Lines);
+        Assert.Null(vista.Status);
     }
 
     /// <summary>
@@ -247,11 +248,13 @@ public class PayablesTests
         Assert.Equal(90_000m, vista.ReceivedTotal);
         Assert.Equal(90_000m, vista.InvoicedNetTotal);
         Assert.Single(vista.Lines);
+        Assert.Equal(MatchStatus.Matched, vista.Status);
     }
 
     /// <summary>
-    /// Recebido a menos do que facturado — o caso que o 3-way match existe
-    /// para apanhar. Não é recusado: fica visível nos números, não bloqueado.
+    /// Recebido muito a menos do que facturado — o caso que o 3-way match
+    /// existe para apanhar. Não é recusado: fica visível nos números, não
+    /// bloqueado — mas o veredicto (#43) diz Variance, não Matched.
     /// </summary>
     [Fact]
     public async Task FacturaAcimaDoRecebido_NaoEBloqueada_MasFicaVisivelNoMatch()
@@ -271,6 +274,68 @@ public class PayablesTests
         Assert.Equal(90_000m, vista!.OrderedTotal);
         Assert.Equal(54_000m, vista.ReceivedTotal);
         Assert.Equal(90_000m, vista.InvoicedNetTotal);
+        Assert.Equal(MatchStatus.Variance, vista.Status);
+    }
+
+    /// <summary>
+    /// A entrega ainda não foi toda recebida, mas a factura bate com o que
+    /// chegou — paga-se pelo recebido, não pelo encomendado (#43). Não é
+    /// Variance: os números conferem, só a entrega é que está incompleta.
+    /// </summary>
+    [Fact]
+    public async Task FacturaBateComORecebido_MasEntregaIncompleta_EPartialMatch()
+    {
+        var fornecedorId = Guid.CreateVersion7();
+        var ordem = Ordem(fornecedorId, (10m, 6m, 9000m));
+        var store = new FakePayablesStore();
+
+        var resultado = await Registar(store, ordem: ordem).ExecuteAsync(
+            "FT 9001", supplierId: null, ordem.PurchaseOrderId, "Angoferragens", "5402123456",
+            Hoje, Hoje.AddDays(30), "AOA", 54_000m, 0m, null,
+            Contexto, CancellationToken.None);
+        Assert.Equal(RegisterPurchaseInvoiceOutcome.Registered, resultado.Outcome);
+
+        var vista = await Comparar(store, ordem).ExecuteAsync(resultado.PurchaseInvoiceId!.Value, CancellationToken.None);
+
+        Assert.Equal(MatchStatus.PartialMatch, vista!.Status);
+    }
+
+    /// <summary>A tolerância confirmada é 2% (#43, 2026-09-26) — dentro dela ainda é Matched.</summary>
+    [Fact]
+    public async Task FacturaDentroDosDoisPorCento_EMatched()
+    {
+        var fornecedorId = Guid.CreateVersion7();
+        var ordem = Ordem(fornecedorId, (10m, 10m, 9000m));
+        var store = new FakePayablesStore();
+
+        var resultado = await Registar(store, ordem: ordem).ExecuteAsync(
+            "FT 9001", supplierId: null, ordem.PurchaseOrderId, "Angoferragens", "5402123456",
+            Hoje, Hoje.AddDays(30), "AOA", 91_500m, 0m, null,
+            Contexto, CancellationToken.None);
+        Assert.Equal(RegisterPurchaseInvoiceOutcome.Registered, resultado.Outcome);
+
+        var vista = await Comparar(store, ordem).ExecuteAsync(resultado.PurchaseInvoiceId!.Value, CancellationToken.None);
+
+        Assert.Equal(MatchStatus.Matched, vista!.Status);
+    }
+
+    /// <summary>Acima dos 2% já é Variance, mesmo com a entrega completa.</summary>
+    [Fact]
+    public async Task FacturaAcimaDosDoisPorCento_EVariance()
+    {
+        var fornecedorId = Guid.CreateVersion7();
+        var ordem = Ordem(fornecedorId, (10m, 10m, 9000m));
+        var store = new FakePayablesStore();
+
+        var resultado = await Registar(store, ordem: ordem).ExecuteAsync(
+            "FT 9001", supplierId: null, ordem.PurchaseOrderId, "Angoferragens", "5402123456",
+            Hoje, Hoje.AddDays(30), "AOA", 92_000m, 0m, null,
+            Contexto, CancellationToken.None);
+        Assert.Equal(RegisterPurchaseInvoiceOutcome.Registered, resultado.Outcome);
+
+        var vista = await Comparar(store, ordem).ExecuteAsync(resultado.PurchaseInvoiceId!.Value, CancellationToken.None);
+
+        Assert.Equal(MatchStatus.Variance, vista!.Status);
     }
 
     // ---- BR-1 na criação: sem governança não há pedido ----
