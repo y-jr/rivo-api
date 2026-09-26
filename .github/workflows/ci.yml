@@ -114,6 +114,12 @@ jobs:
             # só. Com o tecto de produção, o vermelho que davam seria a forma
             # do ambiente de teste, não um defeito da aplicação.
             echo "AUTH_RATE_LIMIT=0"
+            # Por omissão fechado fora de desenvolvimento (ADR-038) — mas este
+            # ambiente é efémero, isolado e nunca fica exposto à internet, e
+            # sem isto verify-settings#12 não tem como confirmar ao vivo que o
+            # OpenAPI documenta as colunas do CSV de importação (#30 do
+            # levantamento de pendências).
+            echo "EXPOSE_OPENAPI=true"
             # Sem isto, `POST /identity/invitations` responde 501 e **todas** as
             # suites falham na montagem: desde o ADR-059 é por aí que uma conta
             # nasce. O valor é irrelevante para o que se verifica — nenhuma suite
